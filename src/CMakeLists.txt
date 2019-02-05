@@ -1,0 +1,7 @@
+add_subdirectory(common)
+add_subdirectory(ReadoutEmulator)
+add_subdirectory(StfBuilder)
+add_subdirectory(StfSender)
+add_subdirectory(TfBuilder)
+
+add_subdirectory(tests)
