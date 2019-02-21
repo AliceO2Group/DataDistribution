@@ -85,6 +85,9 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
   // Deserialization object
   InterleavedHdrDataDeserializer lStfReceiver;
 
+  // wait for the device to go into RUNNING state
+  mDevice.WaitForRunningState();
+
   while (mDevice.CheckCurrentState(TfBuilderDevice::RUNNING)) {
     // receive a STF
     std::unique_ptr<SubTimeFrame> lStf = lStfReceiver.deserialize(lInputChan);
@@ -119,6 +122,9 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
 void TfBuilderInput::StfMergerThread()
 {
   using namespace std::chrono_literals;
+
+  // wait for the device to go into RUNNING state
+  mDevice.WaitForRunningState();
 
   while (mDevice.CheckCurrentState(TfBuilderDevice::RUNNING)) {
 

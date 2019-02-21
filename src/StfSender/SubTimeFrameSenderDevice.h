@@ -41,7 +41,7 @@ enum StfSenderPipeline {
   eInvalidStage = -1,
 };
 
-class StfSenderDevice : public Base::O2Device,
+class StfSenderDevice : public DataDistDevice,
                         public IFifoPipeline<std::unique_ptr<SubTimeFrame>>
 {
  public:

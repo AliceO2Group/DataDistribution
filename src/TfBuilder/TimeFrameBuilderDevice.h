@@ -46,7 +46,7 @@ enum TfBuilderPipeline {
   eTfInvalidStage = -1,
 };
 
-class TfBuilderDevice : public Base::O2Device,
+class TfBuilderDevice : public DataDistDevice,
                         public IFifoPipeline<std::unique_ptr<SubTimeFrame>>
 {
  public:

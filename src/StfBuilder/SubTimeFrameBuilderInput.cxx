@@ -62,6 +62,9 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
   using hres_clock = std::chrono::high_resolution_clock;
   auto lStfStartTime = hres_clock::now();
 
+  // wait for the device to go into RUNNING state
+  mDevice.WaitForRunningState();
+
   try {
     while (mDevice.CheckCurrentState(StfBuilderDevice::RUNNING)) {
 

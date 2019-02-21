@@ -28,7 +28,7 @@ namespace o2
 namespace DataDistribution
 {
 
-class ReadoutDevice : public Base::O2Device
+class ReadoutDevice : public DataDistDevice
 {
  public:
   static constexpr const char* OptionKeyOutputChannelName = "output-channel-name";

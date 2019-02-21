@@ -28,11 +28,10 @@ namespace DataDistribution
 using namespace std::chrono_literals;
 
 TfBuilderDevice::TfBuilderDevice()
-  : O2Device(),
+  : DataDistDevice(),
     IFifoPipeline(eTfPipelineSize),
     mFlpInputHandler(*this, eTfBuilderOut),
     mFileSink(*this, *this, eTfFileSinkIn, eTfFileSinkOut),
-    mGui(nullptr),
     mTfSizeSamples(),
     mTfFreqSamples()
 {
@@ -104,8 +103,11 @@ bool TfBuilderDevice::ConditionalRun()
 
 void TfBuilderDevice::TfForwardThread()
 {
+  // wait for the device to go into RUNNING state
+  WaitForRunningState();
+
   while (CheckCurrentState(RUNNING)) {
-    static auto lFreqStartTime = std::chrono::high_resolution_clock::now();
+    auto lFreqStartTime = std::chrono::high_resolution_clock::now();
 
     std::unique_ptr<SubTimeFrame> lTf = dequeue(eTfFwdIn);
     if (!lTf) {
@@ -149,6 +151,9 @@ void TfBuilderDevice::GuiThread()
   std::unique_ptr<TH1S> lStfPipelinedCntHist = std::make_unique<TH1S>("StfQueuedH", "Queued STFs", 150, -0.5, 150.0 - 0.5);
   lStfPipelinedCntHist->GetXaxis()->SetTitle("Number of queued Stf");
 
+  // wait for the device to go into RUNNING state
+  WaitForRunningState();
+
   while (CheckCurrentState(RUNNING)) {
     LOG(INFO) << "Updating histograms...";
 
@@ -164,7 +169,6 @@ void TfBuilderDevice::GuiThread()
     mGui->Canvas().Modified();
     mGui->Canvas().Update();
 
-    using namespace std::chrono_literals;
     std::this_thread::sleep_for(5s);
   }
 

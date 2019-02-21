@@ -36,7 +36,7 @@ using namespace std::chrono_literals;
 constexpr int StfBuilderDevice::gStfOutputChanId;
 
 StfBuilderDevice::StfBuilderDevice()
-  : O2Device(),
+  : DataDistDevice(),
     IFifoPipeline(eStfPipelineSize),
     mReadoutInterface(*this),
     mFileSink(*this, *this, eStfFileSinkIn, eStfFileSinkOut),
@@ -135,6 +135,9 @@ void StfBuilderDevice::StfOutputThread()
   StfDplAdapter lStfDplAdapter(lDplChan);
 
   using hres_clock = std::chrono::high_resolution_clock;
+
+  // wait for the device to go into RUNNING state
+  WaitForRunningState();
 
   while (CheckCurrentState(RUNNING)) {
 
@@ -245,6 +248,9 @@ void StfBuilderDevice::GuiThread()
 
   std::unique_ptr<TH1S> lStfPipelinedCntHist = std::make_unique<TH1S>("StfQueuedH", "Queued STFs", 150, -0.5, 150.0 - 0.5);
   lStfPipelinedCntHist->GetXaxis()->SetTitle("Number of queued Stf");
+
+  // wait for the device to go into RUNNING state
+  WaitForRunningState();
 
   while (CheckCurrentState(RUNNING)) {
     LOG(INFO) << "Updating histograms...";

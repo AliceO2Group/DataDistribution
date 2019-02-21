@@ -26,7 +26,7 @@ namespace DataDistribution
 {
 
 ReadoutDevice::ReadoutDevice()
-  : O2Device{},
+  : DataDistDevice(),
     mCruMemoryHandler{ std::make_shared<CruMemoryHandler>() },
     mFreeSuperpagesSamples()
 {
@@ -167,6 +167,8 @@ void ReadoutDevice::GuiThread()
   std::unique_ptr<TH1F> lFreeSuperpagesHist = std::make_unique<TH1F>("SPCountH", lHistTitle.c_str(),
                                                                      128, 0, mDataRegionSize / mSuperpageSize);
   lFreeSuperpagesHist->GetXaxis()->SetTitle("Count");
+
+  WaitForRunningState();
 
   while (CheckCurrentState(RUNNING)) {
     LOG(INFO) << "Updating histograms...";
