@@ -15,6 +15,7 @@
 
 #include <type_traits>
 #include <memory>
+#include <thread>
 
 #include <vector>
 #include <numeric>
@@ -23,6 +24,19 @@ namespace o2
 {
 namespace DataDistribution
 {
+
+
+class DataDistDevice : public Base::O2Device {
+
+public:
+
+  void WaitForRunningState() const {
+    while (GetCurrentState() < RUNNING) {
+      std::this_thread::yield();
+    }
+  }
+};
+
 
 template <
   typename T,

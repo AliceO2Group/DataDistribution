@@ -94,6 +94,9 @@ void StfSenderOutput::StfSchedulerThread()
   // queue the Stf to the appropriate EPN queue
   std::unique_ptr<SubTimeFrame> lStf;
 
+  // wait for the device to go into RUNNING state
+  mDevice.WaitForRunningState();
+
   while ((lStf = mDevice.dequeue(eSenderIn)) != nullptr) {
     const TimeFrameIdType lStfId = lStf->header().mId;
 
@@ -131,6 +134,9 @@ void StfSenderOutput::DataHandlerThread(const std::uint32_t pEpnIdx)
   LOG(INFO) << "StfSenderOutput[" << pEpnIdx << "]: Starting the thread";
 
   InterleavedHdrDataSerializer lStfSerializer(lOutputChan);
+
+  // wait for the device to go into RUNNING state
+  mDevice.WaitForRunningState();
 
   while (mDevice.CheckCurrentState(StfSenderDevice::RUNNING)) {
     std::unique_ptr<SubTimeFrame> lStf;

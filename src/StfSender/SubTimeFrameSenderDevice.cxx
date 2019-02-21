@@ -27,7 +27,7 @@ namespace DataDistribution
 using namespace std::chrono_literals;
 
 StfSenderDevice::StfSenderDevice()
-  : O2Device(),
+  : DataDistDevice(),
     IFifoPipeline(ePipelineSize),
     mFileSink(*this, *this, eFileSinkIn, eFileSinkOut),
     mOutputHandler(*this)
@@ -122,6 +122,11 @@ void StfSenderDevice::PostRun()
   // Stop output handler
   mOutputHandler.stop();
 
+  // wait for the gui thread
+  if (mBuildHistograms && mGuiThread.joinable()) {
+    mGuiThread.join();
+  }
+
   LOG(INFO) << "PostRun done... ";
 }
 
@@ -131,6 +136,9 @@ void StfSenderDevice::StfReceiverThread()
 
   InterleavedHdrDataDeserializer lStfReceiver;
   std::unique_ptr<SubTimeFrame> lStf;
+
+  // wait for the device to go into RUNNING state
+  WaitForRunningState();
 
   while ((lStf = lStfReceiver.deserialize(lInputChan)) != nullptr) {
 
@@ -153,6 +161,9 @@ void StfSenderDevice::GuiThread()
   std::unique_ptr<TH1S> lStfPipelinedCntHist = std::make_unique<TH1S>("StfQueuedH", "Queued STFs", 150, -0.5, 150 - 0.5);
   lStfPipelinedCntHist->GetXaxis()->SetTitle("Number of queued Stf");
 
+  // wait for the device to go into RUNNING state
+  WaitForRunningState();
+
   while (CheckCurrentState(RUNNING)) {
     LOG(INFO) << "Updating histograms...";
 
@@ -170,7 +181,7 @@ void StfSenderDevice::GuiThread()
 bool StfSenderDevice::ConditionalRun()
 {
   // nothing to do here sleep for awhile
-  std::this_thread::sleep_for(500ms);
+  std::this_thread::sleep_for(200ms);
   return true;
 }
 }

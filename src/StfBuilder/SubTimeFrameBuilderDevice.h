@@ -51,7 +51,7 @@ enum StfBuilderPipeline {
   eStfInvalidStage = -1,
 };
 
-class StfBuilderDevice : public Base::O2Device,
+class StfBuilderDevice : public DataDistDevice,
                          public IFifoPipeline<std::unique_ptr<SubTimeFrame>>
 {
  public:
