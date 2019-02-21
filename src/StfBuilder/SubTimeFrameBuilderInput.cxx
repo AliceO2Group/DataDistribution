@@ -10,7 +10,8 @@
 
 #include "SubTimeFrameBuilderInput.h"
 #include "SubTimeFrameBuilderDevice.h"
-#include <SubTimeFrameVisitors.h>
+
+#include <SubTimeFrameBuilder.h>
 #include <Utilities.h>
 
 #include <O2Device/O2Device.h>
@@ -57,13 +58,13 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
   auto& lOutputChan = mDevice.GetChannel(mDevice.getOutputChannelName());
 
   // Stf builder
-  SubTimeFrameReadoutBuilder lStfBuilder(lOutputChan);
-
-  using hres_clock = std::chrono::high_resolution_clock;
-  auto lStfStartTime = hres_clock::now();
+  SubTimeFrameReadoutBuilder lStfBuilder(mDevice, lOutputChan);
 
   // wait for the device to go into RUNNING state
   mDevice.WaitForRunningState();
+
+  using hres_clock = std::chrono::high_resolution_clock;
+  auto lStfStartTime = hres_clock::now();
 
   try {
     while (mDevice.CheckCurrentState(StfBuilderDevice::RUNNING)) {

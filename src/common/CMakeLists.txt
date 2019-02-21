@@ -6,6 +6,7 @@ set (LIB_COMMONG_SOURCES
   ReadoutDataModel
   FilePathUtils
   RootGui
+  SubTimeFrameBuilder
   SubTimeFrameDataModel
   SubTimeFrameVisitors
   SubTimeFrameUtils

@@ -12,8 +12,6 @@
 #include "SubTimeFrameDataModel.h"
 #include "DataModelUtils.h"
 
-#include <O2Device/O2Device.h>
-
 #include <stdexcept>
 #include <vector>
 #include <deque>
@@ -24,61 +22,6 @@ namespace o2
 {
 namespace DataDistribution
 {
-
-////////////////////////////////////////////////////////////////////////////////
-/// SubTimeFrameReadoutBuilder
-////////////////////////////////////////////////////////////////////////////////
-
-SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(FairMQChannel& pChan)
-  : mStf(nullptr),
-    mChan(pChan)
-{
-}
-
-void SubTimeFrameReadoutBuilder::visit(SubTimeFrame& /* pStf */)
-{
-  /* empty */
-}
-
-void SubTimeFrameReadoutBuilder::addHbFrames(const ReadoutSubTimeframeHeader& pHdr, std::vector<FairMQMessagePtr>&& pHbFrames)
-{
-  if (!mStf) {
-    mStf = std::make_unique<SubTimeFrame>(pHdr.timeframeId);
-  }
-
-  assert(pHdr.timeframeId == mStf->header().mId);
-
-  const EquipmentIdentifier lEqId = EquipmentIdentifier(
-    o2::header::gDataDescriptionRawData,
-    o2::header::gDataOriginFLP, // FIXME: proper equipment specification
-    pHdr.linkId);
-
-  // NOTE: skip the first message (readout header) in pHbFrames
-  for (size_t i = 1; i < pHbFrames.size(); i++) {
-    DataHeader lDataHdr(
-      lEqId.mDataDescription,
-      lEqId.mDataOrigin,
-      lEqId.mSubSpecification,
-      pHbFrames[i]->GetSize());
-    lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
-
-    auto lHdrMsg = mChan.NewMessage(sizeof(DataHeader));
-    if (!lHdrMsg) {
-      LOG(ERROR) << "Allocation error: HbFrame::DataHeader: " << sizeof(DataHeader);
-      throw std::bad_alloc();
-    }
-    std::memcpy(lHdrMsg->GetData(), &lDataHdr, sizeof(DataHeader));
-
-    mStf->addStfData(lDataHdr, SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFrames[i]) });
-  }
-
-  pHbFrames.clear();
-}
-
-std::unique_ptr<SubTimeFrame> SubTimeFrameReadoutBuilder::getStf()
-{
-  return std::move(mStf);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// InterleavedHdrDataSerializer
@@ -201,5 +144,6 @@ std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize_impl()
 
   return lStf;
 }
+
 }
 } /* o2::DataDistribution */
