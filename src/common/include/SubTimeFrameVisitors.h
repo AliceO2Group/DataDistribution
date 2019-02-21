@@ -26,27 +26,6 @@ namespace DataDistribution
 {
 
 ////////////////////////////////////////////////////////////////////////////////
-/// SubTimeFrameReadoutBuilder
-////////////////////////////////////////////////////////////////////////////////
-
-class SubTimeFrameReadoutBuilder : public ISubTimeFrameVisitor
-{
- public:
-  SubTimeFrameReadoutBuilder() = delete;
-  SubTimeFrameReadoutBuilder(FairMQChannel& pChan);
-
-  void addHbFrames(const ReadoutSubTimeframeHeader& pHdr, std::vector<FairMQMessagePtr>&& pHbFrames);
-  std::unique_ptr<SubTimeFrame> getStf();
-
- protected:
-  void visit(SubTimeFrame& pStf) override;
-
- private:
-  std::unique_ptr<SubTimeFrame> mStf;
-  FairMQChannel& mChan;
-};
-
-////////////////////////////////////////////////////////////////////////////////
 /// InterleavedHdrDataSerializer
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -89,6 +68,7 @@ class InterleavedHdrDataDeserializer : public ISubTimeFrameVisitor
  private:
   std::vector<FairMQMessagePtr> mMessages;
 };
+
 }
 } /* o2::DataDistribution */
 

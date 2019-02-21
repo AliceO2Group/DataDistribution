@@ -11,7 +11,6 @@
 #ifndef ALICEO2_STFBUILDER_INPUT_H_
 #define ALICEO2_STFBUILDER_INPUT_H_
 
-#include <SubTimeFrameDataModel.h>
 #include <ConcurrentQueue.h>
 #include <Utilities.h>
 
@@ -31,7 +30,7 @@ class StfInputInterface
   StfInputInterface() = delete;
   StfInputInterface(StfBuilderDevice& pStfBuilderDev)
     : mDevice(pStfBuilderDev),
-      mStfFreqSamples(1024)
+      mStfFreqSamples()
   {
   }
 
