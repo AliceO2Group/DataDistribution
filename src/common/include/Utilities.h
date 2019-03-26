@@ -30,10 +30,8 @@ class DataDistDevice : public Base::O2Device {
 
 public:
 
-  void WaitForRunningState() const {
-    while (GetCurrentState() < RUNNING) {
-      std::this_thread::yield();
-    }
+  void WaitForRunningState() {
+    WaitForState(fair::mq::State::Running);
   }
 };
 

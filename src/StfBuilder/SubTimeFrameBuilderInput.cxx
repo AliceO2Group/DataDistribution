@@ -15,7 +15,7 @@
 
 #include <O2Device/O2Device.h>
 #include <FairMQDevice.h>
-#include <FairMQStateMachine.h>
+#include <fairmq/StateMachine.h>
 #include <FairMQLogger.h>
 
 #include <vector>
