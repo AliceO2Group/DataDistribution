@@ -147,7 +147,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
   std::uint64_t lCurrentFileSize = 0;
   std::uint64_t lCurrentFileStfs = 0;
 
-  while (mDeviceI.CheckCurrentState(O2Device::RUNNING)) {
+  while (mDeviceI.IsRunningState()) {
     // Get the next STF
     std::unique_ptr<SubTimeFrame> lStf = mPipelineI.dequeue(mPipelineStageIn);
     if (!lStf) {

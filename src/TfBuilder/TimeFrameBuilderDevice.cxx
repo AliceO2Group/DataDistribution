@@ -106,7 +106,7 @@ void TfBuilderDevice::TfForwardThread()
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
-  while (CheckCurrentState(RUNNING)) {
+  while (IsRunningState()) {
     auto lFreqStartTime = std::chrono::high_resolution_clock::now();
 
     std::unique_ptr<SubTimeFrame> lTf = dequeue(eTfFwdIn);
@@ -154,7 +154,7 @@ void TfBuilderDevice::GuiThread()
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
-  while (CheckCurrentState(RUNNING)) {
+  while (IsRunningState()) {
     LOG(INFO) << "Updating histograms...";
 
     mGui->Canvas().cd(1);

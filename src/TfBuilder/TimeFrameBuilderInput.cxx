@@ -16,7 +16,6 @@
 
 #include <O2Device/O2Device.h>
 #include <FairMQDevice.h>
-#include <FairMQStateMachine.h>
 #include <FairMQLogger.h>
 
 #include <condition_variable>
@@ -31,7 +30,7 @@ namespace DataDistribution
 
 void TfBuilderInput::Start(unsigned int pNumFlp)
 {
-  if (!mDevice.CheckCurrentState(TfBuilderDevice::RUNNING)) {
+  if (!mDevice.IsRunningState()) {
     LOG(WARN) << "Not creating interface threads. StfBuilder is not running.";
     return;
   }
@@ -55,7 +54,7 @@ void TfBuilderInput::Start(unsigned int pNumFlp)
 
 void TfBuilderInput::Stop()
 {
-  assert(!mDevice.CheckCurrentState(TfBuilderDevice::RUNNING));
+  assert(!mDevice.IsRunningState());
 
   // Wait for input threads to stop
   for (auto& lIdThread : mInputThreads) {
@@ -88,11 +87,11 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
   // wait for the device to go into RUNNING state
   mDevice.WaitForRunningState();
 
-  while (mDevice.CheckCurrentState(TfBuilderDevice::RUNNING)) {
+  while (mDevice.IsRunningState()) {
     // receive a STF
     std::unique_ptr<SubTimeFrame> lStf = lStfReceiver.deserialize(lInputChan);
     if (!lStf) {
-      if (mDevice.CheckCurrentState(TfBuilderDevice::RUNNING)) {
+      if (mDevice.IsRunningState()) {
         LOG(WARN) << "InputThread[" << pFlpIndex << "]: Receive failed";
       } else {
         LOG(INFO) << "InputThread[" << pFlpIndex << "](NOT RUNNING): Receive failed";
@@ -126,7 +125,7 @@ void TfBuilderInput::StfMergerThread()
   // wait for the device to go into RUNNING state
   mDevice.WaitForRunningState();
 
-  while (mDevice.CheckCurrentState(TfBuilderDevice::RUNNING)) {
+  while (mDevice.IsRunningState()) {
 
     std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
     mStfMergerCondition.wait_for(lQueueLock, 500ms);

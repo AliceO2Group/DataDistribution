@@ -31,9 +31,14 @@ class DataDistDevice : public Base::O2Device {
 public:
 
   void WaitForRunningState() const {
-    while (GetCurrentState() < RUNNING) {
-      std::this_thread::yield();
+    while (GetCurrentState() < fair::mq::State::Running) {
+      using namespace std::chrono_literals;
+      std::this_thread::sleep_for(20ms);
     }
+  }
+
+  bool IsRunningState() const {
+    return (GetCurrentState() == fair::mq::State::Running);
   }
 };
 
