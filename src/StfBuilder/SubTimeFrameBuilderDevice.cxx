@@ -128,6 +128,9 @@ void StfBuilderDevice::PostRun()
 
 void StfBuilderDevice::StfOutputThread()
 {
+  // wait for the device to go into RUNNING state
+  WaitForRunningState();
+
   auto& lOutputChan = GetChannel(getOutputChannelName(), 0);
   InterleavedHdrDataSerializer lStfSerializer(lOutputChan);
 
@@ -136,10 +139,7 @@ void StfBuilderDevice::StfOutputThread()
 
   using hres_clock = std::chrono::high_resolution_clock;
 
-  // wait for the device to go into RUNNING state
-  WaitForRunningState();
-
-  while (CheckCurrentState(RUNNING)) {
+  while (IsRunningState()) {
 
     // Get a STF readu for sending
     std::unique_ptr<SubTimeFrame> lStf = dequeue(eStfSendIn);
@@ -186,7 +186,7 @@ void StfBuilderDevice::StfOutputThread()
           lStfDplAdapter.sendToDpl(std::move(lStf));
         }
       } catch (std::exception& e) {
-        if (CheckCurrentState(RUNNING))
+        if (IsRunningState())
           LOG(ERROR) << "StfOutputThread: exception on send: " << e.what();
         else
           LOG(INFO) << "StfOutputThread(NOT_RUNNING): exception on send: " << e.what();
@@ -216,7 +216,7 @@ void StfBuilderDevice::StfOutputThread()
           lStfDplAdapter.sendToDpl(std::move(lStf));
         }
       } catch (std::exception& e) {
-        if (CheckCurrentState(RUNNING)) {
+        if (IsRunningState()) {
           LOG(ERROR) << "StfOutputThread: exception on send: " << e.what();
         } else {
           LOG(INFO) << "StfOutputThread(NOT_RUNNING): shutting down: " << e.what();
@@ -252,7 +252,7 @@ void StfBuilderDevice::GuiThread()
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
-  while (CheckCurrentState(RUNNING)) {
+  while (IsRunningState()) {
     LOG(INFO) << "Updating histograms...";
 
     mGui->Canvas().cd(1);

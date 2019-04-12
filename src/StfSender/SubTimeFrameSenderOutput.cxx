@@ -36,7 +36,7 @@ void StfSenderOutput::start(std::uint32_t pEpnCnt)
     return;
   }
 
-  if (!mDevice.CheckCurrentState(StfSenderDevice::RUNNING)) {
+  if (!mDevice.IsRunningState()) {
     LOG(WARN) << "Not creating interface threads. StfSenderDevice is not running.";
     return;
   }
@@ -86,7 +86,7 @@ void StfSenderOutput::stop()
 
 bool StfSenderOutput::running() const
 {
-  return mDevice.CheckCurrentState(StfSenderDevice::RUNNING);
+  return mDevice.IsRunningState();
 }
 
 void StfSenderOutput::StfSchedulerThread()
@@ -138,7 +138,7 @@ void StfSenderOutput::DataHandlerThread(const std::uint32_t pEpnIdx)
   // wait for the device to go into RUNNING state
   mDevice.WaitForRunningState();
 
-  while (mDevice.CheckCurrentState(StfSenderDevice::RUNNING)) {
+  while (mDevice.IsRunningState()) {
     std::unique_ptr<SubTimeFrame> lStf;
 
     if (!mStfQueues[pEpnIdx].pop(lStf)) {
@@ -149,7 +149,7 @@ void StfSenderOutput::DataHandlerThread(const std::uint32_t pEpnIdx)
     try {
       lStfSerializer.serialize(std::move(lStf));
     } catch (std::exception& e) {
-      if (mDevice.CheckCurrentState(StfSenderDevice::RUNNING))
+      if (mDevice.IsRunningState())
         LOG(ERROR) << "StfSenderOutput[" << pEpnIdx << "]: exception on send: " << e.what();
       else
         LOG(INFO) << "StfSenderOutput[" << pEpnIdx << "](NOT RUNNING): exception on send: " << e.what();

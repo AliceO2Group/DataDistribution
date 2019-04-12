@@ -170,7 +170,7 @@ void ReadoutDevice::GuiThread()
 
   WaitForRunningState();
 
-  while (CheckCurrentState(RUNNING)) {
+  while (IsRunningState()) {
     LOG(INFO) << "Updating histograms...";
 
     mGui->Canvas().cd();

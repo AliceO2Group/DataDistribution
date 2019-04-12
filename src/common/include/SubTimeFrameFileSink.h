@@ -51,7 +51,7 @@ class SubTimeFrameFileSink
 
   SubTimeFrameFileSink() = delete;
 
-  SubTimeFrameFileSink(O2Device& pDevice, stf_pipeline& pPipeline, unsigned pPipelineStageIn, unsigned pPipelineStageOut)
+  SubTimeFrameFileSink(DataDistDevice& pDevice, stf_pipeline& pPipeline, unsigned pPipelineStageIn, unsigned pPipelineStageOut)
     : mDeviceI(pDevice),
       mPipelineI(pPipeline),
       mPipelineStageIn(pPipelineStageIn),
@@ -79,7 +79,7 @@ class SubTimeFrameFileSink
   std::string newStfFileName();
 
  private:
-  const O2Device& mDeviceI;
+  const DataDistDevice& mDeviceI;
   stf_pipeline& mPipelineI;
 
   std::unique_ptr<SubTimeFrameFileWriter> mStfWriter = nullptr;

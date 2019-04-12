@@ -164,7 +164,7 @@ void StfSenderDevice::GuiThread()
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
-  while (CheckCurrentState(RUNNING)) {
+  while (IsRunningState()) {
     LOG(INFO) << "Updating histograms...";
 
     mGui->Canvas().cd(1);

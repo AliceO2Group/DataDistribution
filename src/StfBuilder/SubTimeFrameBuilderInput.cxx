@@ -16,7 +16,6 @@
 
 #include <O2Device/O2Device.h>
 #include <FairMQDevice.h>
-#include <FairMQStateMachine.h>
 #include <FairMQLogger.h>
 
 #include <vector>
@@ -30,11 +29,6 @@ namespace DataDistribution
 
 void StfInputInterface::Start()
 {
-  if (!mDevice.CheckCurrentState(StfBuilderDevice::RUNNING)) {
-    LOG(WARN) << "Not creating interface threads. StfBuilder is not running.";
-    return;
-  }
-
   mInputThread = std::thread(&StfInputInterface::DataHandlerThread, this, 0);
 }
 
@@ -53,6 +47,9 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
   std::vector<FairMQMessagePtr> lReadoutMsgs;
   lReadoutMsgs.reserve(4 * 1024);
 
+  // wait for the device to go into RUNNING state
+  mDevice.WaitForRunningState();
+
   // Reference to the input channel
   auto& lInputChan = mDevice.GetChannel(mDevice.getInputChannelName(), pInputChannelIdx);
   auto& lOutputChan = mDevice.GetChannel(mDevice.getOutputChannelName());
@@ -60,14 +57,11 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
   // Stf builder
   SubTimeFrameReadoutBuilder lStfBuilder(mDevice, lOutputChan);
 
-  // wait for the device to go into RUNNING state
-  mDevice.WaitForRunningState();
-
   using hres_clock = std::chrono::high_resolution_clock;
   auto lStfStartTime = hres_clock::now();
 
   try {
-    while (mDevice.CheckCurrentState(StfBuilderDevice::RUNNING)) {
+    while (mDevice.IsRunningState()) {
 
       // Equipment ID for the HBFrames (from the header)
       ReadoutSubTimeframeHeader lReadoutHdr;
@@ -76,11 +70,11 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
 
       // receive readout messages
       auto lRet = lInputChan.Receive(lReadoutMsgs);
-      if (lRet < 0 && mDevice.CheckCurrentState(StfBuilderDevice::RUNNING)) {
+      if (lRet < 0 && mDevice.IsRunningState()) {
         LOG(WARNING) << "StfHeader receive failed (err = " + std::to_string(lRet) + ")";
         lReadoutMsgs.clear();
         continue;
-      } else if (!mDevice.CheckCurrentState(StfBuilderDevice::RUNNING)) {
+      } else if (!mDevice.IsRunningState()) {
         break; // should exit?
       }
 
