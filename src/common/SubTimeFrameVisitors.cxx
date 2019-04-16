@@ -104,7 +104,7 @@ void InterleavedHdrDataDeserializer::visit(SubTimeFrame& pStf)
 
 std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize(FairMQChannel& pChan)
 {
-  int ret;
+  std::int64_t ret;
 
   if ((ret = pChan.Receive(mMessages)) < 0) {
     LOG(WARNING) << "STF receive failed (err = " + std::to_string(ret) + ")";
@@ -132,7 +132,7 @@ std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize_impl()
   } catch (std::runtime_error& e) {
     LOG(ERROR) << "SubTimeFrame deserialization failed. Reason: " << e.what();
     mMessages.clear();
-    return nullptr; // TODO: what? O2Device.Receive() does not throw...?
+    return nullptr; // TODO: what? FMQ.Receive() does not throw...?
   } catch (std::exception& e) {
     LOG(ERROR) << "SubTimeFrame deserialization failed. Reason: " << e.what();
     mMessages.clear();
