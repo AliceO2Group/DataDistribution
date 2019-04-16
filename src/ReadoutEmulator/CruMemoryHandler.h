@@ -35,6 +35,8 @@ namespace o2
 namespace DataDistribution
 {
 
+using namespace o2::header;
+
 struct CRUSuperpage {
   char* mDataVirtualAddress;
   char* mDataBusAddress;

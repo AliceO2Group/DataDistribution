@@ -25,8 +25,7 @@ namespace o2
 namespace DataDistribution
 {
 
-
-class DataDistDevice : public Base::O2Device {
+class DataDistDevice : public base::O2Device {
 
 public:
 
@@ -41,7 +40,6 @@ public:
     return (GetCurrentState() == fair::mq::State::Running);
   }
 };
-
 
 template <
   typename T,

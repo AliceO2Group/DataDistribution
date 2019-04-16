@@ -83,16 +83,16 @@ namespace DataDistribution
 
 namespace impl
 {
-static inline DataIdentifier getDataIdentifier(const DataHeader& pDataHdr)
+static inline o2::header::DataIdentifier getDataIdentifier(const o2::header::DataHeader& pDataHdr)
 {
-  DataIdentifier lRetId;
+  o2::header::DataIdentifier lRetId;
   lRetId.dataDescription = pDataHdr.dataDescription;
   lRetId.dataOrigin = pDataHdr.dataOrigin;
   return lRetId;
 }
 }
 
-using namespace o2::Base;
+using namespace o2::base;
 using namespace o2::header;
 
 static constexpr o2::header::DataDescription gDataDescSubTimeFrame{ "DISTSUBTIMEFRAME" };
