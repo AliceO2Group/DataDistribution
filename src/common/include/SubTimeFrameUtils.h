@@ -15,12 +15,12 @@
 
 #include <Headers/DataHeader.h>
 
-class O2Device;
-
 namespace o2
 {
 namespace DataDistribution
 {
+
+using namespace o2::header;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// DataOriginSplitter

@@ -18,7 +18,6 @@ endif()
 target_include_directories(StfSender
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/include
-    ${MS_GSL_INCLUDE_DIR}
 )
 
 target_link_libraries(StfSender
@@ -26,9 +25,7 @@ target_link_libraries(StfSender
   PRIVATE
     FairMQ::FairMQ
     AliceO2::Headers
-    ${Monitoring_LIBRARIES}
-    ROOT::Hist
-    ROOT::Gpad
+    ROOT::Gui
 )
 
 install(TARGETS StfSender RUNTIME DESTINATION bin)

@@ -17,7 +17,6 @@
 #include <vector>
 #include <mutex>
 
-class DataHeader;
 class FairMQDevice;
 class FairMQChannel;
 class FairMQUnmanagedRegion;
@@ -48,12 +47,12 @@ class SubTimeFrameReadoutBuilder : public ISubTimeFrameVisitor
   FairMQMessagePtr allocateHeader();
 
   std::unique_ptr<FairMQUnmanagedRegion> mHeaderRegion;
-  void reclaimHeader(DataHeader* pData, size_t pSize);
+  void reclaimHeader(o2::header::DataHeader* pData, size_t pSize);
 
-  std::vector<DataHeader*> mHeaders;
+  std::vector<o2::header::DataHeader*> mHeaders;
   std::mutex mHeaderLock;
   // two step reclaim to avoid lock contention in the allocation path
-  std::vector<DataHeader*> mReclaimedHeaders;
+  std::vector<o2::header::DataHeader*> mReclaimedHeaders;
 
   std::unique_ptr<SubTimeFrame> mStf;
 

@@ -17,7 +17,6 @@
 
 #include <vector>
 
-class O2Device;
 class FairMQChannel;
 
 namespace o2

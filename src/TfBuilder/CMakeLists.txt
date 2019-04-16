@@ -18,7 +18,6 @@ endif()
 target_include_directories(TfBuilder
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/include
-    ${MS_GSL_INCLUDE_DIR}
 )
 
 target_link_libraries(TfBuilder
@@ -26,7 +25,6 @@ target_link_libraries(TfBuilder
   PRIVATE
     FairMQ::FairMQ
     AliceO2::Headers
-    ${Monitoring_LIBRARIES}
     ROOT::Gui
 )
 

@@ -14,7 +14,6 @@
 #include <SubTimeFrameBuilder.h>
 #include <Utilities.h>
 
-#include <O2Device/O2Device.h>
 #include <FairMQDevice.h>
 #include <FairMQLogger.h>
 

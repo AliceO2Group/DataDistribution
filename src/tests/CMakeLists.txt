@@ -1,8 +1,6 @@
 # @author Gvozden Neskovic
 # @brief  cmake for unit tests
 
-
-
 # Unit test for FilePathUtils class
 
 set(TEST_FILE_PATH_SOURCES
@@ -23,6 +21,6 @@ target_link_libraries(test_FilePathUtils
     Boost::unit_test_framework
     Boost::filesystem
 )
-# install(TARGETS test_FilePathUtils RUNTIME DESTINATION bin)
+
 add_test(NAME FilePathUtils_test COMMAND test_FilePathUtils)
 

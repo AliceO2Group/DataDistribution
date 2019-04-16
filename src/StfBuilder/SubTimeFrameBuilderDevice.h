@@ -20,8 +20,6 @@
 #include <Utilities.h>
 #include <RootGui.h>
 
-#include <O2Device/O2Device.h>
-
 #include <TApplication.h>
 #include <TCanvas.h>
 #include <TH1.h>

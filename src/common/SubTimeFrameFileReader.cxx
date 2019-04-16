@@ -16,6 +16,8 @@ namespace o2
 namespace DataDistribution
 {
 
+using namespace o2::header;
+
 ////////////////////////////////////////////////////////////////////////////////
 /// SubTimeFrameFileReader
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,6 +97,9 @@ std::int64_t SubTimeFrameFileReader::getHeaderStackSize() // throws ios_base::fa
 
 bool SubTimeFrameFileReader::read(SubTimeFrame& pStf, std::uint64_t /* pStfId */, FairMQChannel& pDstChan)
 {
+  // make sure headers and chunk pointers don't linger
+  mStfData.clear();
+
   // If mFile is good, we're positioned to read a TF
   if (!mFile || mFile.eof()) {
     return false;
@@ -104,12 +109,6 @@ bool SubTimeFrameFileReader::read(SubTimeFrame& pStf, std::uint64_t /* pStfId */
     LOG(WARNING) << "Error while reading a TF from file. (bad stream state)";
     return false;
   }
-
-  // cleanup
-  auto lCleanup = gsl::finally([this] {
-    // make sure headers and chunk pointers don't linger
-    mStfData.clear();
-  });
 
   // record current position
   const auto lTfStartPosition = this->position();

@@ -20,7 +20,7 @@ To use `readout.exe` as the CRU emulator:
   - Make sure the Readout module is loaded in the environment (make sure the `readout.exe` executable exists).
   - pass `--readout` parameter.
 
-O2Device channel configuration is in `config/readout-emu-flp-epn-chain.json`.  If using CRU emulation mode of the `readout.exe` process, configuration of the emulator is read from `config/readout_cfg/readout_emu.cfg` (emulation is controlled by sections `[consumer-fmq-wp5]`, `[equipment-emulator-1]`, and `[equipment-emulator-2]`). To enable testing with two equipments, set the `[equipment-emulator-2]::enabled`  option to `1`.
+FMQDevice channel configuration is in `config/readout-emu-flp-epn-chain.json`.  If using CRU emulation mode of the `readout.exe` process, configuration of the emulator is read from `config/readout_cfg/readout_emu.cfg` (emulation is controlled by sections `[consumer-fmq-wp5]`, `[equipment-emulator-1]`, and `[equipment-emulator-2]`). To enable testing with two equipments, set the `[equipment-emulator-2]::enabled`  option to `1`.
 
 ## Contact
 

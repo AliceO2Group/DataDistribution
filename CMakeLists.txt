@@ -15,7 +15,7 @@ message(STATUS "Install directory = ${CMAKE_INSTALL_PREFIX}")
 
 #
 #--- FLAGS ---------------------------------------------------------------------------
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -76,20 +76,10 @@ list(INSERT Boost_COMPONENTS
   unit_test_framework
 )
 list(REMOVE_DUPLICATES Boost_COMPONENTS)
-
 find_package(Boost ${FairMQ_Boost_VERSION} REQUIRED COMPONENTS ${Boost_COMPONENTS})
 
-# find GSL (https://github.com/Microsoft/GSL)
-find_path(MS_GSL_INCLUDE_DIR
-  NAMES gsl/gsl
-  HINTS ${MS_GSL_ROOT} ENV MS_GSL_ROOT
-  PATH_SUFFIXES "include"
-)
-
 find_package(AliceO2 REQUIRED)
-find_package(Monitoring REQUIRED)
 find_package(ROOT REQUIRED)
-
 
 message(STATUS "Boost version : ${Boost_VERSION}")
 message(STATUS "Boost include path : ${Boost_INCLUDE_DIRS}")

@@ -11,7 +11,7 @@
 #ifndef ALICEO2_DATADIST_UTILITIES_H_
 #define ALICEO2_DATADIST_UTILITIES_H_
 
-#include <O2Device/O2Device.h>
+#include <fairmq/FairMQDevice.h>
 
 #include <type_traits>
 #include <memory>
@@ -25,7 +25,7 @@ namespace o2
 namespace DataDistribution
 {
 
-class DataDistDevice : public base::O2Device {
+class DataDistDevice : public FairMQDevice {
 
 public:
 

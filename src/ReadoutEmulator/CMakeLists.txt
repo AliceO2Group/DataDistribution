@@ -19,17 +19,15 @@ endif()
 target_include_directories(ReadoutEmulator
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/include
-    ${MS_GSL_INCLUDE_DIR}
 )
 
+set (CMAKE_SHARED_LINKER_FLAGS "-Wl,--as-needed")
 target_link_libraries(ReadoutEmulator
   PUBLIC
   PRIVATE
     FairMQ::FairMQ
     AliceO2::Headers
-    ${Monitoring_LIBRARIES}
     ROOT::Gui
 )
-
 
 install(TARGETS ReadoutEmulator RUNTIME DESTINATION bin)
