@@ -16,8 +16,6 @@
 #include <Utilities.h>
 #include <RootGui.h>
 
-#include "O2Device/O2Device.h"
-
 #include <thread>
 #include <vector>
 #include <mutex>

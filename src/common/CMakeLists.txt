@@ -29,7 +29,6 @@ endif()
 target_include_directories(common
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${MS_GSL_INCLUDE_DIR}
 )
 
 target_link_libraries(common
@@ -37,7 +36,6 @@ target_link_libraries(common
   PRIVATE
     Boost::filesystem
     FairMQ::FairMQ
-    AliceO2::AliceO2
-    ${Monitoring_LIBRARIES}
+    AliceO2::Headers
     ROOT::Gui
 )

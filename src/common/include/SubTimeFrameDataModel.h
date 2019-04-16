@@ -15,7 +15,6 @@
 #include "DataModelUtils.h"
 #include "ReadoutDataModel.h"
 
-#include <O2Device/O2Device.h>
 #include <Headers/DataHeader.h>
 
 #include <vector>
@@ -92,26 +91,26 @@ static inline o2::header::DataIdentifier getDataIdentifier(const o2::header::Dat
 }
 }
 
-using namespace o2::base;
-using namespace o2::header;
-
 static constexpr o2::header::DataDescription gDataDescSubTimeFrame{ "DISTSUBTIMEFRAME" };
 
 struct EquipmentIdentifier {
-  DataDescription mDataDescription;                   /* 2 x uint64_t */
-  DataHeader::SubSpecificationType mSubSpecification; /* uint64_t */
-  DataOrigin mDataOrigin;                             /* 1 x uint32_t */
+  o2::header::DataDescription mDataDescription;                   /* 2 x uint64_t */
+  o2::header::DataHeader::SubSpecificationType mSubSpecification; /* uint64_t */
+  o2::header::DataOrigin mDataOrigin;                             /* 1 x uint32_t */
 
   EquipmentIdentifier() = delete;
 
-  EquipmentIdentifier(const DataDescription& pDataDesc, const DataOrigin& pDataOrig, const DataHeader::SubSpecificationType& pSubSpec) noexcept
+  EquipmentIdentifier(const o2::header::DataDescription& pDataDesc,
+    const o2::header::DataOrigin& pDataOrig,
+    const o2::header::DataHeader::SubSpecificationType& pSubSpec) noexcept
     : mDataDescription(pDataDesc),
       mSubSpecification(pSubSpec),
       mDataOrigin(pDataOrig)
   {
   }
 
-  EquipmentIdentifier(const DataIdentifier& pDataId, const DataHeader::SubSpecificationType& pSubSpec) noexcept
+  EquipmentIdentifier(const o2::header::DataIdentifier& pDataId,
+    const o2::header::DataHeader::SubSpecificationType& pSubSpec) noexcept
     : EquipmentIdentifier(pDataId.dataDescription, pDataId.dataOrigin, pSubSpec)
   {
   }
@@ -126,9 +125,9 @@ struct EquipmentIdentifier {
   {
   }
 
-  operator DataIdentifier() const noexcept
+  operator o2::header::DataIdentifier() const noexcept
   {
-    DataIdentifier lRetId;
+    o2::header::DataIdentifier lRetId;
     lRetId.dataDescription = mDataDescription;
     lRetId.dataOrigin = mDataOrigin;
     return lRetId;
@@ -136,19 +135,20 @@ struct EquipmentIdentifier {
 
   bool operator<(const EquipmentIdentifier& other) const noexcept
   {
-    if (mDataDescription < other.mDataDescription)
+    if (mDataDescription < other.mDataDescription) {
       return true;
+    }
 
-    else if (mDataDescription == other.mDataDescription &&
-             mDataOrigin < other.mDataOrigin)
+    if (mDataDescription == other.mDataDescription && mDataOrigin < other.mDataOrigin) {
       return true;
+    }
 
-    else if (mDataDescription == other.mDataDescription &&
-             mDataOrigin == other.mDataOrigin &&
-             mSubSpecification < other.mSubSpecification)
+    if (mDataDescription == other.mDataDescription && mDataOrigin == other.mDataOrigin &&
+        mSubSpecification < other.mSubSpecification) {
       return true;
-    else
-      return false;
+    }
+
+    return false;
   }
 
   bool operator==(const EquipmentIdentifier& other) const noexcept
@@ -174,7 +174,7 @@ struct EquipmentIdentifier {
   }
 };
 
-struct HBFrameHeader : public BaseHeader {
+struct HBFrameHeader : public o2::header::BaseHeader {
 
   // Required to do the lookup
   static const o2::header::HeaderType sHeaderType;
@@ -221,10 +221,10 @@ class SubTimeFrame : public IDataModelObject
     std::unique_ptr<FairMQMessage> mHeader;
     std::unique_ptr<FairMQMessage> mData;
 
-    DataHeader getDataHeader()
+    o2::header::DataHeader getDataHeader()
     {
-      DataHeader lDataHdr;
-      std::memcpy(&lDataHdr, mHeader->GetData(), sizeof(DataHeader));
+      o2::header::DataHeader lDataHdr;
+      std::memcpy(&lDataHdr, mHeader->GetData(), sizeof(o2::header::DataHeader));
       return lDataHdr;
     }
   };
@@ -259,8 +259,8 @@ class SubTimeFrame : public IDataModelObject
 
  private:
   using StfDataVector = std::vector<StfData>;
-  using StfSubSpecMap = std::unordered_map<DataHeader::SubSpecificationType, StfDataVector>;
-  using StfDataIdentMap = std::unordered_map<DataIdentifier, StfSubSpecMap>;
+  using StfSubSpecMap = std::unordered_map<o2::header::DataHeader::SubSpecificationType, StfDataVector>;
+  using StfDataIdentMap = std::unordered_map<o2::header::DataIdentifier, StfSubSpecMap>;
 
   ///
   /// Fields
@@ -271,9 +271,9 @@ class SubTimeFrame : public IDataModelObject
   ///
   /// helper methods
   ///
-  inline void addStfData(const DataHeader& pDataHeader, StfData&& pStfData)
+  inline void addStfData(const o2::header::DataHeader& pDataHeader, StfData&& pStfData)
   {
-    const DataIdentifier lDataId = impl::getDataIdentifier(pDataHeader);
+    const o2::header::DataIdentifier lDataId = impl::getDataIdentifier(pDataHeader);
 
     auto& lDataVector = mData[lDataId][pDataHeader.subSpecification];
 
@@ -283,7 +283,7 @@ class SubTimeFrame : public IDataModelObject
 
   inline void addStfData(StfData&& pStfData)
   {
-    const DataHeader lDataHeader = pStfData.getDataHeader();
+    const o2::header::DataHeader lDataHeader = pStfData.getDataHeader();
     addStfData(lDataHeader, std::move(pStfData));
   }
 };

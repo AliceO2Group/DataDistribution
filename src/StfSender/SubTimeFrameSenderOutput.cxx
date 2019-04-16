@@ -14,7 +14,6 @@
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameVisitors.h>
 
-#include <O2Device/O2Device.h>
 #include <FairMQLogger.h>
 
 #include <condition_variable>
@@ -33,11 +32,6 @@ void StfSenderOutput::start(std::uint32_t pEpnCnt)
   mSchedulerThread = std::thread(&StfSenderOutput::StfSchedulerThread, this);
 
   if (mDevice.standalone()) {
-    return;
-  }
-
-  if (!mDevice.IsRunningState()) {
-    LOG(WARN) << "Not creating interface threads. StfSenderDevice is not running.";
     return;
   }
 

@@ -18,8 +18,6 @@
 #include <fstream>
 #include <vector>
 
-class O2Device;
-
 namespace o2
 {
 namespace DataDistribution

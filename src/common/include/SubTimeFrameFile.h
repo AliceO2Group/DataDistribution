@@ -40,7 +40,7 @@ struct SubTimeFrameFileMeta {
       0, // TODO: subspecification? FLP ID? EPN ID?
       sizeof(SubTimeFrameFileMeta));
 
-    lHdr.payloadSerializationMethod = gSerializationMethodNone;
+    lHdr.payloadSerializationMethod = o2::header::gSerializationMethodNone;
 
     return lHdr;
   }
@@ -165,7 +165,7 @@ struct SubTimeFrameFileDataIndex {
       0, // TODO: subspecification? FLP ID? EPN ID?
       mDataIndex.size() * sizeof(DataIndexElem));
 
-    lHdr.payloadSerializationMethod = gSerializationMethodNone;
+    lHdr.payloadSerializationMethod = o2::header::gSerializationMethodNone;
 
     return lHdr;
   }

@@ -17,8 +17,6 @@
 #include <Utilities.h>
 #include <RootGui.h>
 
-#include <O2Device/O2Device.h>
-
 #include <memory>
 #include <deque>
 #include <condition_variable>

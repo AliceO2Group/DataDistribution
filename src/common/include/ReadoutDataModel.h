@@ -11,14 +11,7 @@
 #ifndef ALICEO2_READOUT_DATAMODEL_H_
 #define ALICEO2_READOUT_DATAMODEL_H_
 
-#include "Utilities.h"
-
-#include "O2Device/O2Device.h"
-#include "Headers/DataHeader.h"
-
-#include <vector>
-#include <map>
-#include <stdexcept>
+#include <cstdint>
 
 namespace o2
 {
@@ -35,9 +28,9 @@ namespace DataDistribution
 // All data belong to the same source (FEE link or user logic)
 
 struct ReadoutSubTimeframeHeader {
-  uint32_t timeframeId; // id of timeframe
-  uint32_t numberOfHBF; // number of HB frames (i.e. following messages)
-  uint8_t linkId;       // common link id of all data in this HBframe
+  std::uint32_t timeframeId; // id of timeframe
+  std::uint32_t numberOfHBF; // number of HB frames (i.e. following messages)
+  std::uint8_t linkId;       // common link id of all data in this HBframe
 };
 }
 } /* o2::DataDistribution */

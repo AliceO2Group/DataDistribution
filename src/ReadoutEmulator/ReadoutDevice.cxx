@@ -128,7 +128,8 @@ bool ReadoutDevice::ConditionalRun()
     mFreeSuperpagesSamples.Fill(mCruMemoryHandler->free_superpages());
 
   // check no data signal
-  if (lCruLinkData.mLinkDataHeader.subSpecification == DataHeader::SubSpecificationType(-1)) {
+  if (lCruLinkData.mLinkDataHeader.subSpecification ==
+    o2::header::DataHeader::SubSpecificationType(-1)) {
     // LOG(WARN) << "No Superpages left! Losing data...";
     return true;
   }

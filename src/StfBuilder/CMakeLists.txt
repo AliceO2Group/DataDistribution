@@ -21,7 +21,6 @@ endif()
 target_include_directories(StfBuilder
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/include
-    ${MS_GSL_INCLUDE_DIR}
 )
 
 target_link_libraries(StfBuilder
@@ -29,7 +28,6 @@ target_link_libraries(StfBuilder
   PRIVATE
     FairMQ::FairMQ
     AliceO2::Headers
-    ${Monitoring_LIBRARIES}
     ROOT::Gui
 )
 

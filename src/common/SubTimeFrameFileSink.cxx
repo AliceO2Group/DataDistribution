@@ -11,6 +11,7 @@
 #include "SubTimeFrameFileSink.h"
 #include "FilePathUtils.h"
 
+#include <boost/algorithm/string/replace.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/filesystem.hpp>
 
@@ -72,6 +73,7 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
 
   return lSinkDesc;
 }
+
 
 bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt)
 {

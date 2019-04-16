@@ -50,7 +50,7 @@ struct CruDmaPacket {
 
 struct ReadoutLinkO2Data {
 
-  DataHeader mLinkDataHeader;
+  o2::header::DataHeader mLinkDataHeader;
   std::vector<CruDmaPacket> mLinkRawData;
 };
 

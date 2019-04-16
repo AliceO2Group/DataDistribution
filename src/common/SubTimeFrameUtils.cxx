@@ -13,8 +13,6 @@
 #include "SubTimeFrameDataModel.h"
 #include "DataModelUtils.h"
 
-#include <O2Device/O2Device.h>
-
 #include <stdexcept>
 
 #include <vector>

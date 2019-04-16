@@ -21,7 +21,6 @@ find_path(AliceO2_INCLUDE_DIR
 set(AliceO2_INCLUDE_DIRS ${AliceO2_INCLUDE_DIR})
 
 # find libraries
-find_library(AliceO2_LIBRARY_O2DEVICE NAMES O2Device HINTS ${O2_ROOT}/lib ENV LD_LIBRARY_PATH)
 find_library(AliceO2_LIBRARY_HEADERS NAMES Headers HINTS ${O2_ROOT}/lib ENV LD_LIBRARY_PATH)
 find_library(AliceO2_LIBRARY_FRAMEWORK NAMES Framework HINTS ${O2_ROOT}/lib ENV LD_LIBRARY_PATH)
 
@@ -44,11 +43,11 @@ if(${ALICEO2_FOUND})
     mark_as_advanced(AliceO2_INCLUDE_DIRS AliceO2_LIBRARIES)
 
     # add targets
-    if(NOT TARGET AliceO2::AliceO2)
-        add_library(AliceO2::AliceO2 INTERFACE IMPORTED)
-        set_target_properties(AliceO2::AliceO2 PROPERTIES
+    if(NOT TARGET AliceO2::Framework)
+        add_library(AliceO2::Framework INTERFACE IMPORTED)
+        set_target_properties(AliceO2::Framework PROPERTIES
           INTERFACE_INCLUDE_DIRECTORIES "${AliceO2_INCLUDE_DIRS}"
-          INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARIES}"
+          INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARIES_FRAMEWORK}"
         )
     endif()
 
@@ -57,14 +56,6 @@ if(${ALICEO2_FOUND})
         set_target_properties(AliceO2::Headers PROPERTIES
           INTERFACE_INCLUDE_DIRECTORIES "${AliceO2_INCLUDE_DIRS}"
           INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARY_HEADERS}"
-        )
-    endif()
-
-    if(NOT TARGET AliceO2::O2Device)
-        add_library(AliceO2::O2Device INTERFACE IMPORTED)
-        set_target_properties(AliceO2::O2Device PROPERTIES
-          INTERFACE_INCLUDE_DIRECTORIES "${AliceO2_INCLUDE_DIRS}"
-          INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARY_O2DEVICE}"
         )
     endif()
 endif()
