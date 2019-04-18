@@ -49,11 +49,13 @@ class ReadoutDevice : public DataDistDevice
   ~ReadoutDevice() override;
 
   void InitTask() final;
+  void ResetTask() final;
 
  protected:
   bool ConditionalRun() final;
   void PreRun() final;
-  void PostRun() final;
+  void PostRun() final { };
+
 
   void GuiThread();
 

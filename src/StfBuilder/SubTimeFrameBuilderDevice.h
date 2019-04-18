@@ -70,6 +70,7 @@ class StfBuilderDevice : public DataDistDevice,
   ~StfBuilderDevice() override;
 
   void InitTask() final;
+  void ResetTask() final;
 
   const std::string& getInputChannelName() const { return mInputChannelName; }
   const std::string& getOutputChannelName() const { return mOutputChannelName; }
@@ -79,7 +80,7 @@ class StfBuilderDevice : public DataDistDevice,
 
  protected:
   void PreRun() final;
-  void PostRun() final;
+  void PostRun() final { };
   bool ConditionalRun() final;
 
   unsigned getNextPipelineStage(unsigned pStage) final

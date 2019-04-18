@@ -104,7 +104,7 @@ void StfSenderDevice::PreRun()
   mReceiverThread = std::thread(&StfSenderDevice::StfReceiverThread, this);
 }
 
-void StfSenderDevice::PostRun()
+void StfSenderDevice::ResetTask()
 {
   // Stop the pipeline
   stopPipeline();
@@ -127,7 +127,7 @@ void StfSenderDevice::PostRun()
     mGuiThread.join();
   }
 
-  LOG(INFO) << "PostRun done... ";
+  LOG(INFO) << "ResetTask() done... ";
 }
 
 void StfSenderDevice::StfReceiverThread()

@@ -60,13 +60,14 @@ class TfBuilderDevice : public DataDistDevice,
   ~TfBuilderDevice() override;
 
   void InitTask() final;
+  void ResetTask() final;
 
   const std::string& getInputChannelName() const { return mInputChannelName; }
   std::uint32_t getFlpNodeCount() const { return mFlpNodeCount; }
 
  protected:
   void PreRun() final;
-  void PostRun() final;
+  void PostRun() final { };
   bool ConditionalRun() final;
 
   // Run the TFBuilder pipeline

@@ -40,13 +40,17 @@ class RootGui
   template <typename container>
   void DrawHist(TH1* h, const container& c)
   {
-    const auto & [ min, max ] = c.MinMax();
+    auto [ min, max ] = c.MinMax();
     h->Reset();
 
     for (const auto v : c)
       h->Fill(v);
 
-    h->GetXaxis()->SetRangeUser(min, max == min ? nextafter(max, max + 1) : max);
+    max = max == min ? nextafter(max, max + 1) : max;
+    max += (max - min) / 10;
+    min -= (max - min) / 10;
+
+    h->GetXaxis()->SetRangeUser(min, max);
     h->Draw();
   }
 };

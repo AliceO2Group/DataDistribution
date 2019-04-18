@@ -58,6 +58,7 @@ class StfSenderDevice : public DataDistDevice,
   ~StfSenderDevice() override;
 
   void InitTask() final;
+  void ResetTask() final;
 
   const std::string& getOutputChannelName() const { return mOutputChannelName; }
 
@@ -73,7 +74,7 @@ class StfSenderDevice : public DataDistDevice,
 
  protected:
   void PreRun() final;
-  void PostRun() final;
+  void PostRun() final {};
   bool ConditionalRun() final;
 
   void StfReceiverThread();

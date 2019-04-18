@@ -70,9 +70,8 @@ void TfBuilderDevice::PreRun()
   }
 }
 
-void TfBuilderDevice::PostRun()
+void TfBuilderDevice::ResetTask()
 {
-  LOG(INFO) << "PostRun() start... ";
   // Stop the pipeline
   stopPipeline();
   // stop output handlers
@@ -89,7 +88,7 @@ void TfBuilderDevice::PostRun()
     mGuiThread.join();
   }
 
-  LOG(INFO) << "PostRun() done... ";
+  LOG(INFO) << "ResetTask() done... ";
 }
 
 bool TfBuilderDevice::ConditionalRun()
