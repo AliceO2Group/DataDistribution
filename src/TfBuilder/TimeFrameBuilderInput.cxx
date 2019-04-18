@@ -14,7 +14,6 @@
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameVisitors.h>
 
-#include <FairMQDevice.h>
 #include <FairMQLogger.h>
 
 #include <condition_variable>

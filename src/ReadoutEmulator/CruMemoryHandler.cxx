@@ -46,15 +46,6 @@ void CruMemoryHandler::init(FairMQUnmanagedRegion* pDataRegion, std::size_t pSup
 
   const auto lCntSuperpages = getDataRegionSize() / mSuperpageSize;
 
-  LOG(INFO) << "Initializing the segment memory. Can take a while...";
-  // make sure the memory is allocated properly
-  {
-    char* lPtr = getDataRegionPtr();
-    for (std::size_t i = 0; i < getDataRegionSize(); i++) {
-      lPtr[i] = i;
-    }
-  }
-
   // lock and initialize the empty page queue
   mSuperpages.flush();
 

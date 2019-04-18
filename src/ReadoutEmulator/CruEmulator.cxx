@@ -123,6 +123,8 @@ void CruLinkEmulator::linkReadoutThread()
       }
     }
   }
+
+  LOG(INFO) << "Exiting ReadoutEmulator thread...";
 }
 
 /// Start "data taking" thread
@@ -135,7 +137,10 @@ void CruLinkEmulator::start()
 void CruLinkEmulator::stop()
 {
   mRunning = false;
-  mCRULinkThread.join();
+  if (mCRULinkThread.joinable()) {
+    mCRULinkThread.join();
+  }
 }
+
 }
 } /* namespace o2::DataDistribution */

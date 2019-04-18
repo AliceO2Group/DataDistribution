@@ -103,9 +103,11 @@ void StfBuilderDevice::PreRun()
     mGui->Canvas().Divide(4, 1);
     mGuiThread = std::thread(&StfBuilderDevice::GuiThread, this);
   }
+
+  LOG(INFO) << "PreRun() done... ";
 }
 
-void StfBuilderDevice::PostRun()
+void StfBuilderDevice::ResetTask()
 {
   // Stop the pipeline
   stopPipeline();
@@ -123,7 +125,7 @@ void StfBuilderDevice::PostRun()
     mGuiThread.join();
   }
 
-  LOG(INFO) << "PostRun() done... ";
+  LOG(INFO) << "ResetTask() done... ";
 }
 
 void StfBuilderDevice::StfOutputThread()
@@ -240,7 +242,7 @@ void StfBuilderDevice::GuiThread()
   std::unique_ptr<TH1F> lStfSizeHist = std::make_unique<TH1F>("StfSizeH", "Readout data size per STF", 100, 0.0, 400e+6);
   lStfSizeHist->GetXaxis()->SetTitle("Size [B]");
 
-  std::unique_ptr<TH1F> lStfFreqHist = std::make_unique<TH1F>("STFFreq", "SubTimeFrame frequency", 1000, 0.0, 500.0);
+  std::unique_ptr<TH1F> lStfFreqHist = std::make_unique<TH1F>("STFFreq", "SubTimeFrame frequency", 1000, 0.0, 200.0);
   lStfFreqHist->GetXaxis()->SetTitle("Frequency [Hz]");
 
   std::unique_ptr<TH1F> lStfDataTimeHist = std::make_unique<TH1F>("StfChanTimeH", "STF on-channel time", 100, 0.0, 20.0);

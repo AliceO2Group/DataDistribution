@@ -91,7 +91,7 @@ void ReadoutDevice::PreRun()
   }
 }
 
-void ReadoutDevice::PostRun()
+void ReadoutDevice::ResetTask()
 {
   // stop all cru link emulators
   for (auto& e : mCruLinks)

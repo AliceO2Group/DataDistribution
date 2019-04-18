@@ -70,7 +70,8 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       // receive readout messages
       auto lRet = lInputChan.Receive(lReadoutMsgs);
       if (lRet < 0 && mDevice.IsRunningState()) {
-        LOG(WARNING) << "StfHeader receive failed (err = " + std::to_string(lRet) + ")";
+        // We need a warn once since this happens many times on exit, until the state changes
+        // LOG(WARNING) << "StfHeader receive failed (err = " + std::to_string(lRet) + ")";
         lReadoutMsgs.clear();
         continue;
       } else if (!mDevice.IsRunningState()) {
