@@ -47,7 +47,7 @@ if(${ALICEO2_FOUND})
         add_library(AliceO2::Framework INTERFACE IMPORTED)
         set_target_properties(AliceO2::Framework PROPERTIES
           INTERFACE_INCLUDE_DIRECTORIES "${AliceO2_INCLUDE_DIRS}"
-          INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARIES_FRAMEWORK}"
+          INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARY_FRAMEWORK}"
         )
     endif()
 
@@ -58,4 +58,5 @@ if(${ALICEO2_FOUND})
           INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARY_HEADERS}"
         )
     endif()
+
 endif()

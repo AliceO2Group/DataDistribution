@@ -61,7 +61,6 @@ class StfBuilderDevice : public DataDistDevice,
   static constexpr const char* OptionKeyStandalone = "stand-alone";
   static constexpr const char* OptionKeyMaxBufferedStfs = "max-buffered-stfs";
   static constexpr const char* OptionKeyGui = "gui";
-  static constexpr const char* OptionKeyDpl = "enable-dpl";
 
   /// Default constructor
   StfBuilderDevice();
@@ -77,6 +76,7 @@ class StfBuilderDevice : public DataDistDevice,
   const std::string& getDplChannelName() const { return mDplChannelName; }
 
   bool guiEnabled() const noexcept { return mBuildHistograms; }
+  bool dplEnabled() const noexcept { return mDplEnabled; }
 
  protected:
   void PreRun() final;

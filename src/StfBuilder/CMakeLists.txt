@@ -28,6 +28,7 @@ target_link_libraries(StfBuilder
   PRIVATE
     FairMQ::FairMQ
     AliceO2::Headers
+    AliceO2::Framework
     ROOT::Gui
 )
 

@@ -58,7 +58,7 @@ void StfBuilderDevice::InitTask()
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
   mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
-  mDplEnabled = GetConfig()->GetValue<bool>(OptionKeyDpl);
+
 
   // Buffering limitation
   if (mMaxStfsInPipeline > 0) {
@@ -79,12 +79,19 @@ void StfBuilderDevice::InitTask()
   if (!mFileSink.loadVerifyConfig(*(this->GetConfig())))
     exit(-1);
 
-  // ChannelAllocator::get().addChannel(gStfOutputChanId, GetChannel(mOutputChannelName, 0));
-
   // check if output enabled
   if (mStandalone && !mFileSink.enabled()) {
     LOG(WARNING) << "Running in standalone mode and with STF file sink disabled. "
                     "Data will be lost.";
+  }
+
+  // Using DPL?
+  if (mDplChannelName != "" && !mStandalone) {
+    mDplEnabled = true;
+    LOG(INFO) << "DPL Channel name: " << mDplChannelName;
+  } else {
+    mDplEnabled = false;
+    LOG(INFO) << "Not using DPL.";
   }
 }
 
@@ -133,17 +140,21 @@ void StfBuilderDevice::StfOutputThread()
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
-  auto& lOutputChan = GetChannel(getOutputChannelName(), 0);
-  InterleavedHdrDataSerializer lStfSerializer(lOutputChan);
+  std::unique_ptr<InterleavedHdrDataSerializer> lStfSerializer;
+  std::unique_ptr<StfDplAdapter> lStfDplAdapter;
 
-  auto& lDplChan = GetChannel(getDplChannelName(), 0);
-  StfDplAdapter lStfDplAdapter(lDplChan);
-
-  using hres_clock = std::chrono::high_resolution_clock;
+  if (!dplEnabled()) {
+    auto& lOutputChan = GetChannel(getOutputChannelName(), 0);
+    lStfSerializer = std::make_unique<InterleavedHdrDataSerializer>(lOutputChan);
+  } else {
+    auto& lOutputChan = GetChannel(getDplChannelName(), 0);
+    lStfDplAdapter = std::make_unique<StfDplAdapter>(lOutputChan);
+  }
 
   while (IsRunningState()) {
+  using hres_clock = std::chrono::high_resolution_clock;
 
-    // Get a STF readu for sending
+    // Get a STF ready for sending
     std::unique_ptr<SubTimeFrame> lStf = dequeue(eStfSendIn);
     if (!lStf)
       break;
@@ -178,14 +189,14 @@ void StfBuilderDevice::StfOutputThread()
     if (!mStandalone) {
       // Send filtered data as two objects
       try {
-        if (!mDplEnabled) {
-          lStfSerializer.serialize(std::move(lStfTPC)); // TPC data
-          lStfSerializer.serialize(std::move(lStfITS)); // ITS data
-          lStfSerializer.serialize(std::move(lStf));    // whatever is left
+        if (!dplEnabled()) {
+          lStfSerializer->serialize(std::move(lStfTPC)); // TPC data
+          lStfSerializer->serialize(std::move(lStfITS)); // ITS data
+          lStfSerializer->serialize(std::move(lStf));    // whatever is left
         } else {
-          lStfDplAdapter.sendToDpl(std::move(lStfTPC));
-          lStfDplAdapter.sendToDpl(std::move(lStfITS));
-          lStfDplAdapter.sendToDpl(std::move(lStf));
+          lStfDplAdapter->sendToDpl(std::move(lStfTPC));
+          lStfDplAdapter->sendToDpl(std::move(lStfITS));
+          lStfDplAdapter->sendToDpl(std::move(lStf));
         }
       } catch (std::exception& e) {
         if (IsRunningState())
@@ -196,14 +207,17 @@ void StfBuilderDevice::StfOutputThread()
       }
     }
 #else
+
+
     if (mBuildHistograms) {
       mStfSizeSamples.Fill(lStf->getDataSize());
     }
 
     if (!mStandalone) {
       try {
-        if (!mDplEnabled) {
-          lStfSerializer.serialize(std::move(lStf));
+
+        if (!dplEnabled()) {
+          lStfSerializer->serialize(std::move(lStf));
         } else {
 
           // DPL Channel
@@ -215,7 +229,7 @@ void StfBuilderDevice::StfOutputThread()
           }
 
           // Send to DPL bridge
-          lStfDplAdapter.sendToDpl(std::move(lStf));
+          lStfDplAdapter->sendToDpl(std::move(lStf));
         }
       } catch (std::exception& e) {
         if (IsRunningState()) {
@@ -249,7 +263,7 @@ void StfBuilderDevice::GuiThread()
   lStfDataTimeHist->GetXaxis()->SetTitle("Time [ms]");
 
   std::unique_ptr<TH1S> lStfPipelinedCntHist = std::make_unique<TH1S>("StfQueuedH", "Queued STFs", 150, -0.5, 150.0 - 0.5);
-  lStfPipelinedCntHist->GetXaxis()->SetTitle("Number of queued Stf");
+  lStfPipelinedCntHist->GetXaxis()->SetTitle("Number of queued STFs");
 
   // wait for the device to go into RUNNING state
   WaitForRunningState();
