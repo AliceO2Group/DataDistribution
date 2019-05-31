@@ -90,11 +90,6 @@ void SubTimeFrameReadoutBuilder::reclaimHeader(DataHeader* pData, size_t pSize)
   }
 }
 
-void SubTimeFrameReadoutBuilder::visit(SubTimeFrame& /* pStf */)
-{
-  /* empty */
-}
-
 void SubTimeFrameReadoutBuilder::addHbFrames(const ReadoutSubTimeframeHeader& pHdr, std::vector<FairMQMessagePtr>&& pHbFrames)
 {
   if (!mStf) {

@@ -57,6 +57,7 @@ SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pF
       mInfoFile << "ORIGIN ";
       mInfoFile << "DESCRIPTION ";
       mInfoFile << "SUBSPECIFICATION ";
+      mInfoFile << "DATA_INDEX ";
       mInfoFile << "HEADER_OFFSET ";
       mInfoFile << "HEADER_SIZE ";
       mInfoFile << "DATA_OFFSET ";
@@ -231,13 +232,14 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
         const auto& l4DataOrigin = lDH.dataOrigin;
         const auto& l5DataDescription = lDH.dataDescription;
         const auto l6SubSpec = lDH.subSpecification;
+        const auto l7DataIndex = lDH.splitPayloadIndex;
 
-        const auto l7HdrOff = lDataOffset;
+        const auto l8HdrOff = lDataOffset;
         lDataOffset += lStfData->mHeader->GetSize();
-        const auto l8HdrSize = lStfData->mHeader->GetSize();
-        const auto l9DataOff = lDataOffset;
+        const auto l9HdrSize = lStfData->mHeader->GetSize();
+        const auto l10DataOff = lDataOffset;
         lDataOffset += lStfData->mData->GetSize();
-        const auto l10DataSize = lStfData->mData->GetSize();
+        const auto l11DataSize = lStfData->mData->GetSize();
 
         mInfoFile << l1StfId << sSidecarFieldSep;
         mInfoFile << l2StfFileOff << sSidecarFieldSep;
@@ -245,10 +247,11 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
         mInfoFile << l4DataOrigin.str << sSidecarFieldSep;
         mInfoFile << l5DataDescription.str << sSidecarFieldSep;
         mInfoFile << l6SubSpec << sSidecarFieldSep;
-        mInfoFile << l7HdrOff << sSidecarFieldSep;
-        mInfoFile << l8HdrSize << sSidecarFieldSep;
-        mInfoFile << l9DataOff << sSidecarFieldSep;
-        mInfoFile << l10DataSize << sSidecarRecordSep;
+        mInfoFile << l7DataIndex << sSidecarFieldSep;
+        mInfoFile << l8HdrOff << sSidecarFieldSep;
+        mInfoFile << l9HdrSize << sSidecarFieldSep;
+        mInfoFile << l10DataOff << sSidecarFieldSep;
+        mInfoFile << l11DataSize << sSidecarRecordSep;
       }
       mInfoFile.flush();
     } catch (const std::ios_base::failure& eFailExc) {
