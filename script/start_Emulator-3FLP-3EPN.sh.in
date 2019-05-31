@@ -101,7 +101,7 @@ STF_BUILDER+=" $GUI"
 STF_BUILDER+=" --io-threads $IO_THREADS"
 
 if [[ ! -z $STF_BUILDER_DPL_CHAN ]]; then
-  STF_BUILDER+=" --dpl-channel-name='$STF_BUILDER_DPL_CHAN'"
+  STF_BUILDER+=" --dpl-channel-name=$STF_BUILDER_DPL_CHAN"
 fi
 
 if [[ ! -z $STF_BUILDER_SINK_DIR ]]; then
