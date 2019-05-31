@@ -80,37 +80,39 @@ namespace o2
 namespace DataDistribution
 {
 
+namespace o2hdr = o2::header;
+
 namespace impl
 {
-static inline o2::header::DataIdentifier getDataIdentifier(const o2::header::DataHeader& pDataHdr)
+static inline o2hdr::DataIdentifier getDataIdentifier(const o2hdr::DataHeader& pDataHdr)
 {
-  o2::header::DataIdentifier lRetId;
+  o2hdr::DataIdentifier lRetId;
   lRetId.dataDescription = pDataHdr.dataDescription;
   lRetId.dataOrigin = pDataHdr.dataOrigin;
   return lRetId;
 }
 }
 
-static constexpr o2::header::DataDescription gDataDescSubTimeFrame{ "DISTSUBTIMEFRAME" };
+static constexpr o2hdr::DataDescription gDataDescSubTimeFrame{ "DISTSUBTIMEFRAME" };
 
 struct EquipmentIdentifier {
-  o2::header::DataDescription mDataDescription;                   /* 2 x uint64_t */
-  o2::header::DataHeader::SubSpecificationType mSubSpecification; /* uint64_t */
-  o2::header::DataOrigin mDataOrigin;                             /* 1 x uint32_t */
+  o2hdr::DataDescription mDataDescription;                   /* 2 x uint64_t */
+  o2hdr::DataHeader::SubSpecificationType mSubSpecification; /* uint64_t */
+  o2hdr::DataOrigin mDataOrigin;                             /* 1 x uint32_t */
 
   EquipmentIdentifier() = delete;
 
-  EquipmentIdentifier(const o2::header::DataDescription& pDataDesc,
-    const o2::header::DataOrigin& pDataOrig,
-    const o2::header::DataHeader::SubSpecificationType& pSubSpec) noexcept
+  EquipmentIdentifier(const o2hdr::DataDescription& pDataDesc,
+    const o2hdr::DataOrigin& pDataOrig,
+    const o2hdr::DataHeader::SubSpecificationType& pSubSpec) noexcept
     : mDataDescription(pDataDesc),
       mSubSpecification(pSubSpec),
       mDataOrigin(pDataOrig)
   {
   }
 
-  EquipmentIdentifier(const o2::header::DataIdentifier& pDataId,
-    const o2::header::DataHeader::SubSpecificationType& pSubSpec) noexcept
+  EquipmentIdentifier(const o2hdr::DataIdentifier& pDataId,
+    const o2hdr::DataHeader::SubSpecificationType& pSubSpec) noexcept
     : EquipmentIdentifier(pDataId.dataDescription, pDataId.dataOrigin, pSubSpec)
   {
   }
@@ -120,14 +122,14 @@ struct EquipmentIdentifier {
   {
   }
 
-  EquipmentIdentifier(const o2::header::DataHeader& pDh) noexcept
+  EquipmentIdentifier(const o2hdr::DataHeader& pDh) noexcept
     : EquipmentIdentifier(pDh.dataDescription, pDh.dataOrigin, pDh.subSpecification)
   {
   }
 
-  operator o2::header::DataIdentifier() const noexcept
+  operator o2hdr::DataIdentifier() const noexcept
   {
-    o2::header::DataIdentifier lRetId;
+    o2hdr::DataIdentifier lRetId;
     lRetId.dataDescription = mDataDescription;
     lRetId.dataOrigin = mDataOrigin;
     return lRetId;
@@ -174,16 +176,16 @@ struct EquipmentIdentifier {
   }
 };
 
-struct HBFrameHeader : public o2::header::BaseHeader {
+struct HBFrameHeader : public o2hdr::BaseHeader {
 
   // Required to do the lookup
-  static const o2::header::HeaderType sHeaderType;
+  static const o2hdr::HeaderType sHeaderType;
   static const uint32_t sVersion = 1;
 
   uint32_t mHBFrameId;
 
   HBFrameHeader(uint32_t pId)
-    : BaseHeader(sizeof(HBFrameHeader), sHeaderType, o2::header::gSerializationMethodNone, sVersion),
+    : BaseHeader(sizeof(HBFrameHeader), sHeaderType, o2hdr::gSerializationMethodNone, sVersion),
       mHBFrameId(pId)
   {
   }
@@ -218,14 +220,34 @@ class SubTimeFrame : public IDataModelObject
   DECLARE_STF_FRIENDS
 
   struct StfData {
+
     std::unique_ptr<FairMQMessage> mHeader;
     std::unique_ptr<FairMQMessage> mData;
 
-    o2::header::DataHeader getDataHeader()
+    inline o2hdr::DataHeader getDataHeader() const
     {
-      o2::header::DataHeader lDataHdr;
-      std::memcpy(&lDataHdr, mHeader->GetData(), sizeof(o2::header::DataHeader));
+      o2hdr::DataHeader lDataHdr;
+      // DataHeader must be first in the stack
+      std::memcpy(&lDataHdr, mHeader->GetData(), sizeof(o2hdr::DataHeader));
       return lDataHdr;
+    }
+
+    inline void setPayloadIndex(o2hdr::DataHeader::SplitPayloadIndexType pIdx,
+      o2hdr::DataHeader::SplitPayloadPartsType pTotal)
+    {
+      assert(mHeader && mHeader->GetData() != nullptr);
+      assert(pIdx < pTotal);
+
+      // TODO: get returns const ptr
+      // DataHeader must be first in the stack
+      // DataHeader *lHdr = o2hdr::get<o2hdr::DataHeader*>(static_cast<o2::byte*>(mHeader->GetData()), mHeader->GetSize());
+
+      o2hdr::DataHeader lDataHdr;
+      // DataHeader must be first in the stack
+      std::memcpy(&lDataHdr, mHeader->GetData(), sizeof(o2hdr::DataHeader));
+      lDataHdr.splitPayloadIndex = pIdx;
+      lDataHdr.splitPayloadParts = pTotal;
+      std::memcpy(mHeader->GetData(), &lDataHdr, sizeof(o2hdr::DataHeader));
     }
   };
 
@@ -254,38 +276,90 @@ class SubTimeFrame : public IDataModelObject
   const Header& header() const { return mHeader; }
 
  protected:
-  void accept(ISubTimeFrameVisitor& v) override { v.visit(*this); }
-  void accept(ISubTimeFrameConstVisitor& v) const override { v.visit(*this); }
+  void accept(ISubTimeFrameVisitor& v) override { updateStf(mData); v.visit(*this); }
+  void accept(ISubTimeFrameConstVisitor& v) const override { updateStf(mData); v.visit(*this); }
 
  private:
   using StfDataVector = std::vector<StfData>;
-  using StfSubSpecMap = std::unordered_map<o2::header::DataHeader::SubSpecificationType, StfDataVector>;
-  using StfDataIdentMap = std::unordered_map<o2::header::DataIdentifier, StfSubSpecMap>;
+  using StfSubSpecMap = std::unordered_map<o2hdr::DataHeader::SubSpecificationType, StfDataVector>;
+  using StfDataIdentMap = std::unordered_map<o2hdr::DataIdentifier, StfSubSpecMap>;
 
   ///
   /// Fields
   ///
   Header mHeader;
-  StfDataIdentMap mData;
+  mutable StfDataIdentMap mData;
+
+  ///
+  /// internal
+  ///
+  mutable bool _mUpdated = false;
 
   ///
   /// helper methods
   ///
-  inline void addStfData(const o2::header::DataHeader& pDataHeader, StfData&& pStfData)
+  inline void addStfData(const o2hdr::DataHeader& pDataHeader, StfData&& pStfData)
   {
-    const o2::header::DataIdentifier lDataId = impl::getDataIdentifier(pDataHeader);
+    const o2hdr::DataIdentifier lDataId = impl::getDataIdentifier(pDataHeader);
 
     auto& lDataVector = mData[lDataId][pDataHeader.subSpecification];
 
-    lDataVector.reserve(512);
+    // allocate enough room
+    const auto lCap = lDataVector.capacity();
+    if (lCap < 1024) {
+      lDataVector.reserve(std::max(lCap * 2, StfDataVector::size_type(1024)));
+    }
+
     lDataVector.emplace_back(std::move(pStfData));
+    _mUpdated = false;
   }
 
   inline void addStfData(StfData&& pStfData)
   {
-    const o2::header::DataHeader lDataHeader = pStfData.getDataHeader();
+    const o2hdr::DataHeader lDataHeader = pStfData.getDataHeader();
     addStfData(lDataHeader, std::move(pStfData));
   }
+
+  // NOTE: method declared const to work with const visitors, manipulated fields are mutable
+  inline void updateStf(StfDataIdentMap &pData) const
+  {
+    if (_mUpdated) {
+      return;
+    }
+
+    // Update data block indexes
+    for (auto &lIdentSubSpecVect : pData) {
+      StfSubSpecMap &lSubSpecMap = lIdentSubSpecVect.second;
+
+      for (auto &lSubSpecDataVector : lSubSpecMap) {
+        StfDataVector &lDataVector = lSubSpecDataVector.second;
+
+        const auto lTotalCount = lDataVector.size();
+        for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
+          lDataVector[i].setPayloadIndex(i, lTotalCount);
+        }
+
+        assert(lDataVector.empty() ? true :
+          lDataVector.front().getDataHeader().splitPayloadIndex == 0
+        );
+        assert(lDataVector.empty() ? true :
+          lDataVector.back().getDataHeader().splitPayloadIndex == (lTotalCount - 1)
+        );
+        assert(lDataVector.empty() ? true :
+          lDataVector.front().getDataHeader().splitPayloadParts == lTotalCount
+        );
+        assert(lDataVector.empty() ? true :
+          lDataVector.front().getDataHeader().splitPayloadParts ==
+          lDataVector.back().getDataHeader().splitPayloadParts
+        );
+
+      }
+
+    }
+
+    _mUpdated = true;
+  }
+
 };
 }
 } /* o2::DataDistribution */

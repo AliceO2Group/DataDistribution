@@ -30,7 +30,7 @@ namespace DataDistribution
 /// SubTimeFrameReadoutBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-class SubTimeFrameReadoutBuilder : public ISubTimeFrameVisitor
+class SubTimeFrameReadoutBuilder
 {
  public:
   SubTimeFrameReadoutBuilder() = delete;
@@ -38,9 +38,6 @@ class SubTimeFrameReadoutBuilder : public ISubTimeFrameVisitor
 
   void addHbFrames(const ReadoutSubTimeframeHeader& pHdr, std::vector<FairMQMessagePtr>&& pHbFrames);
   std::unique_ptr<SubTimeFrame> getStf();
-
- protected:
-  void visit(SubTimeFrame& pStf) override;
 
  private:
 
