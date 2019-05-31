@@ -30,20 +30,19 @@ class StfDplAdapter : public ISubTimeFrameVisitor
  public:
   StfDplAdapter() = delete;
   StfDplAdapter(FairMQChannel& pDplBridgeChan)
-    : mSerializer(pDplBridgeChan)
+    : mChan(pDplBridgeChan)
   {
+    mMessages.reserve(1024);
   }
 
-  void sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
-  {
-    mSerializer.serialize(std::move(pStf));
-  }
+  void sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf);
 
  protected:
-  void visit(SubTimeFrame& /* pStf */) override {}
+  void visit(SubTimeFrame& pStf) override;
 
  private:
-  InterleavedHdrDataSerializer mSerializer;
+  std::vector<FairMQMessagePtr> mMessages;
+  FairMQChannel& mChan;
 };
 }
 } /* o2::DataDistribution */

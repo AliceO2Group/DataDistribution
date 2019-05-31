@@ -9,6 +9,11 @@
 // or submit itself to any jurisdiction.
 
 #include "SubTimeFrameBuilder.h"
+#include "MemoryUtils.h"
+
+#include <Headers/DataHeader.h>
+#include <Headers/Stack.h>
+#include <Framework/DataProcessingHeader.h>
 
 #include <fairmq/FairMQDevice.h>
 #include <fairmq/FairMQUnmanagedRegion.h>
@@ -24,70 +29,19 @@ using namespace o2::header;
 /// SubTimeFrameReadoutBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(FairMQDevice &pDev, FairMQChannel& pChan)
+SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(FairMQDevice &pDev, FairMQChannel& pChan, bool pDplEnabled)
   : mStf(nullptr),
     mDevice(pDev),
-    mChan(pChan)
+    mChan(pChan),
+    mDplEnabled(pDplEnabled)
 {
-  mHeaderRegion = pDev.NewUnmanagedRegionFor(
-    pChan.GetPrefix(), 0,
-    64ULL << 20,
-      [this](void* data, size_t size, void* /* hint */) {
-      // callback to be called when message buffers no longer needed by transport
-      reclaimHeader(static_cast<DataHeader*>(data), size);
-    });
-
-  // prepare header pointers
-  DataHeader* lDataHdr = static_cast<DataHeader*>(mHeaderRegion->GetData());
-  const std::size_t lDataHdrCnt = mHeaderRegion->GetSize() / sizeof(DataHeader);
-  for (std::size_t i = 0; i < lDataHdrCnt; i++) {
-    memset(lDataHdr+i, 0xAA, sizeof(DataHeader));
-    mHeaders.push_back(lDataHdr + i);
-  }
-
-  LOG(INFO) << "Header memory pool created.";
-}
-
-FairMQMessagePtr SubTimeFrameReadoutBuilder::allocateHeader()
-{
-  {
-    std::lock_guard<std::mutex> lock(mHeaderLock);
-
-    if (!mHeaders.empty()) {
-      auto lHdrPtr = mHeaders.back();
-      mHeaders.pop_back();
-
-      return mChan.NewMessage(mHeaderRegion, lHdrPtr, sizeof(DataHeader));
-    }
-  }
-
-  {
-    static thread_local unsigned throttle = 0;
-    if (++throttle > (1U << 18)) {
-      LOG(WARNING) << "Header pool exhausted. Allocating from the global SHM pool.";
-      throttle = 0;
-    }
-  }
-
-  return mChan.NewMessage(sizeof(DataHeader));
-}
-
-void SubTimeFrameReadoutBuilder::reclaimHeader(DataHeader* pData, size_t pSize)
-{
-  if (pSize != sizeof(DataHeader)) {
-    LOG(ERROR) << "Reclaimed header has invalid size: " << pSize;
-    return;
-  }
-
-  mReclaimedHeaders.push_back(pData);
-
-  // reclaim
-  if (mReclaimedHeaders.size() >= 512) {
-    std::lock_guard<std::mutex> lock(mHeaderLock);
-
-    mHeaders.insert(std::end(mHeaders), std::begin(mReclaimedHeaders), std::end(mReclaimedHeaders));
-    mReclaimedHeaders.clear();
-  }
+  mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
+    pDev, pChan,
+    64ULL << 20 /* make configurable */,
+    mDplEnabled ?
+      sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
+      sizeof(DataHeader)
+  );
 }
 
 void SubTimeFrameReadoutBuilder::addHbFrames(const ReadoutSubTimeframeHeader& pHdr, std::vector<FairMQMessagePtr>&& pHbFrames)
@@ -105,6 +59,9 @@ void SubTimeFrameReadoutBuilder::addHbFrames(const ReadoutSubTimeframeHeader& pH
 
   // NOTE: skip the first message (readout header) in pHbFrames
   for (size_t i = 1; i < pHbFrames.size(); i++) {
+
+    std::unique_ptr<FairMQMessage> lHdrMsg;
+
     DataHeader lDataHdr(
       lEqId.mDataDescription,
       lEqId.mDataOrigin,
@@ -112,14 +69,34 @@ void SubTimeFrameReadoutBuilder::addHbFrames(const ReadoutSubTimeframeHeader& pH
       pHbFrames[i]->GetSize());
     lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
 
-    auto lHdrMsg = allocateHeader();
+    if (mDplEnabled) {
+      o2::framework::DataProcessingHeader lDplHeader(mStf->header().mId);
+
+      // Is there another way to compose headers? Stack is heavy on malloc/free needlessly
+      // auto lStack = Stack(Stack::allocator_type(mHeaderMemRes.get()), lDataHdr, lDplHeader);
+      auto lStack = Stack(lDataHdr, lDplHeader);
+      lHdrMsg = mHeaderMemRes->NewFairMQMessage();
+      if (!lHdrMsg ||
+        (lHdrMsg->GetSize() < (sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader)))) {
+        throw std::bad_alloc();
+      }
+
+      memcpy(lHdrMsg->GetData(), lStack.data(), lHdrMsg->GetSize());
+
+    } else {
+
+      lHdrMsg = mHeaderMemRes->NewFairMQMessage();
+      memcpy(lHdrMsg->GetData(), &lDataHdr, sizeof(DataHeader));
+    }
+
     if (!lHdrMsg) {
       LOG(ERROR) << "Allocation error: HbFrame::DataHeader: " << sizeof(DataHeader);
       throw std::bad_alloc();
     }
-    std::memcpy(lHdrMsg->GetData(), &lDataHdr, sizeof(DataHeader));
 
-    mStf->addStfData(lDataHdr, SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFrames[i]) });
+    mStf->addStfData(lDataHdr,
+      SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFrames[i]) }
+    );
   }
 
   pHbFrames.clear();

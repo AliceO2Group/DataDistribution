@@ -304,7 +304,7 @@ class SubTimeFrame : public IDataModelObject
 
     auto& lDataVector = mData[lDataId][pDataHeader.subSpecification];
 
-    // allocate enough room
+    // allocate enough space
     const auto lCap = lDataVector.capacity();
     if (lCap < 1024) {
       lDataVector.reserve(std::max(lCap * 2, StfDataVector::size_type(1024)));

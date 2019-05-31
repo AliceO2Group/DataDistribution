@@ -27,7 +27,8 @@
                             {
                                 "type": "pair",
                                 "method": "connect",
-                                "address": "ipc:///tmp/readout-pipe-0"
+                                "address": "ipc:///tmp/readout-pipe-0",
+                                "rateLogging": "1"
                             }
                         ]
                     },
@@ -38,7 +39,8 @@
                             {
                                 "type": "pair",
                                 "method": "bind",
-                                "address": "ipc:///tmp/stf-builder-pipe-0"
+                                "address": "ipc:///tmp/stf-builder-pipe-0",
+                                "rateLogging": "1"
                             }
                         ]
                     },
@@ -48,8 +50,9 @@
                         "sockets": [
                             {
                                 "type": "pair",
-                                "method": "bind",
-                                "address": "ipc:///tmp/stf-builder-dpl-pipe-0"
+                                "method": "connect",
+                                "address": "ipc:///tmp/stf-builder-dpl-pipe-0",
+                                "rateLogging": "1"
                             }
                         ]
                     }
@@ -140,7 +143,7 @@
                         "sockets": [
                             {
                                 "type": "pair",
-                                "method": "bind",
+                                "method": "connect",
                                 "address": "ipc:///tmp/stf-builder-dpl-pipe-1"
                             }
                         ]
@@ -232,7 +235,7 @@
                         "sockets": [
                             {
                                 "type": "pair",
-                                "method": "bind",
+                                "method": "connect",
                                 "address": "ipc:///tmp/stf-builder-dpl-pipe-2"
                             }
                         ]
