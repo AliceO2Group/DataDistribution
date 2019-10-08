@@ -61,9 +61,6 @@ SubTimeFrameFileReader::~SubTimeFrameFileReader()
 
 void SubTimeFrameFileReader::visit(SubTimeFrame& pStf)
 {
-  // TODO: filter mStfData through SubTimeFrameBuilder
-
-
   for (auto& lStfDataPair : mStfData) {
     pStf.addStfData(std::move(lStfDataPair));
   }
@@ -111,6 +108,9 @@ std::int64_t SubTimeFrameFileReader::getHeaderStackSize() // throws ios_base::fa
 
 std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstChan)
 {
+  // TODO: add id to files metadata
+  static std::uint64_t sStfId = 0;
+
   // make sure headers and chunk pointers don't linger
   mStfData.clear();
 
@@ -132,7 +132,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
   }
 
   // NOTE: StfID will be updated from the stf header
-  std::unique_ptr<SubTimeFrame> lStf = std::make_unique<SubTimeFrame>(0);
+  std::unique_ptr<SubTimeFrame> lStf = std::make_unique<SubTimeFrame>(sStfId++);
 
   DataHeader lStfMetaDataHdr;
   SubTimeFrameFileMeta lStfFileMeta;
@@ -148,7 +148,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
   }
 
   // verify we're actually reading the correct data in
-  if (!(SubTimeFrameFileMeta::getDataHeader() == lStfMetaDataHdr)) {
+  if (!(SubTimeFrameFileMeta::getDataHeader().dataDescription == lStfMetaDataHdr.dataDescription)) {
     LOG(WARNING) << "Reading bad data: SubTimeFrame META header";
     mFile.close();
     return nullptr;
@@ -161,8 +161,6 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
     return nullptr;
   }
 
-  const auto lStfDataSize = lStfSizeInFile - (sizeof(DataHeader) + sizeof(SubTimeFrameFileMeta));
-
   // check there's enough data in the file
   if ((lTfStartPosition + lStfSizeInFile) > this->size()) {
     LOG(WARNING) << "Not enough data in file for this TF. Required: " << lStfSizeInFile
@@ -170,6 +168,21 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
     mFile.close();
     return nullptr;
   }
+
+  // Index
+  // TODO: skip the index for now, check in future all data is there
+  DataHeader lStfIndexHdr;
+  try {
+    // Read DataHeader + SubTimeFrameFileMeta
+    buffered_read(&lStfIndexHdr, sizeof(DataHeader));
+    mFile.seekg(lStfIndexHdr.payloadSize, std::ios_base::cur);
+  } catch (const std::ios_base::failure& eFailExc) {
+    LOG(ERROR) << "Reading from file failed. Error: " << eFailExc.what();
+    return nullptr;
+  }
+
+  const auto lStfDataSize = lStfSizeInFile - (sizeof(DataHeader) + sizeof(SubTimeFrameFileMeta))
+    - (sizeof (lStfIndexHdr) + lStfIndexHdr.payloadSize);
 
   // read all data blocks and headers
   assert(mStfData.empty());
