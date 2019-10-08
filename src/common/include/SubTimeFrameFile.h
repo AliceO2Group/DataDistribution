@@ -39,7 +39,7 @@ struct SubTimeFrameFileMeta {
   {
     auto lHdr = o2::header::DataHeader(
       SubTimeFrameFileMeta::sDataDescFileSubTimeFrame,
-      o2::header::gDataOriginAny,
+      o2::header::gDataOriginFLP,
       0, // TODO: subspecification? FLP ID? EPN ID?
       sizeof(SubTimeFrameFileMeta));
 
