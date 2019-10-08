@@ -27,9 +27,11 @@ if(result)
 endif()
 
 target_include_directories(common
+  PUBLIC
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
 
 target_link_libraries(common
   PUBLIC
@@ -39,3 +41,5 @@ target_link_libraries(common
     AliceO2::Headers
     ROOT::Gui
 )
+
+add_subdirectory(discovery)

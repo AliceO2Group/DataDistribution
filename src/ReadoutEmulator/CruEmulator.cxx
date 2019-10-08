@@ -88,8 +88,6 @@ void CruLinkEmulator::linkReadoutThread()
           // Each channel is reported separately to the O2
           ReadoutLinkO2Data linkO2Data;
 
-          // this is only a minimum of O2 DataHeader information for the STF builder
-          // TODO: for now, only mLinkID is taken into account
           linkO2Data.mLinkDataHeader.dataOrigin = (rand() % 100 < 70) ? o2::header::gDataOriginTPC : o2::header::gDataOriginITS;
           linkO2Data.mLinkDataHeader.dataDescription = o2::header::gDataDescriptionRawData;
           linkO2Data.mLinkDataHeader.payloadSerializationMethod = o2::header::gSerializationMethodNone;
@@ -99,6 +97,22 @@ void CruLinkEmulator::linkReadoutThread()
 
             if (lHbfToSend == 0)
               break; // start a new superpage
+
+            // make set few bits for the RDHv4 packet to keep SubTimeFrame builder happy
+            {
+              char *lRdh = reinterpret_cast<char*>(sp.mDataVirtualAddress + (d * mDmaChunkSize));
+              // version
+              std::uint32_t lVer = 0x00000004;
+              memcpy(lRdh, &lVer, sizeof(std::uint32_t));
+
+              // cru, linkid, ep
+              std::uint32_t lEquipment = 0;
+              lEquipment = (0xEEE << 4) | /* CRU, 12bit */
+              (0) | /* endpoint id */
+              ((mLinkID & 0xFF) << 24); /* linkID, 8 bit */
+
+              std::memcpy(lRdh+12, &lEquipment, sizeof(std::uint32_t));
+            }
 
             linkO2Data.mLinkRawData.emplace_back(CruDmaPacket{
               mMemHandler->getDataRegion(),

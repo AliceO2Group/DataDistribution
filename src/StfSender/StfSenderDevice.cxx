@@ -1,14 +1,19 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 
-#include "SubTimeFrameSenderDevice.h"
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include "StfSenderDevice.h"
+
+#include <ConfigConsul.h>
 
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameVisitors.h>
@@ -30,7 +35,8 @@ StfSenderDevice::StfSenderDevice()
   : DataDistDevice(),
     IFifoPipeline(ePipelineSize),
     mFileSink(*this, *this, eFileSinkIn, eFileSinkOut),
-    mOutputHandler(*this)
+    mOutputHandler(*this),
+    mRpcServer(mOutputHandler)
 {
 }
 
@@ -44,15 +50,19 @@ void StfSenderDevice::InitTask()
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
   mMaxConcurrentSends = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxConcurrentSends);
-  mOutputChannelName = GetConfig()->GetValue<std::string>(OptionKeyOutputChannelName);
-  mEpnNodeCount = GetConfig()->GetValue<std::uint32_t>(OptionKeyEpnNodeCount);
   mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
 
-  // equivalent options
-  if (mEpnNodeCount == 0 || mStandalone) {
-    mEpnNodeCount = 0;
-    mStandalone = true;
-  }
+  // Discovery
+  mDiscoveryConfig = std::make_shared<ConsulStfSender>(ProcessType::StfSender, Config::getEndpointOption(*GetConfig()));
+
+  auto &lStatus = mDiscoveryConfig->status();
+  lStatus.mutable_info()->set_type(StfSender);
+  lStatus.mutable_info()->set_process_id(Config::getIdOption(*GetConfig()));
+  lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
+
+  lStatus.mutable_partition()->set_partition_id(Config::getPartitionOption(*GetConfig()));
+
+  mDiscoveryConfig->write();
 
   // Buffering limitation
   if (mMaxStfsInPipeline > 0) {
@@ -70,7 +80,7 @@ void StfSenderDevice::InitTask()
   }
 
   // File sink
-  if (!mFileSink.loadVerifyConfig(*(this->GetConfig())))
+  if (!mFileSink.loadVerifyConfig(*GetConfig()))
     exit(-1);
 
   // check if any outputs enabled
@@ -78,9 +88,6 @@ void StfSenderDevice::InitTask()
     LOG(WARNING) << "Running in standalone mode and with STF file sink disabled. "
                     "Data will be lost.";
   }
-
-  // update number of send slots
-  mOutputHandler.setMaxConcurrentSends(mMaxConcurrentSends);
 
   // gui thread
   if (mBuildHistograms) {
@@ -92,9 +99,17 @@ void StfSenderDevice::InitTask()
 
 void StfSenderDevice::PreRun()
 {
+  mTfSchedulerRpcClient.start(mDiscoveryConfig);
   // Start output handler
   // NOTE: required even in standalone operation
-  mOutputHandler.start(mEpnNodeCount);
+  mOutputHandler.start(mDiscoveryConfig, mMaxConcurrentSends);
+
+  // start the RPC server after output
+  int lRpcRealPort = 0;
+  auto &lStatus = mDiscoveryConfig->status();
+  mRpcServer.start(lStatus.info().ip_address(), lRpcRealPort);
+  lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
+  mDiscoveryConfig->write();
 
   // start file sink
   if (mFileSink.enabled()) {
@@ -119,8 +134,14 @@ void StfSenderDevice::ResetTask()
     mFileSink.stop();
   }
 
+  // start the RPC server after output
+  mRpcServer.stop();
+
   // Stop output handler
   mOutputHandler.stop();
+
+  // Stop the Scheduler RPC client
+  mTfSchedulerRpcClient.stop();
 
   // wait for the gui thread
   if (mBuildHistograms && mGuiThread.joinable()) {
@@ -140,7 +161,12 @@ void StfSenderDevice::StfReceiverThread()
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
-  while ((lStf = lStfReceiver.deserialize(lInputChan)) != nullptr) {
+  while (IsRunningState()) {
+    lStf = lStfReceiver.deserialize(lInputChan);
+    if (!lStf) {
+      std::this_thread::sleep_for(20ms);
+      continue; // timeout
+    }
 
     const TimeFrameIdType lStfId = lStf->header().mId;
 
@@ -181,7 +207,7 @@ void StfSenderDevice::GuiThread()
 bool StfSenderDevice::ConditionalRun()
 {
   // nothing to do here sleep for awhile
-  std::this_thread::sleep_for(200ms);
+  std::this_thread::sleep_for(1000ms);
   return true;
 }
 }

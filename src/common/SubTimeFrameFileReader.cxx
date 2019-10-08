@@ -1,12 +1,15 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "SubTimeFrameFile.h"
 #include "SubTimeFrameFileReader.h"
@@ -37,7 +40,11 @@ SubTimeFrameFileReader::SubTimeFrameFileReader(boost::filesystem::path& pFileNam
 
   } catch (std::ifstream::failure& eOpenErr) {
     LOG(ERROR) << "Failed to open TF file for reading. Error: " << eOpenErr.what();
+  } catch (std::exception &err) {
+    LOG(ERROR) << "Failed to open TF file for reading. Error: " << err.what();
   }
+
+  // LOG(DEBUG) << "Opened new STF file for reading: " << pFileName.string();
 }
 
 SubTimeFrameFileReader::~SubTimeFrameFileReader()
@@ -54,6 +61,9 @@ SubTimeFrameFileReader::~SubTimeFrameFileReader()
 
 void SubTimeFrameFileReader::visit(SubTimeFrame& pStf)
 {
+  // TODO: filter mStfData through SubTimeFrameBuilder
+
+
   for (auto& lStfDataPair : mStfData) {
     pStf.addStfData(std::move(lStfDataPair));
   }
@@ -61,6 +71,9 @@ void SubTimeFrameFileReader::visit(SubTimeFrame& pStf)
 
 std::int64_t SubTimeFrameFileReader::getHeaderStackSize() // throws ios_base::failure
 {
+  return sizeof(DataHeader); // TODO: allow arbitrary header stacks
+
+#if 0
   std::int64_t lHdrStackSize = 0;
 
   const auto lStartPos = mFile.tellg();
@@ -93,51 +106,59 @@ std::int64_t SubTimeFrameFileReader::getHeaderStackSize() // throws ios_base::fa
   mFile.seekg(lStartPos);
 
   return lHdrStackSize;
+#endif
 }
 
-bool SubTimeFrameFileReader::read(SubTimeFrame& pStf, std::uint64_t /* pStfId */, FairMQChannel& pDstChan)
+std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstChan)
 {
   // make sure headers and chunk pointers don't linger
   mStfData.clear();
 
+  // record current position
+  const auto lTfStartPosition = position();
+
+  if (lTfStartPosition == size()) {
+    return nullptr;
+  }
+
   // If mFile is good, we're positioned to read a TF
   if (!mFile || mFile.eof()) {
-    return false;
+    return nullptr;
   }
 
   if (!mFile.good()) {
     LOG(WARNING) << "Error while reading a TF from file. (bad stream state)";
-    return false;
+    return nullptr;
   }
 
-  // record current position
-  const auto lTfStartPosition = this->position();
+  // NOTE: StfID will be updated from the stf header
+  std::unique_ptr<SubTimeFrame> lStf = std::make_unique<SubTimeFrame>(0);
 
   DataHeader lStfMetaDataHdr;
   SubTimeFrameFileMeta lStfFileMeta;
 
   try {
-    // Write DataHeader + SubTimeFrameFileMeta
+    // Read DataHeader + SubTimeFrameFileMeta
     buffered_read(&lStfMetaDataHdr, sizeof(DataHeader));
     buffered_read(&lStfFileMeta, sizeof(SubTimeFrameFileMeta));
 
   } catch (const std::ios_base::failure& eFailExc) {
     LOG(ERROR) << "Reading from file failed. Error: " << eFailExc.what();
-    return false;
+    return nullptr;
   }
 
   // verify we're actually reading the correct data in
   if (!(SubTimeFrameFileMeta::getDataHeader() == lStfMetaDataHdr)) {
     LOG(WARNING) << "Reading bad data: SubTimeFrame META header";
     mFile.close();
-    return false;
+    return nullptr;
   }
 
   // prepare to read the TF data
   const auto lStfSizeInFile = lStfFileMeta.mStfSizeInFile;
   if (lStfSizeInFile == (sizeof(DataHeader) + sizeof(SubTimeFrameFileMeta))) {
     LOG(WARNING) << "Reading an empty TF from file. Only meta information present";
-    return false;
+    return nullptr;
   }
 
   const auto lStfDataSize = lStfSizeInFile - (sizeof(DataHeader) + sizeof(SubTimeFrameFileMeta));
@@ -147,7 +168,7 @@ bool SubTimeFrameFileReader::read(SubTimeFrame& pStf, std::uint64_t /* pStfId */
     LOG(WARNING) << "Not enough data in file for this TF. Required: " << lStfSizeInFile
                  << ", available: " << (this->size() - lTfStartPosition);
     mFile.close();
-    return false;
+    return nullptr;
   }
 
   // read all data blocks and headers
@@ -165,15 +186,16 @@ bool SubTimeFrameFileReader::read(SubTimeFrame& pStf, std::uint64_t /* pStfId */
         // error while checking headers
         LOG(WARNING) << "Reading bad data: Header stack cannot be parsed";
         mFile.close();
-        return false;
+        return nullptr;
       }
       // allocate and read the Headers
       auto lHdrStackMsg = pDstChan.NewMessage(lHdrSize);
       if (!lHdrStackMsg) {
         LOG(WARNING) << "Out of memory: header message, allocation size: " << lHdrSize;
         mFile.close();
-        return false;
+        return nullptr;
       }
+
       buffered_read(lHdrStackMsg->GetData(), lHdrSize);
 
       // read the data
@@ -185,7 +207,7 @@ bool SubTimeFrameFileReader::read(SubTimeFrame& pStf, std::uint64_t /* pStfId */
       if (!lDataMsg) {
         LOG(WARNING) << "Out of memory: data message, allocation size: " << lDataSize;
         mFile.close();
-        return false;
+        return nullptr;
       }
       buffered_read(lDataMsg->GetData(), lDataSize);
 
@@ -199,22 +221,23 @@ bool SubTimeFrameFileReader::read(SubTimeFrame& pStf, std::uint64_t /* pStfId */
     }
 
     if (lLeftToRead < 0) {
-      LOG(DEBUG) << "Read more data than it is indicated in the META header!";
+      LOG(ERROR) << "FileRead: Read more data than it is indicated in the META header!";
+      return nullptr;
     }
 
   } catch (const std::ios_base::failure& eFailExc) {
     LOG(ERROR) << "Reading from file failed. Error: " << eFailExc.what();
-    return false;
+    return nullptr;
   }
 
   // build the SubtimeFrame
-  pStf.accept(*this);
+  lStf->accept(*this);
 
-  LOG(INFO) << "FileReader: read TF size: " << lStfFileMeta.mStfSizeInFile
+  LOG(DEBUG) << "FileReader: read TF size: " << lStfFileMeta.mStfSizeInFile
             << ", created on " << lStfFileMeta.getTimeString()
             << " (timestamp: " << lStfFileMeta.mWriteTimeMs << ")";
 
-  return true;
+  return lStf;
 }
 }
 } /* o2::DataDistribution */

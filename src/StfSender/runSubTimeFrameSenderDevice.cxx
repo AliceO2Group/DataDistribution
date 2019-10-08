@@ -8,8 +8,9 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-#include "SubTimeFrameSenderDevice.h"
+#include "StfSenderDevice.h"
 #include <SubTimeFrameFileSink.h>
+#include <Config.h>
 
 #include <options/FairMQProgOptions.h>
 #include <runFairMQDevice.h>
@@ -29,12 +30,6 @@ void addCustomOptions(bpo::options_description& options)
     bpo::value<std::int64_t>()->default_value(-1),
     "Maximum number of buffered SubTimeFrames before starting to drop data. "
     "Unlimited: -1.")(
-    o2::DataDistribution::StfSenderDevice::OptionKeyOutputChannelName,
-    bpo::value<std::string>()->default_value("sender-stf-channel"),
-    "Name of the output STF channel")(
-    o2::DataDistribution::StfSenderDevice::OptionKeyEpnNodeCount,
-    bpo::value<std::uint32_t>()->default_value(std::uint32_t(0)),
-    "Number of EPN nodes")(
     o2::DataDistribution::StfSenderDevice::OptionKeyMaxConcurrentSends,
     bpo::value<std::int64_t>()->default_value(-1),
     "Maximum number of concurrent transfers from FLP to EPNs. Unlimited: -1.")(
@@ -44,6 +39,8 @@ void addCustomOptions(bpo::options_description& options)
 
   // Add options for STF file sink
   options.add(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());
+  // Add options for Data Distribution discovery
+  options.add(o2::DataDistribution::Config::getProgramOptions(o2::DataDistribution::ProcessType::StfSender));
 }
 
 FairMQDevicePtr getDevice(const FairMQProgOptions& /*config*/)

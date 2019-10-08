@@ -4,4 +4,6 @@ add_subdirectory(StfBuilder)
 add_subdirectory(StfSender)
 add_subdirectory(TfBuilder)
 
+add_subdirectory(TfScheduler)
+
 add_subdirectory(tests)

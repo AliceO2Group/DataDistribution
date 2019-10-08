@@ -1,12 +1,15 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "SubTimeFrameFile.h"
 #include "SubTimeFrameFileWriter.h"
@@ -129,18 +132,16 @@ void SubTimeFrameFileWriter::visit(const SubTimeFrame& pStf)
 }
 
 template <
-  typename pointer,
-  typename std::enable_if<
-    std::is_pointer<pointer>::value &&
-    (std::is_void<std::remove_pointer_t<pointer>>::value ||
-     std::is_standard_layout<std::remove_pointer_t<pointer>>::value)>::type*>
+    typename pointer,
+    typename std::enable_if<
+      std::is_pointer<pointer>::value &&                      // pointers only
+      (std::is_void<std::remove_pointer_t<pointer>>::value || // void* or standard layout!
+       std::is_standard_layout<std::remove_pointer_t<pointer>>::value)>::type* = nullptr>
 void SubTimeFrameFileWriter::buffered_write(const pointer p, std::streamsize pCount)
 {
   // make sure we're not doing a short write
   assert((pCount % sizeof(std::conditional_t<std::is_void<std::remove_pointer_t<pointer>>::value,
-                                             char, std::remove_pointer_t<pointer>>) ==
-          0) &&
-         "Performing short write?");
+          char, std::remove_pointer_t<pointer>>) == 0) && "Performing short write?");
 
   const char* lPtr = reinterpret_cast<const char*>(p);
   // avoid the optimization if the write is large enough
@@ -204,7 +205,9 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
     lDataOffset = size(); // save for the info file
 
     for (const auto& lStfData : mStfData) {
-      buffered_write(lStfData->mHeader->GetData(), lStfData->mHeader->GetSize());
+      // only write DataHeader (make a local DataHeader copy to clear flagsNextHeader bit)
+      const DataHeader lDh = lStfData->getDataHeader();
+      buffered_write(reinterpret_cast<const char*>(&lDh), sizeof (DataHeader));
       buffered_write(lStfData->mData->GetData(), lStfData->mData->GetSize());
     }
 

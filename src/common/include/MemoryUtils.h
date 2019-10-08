@@ -38,15 +38,15 @@ class FMQUnsynchronizedPoolMemoryResource : public boost::container::pmr::memory
 public:
   FMQUnsynchronizedPoolMemoryResource() = delete;
 
-  FMQUnsynchronizedPoolMemoryResource(FairMQDevice &pDev, FairMQChannel &pChan, const size_t pSize, const size_t pObjSize)
+  FMQUnsynchronizedPoolMemoryResource(FairMQChannel &pChan,
+                                      const std::size_t pSize, const std::size_t pObjSize)
   : mChan(pChan),
     mSize(pSize),
-    mObjectSize((pObjSize + sizeof(max_align_t) - 1) / sizeof(max_align_t) * sizeof(max_align_t))
+    mObjectSize(pObjSize),
+    mAlignedSize((pObjSize + sizeof(max_align_t) - 1) / sizeof(max_align_t) * sizeof(max_align_t))
   {
 
-    mRegion = pDev.NewUnmanagedRegionFor(
-      pChan.GetPrefix(), 0,
-      pSize,
+    mRegion = pChan.NewUnmanagedRegion(pSize,
       [this](void* pRelData, size_t pRelSize, void* /* hint */) {
       // callback to be called when message buffers no longer needed by transport
       reclaimSHMMessage(pRelData, pRelSize);
@@ -56,22 +56,21 @@ public:
     unsigned char* lObj = static_cast<unsigned char*>(mRegion->GetData());
     memset(lObj, 0xAA, mRegion->GetSize());
 
-    const std::size_t lObjectCnt = mRegion->GetSize() / mObjectSize;
+    const std::size_t lObjectCnt = mRegion->GetSize() / mAlignedSize;
 
     for (std::size_t i = 0; i < lObjectCnt; i++) {
-      mAvailableObjects.push_back(lObj + i*mObjectSize);
+      mAvailableObjects.push_back(lObj + i * mAlignedSize);
     }
   }
 
   std::unique_ptr<FairMQMessage> NewFairMQMessage() {
 
-    const auto lMem = allocate(0);
+    const auto lMem = allocate(0); // boost -> do_allocate(0) .. always return fixed object size (mObjectSize)
 
     if (lMem != nullptr) {
-
       return mChan.NewMessage(mRegion, lMem, mObjectSize);
-
     } else {
+      // Log warning to increase the pool size
       static thread_local unsigned throttle = 0;
       if (++throttle > (1U << 18)) {
         LOG(WARNING) << "Header pool exhausted. Allocating from the global SHM pool.";
@@ -87,6 +86,10 @@ public:
 
     return mChan.NewMessage(mRegion, pPtr, mObjectSize);
   }
+
+  std::size_t objectSize() const { return mObjectSize; }
+
+  inline auto allocator() { return boost::container::pmr::polymorphic_allocator<o2::byte>(this); }
 
 protected:
   virtual void* do_allocate(std::size_t , std::size_t) override
@@ -107,7 +110,8 @@ protected:
   virtual void do_deallocate(void *, std::size_t, std::size_t) override
   {
     // Objects are only freed through SHM message reclaim callback.
-    // This is intentionally noop.
+    // This is intentionally noop
+    // NOTE: handled in reclaimSHMMessage()
   }
 
   virtual bool do_is_equal(const memory_resource &) const noexcept override { return false; }
@@ -147,12 +151,12 @@ private:
     mReclaimedObjects.push_back(pData);
   }
 
-
   FairMQChannel& mChan;
 
   std::unique_ptr<FairMQUnmanagedRegion> mRegion;
   std::size_t mSize;
   std::size_t mObjectSize;
+  std::size_t mAlignedSize;
 
   std::vector<void*> mAvailableObjects;
   std::mutex mReclaimLock;

@@ -135,9 +135,9 @@ bool ReadoutDevice::ConditionalRun()
   }
 
   ReadoutSubTimeframeHeader lHBFHeader;
-  lHBFHeader.timeframeId = lNumberSentStfs;
-  lHBFHeader.numberOfHBF = lCruLinkData.mLinkRawData.size();
-  lHBFHeader.linkId = lCruLinkData.mLinkDataHeader.subSpecification;
+  lHBFHeader.mTimeFrameId = lNumberSentStfs;
+  lHBFHeader.mNumberHbf = lCruLinkData.mLinkRawData.size();
+  lHBFHeader.mLinkId = lCruLinkData.mLinkDataHeader.subSpecification;
 
   assert(mDataBlockMsgs.empty());
   mDataBlockMsgs.reserve(lCruLinkData.mLinkRawData.size());

@@ -1,0 +1,239 @@
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package o2.DataDistribution;
+
+
+
+enum ProcessTypePB {
+  Unknown = 0;
+
+  StfBuilder = 1;
+  StfSender = 2;
+
+  TfBuilder = 3;
+
+  TfSchedulerService = 4;
+  TfSchedulerInstance = 5;
+}
+
+
+message BasicInfo {
+  ProcessTypePB type = 1;
+  string process_id = 2;
+  string ip_address = 3;
+  string last_update = 4;
+  uint64 last_update_t = 5;
+}
+
+message PartitionInfo {
+  string partition_id  = 1;
+}
+
+message TfSchedulerServiceConfigStatus {
+  BasicInfo   info = 1;
+
+  uint32      number_instances = 2;
+}
+
+message TfSchedulerInstanceConfigStatus {
+            BasicInfo       info                = 1;
+            PartitionInfo   partition           = 2;
+
+            string          rpc_endpoint        = 3;
+
+            uint32          stf_sender_count    = 4;
+  repeated  string          stf_sender_id_list  = 5;
+}
+
+message StfSenderSocketMap {
+  message StfSenderSocket {
+    string peer_id          = 1;
+    string peer_endpoint    = 2;
+  }
+
+  map<string, StfSenderSocket> map = 1;
+}
+
+message StfSenderConfigStatus {
+  BasicInfo           info          = 1;
+  PartitionInfo       partition     = 2;
+
+  string              rpc_endpoint  = 3;
+
+  StfSenderSocketMap  sockets       = 4;
+}
+
+
+message TfBuilderSocketMap {
+  message TfBuilderSocket {
+    uint32 idx      = 1;
+    string endpoint = 2;
+    string peer_id  = 3;
+  }
+
+  map<uint32, TfBuilderSocket> map  = 1;
+}
+
+message TfBuilderConfigStatus {
+  BasicInfo           info          = 1;
+  PartitionInfo       partition     = 2;
+
+  string              rpc_endpoint  = 3;
+
+  TfBuilderSocketMap  sockets       = 4;
+}
+
+
+message StatusResponse {
+  uint32  status = 1;
+}
+
+message TfBuilderEndpoint {
+  string tf_builder_id  = 1;
+  string endpoint       = 2;
+}
+
+
+enum TfBuilderConnectionStatus {
+  OK                          = 0;
+  ERROR_DISCOVERY             = 1;
+  ERROR_SOCKET_COUNT          = 2;
+  ERROR_STF_SENDERS_NOT_READY = 3;
+  ERROR_GRPC_STF_SENDER       = 4;
+  ERROR_GRPC_TF_BUILDER       = 5;
+  ERROR_STF_SENDER_CONNECTING = 6;
+  ERROR_STF_SENDER_EXISTS     = 7;
+}
+
+message ConnectTfBuilderResponse {
+  TfBuilderConnectionStatus  status = 1;
+}
+
+
+message StfDataRequestMessage {
+  uint64 stf_id         = 1;
+  string tf_builder_id  = 2;
+}
+
+message StfDataResponse {
+  enum StfDataStatus {
+    OK                        = 0;
+    DATA_DROPPED_TIMEOUT      = 1;
+    DATA_DROPPED_SCHEDULER    = 2;
+    DATA_DROPPED_UNKNOWN      = 3;
+    TF_BUILDER_UNKNOWN        = 4;
+  }
+
+  StfDataStatus status = 1;
+}
+
+service StfSenderRpc {
+
+  rpc ConnectTfBuilderRequest(TfBuilderEndpoint) returns (ConnectTfBuilderResponse) { }
+  rpc DisconnectTfBuilderRequest(TfBuilderEndpoint) returns (StatusResponse) { }
+
+  rpc StfDataRequest(StfDataRequestMessage) returns (StfDataResponse) { }
+}
+
+
+message TfBuilderConnectionResponse {
+  TfBuilderConnectionStatus status    = 1;
+
+  // tf-endpoint-idx -> stf-sender-id
+  map<uint32, string> connection_map  = 2;
+}
+
+message NumStfSendersInPartitionResponse {
+  uint32 num_stf_senders = 1;
+}
+
+message TfBuilderUpdateMessage {
+  enum TfBuilderState {
+    RUNNING           = 0;
+    NOT_RUNNING       = 1;
+  }
+
+  BasicInfo           info                = 1;
+  PartitionInfo       partition           = 2;
+
+  TfBuilderState      state               = 3;
+
+  uint64              last_built_tf_id    = 4;
+  uint64              free_memory         = 5;
+  uint32              num_buffered_tfs    = 6;
+}
+
+
+message StfSenderStfInfo {
+  BasicInfo           info            = 1;
+  PartitionInfo       partition       = 2;
+
+  uint64              stf_id           = 3;
+  uint64              stf_size         = 4;
+}
+
+message SchedulerStfInfoResponse {
+  enum StfInfoStatus {
+    OK                        = 0;
+    DROP_NOT_RUNNING          = 1;
+    DROP_RESOURCES            = 2; // not able to schedule
+    DROP_SCHED_REAPED         = 3; // scheduler already processed that tf
+  }
+
+  StfInfoStatus  status = 1;
+}
+
+message TfBuildingInformation {
+  uint64                       tf_id          = 1;
+  uint64                       tf_size        = 2;
+
+  // flp ID - STF size mappting
+  map<string, uint64> stf_size_map            = 3;
+}
+
+message BuildTfResponse {
+  enum TfBuildingStatus {
+    OK                          = 0;
+    ERROR_NOMEM                 = 1; // not enough space
+    ERROR_NOT_RUNNING           = 2; // TfBuilding is not accepting more TimeFrames
+  }
+
+  TfBuildingStatus  status = 1;
+}
+
+service TfSchedulerInstanceRpc {
+
+  rpc TfBuilderConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderConnectionResponse) { }
+  rpc TfBuilderDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
+
+  rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
+
+  // TfBuilder updates
+  rpc TfBuilderUpdate(TfBuilderUpdateMessage) returns (google.protobuf.Empty) { }
+  rpc BuildTfAcknowledge(TfBuildingInformation) returns (BuildTfResponse) { }
+
+  // StfSender updates
+  rpc StfSenderStfUpdate(StfSenderStfInfo) returns (SchedulerStfInfoResponse) { }
+}
+
+
+service TfBuilderRpc {
+
+  rpc BuildTfRequest(TfBuildingInformation) returns (BuildTfResponse) { }
+}
+

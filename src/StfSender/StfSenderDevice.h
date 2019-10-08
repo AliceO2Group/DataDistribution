@@ -1,17 +1,25 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #ifndef ALICEO2_STF_SENDER_DEVICE_H_
 #define ALICEO2_STF_SENDER_DEVICE_H_
 
-#include "SubTimeFrameSenderOutput.h"
+#include "StfSenderRpc.h"
+#include "StfSenderOutput.h"
+
+#include <ConfigConsul.h>
+#include <TfSchedulerRpcClient.h>
+
 #include <SubTimeFrameFileSink.h>
 #include <Utilities.h>
 #include <RootGui.h>
@@ -25,6 +33,8 @@ namespace o2
 {
 namespace DataDistribution
 {
+
+class ConsulConfig;
 
 enum StfSenderPipeline {
   eReceiverOut = 0,
@@ -47,8 +57,6 @@ class StfSenderDevice : public DataDistDevice,
   static constexpr const char* OptionKeyStandalone = "stand-alone";
   static constexpr const char* OptionKeyMaxBufferedStfs = "max-buffered-stfs";
   static constexpr const char* OptionKeyMaxConcurrentSends = "max-concurrent-sends";
-  static constexpr const char* OptionKeyOutputChannelName = "output-channel-name";
-  static constexpr const char* OptionKeyEpnNodeCount = "epn-count";
   static constexpr const char* OptionKeyGui = "gui";
 
   /// Default constructor
@@ -60,15 +68,14 @@ class StfSenderDevice : public DataDistDevice,
   void InitTask() final;
   void ResetTask() final;
 
-  const std::string& getOutputChannelName() const { return mOutputChannelName; }
-
   std::int64_t stfCountIncFetch() { return ++mNumStfs; }
   std::int64_t stfCountDecFetch() { return --mNumStfs; }
   std::int64_t stfCountFetch() const { return mNumStfs; }
 
   bool standalone() const { return mStandalone; }
 
-  std::uint32_t getEpnNodeCount() const { return mEpnNodeCount; }
+  TfSchedulerRpcClient& TfSchedRpcCli() { return mTfSchedulerRpcClient; }
+
 
   bool guiEnabled() const noexcept { return mBuildHistograms; }
 
@@ -110,11 +117,15 @@ class StfSenderDevice : public DataDistDevice,
   /// Configuration
   std::string mInputChannelName;
   bool mStandalone;
-  std::string mOutputChannelName;
-  std::uint32_t mEpnNodeCount;
   std::int64_t mMaxStfsInPipeline;
   std::uint32_t mMaxConcurrentSends;
   bool mPipelineLimit;
+
+  /// Discovery configuration
+  std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
+
+  /// Scheculer RPC client
+  TfSchedulerRpcClient mTfSchedulerRpcClient;
 
   /// Receiver threads
   std::thread mReceiverThread;
@@ -124,6 +135,9 @@ class StfSenderDevice : public DataDistDevice,
 
   /// Output stage handler
   StfSenderOutput mOutputHandler;
+
+  /// RPC service
+  StfSenderRpcImpl mRpcServer;
 
   /// number of STFs in the process
   std::atomic_int64_t mNumStfs{ 0 };

@@ -1,21 +1,25 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #ifndef ALICEO2_STFBUILDER_DEVICE_H_
 #define ALICEO2_STFBUILDER_DEVICE_H_
 
-#include "SubTimeFrameBuilderInput.h"
+#include "StfBuilderInput.h"
 
 #include <ReadoutDataModel.h>
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameFileSink.h>
+#include <SubTimeFrameFileSource.h>
 #include <ConcurrentQueue.h>
 #include <Utilities.h>
 #include <RootGui.h>
@@ -37,11 +41,15 @@ namespace DataDistribution
 {
 
 enum StfBuilderPipeline {
+  // only input stages
   eStfBuilderOut = 0,
+  eStfFileSourceOut = 0,
 
+  // input/output stages
   eStfFileSinkIn = 0,
   eStfFileSinkOut = 1,
 
+  // output only stages
   eStfSendIn = 1,
 
   eStfNullIn = 2, // delete/drop
@@ -61,6 +69,14 @@ class StfBuilderDevice : public DataDistDevice,
   static constexpr const char* OptionKeyStandalone = "stand-alone";
   static constexpr const char* OptionKeyMaxBufferedStfs = "max-buffered-stfs";
   static constexpr const char* OptionKeyGui = "gui";
+
+  static constexpr const char* OptionKeyStfDetector = "detector";
+  static constexpr const char* OptionKeyRdhSanityCheck = "rdh-sanity-check";
+  static constexpr const char* OptionKeyFilterTriggerRdh4 = "rdh-filter-empty-trigger-v4";
+
+  static bpo::options_description getDetectorProgramOptions();
+  static bpo::options_description getStfBuildingProgramOptions();
+  static o2::header::DataOrigin getDataOriginFromOption(const std::string pArg);
 
   /// Default constructor
   StfBuilderDevice();
@@ -88,7 +104,9 @@ class StfBuilderDevice : public DataDistDevice,
     StfBuilderPipeline lNextStage = eStfInvalidStage;
 
     switch (pStage) {
-      case eStfBuilderOut: {
+      case eStfBuilderOut:
+      /* case eStfFileSourceOut: */
+      {
         auto lNumStfs = mNumStfs.fetch_add(1) + 1; // fetch old val + 1
 
         if (mPipelineLimit && (lNumStfs > mMaxStfsInPipeline)) {
@@ -97,7 +115,7 @@ class StfBuilderDevice : public DataDistDevice,
           LOG(WARNING) << "Dropping an STF due to reaching the maximum number of buffered "
                           "STFs in the process ("
                        << mMaxStfsInPipeline
-                       << "). Consider increasing the limit, or reduce the data pressure.";
+                       << "). Consider increasing the limit, or reducing the input data rate.";
         } else {
           lNextStage = mFileSink.enabled() ? eStfFileSinkIn : eStfSendIn;
         }
@@ -123,6 +141,9 @@ class StfBuilderDevice : public DataDistDevice,
   std::string mInputChannelName;
   std::string mOutputChannelName;
   std::string mDplChannelName;
+  o2::header::DataOrigin mDataOrigin;
+  bool mRdhSanityCheck = false;
+  bool mRdh4FilterTrigger = false;
   bool mStandalone;
   bool mDplEnabled;
   std::int64_t mMaxStfsInPipeline;
@@ -138,6 +159,10 @@ class StfBuilderDevice : public DataDistDevice,
   /// File sink
   SubTimeFrameFileSink mFileSink;
 
+  /// File source
+  std::unique_ptr<FairMQChannel> mStandaloneChannel;
+  SubTimeFrameFileSource mFileSource;
+
   /// Root GUI stuff
   void GuiThread();
   bool mBuildHistograms = true;
@@ -147,6 +172,7 @@ class StfBuilderDevice : public DataDistDevice,
   RunningSamples<uint64_t> mStfSizeSamples;
   RunningSamples<float> mStfDataTimeSamples;
 };
+
 }
 } /* namespace o2::DataDistribution */
 

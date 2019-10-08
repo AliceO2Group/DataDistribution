@@ -1,12 +1,15 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "SubTimeFrameVisitors.h"
 #include "SubTimeFrameDataModel.h"
@@ -106,10 +109,15 @@ void InterleavedHdrDataDeserializer::visit(SubTimeFrame& pStf)
 
 std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize(FairMQChannel& pChan)
 {
-  std::int64_t ret;
+  const std::int64_t ret = pChan.Receive(mMessages, 500 /* ms */);
 
-  if ((ret = pChan.Receive(mMessages)) < 0) {
-    LOG(WARNING) << "STF receive failed (err = " + std::to_string(ret) + ")";
+  // timeout ?
+  if (ret == -2) {
+     return nullptr;
+  }
+
+  if (ret < 0) {
+    LOG(WARNING) << "STF receive failed (err = " + std::to_string(ret) + "):" << std::string(strerror(errno));
     mMessages.clear();
     return nullptr;
   }

@@ -3,10 +3,12 @@
 
 set(DEMO_SCRIPTS
   start_Emulator-3FLP-3EPN.sh
+  start_Discovery-3FLP-3EPN.sh
 )
 
 set(DEMO_CONFIGS
   readout-emu-flp-epn-chain.json
+  discovery-flp-epn-chain.json
   flp-epn-dds-topology.xml
   readout_cfg/readout_emu.cfg
   readout_cfg/readout_cru.cfg
