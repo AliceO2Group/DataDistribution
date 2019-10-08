@@ -11,6 +11,8 @@ enable_testing()
 cmake_policy(SET CMP0074 NEW)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+cmake_policy(SET CMP0065 NEW)
+
 message(STATUS "Install directory = ${CMAKE_INSTALL_PREFIX}")
 
 #
@@ -20,11 +22,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -pedantic -Werror")
-set(CMAKE_CXX_FLAGS_DEBUG "-g3 -Og -fno-inline")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g3 -O2 -DNDEBUG")
-set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-ggdb3 -Og -fno-inline -fno-omit-frame-pointer -fmax-errors=10")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb3 -O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
-set(CMAKE_EXE_LINKER_FLAGS "-Wl,--as-needed")
+set(CMAKE_EXE_LINKER_FLAGS    "-Wl,--as-needed")
+set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--as-needed")
+set(CMAKE_MODULE_LINKER_FLAGS "-Wl,--as-needed")
+
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}/bin")
@@ -32,7 +37,7 @@ set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}/bin")
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-Wlogical-op -Wnull-dereference -Wuseless-cast" CXX_GOOD_FLAGS)
 if(${CXX_GOOD_FLAGS})
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wlogical-op -Wnull-dereference -Wuseless-cast")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wlogical-op -Wnull-dereference")
 endif()
 
 check_cxx_compiler_flag("-Wduplicated-cond -Wdouble-promotion -Wshadow -Wformat=2" CXX_GOOD_FLAGS)
@@ -78,6 +83,9 @@ list(INSERT Boost_COMPONENTS
 list(REMOVE_DUPLICATES Boost_COMPONENTS)
 find_package(Boost ${FairMQ_Boost_VERSION} REQUIRED COMPONENTS ${Boost_COMPONENTS})
 
+find_package(ppconsul REQUIRED)
+find_package(Protobuf REQUIRED)
+find_package(gRPC CONFIG REQUIRED)
 find_package(AliceO2 REQUIRED)
 find_package(ROOT REQUIRED)
 

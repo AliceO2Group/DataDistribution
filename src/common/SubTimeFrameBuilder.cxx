@@ -1,12 +1,15 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "SubTimeFrameBuilder.h"
 #include "MemoryUtils.h"
@@ -29,33 +32,66 @@ using namespace o2::header;
 /// SubTimeFrameReadoutBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(FairMQDevice &pDev, FairMQChannel& pChan, bool pDplEnabled)
+SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(FairMQChannel& pChan, bool pDplEnabled)
   : mStf(nullptr),
-    mDevice(pDev),
     mChan(pChan),
     mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
-    pDev, pChan,
-    64ULL << 20 /* make configurable */,
+    pChan, 64ULL << 20 /* make configurable */,
     mDplEnabled ?
       sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
       sizeof(DataHeader)
   );
 }
 
-void SubTimeFrameReadoutBuilder::addHbFrames(const ReadoutSubTimeframeHeader& pHdr, std::vector<FairMQMessagePtr>&& pHbFrames)
+void SubTimeFrameReadoutBuilder::addHbFrames(
+  const o2::header::DataOrigin &pDataOrig,
+  const o2::header::DataHeader::SubSpecificationType pSubSpecification,
+  ReadoutSubTimeframeHeader& pHdr,
+  std::vector<FairMQMessagePtr>&& pHbFrames)
 {
   if (!mStf) {
-    mStf = std::make_unique<SubTimeFrame>(pHdr.timeframeId);
+    mStf = std::make_unique<SubTimeFrame>(pHdr.mTimeFrameId);
   }
 
-  assert(pHdr.timeframeId == mStf->header().mId);
+  // filter empty trigger RDHv4
+  {
+    if (mRdh4FilterTrigger) {
+      for (auto lBlockIter = std::next(pHbFrames.begin()); lBlockIter != pHbFrames.end(); ) {
+        if (! ReadoutDataUtils::filterTriggerEmpyBlocksV4(
+                                    reinterpret_cast<const char*>((*lBlockIter)->GetData()),
+                                    (*lBlockIter)->GetSize()) ) {
+          lBlockIter = std::next(lBlockIter);
+        } else {
+          lBlockIter = pHbFrames.erase(lBlockIter);
+          pHdr.mNumberHbf -= 1;
+        }
+      }
+    }
+  }
+
+  // sanity check
+  {
+    if (mRdhSanityCheck) {
+      for (auto lBlockIter = std::next(pHbFrames.begin()); lBlockIter != pHbFrames.end(); ) {
+        if (ReadoutDataUtils::rdhSanityCheck(reinterpret_cast<const char*>((*lBlockIter)->GetData()), (*lBlockIter)->GetSize())) {
+          lBlockIter = std::next(lBlockIter);
+        } else {
+          LOG(WARNING) << "RDH SANITY CHECK: Removing data block";
+          lBlockIter = pHbFrames.erase(lBlockIter);
+          pHdr.mNumberHbf -= 1;
+        }
+      }
+    }
+  }
+
+  assert(pHdr.mTimeFrameId == mStf->header().mId);
 
   const EquipmentIdentifier lEqId = EquipmentIdentifier(
     o2::header::gDataDescriptionRawData,
-    o2::header::gDataOriginFLP, // FIXME: proper equipment specification
-    pHdr.linkId);
+    pDataOrig,
+    pSubSpecification);
 
   // NOTE: skip the first message (readout header) in pHbFrames
   for (size_t i = 1; i < pHbFrames.size(); i++) {
@@ -66,27 +102,19 @@ void SubTimeFrameReadoutBuilder::addHbFrames(const ReadoutSubTimeframeHeader& pH
       lEqId.mDataDescription,
       lEqId.mDataOrigin,
       lEqId.mSubSpecification,
-      pHbFrames[i]->GetSize());
+      pHbFrames[i]->GetSize()
+    );
     lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
 
     if (mDplEnabled) {
-      o2::framework::DataProcessingHeader lDplHeader(mStf->header().mId);
-
-      // Is there another way to compose headers? Stack is heavy on malloc/free needlessly
-      // auto lStack = Stack(Stack::allocator_type(mHeaderMemRes.get()), lDataHdr, lDplHeader);
-      auto lStack = Stack(lDataHdr, lDplHeader);
-      lHdrMsg = mHeaderMemRes->NewFairMQMessage();
-      if (!lHdrMsg ||
-        (lHdrMsg->GetSize() < (sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader)))) {
-        throw std::bad_alloc();
-      }
-
-      memcpy(lHdrMsg->GetData(), lStack.data(), lHdrMsg->GetSize());
-
+      auto lStack = Stack(mHeaderMemRes->allocator(),
+        lDataHdr,
+        o2::framework::DataProcessingHeader{mStf->header().mId}
+      );
+      lHdrMsg = mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data());
     } else {
-
-      lHdrMsg = mHeaderMemRes->NewFairMQMessage();
-      memcpy(lHdrMsg->GetData(), &lDataHdr, sizeof(DataHeader));
+      auto lHdrMsgStack = Stack(mHeaderMemRes->allocator(), lDataHdr);
+      lHdrMsg = mHeaderMemRes->NewFairMQMessageFromPtr(lHdrMsgStack.data());
     }
 
     if (!lHdrMsg) {
@@ -105,6 +133,74 @@ void SubTimeFrameReadoutBuilder::addHbFrames(const ReadoutSubTimeframeHeader& pH
 std::unique_ptr<SubTimeFrame> SubTimeFrameReadoutBuilder::getStf()
 {
   return std::move(mStf);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// SubTimeFrameFileBuilder
+////////////////////////////////////////////////////////////////////////////////
+
+SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(FairMQChannel& pChan, bool pDplEnabled)
+  : mChan(pChan),
+    mDplEnabled(pDplEnabled)
+{
+  mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
+    pChan, 32ULL << 20 /* make configurable */,
+    mDplEnabled ?
+      sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
+      sizeof(DataHeader)
+  );
+}
+
+void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
+{
+  if (!pStf) {
+    return;
+  }
+
+  for (auto& lDataIdentMapIter : pStf->mData) {
+    for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
+      for (auto& lStfDataIter : lSubSpecMapIter.second) {
+
+        // make sure there is a DataProcessing header in the stack
+        const auto &lHeader = lStfDataIter.mHeader;
+
+        if (!lHeader || lHeader->GetSize() < sizeof(DataHeader)) {
+          LOG(ERROR) << "File data invalid. Missing DataHeader.";
+          return;
+        }
+
+        auto lDplHdrConst = o2::header::get<o2::framework::DataProcessingHeader*>(lHeader->GetData(), lHeader->GetSize());
+
+        if (lDplHdrConst != nullptr) {
+          if (lDplHdrConst->startTime != pStf->header().mId) {
+
+            auto lDplHdr = const_cast<o2::framework::DataProcessingHeader*>(lDplHdrConst);
+            lDplHdr->startTime = pStf->header().mId;
+          }
+        } else {
+          // make the stack with an DPL header
+          // get the DataHeader
+          auto lDHdr = o2::header::get<o2::header::DataHeader*>(lHeader->GetData(), lHeader->GetSize());
+          if (lDHdr == nullptr) {
+            LOG(ERROR) << "File data invalid. DataHeader not found in the header stack.";
+            return;
+          }
+
+          if (mDplEnabled) {
+            auto lStack = Stack(mHeaderMemRes->allocator(),
+              *lDHdr, /* TODO: add complete existing header lStfDataIter.mHeader */
+              o2::framework::DataProcessingHeader{pStf->header().mId}
+            );
+
+            lStfDataIter.mHeader = std::move(mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data()));
+            assert(lStfDataIter.mHeader->GetSize() > sizeof (DataHeader));
+          }
+        }
+      }
+    }
+  }
+
 }
 
 }

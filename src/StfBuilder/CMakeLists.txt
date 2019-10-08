@@ -5,9 +5,9 @@
 # add_definitions(-DSTF_FILTER_EXAMPLE)
 
 set(EXE_STFB_SOURCES
-  SubTimeFrameBuilderInput
-  SubTimeFrameBuilderDevice
-  runSubTimeFrameBuilderDevice
+  StfBuilderInput
+  StfBuilderDevice
+  runStfBuilderDevice
 )
 
 add_executable(StfBuilder ${EXE_STFB_SOURCES} $<TARGET_OBJECTS:common>)

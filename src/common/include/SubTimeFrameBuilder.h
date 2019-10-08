@@ -1,12 +1,15 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #ifndef ALICEO2_SUBTIMEFRAME_BUILDER_H_
 #define ALICEO2_SUBTIMEFRAME_BUILDER_H_
@@ -33,21 +36,49 @@ class SubTimeFrameReadoutBuilder
 {
  public:
   SubTimeFrameReadoutBuilder() = delete;
-  SubTimeFrameReadoutBuilder(FairMQDevice &pDev, FairMQChannel& pChan, bool pDplEnabled);
+  SubTimeFrameReadoutBuilder(FairMQChannel& pChan, bool pDplEnabled);
 
-  void addHbFrames(const ReadoutSubTimeframeHeader& pHdr, std::vector<FairMQMessagePtr>&& pHbFrames);
+  void addHbFrames(const o2::header::DataOrigin &pDataOrig,
+    const o2::header::DataHeader::SubSpecificationType pSubSpecification,
+    ReadoutSubTimeframeHeader& pHdr, std::vector<FairMQMessagePtr>&& pHbFrames);
   std::unique_ptr<SubTimeFrame> getStf();
+
+  void setRdhSanityCheck(bool pVal) { mRdhSanityCheck = pVal; }
+  void setRdh4FilterTrigger(bool pVal) { mRdh4FilterTrigger = pVal; }
 
  private:
 
   std::unique_ptr<SubTimeFrame> mStf;
 
-  FairMQDevice& mDevice;
   FairMQChannel& mChan;
   bool mDplEnabled;
 
   std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
 
+
+  bool mRdhSanityCheck = false;
+  bool mRdh4FilterTrigger = false;
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// SubTimeFrameFileBuilder
+////////////////////////////////////////////////////////////////////////////////
+
+class SubTimeFrameFileBuilder
+{
+ public:
+  SubTimeFrameFileBuilder() = delete;
+  SubTimeFrameFileBuilder(FairMQChannel& pChan, bool pDplEnabled);
+
+  void adaptHeaders(SubTimeFrame *pStf);
+
+ private:
+
+  FairMQChannel& mChan;
+  bool mDplEnabled;
+
+  std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
 };
 
 }

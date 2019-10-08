@@ -1,12 +1,15 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <boost/filesystem.hpp>
 #include <boost/range/iterator_range.hpp>
@@ -22,11 +25,11 @@ namespace o2
 namespace DataDistribution
 {
 
+namespace fsb = boost::filesystem;
+
 std::string FilePathUtils::getNextSeqName(const std::string& pRootDir)
 {
   static const std::regex seq_regex("(\\d+)(?=\\D*$)", std::regex::icase);
-
-  namespace fsb = boost::filesystem;
 
   fsb::path lRootPath(pRootDir);
 
@@ -72,5 +75,24 @@ std::string FilePathUtils::getNextSeqName(const std::string& pRootDir)
 
   return lNameMatch;
 }
+
+std::vector<std::string> FilePathUtils::getAllFiles(const std::string& pDir)
+{
+  std::vector<std::string> lFileNames;
+
+  for (auto& entry : boost::make_iterator_range(fsb::directory_iterator(pDir), {})) {
+
+    const std::string lBaseName = entry.path().filename().string();
+    if (is_regular_file(entry.path())) {
+      lFileNames.push_back(lBaseName);
+    }
+  }
+
+  std::sort(lFileNames.begin(), lFileNames.end());
+
+  return lFileNames;
+}
+
+
 }
 } /* o2::DataDistribution */

@@ -1,17 +1,23 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #ifndef ALICEO2_READOUT_DATAMODEL_H_
 #define ALICEO2_READOUT_DATAMODEL_H_
 
+#include <Headers/DataHeader.h>
+
 #include <cstdint>
+#include <tuple>
 
 namespace o2
 {
@@ -28,10 +34,26 @@ namespace DataDistribution
 // All data belong to the same source (FEE link or user logic)
 
 struct ReadoutSubTimeframeHeader {
-  std::uint32_t timeframeId; // id of timeframe
-  std::uint32_t numberOfHBF; // number of HB frames (i.e. following messages)
-  std::uint8_t linkId;       // common link id of all data in this HBframe
+  std::uint32_t mTimeFrameId; // id of timeframe
+  std::uint32_t mNumberHbf; // number of HB frames (i.e. following messages)
+  std::uint8_t mLinkId;       // common link id of all data in this HBframe
 };
+
+class ReadoutDataUtils {
+public:
+
+  static std::tuple<std::uint32_t,std::uint32_t,std::uint32_t>
+  getSubSpecificationComponents(const char* pRdhData, const std::size_t len);
+
+  static o2::header::DataHeader::SubSpecificationType getSubSpecification(const char* data, const std::size_t len);
+
+  static std::tuple<uint32_t,uint32_t,uint32_t> getRdhNavigationVals(const char* pRdhData);
+
+  static bool rdhSanityCheck(const char* data, const std::size_t len);
+
+  static bool filterTriggerEmpyBlocksV4(const char* pData, const std::size_t pLen);
+};
+
 }
 } /* o2::DataDistribution */
 

@@ -1,14 +1,17 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 
-#include "SubTimeFrameBuilderDevice.h"
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include "StfBuilderDevice.h"
 
 #include <SubTimeFrameUtils.h>
 #include <SubTimeFrameVisitors.h>
@@ -24,7 +27,8 @@
 
 #include <chrono>
 #include <thread>
-#include <queue>
+#include <exception>
+#include <boost/algorithm/string.hpp>
 
 namespace o2
 {
@@ -40,6 +44,7 @@ StfBuilderDevice::StfBuilderDevice()
     IFifoPipeline(eStfPipelineSize),
     mReadoutInterface(*this),
     mFileSink(*this, *this, eStfFileSinkIn, eStfFileSinkOut),
+    mFileSource(*this, eStfFileSourceOut),
     mGui(nullptr),
     mStfSizeSamples(),
     mStfDataTimeSamples()
@@ -58,7 +63,9 @@ void StfBuilderDevice::InitTask()
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
   mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
-
+  mDataOrigin = getDataOriginFromOption(GetConfig()->GetValue<std::string>(OptionKeyStfDetector));
+  mRdhSanityCheck = GetConfig()->GetValue<bool>(OptionKeyRdhSanityCheck);
+  mRdh4FilterTrigger = GetConfig()->GetValue<bool>(OptionKeyFilterTriggerRdh4);
 
   // Buffering limitation
   if (mMaxStfsInPipeline > 0) {
@@ -76,8 +83,30 @@ void StfBuilderDevice::InitTask()
   }
 
   // File sink
-  if (!mFileSink.loadVerifyConfig(*(this->GetConfig())))
+  if (!mFileSink.loadVerifyConfig(*(this->GetConfig()))) {
     exit(-1);
+  }
+
+  // File source
+  if (!mFileSource.loadVerifyConfig(*(this->GetConfig()))) {
+    exit(-1);
+  }
+
+  // make sure we have detector if not using files
+  if (!mFileSource.enabled()) {
+    if (mDataOrigin == gDataOriginInvalid) {
+      LOG(ERROR) << "Detector string parameter not specified (required when not using file source).";
+      exit(-1);
+    }
+
+    if (mRdhSanityCheck) {
+      LOG(INFO) << "Extensive RDH checks enabled. Data that does not meet the criteria will be dropped.";
+    }
+
+    if (mRdh4FilterTrigger) {
+      LOG(INFO) << "Filtering of empty HBFrames in triggered mode enabled for RDHv4.";
+    }
+  }
 
   // check if output enabled
   if (mStandalone && !mFileSink.enabled()) {
@@ -91,18 +120,71 @@ void StfBuilderDevice::InitTask()
     LOG(INFO) << "DPL Channel name: " << mDplChannelName;
   } else {
     mDplEnabled = false;
-    LOG(INFO) << "Not using DPL.";
+    LOG(INFO) << "Not sending to DPL.";
   }
 }
 
 void StfBuilderDevice::PreRun()
 {
+  // try to see if channels have been configured
+  {
+    if (!mFileSource.enabled()) {
+      try {
+        GetChannel(mInputChannelName);
+      } catch(std::exception &) {
+        LOG(ERROR) << "Input channel not configured (from readout.exe) and not running with file source enabled.";
+        exit(-1);
+      }
+    }
+
+    try {
+      if (!mStandalone) {
+        GetChannel(mDplEnabled ? mDplChannelName : mOutputChannelName);
+      }
+    } catch(std::exception &) {
+      LOG(ERROR) << "Output channel not configured (to DPL or StfSender) and not running in standalone mode.";
+      exit(-1);
+    }
+  }
+
   // start output thread
   mOutputThread = std::thread(&StfBuilderDevice::StfOutputThread, this);
   // start file sink
   mFileSink.start();
+
+  // start file source
+  // channel for FileSource: stf or dpl, or generic one in case of standalone
+  if (mStandalone) {
+    // create default FMQ shm channel
+    auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("shmem", "", GetConfig());
+    if (!lTransportFactory) {
+      LOG(ERROR) << "Creating transport factory failed!";
+      exit(-1);
+    }
+    mStandaloneChannel = std::make_unique<FairMQChannel>(
+      "standalone-chan[0]" ,  // name
+      "pair",              // type
+      "bind",              // method
+      "ipc:///tmp/standalone-chan", // address
+      lTransportFactory
+    );
+
+    // mStandaloneChannel.Init();
+    mStandaloneChannel->Init();
+    // mStandaloneChannel->BindEndpoint("ipc:///tmp/standalone-chan");
+    mStandaloneChannel->Validate();
+    mFileSource.start(*mStandaloneChannel, mDplEnabled);
+  } else {
+    mFileSource.start(GetChannel(mDplEnabled ? mDplChannelName : mOutputChannelName), mDplEnabled);
+  }
+
+
   // start a thread for readout process
-  mReadoutInterface.Start();
+  if (!mFileSource.enabled()) {
+    mReadoutInterface.setRdhSanityCheck(mRdhSanityCheck);
+    mReadoutInterface.setRdh4FilterTrigger(mRdh4FilterTrigger);
+    mReadoutInterface.start(mDataOrigin);
+  }
 
   // gui thread
   if (mBuildHistograms) {
@@ -116,12 +198,20 @@ void StfBuilderDevice::PreRun()
 
 void StfBuilderDevice::ResetTask()
 {
+  // signal and wait for the output thread
+  mFileSource.stop();
+
   // Stop the pipeline
   stopPipeline();
+
   // wait for readout interface threads
-  mReadoutInterface.Stop();
+  if (!mFileSource.enabled()) {
+    mReadoutInterface.stop();
+  }
+
   // signal and wait for the output thread
   mFileSink.stop();
+
   // stop the output
   if (mOutputThread.joinable()) {
     mOutputThread.join();
@@ -143,12 +233,15 @@ void StfBuilderDevice::StfOutputThread()
   std::unique_ptr<InterleavedHdrDataSerializer> lStfSerializer;
   std::unique_ptr<StfDplAdapter> lStfDplAdapter;
 
-  if (!dplEnabled()) {
-    auto& lOutputChan = GetChannel(getOutputChannelName(), 0);
-    lStfSerializer = std::make_unique<InterleavedHdrDataSerializer>(lOutputChan);
-  } else {
-    auto& lOutputChan = GetChannel(getDplChannelName(), 0);
-    lStfDplAdapter = std::make_unique<StfDplAdapter>(lOutputChan);
+  // cannot get the channels in standalone mode
+  if (!mStandalone) {
+    if (!dplEnabled()) {
+      auto& lOutputChan = GetChannel(getOutputChannelName(), 0);
+      lStfSerializer = std::make_unique<InterleavedHdrDataSerializer>(lOutputChan);
+    } else {
+      auto& lOutputChan = GetChannel(getDplChannelName(), 0);
+      lStfDplAdapter = std::make_unique<StfDplAdapter>(lOutputChan);
+    }
   }
 
   while (IsRunningState()) {
@@ -190,10 +283,12 @@ void StfBuilderDevice::StfOutputThread()
       // Send filtered data as two objects
       try {
         if (!dplEnabled()) {
+          assert (lStfSerializer);
           lStfSerializer->serialize(std::move(lStfTPC)); // TPC data
           lStfSerializer->serialize(std::move(lStfITS)); // ITS data
           lStfSerializer->serialize(std::move(lStf));    // whatever is left
         } else {
+          assert (lStfDplAdapter);
           lStfDplAdapter->sendToDpl(std::move(lStfTPC));
           lStfDplAdapter->sendToDpl(std::move(lStfITS));
           lStfDplAdapter->sendToDpl(std::move(lStf));
@@ -217,6 +312,7 @@ void StfBuilderDevice::StfOutputThread()
       try {
 
         if (!dplEnabled()) {
+          assert (lStfSerializer);
           lStfSerializer->serialize(std::move(lStf));
         } else {
 
@@ -229,6 +325,7 @@ void StfBuilderDevice::StfOutputThread()
           }
 
           // Send to DPL bridge
+          assert (lStfDplAdapter);
           lStfDplAdapter->sendToDpl(std::move(lStf));
         }
       } catch (std::exception& e) {
@@ -297,5 +394,96 @@ bool StfBuilderDevice::ConditionalRun()
   std::this_thread::sleep_for(1s);
   return true;
 }
+
+
+bpo::options_description StfBuilderDevice::getDetectorProgramOptions() {
+  bpo::options_description lDetectorOptions("SubTimeFrameBuilder data source", 120);
+
+  lDetectorOptions.add_options() (
+    OptionKeyStfDetector,
+    bpo::value<std::string>()->default_value(""),
+    "Specifies the detector string for SubTimeFrame building. Allowed are: "
+    "ACO, CPV, CTP, EMC, FT0, FV0, FDD, HMP, ITS, MCH, MFT, MID, PHS, TOF, TPC, TRD, ZDC."
+  );
+
+  return lDetectorOptions;
+}
+
+bpo::options_description StfBuilderDevice::getStfBuildingProgramOptions() {
+  bpo::options_description lStfBuildingOptions("Options controlling SubTimeFrame building", 120);
+
+  lStfBuildingOptions.add_options() (
+    OptionKeyRdhSanityCheck,
+    bpo::bool_switch()->default_value(false),
+    "Enable extensive RDH verification. Data not meeting criteria will be dropped.")(
+    OptionKeyFilterTriggerRdh4,
+    bpo::bool_switch()->default_value(false),
+    "Filter out empty HBFrames with RDHv4 sent in triggered mode.");
+
+  return lStfBuildingOptions;
+}
+
+
+
+o2::header::DataOrigin StfBuilderDevice::getDataOriginFromOption(const std::string pArg)
+{
+  const auto lDetStr = boost::to_upper_copy<std::string>(pArg);
+
+  if (lDetStr == "ACO") {
+    return o2::header::gDataOriginACO;
+  }
+  else if (lDetStr == "CPV") {
+    return o2::header::gDataOriginCPV;
+  }
+  else if (lDetStr == "CTP") {
+    return o2::header::gDataOriginCTP;
+  }
+  else if (lDetStr == "EMC") {
+    return o2::header::gDataOriginEMC;
+  }
+  else if (lDetStr == "FT0") {
+    return o2::header::gDataOriginFT0;
+  }
+  else if (lDetStr == "FV0") {
+    return o2::header::gDataOriginFV0;
+  }
+  else if (lDetStr == "FDD") {
+    return o2::header::gDataOriginFDD;
+  }
+  else if (lDetStr == "HMP") {
+    return o2::header::gDataOriginHMP;
+  }
+  else if (lDetStr == "ITS") {
+    return o2::header::gDataOriginITS;
+  }
+  else if (lDetStr == "MCH") {
+    return o2::header::gDataOriginMCH;
+  }
+  else if (lDetStr == "MFT") {
+    return o2::header::gDataOriginMFT;
+  }
+  else if (lDetStr == "MID") {
+    return o2::header::gDataOriginMID;
+  }
+  else if (lDetStr == "PHS") {
+    return o2::header::gDataOriginPHS;
+  }
+  else if (lDetStr == "TOF") {
+    return o2::header::gDataOriginTOF;
+  }
+  else if (lDetStr == "TPC") {
+    return o2::header::gDataOriginTPC;
+  }
+  else if (lDetStr == "TRD") {
+    return o2::header::gDataOriginTRD;
+  }
+  else if (lDetStr == "ZDC") {
+    return o2::header::gDataOriginZDC;
+  }
+
+  return o2::header::gDataOriginInvalid;
+}
+
+
 }
 } /* namespace o2::DataDistribution */

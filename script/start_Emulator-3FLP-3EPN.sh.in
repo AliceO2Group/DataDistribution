@@ -60,7 +60,6 @@ fi
 echo "$ARGS"
 eval $ARGS
 
-fairmq-shmmonitor --cleanup &> /dev/null
 
 IO_THREADS=8
 

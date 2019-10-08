@@ -1,17 +1,24 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #ifndef ALICEO2_TF_BUILDER_DEVICE_H_
 #define ALICEO2_TF_BUILDER_DEVICE_H_
 
-#include "TimeFrameBuilderInput.h"
+#include "TfBuilderInput.h"
+#include "TfBuilderRpc.h"
+
+#include <ConfigConsul.h>
+
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameFileSink.h>
 #include <ConcurrentQueue.h>
@@ -32,6 +39,8 @@ namespace o2
 namespace DataDistribution
 {
 
+class ConsulConfig;
+
 enum TfBuilderPipeline {
   eTfBuilderOut = 0,
 
@@ -48,9 +57,8 @@ class TfBuilderDevice : public DataDistDevice,
                         public IFifoPipeline<std::unique_ptr<SubTimeFrame>>
 {
  public:
-  static constexpr const char* OptionKeyInputChannelName = "input-channel-name";
   static constexpr const char* OptionKeyStandalone = "stand-alone";
-  static constexpr const char* OptionKeyFlpNodeCount = "flp-count";
+  static constexpr const char* OptionKeyTfMemorySize = "tf-memory-size";
   static constexpr const char* OptionKeyGui = "gui";
 
   /// Default constructor
@@ -59,15 +67,11 @@ class TfBuilderDevice : public DataDistDevice,
   /// Default destructor
   ~TfBuilderDevice() override;
 
-  void InitTask() final;
-  void ResetTask() final;
+  void Init() final;
+  void Reset() final;
 
-  const std::string& getInputChannelName() const { return mInputChannelName; }
-  std::uint32_t getFlpNodeCount() const { return mFlpNodeCount; }
 
  protected:
-  void PreRun() final;
-  void PostRun() final { };
   bool ConditionalRun() final;
 
   // Run the TFBuilder pipeline
@@ -93,10 +97,18 @@ class TfBuilderDevice : public DataDistDevice,
 
   void TfForwardThread();
 
+
   /// Configuration
-  std::string mInputChannelName;
   bool mStandalone;
-  std::uint32_t mFlpNodeCount;
+  std::uint64_t mTfBufferSize;
+  std::string mPartitionId;
+
+  /// Discovery configuration
+  std::shared_ptr<ConsulTfBuilder> mDiscoveryConfig;
+
+  /// RPC service
+  std::shared_ptr<TfBuilderRpcImpl> mRpc;
+
 
   /// Input Interface handler
   TfBuilderInput mFlpInputHandler;
@@ -115,6 +127,8 @@ class TfBuilderDevice : public DataDistDevice,
 
   RunningSamples<uint64_t> mTfSizeSamples;
   RunningSamples<float> mTfFreqSamples;
+
+  std::atomic_bool mRunning = false;
 };
 }
 } /* namespace o2::DataDistribution */

@@ -1,12 +1,15 @@
-// Copyright CERN and copyright holders of ALICE O2. This software is
-// distributed under the terms of the GNU General Public License v3 (GPL
-// Version 3), copied verbatim in the file "COPYING".
-//
-// See http://alice-o2.web.cern.ch/license for full licensing information.
-//
-// In applying this license CERN does not waive the privileges and immunities
-// granted to it by virtue of its status as an Intergovernmental Organization
-// or submit itself to any jurisdiction.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #ifndef ALICEO2_SUBTIMEFRAME_DATAMODEL_H_
 #define ALICEO2_SUBTIMEFRAME_DATAMODEL_H_
@@ -97,7 +100,7 @@ static constexpr o2hdr::DataDescription gDataDescSubTimeFrame{ "DISTSUBTIMEFRAME
 
 struct EquipmentIdentifier {
   o2hdr::DataDescription mDataDescription;                   /* 2 x uint64_t */
-  o2hdr::DataHeader::SubSpecificationType mSubSpecification; /* uint64_t */
+  o2hdr::DataHeader::SubSpecificationType mSubSpecification; /* uint32_t */
   o2hdr::DataOrigin mDataOrigin;                             /* 1 x uint32_t */
 
   EquipmentIdentifier() = delete;
@@ -201,6 +204,7 @@ struct HBFrameHeader : public o2hdr::BaseHeader {
 ////////////////////////////////////////////////////////////////////////////////
 #define DECLARE_STF_FRIENDS                    \
   friend class SubTimeFrameReadoutBuilder;     \
+  friend class SubTimeFrameFileBuilder;     \
   friend class InterleavedHdrDataSerializer;   \
   friend class InterleavedHdrDataDeserializer; \
   friend class DataIdentifierSplitter;         \
@@ -229,6 +233,9 @@ class SubTimeFrame : public IDataModelObject
       o2hdr::DataHeader lDataHdr;
       // DataHeader must be first in the stack
       std::memcpy(&lDataHdr, mHeader->GetData(), sizeof(o2hdr::DataHeader));
+      // make sure it's standalone
+      lDataHdr.flagsNextHeader = 0;
+
       return lDataHdr;
     }
 
@@ -275,6 +282,8 @@ class SubTimeFrame : public IDataModelObject
 
   const Header& header() const { return mHeader; }
 
+  void updateStf() { updateStf(mData); }
+
  protected:
   void accept(ISubTimeFrameVisitor& v) override { updateStf(mData); v.visit(*this); }
   void accept(ISubTimeFrameConstVisitor& v) const override { updateStf(mData); v.visit(*this); }
@@ -293,7 +302,7 @@ class SubTimeFrame : public IDataModelObject
   ///
   /// internal
   ///
-  mutable bool _mUpdated = false;
+  mutable bool mUpdated = false;
 
   ///
   /// helper methods
@@ -304,14 +313,8 @@ class SubTimeFrame : public IDataModelObject
 
     auto& lDataVector = mData[lDataId][pDataHeader.subSpecification];
 
-    // allocate enough space
-    const auto lCap = lDataVector.capacity();
-    if (lCap < 1024) {
-      lDataVector.reserve(std::max(lCap * 2, StfDataVector::size_type(1024)));
-    }
-
     lDataVector.emplace_back(std::move(pStfData));
-    _mUpdated = false;
+    mUpdated = false;
   }
 
   inline void addStfData(StfData&& pStfData)
@@ -323,7 +326,7 @@ class SubTimeFrame : public IDataModelObject
   // NOTE: method declared const to work with const visitors, manipulated fields are mutable
   inline void updateStf(StfDataIdentMap &pData) const
   {
-    if (_mUpdated) {
+    if (mUpdated) {
       return;
     }
 
@@ -357,7 +360,7 @@ class SubTimeFrame : public IDataModelObject
 
     }
 
-    _mUpdated = true;
+    mUpdated = true;
   }
 
 };
