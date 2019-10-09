@@ -16,6 +16,7 @@
 
 #include <Headers/DataHeader.h>
 
+#include <istream>
 #include <cstdint>
 #include <tuple>
 
@@ -49,10 +50,38 @@ public:
 
   static std::tuple<uint32_t,uint32_t,uint32_t> getRdhNavigationVals(const char* pRdhData);
 
-  static bool rdhSanityCheck(const char* data, const std::size_t len);
+  enum SanityCheckMode {
+    eNoSanityCheck,
+    eSanityCheckDrop,
+    eSanityCheckPrint
 
+  };
+
+  static bool rdhSanityCheck(const char* data, const std::size_t len);
   static bool filterTriggerEmpyBlocksV4(const char* pData, const std::size_t pLen);
+
+public:
+  static SanityCheckMode sRdhSanityCheckMode;
+  static void setRdhSanityCheckMode(SanityCheckMode pMode) { sRdhSanityCheckMode = pMode; }
+  static SanityCheckMode getRdhSanityCheckMode() { return sRdhSanityCheckMode; }
 };
+
+[[maybe_unused]] static
+std::istream& operator>>(std::istream& in, ReadoutDataUtils::SanityCheckMode& pRetVal) {
+  std::string token;
+  in >> token;
+
+  if (token == "off") {
+    pRetVal = ReadoutDataUtils::eNoSanityCheck;
+  } else if (token == "drop") {
+    pRetVal = ReadoutDataUtils::eSanityCheckDrop;
+  } else if (token == "print") {
+    pRetVal = ReadoutDataUtils::eSanityCheckPrint;
+  } else {
+    in.setstate(std::ios_base::failbit);
+  }
+  return in;
+}
 
 }
 } /* o2::DataDistribution */

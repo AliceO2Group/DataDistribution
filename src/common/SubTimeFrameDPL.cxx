@@ -93,6 +93,18 @@ void StfDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
   mMessages.clear();
   pStf->accept(*this);
 
+#if 0
+  LOG(DEBUG) << "Content of the Stf:";
+  uint64_t lMsgIdx = 0;
+  for (auto lM = mMessages.cbegin(); lM != mMessages.cend(); ) {
+    LOG(DEBUG) << "  o2: message " << lMsgIdx++;
+    o2::header::hexDump("o2 header", (*lM)->GetData(), (*lM)->GetSize());
+    lM++;
+    o2::header::hexDump("o2 payload", (*lM)->GetData(), std::clamp((*lM)->GetSize(), std::size_t(0), std::size_t(256)) );
+    lM++;
+  }
+#endif
+
   mChan.Send(mMessages);
 
   // make sure headers and chunk pointers don't linger

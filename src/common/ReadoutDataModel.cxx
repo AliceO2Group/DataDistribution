@@ -24,6 +24,8 @@ namespace o2
 namespace DataDistribution
 {
 
+ReadoutDataUtils::SanityCheckMode ReadoutDataUtils::sRdhSanityCheckMode = eNoSanityCheck;
+
 std::tuple<std::uint32_t,std::uint32_t,std::uint32_t>
 ReadoutDataUtils::getSubSpecificationComponents(const char* pRdhData, const std::size_t len)
 {
@@ -76,7 +78,6 @@ ReadoutDataUtils::getSubSpecificationComponents(const char* pRdhData, const std:
 
   return { lCruId, lEndPoint, lLinkId };
 }
-
 
 o2::header::DataHeader::SubSpecificationType
 ReadoutDataUtils::getSubSpecification(const char* pRdhData, const std::size_t len)

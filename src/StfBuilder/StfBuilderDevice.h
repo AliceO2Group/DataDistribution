@@ -71,7 +71,7 @@ class StfBuilderDevice : public DataDistDevice,
   static constexpr const char* OptionKeyGui = "gui";
 
   static constexpr const char* OptionKeyStfDetector = "detector";
-  static constexpr const char* OptionKeyRdhSanityCheck = "rdh-sanity-check";
+  static constexpr const char* OptionKeyRdhSanityCheck = "rdh-data-check";
   static constexpr const char* OptionKeyFilterTriggerRdh4 = "rdh-filter-empty-trigger-v4";
 
   static bpo::options_description getDetectorProgramOptions();

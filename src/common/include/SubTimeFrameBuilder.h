@@ -43,7 +43,6 @@ class SubTimeFrameReadoutBuilder
     ReadoutSubTimeframeHeader& pHdr, std::vector<FairMQMessagePtr>&& pHbFrames);
   std::unique_ptr<SubTimeFrame> getStf();
 
-  void setRdhSanityCheck(bool pVal) { mRdhSanityCheck = pVal; }
   void setRdh4FilterTrigger(bool pVal) { mRdh4FilterTrigger = pVal; }
 
  private:
@@ -55,8 +54,9 @@ class SubTimeFrameReadoutBuilder
 
   std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
 
+  ReadoutDataUtils::SanityCheckMode RdhSanityCheck() const { return ReadoutDataUtils::sRdhSanityCheckMode; }
 
-  bool mRdhSanityCheck = false;
+  // bool mRdhSanityCheck = false;
   bool mRdh4FilterTrigger = false;
 };
 
