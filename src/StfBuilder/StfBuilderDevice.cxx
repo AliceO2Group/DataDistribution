@@ -64,7 +64,11 @@ void StfBuilderDevice::InitTask()
   mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
   mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
   mDataOrigin = getDataOriginFromOption(GetConfig()->GetValue<std::string>(OptionKeyStfDetector));
-  mRdhSanityCheck = GetConfig()->GetValue<bool>(OptionKeyRdhSanityCheck);
+
+  // input data handling
+  ReadoutDataUtils::setRdhSanityCheckMode(
+    GetConfig()->GetValue<ReadoutDataUtils::SanityCheckMode>(OptionKeyRdhSanityCheck)
+  );
   mRdh4FilterTrigger = GetConfig()->GetValue<bool>(OptionKeyFilterTriggerRdh4);
 
   // Buffering limitation
@@ -99,7 +103,7 @@ void StfBuilderDevice::InitTask()
       exit(-1);
     }
 
-    if (mRdhSanityCheck) {
+    if (ReadoutDataUtils::getRdhSanityCheckMode()) {
       LOG(INFO) << "Extensive RDH checks enabled. Data that does not meet the criteria will be dropped.";
     }
 
@@ -181,7 +185,6 @@ void StfBuilderDevice::PreRun()
 
   // start a thread for readout process
   if (!mFileSource.enabled()) {
-    mReadoutInterface.setRdhSanityCheck(mRdhSanityCheck);
     mReadoutInterface.setRdh4FilterTrigger(mRdh4FilterTrigger);
     mReadoutInterface.start(mDataOrigin);
   }
@@ -414,8 +417,8 @@ bpo::options_description StfBuilderDevice::getStfBuildingProgramOptions() {
 
   lStfBuildingOptions.add_options() (
     OptionKeyRdhSanityCheck,
-    bpo::bool_switch()->default_value(false),
-    "Enable extensive RDH verification. Data not meeting criteria will be dropped.")(
+    bpo::value<ReadoutDataUtils::SanityCheckMode>()->default_value(ReadoutDataUtils::SanityCheckMode::eNoSanityCheck, "off"),
+    "Enable extensive RDH verification. Permitted values: off, print, drop (caution, any data not meeting criteria will be dropped)")(
     OptionKeyFilterTriggerRdh4,
     bpo::bool_switch()->default_value(false),
     "Filter out empty HBFrames with RDHv4 sent in triggered mode.");

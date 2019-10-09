@@ -12,6 +12,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "SubTimeFrameBuilder.h"
+#include "ReadoutDataModel.h"
 #include "MemoryUtils.h"
 
 #include <Headers/DataHeader.h>
@@ -73,14 +74,40 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 
   // sanity check
   {
-    if (mRdhSanityCheck) {
+    if (RdhSanityCheck() != ReadoutDataUtils::eNoSanityCheck) {
+
       for (auto lBlockIter = std::next(pHbFrames.begin()); lBlockIter != pHbFrames.end(); ) {
-        if (ReadoutDataUtils::rdhSanityCheck(reinterpret_cast<const char*>((*lBlockIter)->GetData()), (*lBlockIter)->GetSize())) {
+
+        const auto lOk = ReadoutDataUtils::rdhSanityCheck(reinterpret_cast<const char*>((*lBlockIter)->GetData()), (*lBlockIter)->GetSize());
+
+        if (lOk) {
+          // check the next
           lBlockIter = std::next(lBlockIter);
-        } else {
+        } else if (!lOk && RdhSanityCheck() == ReadoutDataUtils::eSanityCheckDrop) {
           LOG(WARNING) << "RDH SANITY CHECK: Removing data block";
           lBlockIter = pHbFrames.erase(lBlockIter);
           pHdr.mNumberHbf -= 1;
+        } else if (!lOk && RdhSanityCheck() == ReadoutDataUtils::eSanityCheckPrint) {
+
+          LOG(INFO) << "Printing data blocks of update with TF ID: " << pHdr.mTimeFrameId
+                    << ", Link ID: " << pHdr.mLinkId;
+
+          // dump the data block, skipping data
+          std::int64_t lDataSizeLeft = std::int64_t((*lBlockIter)->GetSize());
+          std::size_t lCurrentData = 0;
+
+          while (lDataSizeLeft > 0) {
+            std::string lInfoStr = "RDH block (80bytes in total) of ";
+            lInfoStr += std::to_string((lBlockIter - pHbFrames.begin())) + ". 8 kiB page";
+
+            o2::header::hexDump(lInfoStr.c_str(),
+              reinterpret_cast<char*>((*lBlockIter)->GetData()) + lCurrentData,
+              std::size_t(std::max(std::int64_t(80), lDataSizeLeft)));
+
+            lDataSizeLeft -= std::min(std::int64_t(8192), lDataSizeLeft);
+          }
+          // advance to the next block
+          lBlockIter = std::next(lBlockIter);
         }
       }
     }

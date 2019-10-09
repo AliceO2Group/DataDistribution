@@ -47,7 +47,6 @@ class StfInputInterface
 
   const RunningSamples<float>& StfFreqSamples() const { return mStfFreqSamples; }
 
-  void setRdhSanityCheck(bool pVal) { mRdhSanityCheck = pVal; }
   void setRdh4FilterTrigger(bool pVal) { mRdh4FilterTrigger = pVal; }
 
  private:
@@ -61,7 +60,6 @@ class StfInputInterface
   RunningSamples<float> mStfFreqSamples;
 
   /// Readout flags
-  bool mRdhSanityCheck = false;     // make sure all RDHs in a block are from the same equipment
   bool mRdh4FilterTrigger = false;  // filter out empty HBFs in triggered mode with RDHv4
 
   bool mFilterTriggerEmpty = false; // Filter out empty CRU blocks in trigger mode

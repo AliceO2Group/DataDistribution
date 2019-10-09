@@ -64,7 +64,6 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
 
   // Stf builder
   SubTimeFrameReadoutBuilder lStfBuilder(lOutputChan, mDevice.dplEnabled());
-  lStfBuilder.setRdhSanityCheck(mRdhSanityCheck);
   lStfBuilder.setRdh4FilterTrigger(mRdh4FilterTrigger);
 
   using hres_clock = std::chrono::high_resolution_clock;
