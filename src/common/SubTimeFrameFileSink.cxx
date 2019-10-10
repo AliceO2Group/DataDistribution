@@ -62,11 +62,11 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
     bpo::value<std::string>()->default_value("%n"),
     "Specifies file name pattern: %n - file index, %D - date, %T - time.")(
     OptionKeyStfSinkStfsPerFile,
-    bpo::value<std::uint64_t>()->default_value(1),
-    "Specifies number of (Sub)TimeFrames per file.")(
+    bpo::value<std::uint64_t>()->default_value(0),
+    "Specifies number of (Sub)TimeFrames per file. Default: 0 (unlimited)")(
     OptionKeyStfSinkFileSize,
-    bpo::value<std::uint64_t>()->default_value(std::uint64_t(4) << 30), /* 4GiB */
-    "Specifies target size for (Sub)TimeFrame files.")(
+    bpo::value<std::uint64_t>()->default_value(std::uint64_t(4) << 10), /* 4GiB */
+    "Specifies target size for (Sub)TimeFrame files in MiB.")(
     OptionKeyStfSinkSidecar,
     bpo::bool_switch()->default_value(false),
     "Write a sidecar file for each (Sub)TimeFrame file containing information about data blocks "
@@ -94,8 +94,9 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   }
 
   mFileNamePattern = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSinkFileName);
-  mStfsPerFile = std::max(std::uint64_t(1), pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSinkStfsPerFile));
+  mStfsPerFile = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSinkStfsPerFile);
   mFileSize = std::max(std::uint64_t(1), pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSinkFileSize));
+  mFileSize <<= 20; /* in MiB */
   mSidecar = pFMQProgOpt.GetValue<bool>(OptionKeyStfSinkSidecar);
 
   // make sure directory exists and it is writable
@@ -117,7 +118,7 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   LOG(INFO) << "(Sub)TimeFrame Sink :: enabled       = " << (mEnabled ? "yes" : "no");
   LOG(INFO) << "(Sub)TimeFrame Sink :: root dir      = " << mRootDir;
   LOG(INFO) << "(Sub)TimeFrame Sink :: file pattern  = " << mFileNamePattern;
-  LOG(INFO) << "(Sub)TimeFrame Sink :: stfs per file = " << mStfsPerFile;
+  LOG(INFO) << "(Sub)TimeFrame Sink :: stfs per file = " << (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" );
   LOG(INFO) << "(Sub)TimeFrame Sink :: max file size = " << mFileSize;
   LOG(INFO) << "(Sub)TimeFrame Sink :: sidecar files = " << (mSidecar ? "yes" : "no");
   LOG(INFO) << "(Sub)TimeFrame Sink :: write dir     = " << mCurrentDir;
@@ -188,7 +189,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
     }
 
     // check if we should rotate the file
-    if ((lCurrentFileStfs >= mStfsPerFile) || (lCurrentFileSize >= mFileSize)) {
+    if (((mStfsPerFile > 0) && (lCurrentFileStfs >= mStfsPerFile)) || (lCurrentFileSize >= mFileSize)) {
       lCurrentFileStfs = 0;
       lCurrentFileSize = 0;
       mStfWriter.reset(nullptr);
