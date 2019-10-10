@@ -144,7 +144,7 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
 
   while(lDataLen > 0) {
 
-    if (lDataLen > 0 && lDataLen < 64/*RDH*/ ) {
+    if (lDataLen > 0 && lDataLen < 64 /*RDH*/ ) {
       LOG(ERROR) << "BLOCK CHECK: Data is shorter than RDH. Block offset: " << lCurrData - pData;
       o2::header::hexDump("Data at the end of the block", lCurrData, lDataLen);
       return false;

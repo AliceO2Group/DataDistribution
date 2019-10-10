@@ -90,6 +90,14 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       assert(lReadoutMsgs[0]->GetSize() == sizeof(ReadoutSubTimeframeHeader));
       std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
 
+      if (lReadoutHdr.mTimeFrameId % 100 == 0) {
+        static std::uint64_t sStfSeen = 0;
+        if (lReadoutHdr.mTimeFrameId != sStfSeen) {
+          sStfSeen = lReadoutHdr.mTimeFrameId;
+          LOG(DEBUG) << "Received update for STF ID: " << lReadoutHdr.mTimeFrameId;
+        }
+      }
+
       // check multipart size
       {
         if (lReadoutHdr.mNumberHbf != (lReadoutMsgs.size() - 1)) {
