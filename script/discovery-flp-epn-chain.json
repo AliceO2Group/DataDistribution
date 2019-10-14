@@ -221,15 +221,54 @@
 
             {
                 "id": "tf_builder-0",
-                "channels": [ ]
+                "channels": [
+                    {
+                        "name": "dpl-tf-channel",
+                        "transport": "shmem",
+                        "sockets": [
+                            {
+                                "type": "pair",
+                                "method": "connect",
+                                "address": "ipc:///tmp/tf-builder-dpl-pipe-0",
+                                "rateLogging": "1"
+                            }
+                        ]
+                    }
+                ]
             },
             {
                 "id": "tf_builder-1",
-                "channels": [ ]
+                "channels": [
+                    {
+                        "name": "dpl-tf-channel",
+                        "transport": "shmem",
+                        "sockets": [
+                            {
+                                "type": "pair",
+                                "method": "connect",
+                                "address": "ipc:///tmp/tf-builder-dpl-pipe-1",
+                                "rateLogging": "1"
+                            }
+                        ]
+                    }
+                ]
             },
             {
                 "id": "tf_builder-2",
-                "channels": [ ]
+                "channels": [
+                    {
+                        "name": "dpl-tf-channel",
+                        "transport": "shmem",
+                        "sockets": [
+                            {
+                                "type": "pair",
+                                "method": "connect",
+                                "address": "ipc:///tmp/tf-builder-dpl-pipe-2",
+                                "rateLogging": "1"
+                            }
+                        ]
+                    }
+                ]
             }
         ]
     }
