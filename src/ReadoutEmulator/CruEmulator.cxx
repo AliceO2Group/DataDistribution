@@ -43,8 +43,6 @@ void CruLinkEmulator::linkReadoutThread()
   LOG(DEBUG) << "cNumDmaChunkPerSuperpage: " << cNumDmaChunkPerSuperpage;
   LOG(DEBUG) << "Sleep time us: " << cStfTimeUs;
 
-  mRunning = true;
-
   // os might sleep much longer than requested
   // keep count of transmitted pages and adjust when needed
   int64_t lSentStf = 0;
@@ -103,13 +101,15 @@ void CruLinkEmulator::linkReadoutThread()
               char *lRdh = reinterpret_cast<char*>(sp.mDataVirtualAddress + (d * mDmaChunkSize));
               // version
               std::uint32_t lVer = 0x00000004;
-              memcpy(lRdh, &lVer, sizeof(std::uint32_t));
+              std::memcpy(lRdh, &lVer, sizeof(std::uint32_t));
 
               // cru, linkid, ep
               std::uint32_t lEquipment = 0;
-              lEquipment = (0xEEE << 4) | /* CRU, 12bit */
-              (0) | /* endpoint id */
-              ((mLinkID & 0xFF) << 24); /* linkID, 8 bit */
+              lEquipment = (
+                (std::uint32_t(0xEEE) << 16) |  /* CRU, 12bit */
+                (std::uint32_t(0x0) << 28) |    /* endpoint id */
+                (std::uint32_t(mLinkID) & 0xFF) /* linkID, 8 bit */
+              );
 
               std::memcpy(lRdh+12, &lEquipment, sizeof(std::uint32_t));
             }
@@ -144,6 +144,7 @@ void CruLinkEmulator::linkReadoutThread()
 /// Start "data taking" thread
 void CruLinkEmulator::start()
 {
+  mRunning = true;
   mCRULinkThread = std::thread(&CruLinkEmulator::linkReadoutThread, this);
 }
 
