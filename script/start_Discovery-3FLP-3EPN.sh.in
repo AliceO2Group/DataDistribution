@@ -24,6 +24,7 @@ parser.add_argument('-s', '--rsize', required=False, default=2, action='store', 
 parser.add_argument('-p', '--spsize', required=False, default=2, action='store', type=int, help='Size of the readout super-pages (in MiB)')
 
 parser.add_argument('--flp-dpl-channel', required=False, default='', action='store', help='Name of the DPL input channel on FLP for STFs.')
+parser.add_argument('--epn-dpl-channel', required=False, default='', action='store', help='Name of the DPL input channel on EPN for STFs.')
 
 parser.add_argument('--stf-builder-sink-dir', required=False, default='', action='store', help='Dir where to store STFs from SubTimeFrameBuilder')
 parser.add_argument('--tf-builder-sink-dir', required=False, default='', action='store', help='Dir where to store TFs from TimeFrameBuilder')
@@ -47,6 +48,7 @@ print("EQUIPMENT_RATE=%s" % int(args.rate * 1e+9))
 print("DATA_REGION_SIZE=%s" % int(args.rsize * (1<<30)))
 print("SUPERPAGE_SIZE=%s" % int(args.spsize * (1<<20)))
 print("STF_BUILDER_DPL_CHAN='%s'" % args.flp_dpl_channel)
+print("TF_BUILDER_DPL_CHAN='%s'" % args.epn_dpl_channel)
 print("GUI=%s" % ("" if args.nogui else "--gui"))
 print("STF_BUILDER_SINK_DIR='%s'" % args.stf_builder_sink_dir)
 print("TF_BUILDER_SINK_DIR='%s'" % args.tf_builder_sink_dir)
@@ -60,7 +62,7 @@ print("CHECKRDH=%s" % ("--rdh-sanity-check" if args.check_rdh else ""))
 print("USE_TMUX=%s" % ("1" if args.tmux else ""))
 EOF
 
-python -c "$PARSER" "$@"
+python3 -c "$PARSER" "$@"
 }
 
 ARGS="$(parse_parameters "$@")"
@@ -160,6 +162,10 @@ TF_BUILDER+=" --mq-config $chainConfig"
 TF_BUILDER+=" --flp-count $FLP_CNT"
 TF_BUILDER+=" $GUI"
 TF_BUILDER+=" --io-threads $IO_THREADS"
+
+if [[ ! -z $TF_BUILDER_DPL_CHAN ]]; then
+  TF_BUILDER+=" --dpl-channel-name=$TF_BUILDER_DPL_CHAN"
+fi
 
 if [[ ! -z $TF_BUILDER_SINK_DIR ]]; then
   if [[ ! -d $TF_BUILDER_SINK_DIR ]]; then
