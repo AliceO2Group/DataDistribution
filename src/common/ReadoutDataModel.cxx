@@ -26,6 +26,9 @@ namespace DataDistribution
 
 ReadoutDataUtils::SanityCheckMode ReadoutDataUtils::sRdhSanityCheckMode = eNoSanityCheck;
 
+/// static
+std::uint64_t ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
+
 std::tuple<std::uint32_t,std::uint32_t,std::uint32_t>
 ReadoutDataUtils::getSubSpecificationComponents(const char* pRdhData, const std::size_t len)
 {
@@ -135,6 +138,25 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
     return false;
   }
 
+  // set first hbframe orbit if not set for this stf
+  {
+    std::uint32_t lOrbit = 0;
+    std::memcpy(&lOrbit, pData + (5 * sizeof (std::uint32_t)), sizeof (std::uint32_t));
+    if (sFirstSeenHBOrbitCnt == 0) {
+      sFirstSeenHBOrbitCnt = lOrbit;
+    } else {
+      if (lOrbit < sFirstSeenHBOrbitCnt) {
+        LOG (ERROR) << "Orbit counter of current data packet (HBF) is smaller than first orbit of STF"
+                    << lOrbit << " < " << sFirstSeenHBOrbitCnt << " diff:" << sFirstSeenHBOrbitCnt-lOrbit;
+        return false;
+      } else if (lOrbit > (sFirstSeenHBOrbitCnt+255)) {
+        LOG (ERROR) << "Orbit counter of current data packet (HBF) is larger than first orbit of STF + 255"
+                    << lOrbit << " > (255 + " << sFirstSeenHBOrbitCnt << ") diff:" << lOrbit - sFirstSeenHBOrbitCnt;
+        return false;
+      }
+    }
+  }
+
   // sub spec of first RDH
   const auto lSubSpec = getSubSpecification(pData, pLen);
 
@@ -144,7 +166,7 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
 
   while(lDataLen > 0) {
 
-    if (lDataLen > 0 && lDataLen < 64 /*RDH*/ ) {
+    if (lDataLen > 0 && lDataLen < 64/*RDH*/ ) {
       LOG(ERROR) << "BLOCK CHECK: Data is shorter than RDH. Block offset: " << lCurrData - pData;
       o2::header::hexDump("Data at the end of the block", lCurrData, lDataLen);
       return false;
@@ -197,34 +219,64 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
 
 bool ReadoutDataUtils::filterTriggerEmpyBlocksV4(const char* pData, const std::size_t pLen)
 {
-  if (pLen != 16384) {
-    return false; // size is not right
+  std::uint32_t lMemSize1, lOffsetNext1, lStopBit1;
+  std::uint32_t lMemSize2, lOffsetNext2, lStopBit2;
+
+  if (pLen == 16384) { /* usual case */
+    static thread_local std::size_t sNumFiltered16kBlocks = 0;
+
+    if (pData[0] != 4) {
+      return false; // not RDH4
+    }
+
+    if (getSubSpecification(pData, 8192) != getSubSpecification(pData + 8192, 8192)) {
+      return false;
+    }
+
+    std::tie(lMemSize1, lOffsetNext1, lStopBit1) = getRdhNavigationVals(pData);
+    std::tie(lMemSize2, lOffsetNext2, lStopBit2) = getRdhNavigationVals(pData + 8192);
+
+    if (lMemSize1 != lMemSize2 || lMemSize1 != 64) {
+      return false;
+    }
+
+    if ((lOffsetNext1 != lOffsetNext2) || (lOffsetNext1 != 8192)) {
+      return false;
+    }
+
+    if ((lStopBit1 != 0) || (lStopBit2 != 1)) {
+      return false;
+    }
+
+    sNumFiltered16kBlocks++;
+
+    if (sNumFiltered16kBlocks % 250000 == 0) {
+      LOG (INFO) << "Filtered " << sNumFiltered16kBlocks << " 16 kiB blocks in trigger mode.";
+    }
+
+  } else if (pLen == 8192) {
+    static thread_local std::size_t sNumFiltered8kBlocks = 0;
+
+    if (pData[0] != 4) {
+      return false; // not RDH4
+    }
+
+    std::tie(lMemSize1, lOffsetNext1, lStopBit1) = getRdhNavigationVals(pData);
+    if (lMemSize1 != 64) {
+      return false;
+    }
+
+    sNumFiltered8kBlocks++;
+
+    if (sNumFiltered8kBlocks % 2500 == 0) {
+      LOG (INFO) << "Filtered " << sNumFiltered8kBlocks << " 8 kiB blocks in trigger mode.";
+    }
+
+  } else {
+    return false; // size does not match
   }
 
-  if (pData[0] != 4) {
-    return false; // not RDH4
-  }
-
-  if (getSubSpecification(pData, 8192) != getSubSpecification(pData+8192, 8192)) {
-    return false;
-  }
-
-  const auto [lMemSize1, lOffsetNext1, lStopBit1] = getRdhNavigationVals(pData);
-  const auto [lMemSize2, lOffsetNext2, lStopBit2] = getRdhNavigationVals(pData + 8192);
-
-  if (lMemSize1 != lMemSize2 || lMemSize1 != 64) {
-    return false;
-  }
-
-  if (lOffsetNext1 != lOffsetNext2 || lOffsetNext1 != 8192) {
-    return false;
-  }
-
-  if (lStopBit2 == 0) {
-    return false;
-  }
-
-  // looks like it should be empy trigger message
+  // looks like it should be empty trigger message
   return true;
 }
 

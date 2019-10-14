@@ -137,6 +137,10 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       // check for the new TF marker
       if (lReadoutHdr.mTimeFrameId != lCurrentStfId) {
 
+        if (lReadoutMsgs.size() > 1) {
+          ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
+        }
+
         { // MON: data of a new STF received, get the freq and new start time
           if (mDevice.guiEnabled()) {
             const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
@@ -145,10 +149,14 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
           }
         }
 
-        if (lCurrentStfId > 0 && lReadoutHdr.mTimeFrameId < lCurrentStfId) {
+        if (lCurrentStfId > 0 && (lReadoutHdr.mTimeFrameId < lCurrentStfId)) {
           LOG(ERROR) << "TF ID decreased! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
-                        " readout.exe sent messages with non-monotonic TF id!. SubTimeFrames will be incomplete! "
-                        "Please report the BUG.";
+                        " readout.exe sent messages with non-monotonic TF id!. SubTimeFrames will be incomplete! ";
+        }
+
+        if (lCurrentStfId > 0 && (lReadoutHdr.mTimeFrameId > (lCurrentStfId + 1))) {
+          LOG(ERROR) << "TF ID non-contiguous increase! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
+                        " readout.exe sent messages with non-monotonic TF id!. SubTimeFrames will be incomplete! ";
         }
 
         if (lCurrentStfId >= 0) {
