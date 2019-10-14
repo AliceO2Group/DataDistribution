@@ -43,6 +43,8 @@ struct ReadoutSubTimeframeHeader {
 class ReadoutDataUtils {
 public:
 
+  static std::uint64_t sFirstSeenHBOrbitCnt;
+
   static std::tuple<std::uint32_t,std::uint32_t,std::uint32_t>
   getSubSpecificationComponents(const char* pRdhData, const std::size_t len);
 
