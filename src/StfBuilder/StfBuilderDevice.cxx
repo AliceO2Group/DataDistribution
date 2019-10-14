@@ -369,7 +369,6 @@ void StfBuilderDevice::GuiThread()
   WaitForRunningState();
 
   while (IsRunningState()) {
-    LOG(INFO) << "Updating histograms...";
 
     mGui->Canvas().cd(1);
     mGui->DrawHist(lStfSizeHist.get(), mStfSizeSamples);
@@ -385,6 +384,10 @@ void StfBuilderDevice::GuiThread()
 
     mGui->Canvas().Modified();
     mGui->Canvas().Update();
+
+    LOG(INFO) << "Readout data size per STF: " << mStfSizeSamples.Mean();
+    LOG(INFO) << "SubTimeFrame frequency   : " << mReadoutInterface.StfFreqSamples().Mean();
+    LOG(INFO) << "Queued STFs in StfBuilder: " << mNumStfs;
 
     std::this_thread::sleep_for(5s);
   }
