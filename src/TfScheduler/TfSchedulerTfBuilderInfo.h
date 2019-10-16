@@ -41,7 +41,7 @@ using namespace std::chrono_literals;
 struct TfBuilderInfo {
   std::chrono::system_clock::time_point mUpdateLocalTime;
   TfBuilderUpdateMessage mTfBuilderUpdate;
-  std::uint64_t mLastScheduledTf = 0;
+  std::atomic_uint64_t mLastScheduledTf = 0;
 
   std::atomic_uint64_t mEstimatedFreeMemory;
 
@@ -93,7 +93,6 @@ class TfSchedulerTfBuilderInfo
 
   void HousekeepingThread();
 
-  std::size_t getGlobalIdx(const TfBuilderUpdateMessage &pTfBuilderUpdate) const;
   void updateTfBuilderInfo(const TfBuilderUpdateMessage &pTfBuilderUpdate);
 
   void addReadyTfBuilder(std::shared_ptr<TfBuilderInfo> pInfo)
@@ -102,14 +101,14 @@ class TfSchedulerTfBuilderInfo
     mReadyTfBuilders.emplace_back(std::move(pInfo));
   }
 
-  void removeReadyTfBuilder(std::shared_ptr<TfBuilderInfo> pInfo)
+  void removeReadyTfBuilder(const std::string &pId)
   {
     std::scoped_lock lLock(mReadyInfoLock);
-    for (auto it = mReadyTfBuilders.begin(); it != mReadyTfBuilders.end();  ) {
-      if (*it == pInfo) {
-          it = mReadyTfBuilders.erase(it);
-      } else {
-          ++it;
+    for (auto it = mReadyTfBuilders.begin(); it != mReadyTfBuilders.end(); it++) {
+      if ((*it)->id() == pId) {
+        LOG(DEBUG) << "Removed TfBuilder from the ready list :" << pId;
+        mReadyTfBuilders.erase(it);
+        break;
       }
     }
   }

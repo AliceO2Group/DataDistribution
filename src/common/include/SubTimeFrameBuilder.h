@@ -81,6 +81,26 @@ class SubTimeFrameFileBuilder
   std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+/// TimeFrameBuilder
+////////////////////////////////////////////////////////////////////////////////
+
+class TimeFrameBuilder
+{
+ public:
+  TimeFrameBuilder() = delete;
+  TimeFrameBuilder(FairMQChannel& pChan, bool pDplEnabled);
+
+  void adaptHeaders(SubTimeFrame *pStf);
+
+ private:
+
+  FairMQChannel& mChan;
+  bool mDplEnabled;
+
+  std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
+};
+
 }
 } /* o2::DataDistribution */
 

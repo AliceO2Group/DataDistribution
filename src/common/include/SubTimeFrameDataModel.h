@@ -204,7 +204,8 @@ struct HBFrameHeader : public o2hdr::BaseHeader {
 ////////////////////////////////////////////////////////////////////////////////
 #define DECLARE_STF_FRIENDS                    \
   friend class SubTimeFrameReadoutBuilder;     \
-  friend class SubTimeFrameFileBuilder;     \
+  friend class SubTimeFrameFileBuilder;        \
+  friend class TimeFrameBuilder;               \
   friend class InterleavedHdrDataSerializer;   \
   friend class InterleavedHdrDataDeserializer; \
   friend class DataIdentifierSplitter;         \

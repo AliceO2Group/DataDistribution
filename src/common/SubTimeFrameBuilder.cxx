@@ -236,8 +236,81 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
       }
     }
   }
-
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// TimeFrameBuilder
+////////////////////////////////////////////////////////////////////////////////
+
+TimeFrameBuilder::TimeFrameBuilder(FairMQChannel& pChan, bool pDplEnabled)
+  : mChan(pChan),
+    mDplEnabled(pDplEnabled)
+{
+  mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
+    pChan, 64ULL << 20 /* make configurable */,
+    mDplEnabled ?
+      sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
+      sizeof(DataHeader)
+  );
+}
+
+void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
+{
+  if (!pStf) {
+    return;
+  }
+
+  for (auto& lDataIdentMapIter : pStf->mData) {
+    for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
+      for (auto& lStfDataIter : lSubSpecMapIter.second) {
+
+        // make sure there is a DataProcessing header in the stack
+        const auto &lHeader = lStfDataIter.mHeader;
+
+        if (!lHeader || lHeader->GetSize() < sizeof(DataHeader)) {
+          LOG(ERROR) << "Adapting TF headers: Missing DataHeader.";
+          continue;
+        }
+
+        auto lDplHdrConst = o2::header::get<o2::framework::DataProcessingHeader*>(
+          lHeader->GetData(),
+          lHeader->GetSize()
+        );
+
+        if (lDplHdrConst != nullptr) {
+          if (lDplHdrConst->startTime != pStf->header().mId) {
+
+            auto lDplHdr = const_cast<o2::framework::DataProcessingHeader*>(lDplHdrConst);
+            lDplHdr->startTime = pStf->header().mId;
+          }
+        } else {
+          // make the stack with an DPL header
+          // get the DataHeader
+          auto lDHdr = o2::header::get<o2::header::DataHeader*>(
+            lHeader->GetData(),
+            lHeader->GetSize()
+          );
+
+          if (lDHdr == nullptr) {
+            LOG(ERROR) << "TimeFrame invalid. DataHeader not found in the header stack.";
+            continue;
+          }
+
+          if (mDplEnabled) {
+            auto lStack = Stack(mHeaderMemRes->allocator(),
+              *lDHdr, /* TODO: add complete existing header lStfDataIter.mHeader */
+              o2::framework::DataProcessingHeader{pStf->header().mId}
+            );
+
+            lStfDataIter.mHeader = std::move(mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data()));
+            assert(lStfDataIter.mHeader->GetSize() > sizeof (DataHeader));
+          }
+        }
+      }
+    }
+  }
+}
+
 
 }
 } /* o2::DataDistribution */

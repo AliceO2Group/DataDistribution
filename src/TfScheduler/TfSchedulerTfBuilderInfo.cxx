@@ -54,7 +54,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
       const auto &lTfIter = mGlobalInfo.find(lTfBuilderId);
       if (lTfIter != mGlobalInfo.end()) {
         // remove from available
-        removeReadyTfBuilder(lTfIter->second);
+        removeReadyTfBuilder(lTfBuilderId);
         // remove from global
         mGlobalInfo.erase(lTfIter);
         LOG(INFO) << "TfBuilder left: " << lTfBuilderId;
@@ -136,16 +136,16 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
           lIdsToErase.emplace_back(lInfo->mTfBuilderUpdate.info().process_id());
         }
 
-
         LOG(DEBUG) << "TfBuilder    : " << lInfo->mTfBuilderUpdate.info().process_id()
                    << "\n  Free Memory      : " << lInfo->mTfBuilderUpdate.free_memory()
                    << "\n  num_buffered_tfs : " << lInfo->mTfBuilderUpdate.num_buffered_tfs();
-
       }
 
       if (!lIdsToErase.empty()) {
         for (const auto &lId : lIdsToErase) {
           mGlobalInfo.erase(lId);
+          removeReadyTfBuilder(lId);
+          LOG (INFO) << "TfBuilder removed from scheduling (stale info), id: " << lId;
         }
         lIdsToErase.clear();
       }

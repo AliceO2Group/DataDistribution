@@ -36,10 +36,10 @@ using grpc::ClientContext;
 using grpc::Status;
 
 
-class TfBuilderRpcClient {
+class TfBuilderRpcClientCtx {
 public:
-  TfBuilderRpcClient() { }
-  ~TfBuilderRpcClient() { stop(); }
+  TfBuilderRpcClientCtx() { }
+  ~TfBuilderRpcClientCtx() { stop(); }
 
   template<class T>
   bool start(std::shared_ptr<T> pConfig, const std::string &pTfBuilderId) {
@@ -110,6 +110,128 @@ private:
   TfBuilderConfigStatus mTfBuilderConf;
 
   std::unique_ptr<TfBuilderRpc::Stub> mStub;
+};
+
+
+class TfBuilderRpcClient {
+public:
+  TfBuilderRpcClient(TfBuilderRpcClientCtx *pCtx, std::recursive_mutex *pMtx)
+  : mCliCtx(pCtx),
+    mMtx(pMtx)
+  {
+    if (mMtx) {
+      mMtx->lock();
+    }
+  }
+
+  ~TfBuilderRpcClient() { put(); }
+
+  TfBuilderRpcClientCtx& get() { return *mCliCtx; }
+  void put()
+  {
+    if (mMtx) {
+      mMtx->unlock();
+      mCliCtx = nullptr;
+      mMtx = nullptr;
+    }
+  }
+
+  operator bool() const { return mCliCtx != nullptr; }
+
+private:
+  TfBuilderRpcClientCtx *mCliCtx;
+  std::recursive_mutex *mMtx;
+};
+
+
+template <class T>
+class TfBuilderRpcClientCollection {
+public:
+  TfBuilderRpcClientCollection(std::shared_ptr<T> pDiscoveryConfig)
+  : mDiscoveryConfig(pDiscoveryConfig)
+  { }
+
+  struct RpcClient {
+    std::unique_ptr<std::recursive_mutex>  mClientLock;
+    std::unique_ptr<TfBuilderRpcClientCtx> mClient;
+  };
+
+
+  bool remove(const std::string pId)
+  {
+    std::scoped_lock lLock(mClientsGlobalLock);
+
+    if (mClients.count(pId) > 0) {
+
+      RpcClient lCliStruct = std::move(mClients.at(pId));
+
+      {
+        // we have to wait for RpcClient lock before erasing
+        std::scoped_lock lCliLock(mClientsGlobalLock, *(lCliStruct.mClientLock));
+
+        lCliStruct.mClient->stop();
+
+        mClients.erase(pId);
+
+      } // need to unlock lCliStruct.mClientLock here before destroying the object
+
+      return true;
+    }
+
+    return false;
+  }
+
+
+  bool add(const std::string &pId)
+  {
+    std::scoped_lock lLock(mClientsGlobalLock);
+
+    remove(pId);
+
+    mClients.emplace(
+      pId,
+      RpcClient()
+    );
+
+    RpcClient &lCli = mClients[pId];
+    lCli.mClientLock = std::make_unique<std::recursive_mutex>();
+    lCli.mClient = std::make_unique<TfBuilderRpcClientCtx>();
+
+    auto lRet = lCli.mClient->start(mDiscoveryConfig, pId);
+    if (!lRet) {
+      mClients.erase(pId);
+    }
+
+    return lRet;
+  }
+
+  TfBuilderRpcClient get(const std::string &pId)
+  {
+    std::scoped_lock lLock(mClientsGlobalLock);
+
+    if (mClients.count(pId) > 0) {
+
+      RpcClient &lCli = mClients[pId];
+
+      return TfBuilderRpcClient(lCli.mClient.get(), lCli.mClientLock.get());
+    }
+
+    return TfBuilderRpcClient(nullptr, nullptr);
+  }
+
+  std::size_t size() const { return mClients.size(); }
+  std::size_t count(const std::string &pId) const { return mClients.count(pId); }
+  // auto& operator[] const (const std::string &pId) const { return mClients.at(pId); }
+
+  const auto begin() const { return mClients.begin(); }
+  const auto end() const { return mClients.end(); }
+
+private:
+
+  std::shared_ptr<T> mDiscoveryConfig;
+
+  std::recursive_mutex mClientsGlobalLock;
+  std::map<std::string, RpcClient> mClients;
 };
 
 

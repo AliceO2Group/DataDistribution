@@ -223,7 +223,6 @@ if [[ -z $USE_TMUX ]]; then
   docker exec consul-datadist consul kv put epn/data-dist/request/partition-id "$PARTITION"
   docker exec consul-datadist consul kv put epn/data-dist/request/stf-sender-id-list "$FLP_ID_LIST"
 
-
 else
   # poor man's tmux environment cloning; make sure you're running tmux in control center (-CC) mode
   ENV_VAR_FILE=$(mktemp)

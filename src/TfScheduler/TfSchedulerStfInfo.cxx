@@ -71,44 +71,54 @@ void TfSchedulerStfInfo::SchedulingThread()
         if ( mTfBuilderInfo.findTfBuilderForTf(lTfSize, lTfBuilderId /*out*/) ) {
           assert (!lTfBuilderId.empty());
           // Notify TfBuilder to build the TF
-          TfBuilderRpcClient *lRpcCli = mConnManager.getTfBuilderRpcClient(lTfBuilderId);
+          TfBuilderRpcClient lRpcCli = mConnManager.getTfBuilderRpcClient(lTfBuilderId);
 
-          assert (lRpcCli != NULL);
+          // finding and getting the client is racy
+          if (lRpcCli) {
+            TfBuildingInformation lRequest;
+            BuildTfResponse lResponse;
 
-          TfBuildingInformation lRequest;
-          BuildTfResponse lResponse;
+            lRequest.set_tf_id(lTfId);
+            lRequest.set_tf_size(lTfSize);
+            for (const auto &lStfI : lStfInfos) {
+              (*lRequest.mutable_stf_size_map())[lStfI.process_id()] = lStfI.stf_size();
+            }
 
-          lRequest.set_tf_id(lTfId);
-          lRequest.set_tf_size(lTfSize);
-          for (const auto &lStfI : lStfInfos) {
-            (*lRequest.mutable_stf_size_map())[lStfI.process_id()] = lStfI.stf_size();
-          }
+            if (lRpcCli.get().BuildTfRequest(lRequest, lResponse)) {
+              switch (lResponse.status()) {
+                case BuildTfResponse::OK :
+                  // marked TfBuilder as scheduled
+                  mTfBuilderInfo.markTfBuilderWithTfId(lTfBuilderId, lRequest.tf_id());
+                  break;
+                case BuildTfResponse::ERROR_NOMEM :
+                  LOG (ERROR) << "Scheduling error: selected TfBuilder returned ERROR_NOMEM";
+                  break;
+                case BuildTfResponse::ERROR_NOT_RUNNING :
+                  LOG (ERROR) << "Scheduling error: selected TfBuilder returned ERROR_NOT_RUNNING";
+                  break;
+                default:
+                  break;
+              }
+            } else {
+              LOG(ERROR) << "Scheduling TF to TfBuilder " << lTfBuilderId << " failed: gRPC error.";
+              LOG(WARNING) << "Removing TfBuilder: " << lTfBuilderId;
 
-          if (lRpcCli->BuildTfRequest(lRequest, lResponse)) {
-            switch (lResponse.status()) {
-              case BuildTfResponse::OK :
-                // marked TfBuilder as scheduled
-                mTfBuilderInfo.markTfBuilderWithTfId(lTfBuilderId, lRequest.tf_id());
-                break;
-              case BuildTfResponse::ERROR_NOMEM :
-                LOG (ERROR) << "Scheduling error: selected TfBuilder returned ERROR_NOMEM";
-                break;
-              case BuildTfResponse::ERROR_NOT_RUNNING :
-                LOG (ERROR) << "Scheduling error: selected TfBuilder returned ERROR_NOT_RUNNING";
-                break;
-              default:
-                break;
+              lRpcCli.put();
+              mConnManager.dropAllStfsAsync(lTfId);
+              mConnManager.removeTfBuilder(lTfBuilderId);
+              mTfBuilderInfo.removeReadyTfBuilder(lTfBuilderId);
             }
           } else {
-            LOG(ERROR) << "Scheduling TF to TfBuilder " << lTfBuilderId << " failed: gRPC error.";
-            LOG(WARNING) << "Removing TfBuilder: " << lTfBuilderId;
-
+            // TfBuilder was removed in the meantime, e.g. by housekeeping thread because of stale info
+            // We drop the current TF as this is not a likely situation
+            LOG (WARNING) << "Selected TfBuilder is not reachable for TF: " << lTfId
+                          << ", TfBuilded id: " << lTfBuilderId;
+            mConnManager.dropAllStfsAsync(lTfId);
             mConnManager.removeTfBuilder(lTfBuilderId);
+            mTfBuilderInfo.removeReadyTfBuilder(lTfBuilderId);
           }
-
         } else {
-          // TODO: notify StfSenders to drop. Cannot schedule!
-          //
+          // No candidate for scheduling
           mConnManager.dropAllStfsAsync(lTfId);
         }
       }
