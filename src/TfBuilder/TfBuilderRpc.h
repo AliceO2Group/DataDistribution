@@ -63,7 +63,7 @@ public:
   void StfRequestThread();
 
   bool recordTfBuilt(const SubTimeFrame &pTf);
-  bool recordTfForwarded(const SubTimeFrame &pTf);
+  bool recordTfForwarded(const std::uint64_t &pTfId);
   bool sendTfBuilderUpdate();
 
   bool getNewTfBuildingRequest(TfBuildingInformation &pNewTfRequest)

@@ -17,6 +17,7 @@
 #include <SubTimeFrameVisitors.h>
 
 #include <ConfigConsul.h>
+#include <SubTimeFrameDPL.h>
 
 #include <options/FairMQProgOptions.h>
 #include <FairMQLogger.h>
@@ -40,6 +41,7 @@ TfBuilderDevice::TfBuilderDevice()
     mRpc(std::make_shared<TfBuilderRpcImpl>(mDiscoveryConfig)),
     mFlpInputHandler(*this, mRpc, eTfBuilderOut),
     mFileSink(*this, *this, eTfFileSinkIn, eTfFileSinkOut),
+    mFileSource(*this, eTfFileSourceOut),
     mTfSizeSamples(),
     mTfFreqSamples()
 {
@@ -49,9 +51,10 @@ TfBuilderDevice::~TfBuilderDevice()
 {
 }
 
-void TfBuilderDevice::Init()
+void TfBuilderDevice::InitTask()
 {
   {
+    mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
     mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
     mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
     mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
@@ -83,6 +86,17 @@ void TfBuilderDevice::Init()
       exit(-1);
     }
 
+    // Using DPL?
+    if (mDplChannelName != "") {
+      mDplEnabled = true;
+      mStandalone = false;
+      LOG(INFO) << "DPL Channel name: " << mDplChannelName;
+    } else {
+      mDplEnabled = false;
+      mStandalone = true;
+      LOG(INFO) << "Not sending to DPL.";
+    }
+
     mRunning = true;
 
     // start all gRPC clients
@@ -92,6 +106,31 @@ void TfBuilderDevice::Init()
     mTfFwdThread = std::thread(&TfBuilderDevice::TfForwardThread, this);
     // start file sink
     mFileSink.start();
+
+    // start file source
+    // channel for FileSource: stf or dpl, or generic one in case of standalone
+    if (mStandalone) {
+      // create default FMQ shm channel
+      auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("shmem", "", GetConfig());
+      if (!lTransportFactory) {
+        LOG(ERROR) << "Creating transport factory failed!";
+        exit(-1);
+      }
+      mStandaloneChannel = std::make_unique<FairMQChannel>(
+        "standalone-chan[0]" ,  // name
+        "pair",              // type
+        "bind",              // method
+        "ipc:///tmp/standalone-chan-tfb", // address
+        lTransportFactory
+      );
+
+      // mStandaloneChannel.Init();
+      mStandaloneChannel->Init();
+      mStandaloneChannel->Validate();
+      mFileSource.start(*mStandaloneChannel, false);
+    } else {
+      mFileSource.start(GetChannel(mDplChannelName), mDplEnabled);
+    }
 
     // Start input handlers
     if (!mFlpInputHandler.start(mDiscoveryConfig)) {
@@ -151,16 +190,30 @@ bool TfBuilderDevice::ConditionalRun()
 
 void TfBuilderDevice::TfForwardThread()
 {
-  // wait for the device to go into RUNNING state
+  /// prepare TF for output (standard or DPL)
+  std::unique_ptr<TimeFrameBuilder> lTfBuilder;
+
+  /// Serializer for DPL channel
+  std::unique_ptr<StfDplAdapter> lTfDplAdapter;
+
+  if (!mStandalone) {
+    if (dplEnabled()) {
+      auto& lOutputChan = GetChannel(getDplChannelName(), 0);
+      lTfBuilder = std::make_unique<TimeFrameBuilder>(lOutputChan, dplEnabled());
+      lTfDplAdapter = std::make_unique<StfDplAdapter>(lOutputChan);
+    }
+  }
 
   while (mRunning) {
     auto lFreqStartTime = std::chrono::high_resolution_clock::now();
 
     std::unique_ptr<SubTimeFrame> lTf = dequeue(eTfFwdIn);
     if (!lTf) {
-      LOG(WARNING) << "ConditionalRun(): Exiting... ";
+      LOG(WARNING) << "TfForwardThread(): Exiting... ";
       break;
     }
+
+    const auto lTfId = lTf->header().mId;
 
     // record frequency and size of TFs
     if (mBuildHistograms) {
@@ -175,17 +228,42 @@ void TfBuilderDevice::TfForwardThread()
       mTfSizeSamples.Fill(lTf->getDataSize());
     }
 
-    // TODO: Do something with the TF
-    {
-      // is there a ratelimited LOG?
-      static unsigned long floodgate = 0;
-      if (++floodgate % 44 == 1)
-        LOG(DEBUG) << "TF[" << lTf->header().mId << "] size: " << lTf->getDataSize();
+    if (!mStandalone) {
+      try {
+        static std::uint64_t sTfOutCnt = 0;
+        if (++sTfOutCnt % 256 == 0) {
+          LOG(INFO) << "Forwarding new TF id: " << lTf->header().mId << ", total: " << sTfOutCnt;
+        }
+
+        lTfBuilder->adaptHeaders(lTf.get());
+
+        if (dplEnabled()) {
+          // DPL Channel
+          static thread_local unsigned long lThrottle = 0;
+          if (++lThrottle % 100 == 0) {
+            LOG(DEBUG) << "Sending STF to DPL: id:" << lTf->header().mId
+                       << " data size: " << lTf->getDataSize()
+                       << " unique equipments: " << lTf->getEquipmentIdentifiers().size();
+          }
+
+          // Send to DPL bridge
+          assert (lTfDplAdapter);
+          lTfDplAdapter->sendToDpl(std::move(lTf));
+        }
+      } catch (std::exception& e) {
+        if (IsRunningState()) {
+          LOG(ERROR) << "StfOutputThread: exception on send: " << e.what();
+        } else {
+          LOG(INFO) << "StfOutputThread(NOT_RUNNING): shutting down: " << e.what();
+        }
+        break;
+      }
     }
 
     // decrement the size used by the TF
     // TODO: move this close to the output channel send
-    mRpc->recordTfForwarded(*lTf);
+    mRpc->recordTfForwarded(lTfId);
+
   }
 
   LOG(INFO) << "Exiting TF forwarding thread... ";
@@ -219,6 +297,10 @@ void TfBuilderDevice::GuiThread()
 
     mGui->Canvas().Modified();
     mGui->Canvas().Update();
+
+    LOG(INFO) << "Mean size of TimeFrames : " << mTfSizeSamples.Mean();
+    LOG(INFO) << "Mean TimeFrame frequency: " << mTfFreqSamples.Mean();
+    LOG(INFO) << "Number of queued TFs    : " << getPipelineSize(); // current value
 
     std::this_thread::sleep_for(5s);
   }

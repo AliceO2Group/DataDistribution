@@ -169,7 +169,7 @@ void StfBuilderDevice::PreRun()
       "standalone-chan[0]" ,  // name
       "pair",              // type
       "bind",              // method
-      "ipc:///tmp/standalone-chan", // address
+      "ipc:///tmp/standalone-chan-stfb", // address
       lTransportFactory
     );
 
