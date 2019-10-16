@@ -166,6 +166,8 @@ void TfSchedulerConnManager::removeTfBuilder(const std::string &plTfBuilderId)
   // Stop talking to TfBuilder
   deleteTfBuilderRpcClient(plTfBuilderId);
 
+  LOG(DEBUG) << "TfBuilder RpcClient deleted, id: " << plTfBuilderId;
+
   // Tell all StfSenders to disconnect
   TfBuilderEndpoint lParam;
   lParam.set_tf_builder_id(plTfBuilderId);
@@ -173,7 +175,6 @@ void TfSchedulerConnManager::removeTfBuilder(const std::string &plTfBuilderId)
   for (auto &lStfSenderIdCli : mStfSenderRpcClients) {
     const auto &lStfSenderId = lStfSenderIdCli.first;
     auto &lStfSenderRpcCli = lStfSenderIdCli.second;
-
 
     StatusResponse lResponse;
     if(!lStfSenderRpcCli->DisconnectTfBuilderRequest(lParam, lResponse).ok()) {
@@ -263,7 +264,10 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
       }
       sort(lDroppedStfs.begin(), lDroppedStfs.end());
       for (auto &lDroppedId : lDroppedStfs) {
-        LOG (INFO) << "Dropped SubTimeFrame (cannot schedule): " << lDroppedId;
+        static std::atomic_uint64_t lsDropLogRate = 0;
+        if (++lsDropLogRate % 256 == 0) {
+          LOG (INFO) << "Dropped SubTimeFrame (cannot schedule): " << lDroppedId << ", total: " << lsDropLogRate;
+        }
       }
       lDroppedStfs.clear();
     }

@@ -218,13 +218,12 @@
             },
 
 
-
             {
                 "id": "tf_builder-0",
                 "channels": [
                     {
                         "name": "dpl-tf-channel",
-                        "transport": "shmem",
+                        "transport": "zeromq",
                         "sockets": [
                             {
                                 "type": "pair",
@@ -241,7 +240,7 @@
                 "channels": [
                     {
                         "name": "dpl-tf-channel",
-                        "transport": "shmem",
+                        "transport": "zeromq",
                         "sockets": [
                             {
                                 "type": "pair",
@@ -258,7 +257,7 @@
                 "channels": [
                     {
                         "name": "dpl-tf-channel",
-                        "transport": "shmem",
+                        "transport": "zeromq",
                         "sockets": [
                             {
                                 "type": "pair",

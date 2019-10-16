@@ -44,7 +44,8 @@ class TfSchedulerConnManager
   TfSchedulerConnManager(std::shared_ptr<ConsulTfSchedulerInstance> pDiscoveryConfig, const PartitionRequest &pPartitionRequest)
   : mPartitionInfo(pPartitionRequest),
     mDiscoveryConfig(pDiscoveryConfig),
-    mStfSenderRpcClients(pDiscoveryConfig)
+    mStfSenderRpcClients(pDiscoveryConfig),
+    mTfBuilderRpcClients(pDiscoveryConfig)
   {
   }
 
@@ -91,31 +92,17 @@ class TfSchedulerConnManager
 
   bool newTfBuilderRpcClient(const std::string &pId)
   {
-    std::scoped_lock lLock(mStfSenderClientsLock);
-
-    mTfBuilderRpcClients.erase(pId);
-
-    mTfBuilderRpcClients.emplace(
-      pId,
-      std::make_unique<TfBuilderRpcClient>()
-    );
-
-    auto lRet = mTfBuilderRpcClients[pId]->start(mDiscoveryConfig, pId);
-    if (!lRet) {
-      mTfBuilderRpcClients.erase(pId);
-    }
-    return lRet;
+    return mTfBuilderRpcClients.add(pId);
   }
 
   void deleteTfBuilderRpcClient(const std::string &pId)
   {
-    std::scoped_lock lLock(mStfSenderClientsLock);
-    mTfBuilderRpcClients.erase(pId);
+    mTfBuilderRpcClients.remove(pId);
   }
 
-  TfBuilderRpcClient* getTfBuilderRpcClient(const std::string &pId)
+  TfBuilderRpcClient getTfBuilderRpcClient(const std::string &pId)
   {
-    return mTfBuilderRpcClients[pId].get();
+    return mTfBuilderRpcClients.get(pId);
   }
 
 private:
@@ -133,7 +120,7 @@ private:
   std::recursive_mutex mStfSenderClientsLock;
   StfSenderRpcClientCollection<ConsulTfSchedulerInstance> mStfSenderRpcClients;
   /// TfBuilder RPC-client channels
-  std::map<std::string, std::unique_ptr<TfBuilderRpcClient>> mTfBuilderRpcClients;
+  TfBuilderRpcClientCollection<ConsulTfSchedulerInstance> mTfBuilderRpcClients;
 
   /// futures for async operation
   std::recursive_mutex mStfDropFuturesLock;

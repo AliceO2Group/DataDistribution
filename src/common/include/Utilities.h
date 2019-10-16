@@ -78,7 +78,7 @@ class RunningSamples
 
   T Mean() const
   {
-    return Sum() / T(mCount);
+    return mCount == 0 ? T(0) : (Sum() / T(mCount));
   }
 
   std::pair<T, T> MinMax() const

@@ -61,9 +61,6 @@ std::vector<EquipmentIdentifier> SubTimeFrame::getEquipmentIdentifiers() const
   return lKeys;
 }
 
-// TODO: make sure to report miss-configured equipment specs
-static bool fixme__EqupId = true;
-
 void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf)
 {
   // make sure data equipment does not repeat
@@ -73,13 +70,7 @@ void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf)
 
   for (const auto& lId : pStf->getEquipmentIdentifiers()) {
     if (lUnionSet.emplace(lId).second == false /* not inserted */) {
-      LOG(WARNING) << "Equipment already present" << lId.info();
-      if (fixme__EqupId) {
-        LOG(WARNING) << "FIXME: should not continue";
-        continue;
-      } else {
-        throw std::invalid_argument("Cannot add Equipment: already present!");
-      }
+      LOG(ERROR) << "Equipment already present" << lId.info();
     }
   }
 
