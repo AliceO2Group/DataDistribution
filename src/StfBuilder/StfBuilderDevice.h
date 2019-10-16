@@ -124,10 +124,10 @@ class StfBuilderDevice : public DataDistDevice,
         break;
       }
       case eStfFileSinkOut:
-
+      {
         lNextStage = eStfSendIn;
         break;
-
+      }
       default:
         throw std::runtime_error("pipeline error");
     }

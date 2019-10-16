@@ -26,7 +26,7 @@ namespace bpo = boost::program_options;
 void addCustomOptions(bpo::options_description& options)
 {
 
-  bpo::options_description lStfBuilderOptions("SubTimeFrameBuilder options", 120);
+  bpo::options_description lStfBuilderOptions("StfBuilder options", 120);
 
   lStfBuilderOptions.add_options()
     (
@@ -55,7 +55,7 @@ void addCustomOptions(bpo::options_description& options)
       "Enable GUI."
     );
 
-  bpo::options_description lStfBuilderDplOptions("SubTimeFrameBuilder DPL options", 120);
+  bpo::options_description lStfBuilderDplOptions("StfBuilder DPL options", 120);
   lStfBuilderDplOptions.add_options()
   (
     o2::DataDistribution::StfBuilderDevice::OptionKeyDplChannelName,

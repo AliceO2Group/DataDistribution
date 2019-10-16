@@ -228,7 +228,7 @@ bool TfBuilderRpcImpl::recordTfBuilt(const SubTimeFrame &pTf)
   return true;
 }
 
-bool TfBuilderRpcImpl::recordTfForwarded(const SubTimeFrame &pTf)
+bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
 {
   if (!mRunning) {
     return false;
@@ -237,19 +237,18 @@ bool TfBuilderRpcImpl::recordTfForwarded(const SubTimeFrame &pTf)
   {
     std::scoped_lock lLock(mTfIdSizesLock);
 
-    if (mTfIdSizes.count(pTf.header().mId) != 1) {
-      LOG(ERROR) << "TimeFrame buffer size increase error: No TimeFrame with ID " << pTf.header().mId;
+    if (mTfIdSizes.count(pTfId) != 1) {
+      LOG(ERROR) << "TimeFrame buffer size increase error: No TimeFrame with ID " << pTfId;
       return false;
     }
 
-    const auto lTfSize = mTfIdSizes[pTf.header().mId];
+    const auto lTfSize = mTfIdSizes[pTfId];
     mCurrentTfBufferSize += lTfSize;
 
     // remove the tf id from the map
-    mTfIdSizes.erase(pTf.header().mId);
+    mTfIdSizes.erase(pTfId);
 
     mNumBufferedTfs--;
-
   }
 
   mUpdateCondition.notify_one();

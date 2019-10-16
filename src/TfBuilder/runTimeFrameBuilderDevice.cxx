@@ -20,9 +20,12 @@ namespace bpo = boost::program_options;
 
 void addCustomOptions(bpo::options_description& options)
 {
-  options.add_options()(
+
+  bpo::options_description lTfBuilderOptions("TfBuilder options", 120);
+
+  lTfBuilderOptions.add_options()(
     o2::DataDistribution::TfBuilderDevice::OptionKeyStandalone,
-    bpo::bool_switch()->default_value(true),
+    bpo::bool_switch()->default_value(false),
     "Standalone operation. TimeFrames will not be forwarded to other processes.")(
     o2::DataDistribution::TfBuilderDevice::OptionKeyTfMemorySize,
     bpo::value<std::uint64_t>()->default_value(512),
@@ -30,6 +33,18 @@ void addCustomOptions(bpo::options_description& options)
     o2::DataDistribution::TfBuilderDevice::OptionKeyGui,
     bpo::bool_switch()->default_value(false),
     "Enable GUI.");
+
+
+  bpo::options_description lTfBuilderDplOptions("TfBuilder DPL options", 120);
+  lTfBuilderDplOptions.add_options()
+  (
+    o2::DataDistribution::TfBuilderDevice::OptionKeyDplChannelName,
+    bpo::value<std::string>()->default_value(""),
+    "Name of the DPL output channel."
+  );
+
+  options.add(lTfBuilderOptions);
+  options.add(lTfBuilderDplOptions);
 
   // Add options for TF file sink
   options.add(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());

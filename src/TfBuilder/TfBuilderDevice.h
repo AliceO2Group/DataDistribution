@@ -21,6 +21,7 @@
 
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameFileSink.h>
+#include <SubTimeFrameFileSource.h>
 #include <ConcurrentQueue.h>
 #include <Utilities.h>
 #include <RootGui.h>
@@ -43,7 +44,9 @@ class ConsulConfig;
 
 enum TfBuilderPipeline {
   eTfBuilderOut = 0,
+  eTfFileSourceOut = 0,
 
+  // input/output stages
   eTfFileSinkIn = 0,
   eTfFileSinkOut = 1,
 
@@ -61,13 +64,15 @@ class TfBuilderDevice : public DataDistDevice,
   static constexpr const char* OptionKeyTfMemorySize = "tf-memory-size";
   static constexpr const char* OptionKeyGui = "gui";
 
+  static constexpr const char* OptionKeyDplChannelName = "dpl-channel-name";
+
   /// Default constructor
   TfBuilderDevice();
 
   /// Default destructor
   ~TfBuilderDevice() override;
 
-  void Init() final;
+  void InitTask() final;
   void Reset() final;
 
 
@@ -81,13 +86,20 @@ class TfBuilderDevice : public DataDistDevice,
 
     switch (pStage) {
       case eTfBuilderOut:
+      /*case eTfFileSourceOut:*/
+      {
         lNextStage = mFileSink.enabled() ? eTfFileSinkIn : eTfFwdIn;
         break;
+      }
       case eTfFileSinkOut:
+      {
         lNextStage = eTfFwdIn;
         break;
+      }
       default:
+      {
         throw std::runtime_error("pipeline error");
+      }
     }
 
     assert(lNextStage >= eTfFileSinkIn && lNextStage <= eTfFwdIn);
@@ -98,10 +110,16 @@ class TfBuilderDevice : public DataDistDevice,
   void TfForwardThread();
 
 
+  const std::string& getDplChannelName() const { return mDplChannelName; }
+
+  bool dplEnabled() const noexcept { return mDplEnabled; }
+
   /// Configuration
+  std::string mDplChannelName;
   bool mStandalone;
   std::uint64_t mTfBufferSize;
   std::string mPartitionId;
+  bool mDplEnabled = false;
 
   /// Discovery configuration
   std::shared_ptr<ConsulTfBuilder> mDiscoveryConfig;
@@ -109,12 +127,15 @@ class TfBuilderDevice : public DataDistDevice,
   /// RPC service
   std::shared_ptr<TfBuilderRpcImpl> mRpc;
 
-
   /// Input Interface handler
   TfBuilderInput mFlpInputHandler;
 
   /// File sink
   SubTimeFrameFileSink mFileSink;
+
+  /// File source
+  std::unique_ptr<FairMQChannel> mStandaloneChannel;
+  SubTimeFrameFileSource mFileSource;
 
   /// TF forwarding thread
   std::thread mTfFwdThread;
