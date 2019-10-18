@@ -56,17 +56,20 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     mStf = std::make_unique<SubTimeFrame>(pHdr.mTimeFrameId);
   }
 
+  std::vector<bool> lKeepBlocks(pHbFrames.size(), true);
+
   // filter empty trigger RDHv4
   {
     if (mRdh4FilterTrigger) {
-      for (auto lBlockIter = std::next(pHbFrames.begin()); lBlockIter != pHbFrames.end(); ) {
+
+      for (std::size_t i = 1; i < pHbFrames.size(); i++) {
+
         if (! ReadoutDataUtils::filterTriggerEmpyBlocksV4(
-                                    reinterpret_cast<const char*>((*lBlockIter)->GetData()),
-                                    (*lBlockIter)->GetSize()) ) {
-          lBlockIter = std::next(lBlockIter);
+                                    reinterpret_cast<const char*>(pHbFrames[i]->GetData()),
+                                    pHbFrames[i]->GetSize()) ) {
+          lKeepBlocks[i] = true;
         } else {
-          lBlockIter = pHbFrames.erase(lBlockIter);
-          pHdr.mNumberHbf -= 1;
+          lKeepBlocks[i] = false;
         }
       }
     }
@@ -76,17 +79,22 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
   {
     if (RdhSanityCheck() != ReadoutDataUtils::eNoSanityCheck) {
 
-      for (auto lBlockIter = std::next(pHbFrames.begin()); lBlockIter != pHbFrames.end(); ) {
+      // for (auto lBlockIter = std::next(pHbFrames.begin()); lBlockIter != pHbFrames.end(); ) {
+      for (std::size_t i = 1; i < pHbFrames.size(); i++) {
 
-        const auto lOk = ReadoutDataUtils::rdhSanityCheck(reinterpret_cast<const char*>((*lBlockIter)->GetData()), (*lBlockIter)->GetSize());
+        if (lKeepBlocks[i] == false) {
+          continue; // already filtered out
+        }
 
-        if (lOk) {
-          // check the next
-          lBlockIter = std::next(lBlockIter);
-        } else if (!lOk && RdhSanityCheck() == ReadoutDataUtils::eSanityCheckDrop) {
+        const auto lOk = ReadoutDataUtils::rdhSanityCheck(
+          reinterpret_cast<const char*>(pHbFrames[i]->GetData()),
+          pHbFrames[i]->GetSize());
+
+        if (!lOk && RdhSanityCheck() == ReadoutDataUtils::eSanityCheckDrop) {
           LOG(WARNING) << "RDH SANITY CHECK: Removing data block";
-          lBlockIter = pHbFrames.erase(lBlockIter);
-          pHdr.mNumberHbf -= 1;
+
+          lKeepBlocks[i] = false;
+
         } else if (!lOk && RdhSanityCheck() == ReadoutDataUtils::eSanityCheckPrint) {
 
           LOG(INFO) << "Printing data blocks of update with TF ID: " << pHdr.mTimeFrameId
@@ -95,28 +103,25 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
           // dump the data block, skipping data
           std::size_t lCurrentDataIdx = 0;
 
-          while (lCurrentDataIdx < (*lBlockIter)->GetSize()) {
+          while (lCurrentDataIdx < pHbFrames[i]->GetSize()) {
 
-            const auto lDataSizeLeft = std::size_t((*lBlockIter)->GetSize()) - lCurrentDataIdx;
+            const auto lDataSizeLeft = std::size_t(pHbFrames[i]->GetSize()) - lCurrentDataIdx;
 
             std::string lInfoStr = "RDH block (80 bytes in total) of [";
-            lInfoStr += std::to_string((lBlockIter - pHbFrames.begin())) + "] 8 kiB page";
+            lInfoStr += std::to_string(i) + "] 8 kiB page";
 
             o2::header::hexDump(lInfoStr.c_str(),
-              reinterpret_cast<char*>((*lBlockIter)->GetData()) + lCurrentDataIdx,
+              reinterpret_cast<char*>(pHbFrames[i]->GetData()) + lCurrentDataIdx,
               std::size_t(std::min(std::size_t(80), lDataSizeLeft)));
 
-
             auto [lCru, lEp, lLink] = ReadoutDataUtils::getSubSpecificationComponents(
-              reinterpret_cast<char*>((*lBlockIter)->GetData()) + lCurrentDataIdx,
+              reinterpret_cast<char*>(pHbFrames[i]->GetData()) + lCurrentDataIdx,
               std::size_t(std::min(std::size_t(80), lDataSizeLeft))
             );
             LOG(INFO) << "RDH info CRU: " << lCru << " Endpoint: " << lEp << " Link: " << lLink;
 
             lCurrentDataIdx += std::min(std::size_t(8192), lDataSizeLeft);
           }
-          // advance to the next block
-          lBlockIter = std::next(lBlockIter);
         }
       }
     }
@@ -131,6 +136,10 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 
   // NOTE: skip the first message (readout header) in pHbFrames
   for (size_t i = 1; i < pHbFrames.size(); i++) {
+
+    if (lKeepBlocks[i] == false) {
+      continue; // already filtered out
+    }
 
     std::unique_ptr<FairMQMessage> lHdrMsg;
 

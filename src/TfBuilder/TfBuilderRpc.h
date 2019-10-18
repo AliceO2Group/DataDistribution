@@ -53,7 +53,7 @@ public:
   TfSchedulerRpcClient& TfSchedRpcCli() { return mTfSchedulerRpcClient; }
 
   void initDiscovery(const std::string pRpcSrvBindIp, int &lRealPort /*[out]*/);
-  void start(const std::uint64_t pBufferSize);
+  bool start(const std::uint64_t pBufferSize);
   void stop();
 
   void startAcceptingTfs();

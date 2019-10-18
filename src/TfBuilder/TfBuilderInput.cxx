@@ -79,12 +79,12 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 
     if (!lNewChannel->BindEndpoint(lAddress)) {
       LOG (ERROR) << "Cannot bind channel to a free port! Check user permissions. Bind address: " << lAddress;
-      exit(-1);
+      return false;
     }
 
     if (!lNewChannel->Validate()) {
       LOG (ERROR) << "Channel validation failed! Exiting...\n";
-      exit(-1);
+      return false;
     }
 
     // save channel addresses to configuration
@@ -236,15 +236,17 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
     std::unique_ptr<SubTimeFrame> lStf = lStfReceiver.deserialize(lInputChan);
     if (!lStf) {
      // timeout
-     if (rand() % 100 < 20)
-      LOG(DEBUG) << "Retrying to receive";
      continue;
     }
 
     const TimeFrameIdType lTfId = lStf->header().mId;
 
-    if (rand() % 100 < 10)
-      LOG(DEBUG) << "Received Stf from flp " << pFlpIndex << " with id " << lTfId;
+    {
+      static thread_local std::atomic_uint64_t sNumStfs = 0;
+      if (++sNumStfs % 88 == 0)
+      LOG(DEBUG) << "Received Stf from flp " << pFlpIndex << " with id " << lTfId << ", total: " << sNumStfs;
+    }
+
 
     {
       // Push the STF into the merger queue

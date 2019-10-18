@@ -132,7 +132,11 @@ class StfBuilderDevice : public DataDistDevice,
         throw std::runtime_error("pipeline error");
     }
 
-    assert(lNextStage >= eStfFileSinkIn && lNextStage <= eStfSendIn);
+    if (!(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn)) {
+      LOG(ERROR) << "Stage error! next: " << lNextStage;
+    }
+
+    assert(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn);
 
     return lNextStage;
   }

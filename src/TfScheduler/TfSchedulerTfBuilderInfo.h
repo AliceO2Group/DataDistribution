@@ -134,13 +134,17 @@ class TfSchedulerTfBuilderInfo
     }
 
     // reposition the element
-    auto lTfBuilder = *lIt;
+    auto lTfBuilder = std::move(*lIt);
+
+    assert (lTfBuilder->mEstimatedFreeMemory >= lTfEstSize);
+
+    // copy the string out
+    assert (!lTfBuilder->id().empty());
     pTfBuilderId = lTfBuilder->id();
 
     // deque erase reverse_iterator
     mReadyTfBuilders.erase(lIt);
 
-    assert (lTfBuilder->mEstimatedFreeMemory >= lTfEstSize);
     lTfBuilder->mEstimatedFreeMemory -= lTfEstSize;
     mReadyTfBuilders.emplace_back(std::move(lTfBuilder));
 
@@ -159,7 +163,7 @@ class TfSchedulerTfBuilderInfo
 
 private:
   /// Overestimation of actual size for TF building
-  static constexpr std::uint64_t sTfSizeOverestimatePercent = 10;
+  static constexpr std::uint64_t sTfSizeOverestimatePercent = 20;
 
   /// Reap time for non-complete TFs
   static constexpr auto sTfBuilderReapTime = 2s;

@@ -38,16 +38,21 @@ void TfBuilderRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, int &lReal
 }
 
 
-void TfBuilderRpcImpl::start(const std::uint64_t pBufferSize)
+bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize)
 {
   mCurrentTfBufferSize = pBufferSize;
 
-  mTfBuildRequests = std::make_unique<ConcurrentFifo<TfBuildingInformation>>();
-
   // Interact with the scheduler
-  mTfSchedulerRpcClient.start(mDiscoveryConfig);
+  if (!mTfSchedulerRpcClient.start(mDiscoveryConfig)) {
+    return false;
+  }
+
   // Start gRPC connections to all StfSenders
-  mStfSenderRpcClients.start();
+  if (!mStfSenderRpcClients.start() ) {
+    return false;
+  }
+
+  mTfBuildRequests = std::make_unique<ConcurrentFifo<TfBuildingInformation>>();
 
   // start the update sending thread
   mRunning = true;
@@ -55,6 +60,8 @@ void TfBuilderRpcImpl::start(const std::uint64_t pBufferSize)
 
   // start the stf requester thread
   mStfRequestThread = std::thread(&TfBuilderRpcImpl::StfRequestThread, this);
+
+  return true;
 }
 
 void TfBuilderRpcImpl::stop()
@@ -67,7 +74,9 @@ void TfBuilderRpcImpl::stop()
   }
 
   {
-    mTfBuildRequests->stop();
+    if (mTfBuildRequests) {
+      mTfBuildRequests->stop();
+    }
     if (mStfRequestThread.joinable()) {
       mStfRequestThread.join();
     }
@@ -136,8 +145,12 @@ void TfBuilderRpcImpl::StfRequestThread()
       continue; // mRunning will change to false
     }
 
-    if (rand() % 100 < 5) {
-      LOG (INFO) << "Requesting SubTimeFrames with id: " << mTfInfo.tf_id() << ", total size: " << mTfInfo.tf_size();
+    {
+      static std::uint64_t sNumTfRequests = 0;
+      if (++sNumTfRequests % 50 == 0) {
+        LOG (INFO) << "Requesting SubTimeFrames with id: " << mTfInfo.tf_id()
+                   << ", total size: " << mTfInfo.tf_size() << ". Total requests: " << sNumTfRequests;
+      }
     }
 
     for (auto &lStfDataIter : mTfInfo.stf_size_map()) {

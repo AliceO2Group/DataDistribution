@@ -52,9 +52,10 @@ class TfSchedulerConnManager
   ~TfSchedulerConnManager() { }
 
   bool start() {
-    if (!mStfSenderRpcClients.start()) {
-      mStfSenderRpcClients.stop();
-      return false;
+    using namespace std::chrono_literals;
+
+    while (!mStfSenderRpcClients.start()) {
+      std::this_thread::sleep_for(1s);
     }
 
     mRunning = true;
@@ -103,6 +104,11 @@ class TfSchedulerConnManager
   TfBuilderRpcClient getTfBuilderRpcClient(const std::string &pId)
   {
     return mTfBuilderRpcClients.get(pId);
+  }
+
+  void checkStfSenderRpcConn(const std::string &lStfSenderId)
+  {
+    mStfSenderRpcClients.checkStfSenderRpcConn(lStfSenderId);
   }
 
 private:

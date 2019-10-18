@@ -93,24 +93,55 @@ class StfSenderDevice : public DataDistDevice,
     assert(mNumStfs >= 0);
 
     switch (pStage) {
-      case eReceiverOut: {
+      case eReceiverOut:
+      /*  case eFileSinkOut: */
+      {
         const auto lNumStfs = stfCountIncFetch();
         if (mPipelineLimit && (lNumStfs > mMaxStfsInPipeline)) {
           stfCountDecFetch();
           lNextStage = eNullIn;
-        } else {
-          lNextStage = mFileSink.enabled() ? eFileSinkIn : eSenderIn;
+          break;
         }
+
+        if (mFileSink.enabled()) {
+          lNextStage = eFileSinkIn;
+          break;
+        }
+
+        if (mStandalone) {
+          stfCountDecFetch();
+          lNextStage = eNullIn;
+          break;
+        }
+
+        lNextStage = eSenderIn;
         break;
       }
       case eFileSinkOut:
+      {
+        const auto lNumStfs = stfCountIncFetch();
+
+        if (mStandalone) {
+          stfCountDecFetch();
+          lNextStage = eNullIn;
+          break;
+        }
+
+        if (mPipelineLimit && (lNumStfs > mMaxStfsInPipeline)) {
+          stfCountDecFetch();
+          lNextStage = eNullIn;
+          break;
+        }
+
         lNextStage = eSenderIn;
         break;
+      }
+
       default:
         throw std::runtime_error("pipeline error");
     }
 
-    assert(lNextStage >= eFileSinkIn && lNextStage <= eSenderIn);
+    assert(lNextStage >= eFileSinkIn && lNextStage <= eNullIn);
     return lNextStage;
   }
 

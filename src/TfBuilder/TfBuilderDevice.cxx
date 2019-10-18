@@ -37,9 +37,6 @@ using namespace std::chrono_literals;
 TfBuilderDevice::TfBuilderDevice()
   : DataDistDevice(),
     IFifoPipeline(eTfPipelineSize),
-    mDiscoveryConfig(std::make_shared<ConsulTfBuilder>(ProcessType::TfBuilder, Config::getEndpointOption(*GetConfig()))),
-    mRpc(std::make_shared<TfBuilderRpcImpl>(mDiscoveryConfig)),
-    mFlpInputHandler(*this, mRpc, eTfBuilderOut),
     mFileSink(*this, *this, eTfFileSinkIn, eTfFileSinkOut),
     mFileSource(*this, eTfFileSourceOut),
     mTfSizeSamples(),
@@ -49,6 +46,7 @@ TfBuilderDevice::TfBuilderDevice()
 
 TfBuilderDevice::~TfBuilderDevice()
 {
+  LOG(DEBUG) << "TfBuilderDevice::~TfBuilderDevice()";
 }
 
 void TfBuilderDevice::InitTask()
@@ -59,6 +57,9 @@ void TfBuilderDevice::InitTask()
     mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
     mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
 
+    mDiscoveryConfig = std::make_shared<ConsulTfBuilder>(ProcessType::TfBuilder,
+      Config::getEndpointOption(*GetConfig()));
+
     auto &lStatus =  mDiscoveryConfig->status();
     lStatus.mutable_info()->set_type(TfBuilder);
     lStatus.mutable_info()->set_process_id(Config::getIdOption(*GetConfig()));
@@ -68,8 +69,13 @@ void TfBuilderDevice::InitTask()
     lStatus.mutable_partition()->set_partition_id(mPartitionId);
 
     // File sink
-    if (!mFileSink.loadVerifyConfig(*(this->GetConfig())))
-      exit(-1);
+    if (!mFileSink.loadVerifyConfig(*(this->GetConfig()))) {
+      mShouldExit = true;
+      return;
+    }
+
+    mRpc = std::make_shared<TfBuilderRpcImpl>(mDiscoveryConfig);
+    mFlpInputHandler = std::make_unique<TfBuilderInput>(*this, mRpc, eTfBuilderOut);
   }
 
   {
@@ -82,8 +88,9 @@ void TfBuilderDevice::InitTask()
 
     if (! mDiscoveryConfig->write(true)) {
       LOG(ERROR) << "Can not start TfBuilder with id: " << lStatus.info().process_id();
-      LOG(ERROR) << "Process with the same id already running?";
-      exit(-1);
+      LOG(ERROR) << "Process with the same id already running? If not, clear the key manually.";
+      mShouldExit = true;
+      return;
     }
 
     // Using DPL?
@@ -97,17 +104,6 @@ void TfBuilderDevice::InitTask()
       LOG(INFO) << "Not sending to DPL.";
     }
 
-    mRunning = true;
-
-    // start all gRPC clients
-    mRpc->start(mTfBufferSize << 20);
-
-    // start TF forwarding thread
-    mTfFwdThread = std::thread(&TfBuilderDevice::TfForwardThread, this);
-    // start file sink
-    mFileSink.start();
-
-    // start file source
     // channel for FileSource: stf or dpl, or generic one in case of standalone
     if (mStandalone) {
       // create default FMQ shm channel
@@ -124,22 +120,9 @@ void TfBuilderDevice::InitTask()
         lTransportFactory
       );
 
-      // mStandaloneChannel.Init();
       mStandaloneChannel->Init();
       mStandaloneChannel->Validate();
-      mFileSource.start(*mStandaloneChannel, false);
-    } else {
-      mFileSource.start(GetChannel(mDplChannelName), mDplEnabled);
     }
-
-    // Start input handlers
-    if (!mFlpInputHandler.start(mDiscoveryConfig)) {
-      LOG(ERROR) << "Could not initialize input connections. Exiting.";
-      Reset();
-      exit(-1);
-    }
-
-    mRpc->startAcceptingTfs();
 
     // start the gui thread
     if (mBuildHistograms) {
@@ -150,7 +133,52 @@ void TfBuilderDevice::InitTask()
   }
 }
 
-void TfBuilderDevice::Reset()
+void TfBuilderDevice::PreRun()
+{
+  if (mShouldExit) {
+    return;
+  }
+
+  // start all gRPC clients
+  while (!mRpc->start(mTfBufferSize << 20 /* MiB */)) {
+    // try to reach the scheduler unless we should exit
+    if (IsRunningState() && NewStatePending()) {
+      mShouldExit = true;
+      return;
+    }
+
+    std::this_thread::sleep_for(1s);
+  }
+
+  // we reached the scheduler instance, initialize everything else
+  mRunning = true;
+
+  // start TF forwarding thread
+  mTfFwdThread = std::thread(&TfBuilderDevice::TfForwardThread, this);
+  // start file sink
+  mFileSink.start();
+
+  // Start input handlers
+  if (!mFlpInputHandler->start(mDiscoveryConfig)) {
+    mShouldExit = true;
+
+    LOG(ERROR) << "Could not initialize input connections. Exiting.";
+
+    return;
+  }
+
+  // start file source
+  if (mStandalone) {
+    mFileSource.start(*mStandaloneChannel, false);
+  } else {
+    mFileSource.start(GetChannel(mDplChannelName), mDplEnabled);
+  }
+
+  // finally start accepting TimeFrames
+  mRpc->startAcceptingTfs();
+}
+
+void TfBuilderDevice::ResetTask()
 {
   mRpc->stopAcceptingTfs();
 
@@ -160,7 +188,7 @@ void TfBuilderDevice::Reset()
   stopPipeline();
 
   // stop output handlers
-  mFlpInputHandler.stop(mDiscoveryConfig);
+  mFlpInputHandler->stop(mDiscoveryConfig);
   // signal and wait for the output thread
   mFileSink.stop();
   // join on fwd thread
@@ -183,6 +211,20 @@ void TfBuilderDevice::Reset()
 
 bool TfBuilderDevice::ConditionalRun()
 {
+  if (mShouldExit) {
+    LOG(DEBUG) << "Calling TransitionTo(Exiting) from ConditionalRun";
+
+    // TransitionTo(fair::mq::State::Exiting);
+
+    mRunning = false;
+
+    LOG(DEBUG) << "Exiting from ConditionalRun()";
+
+    throw std::string("intentional exit");
+
+    return false;
+  }
+
   // nothing to do here sleep for awhile
   std::this_thread::sleep_for(1s);
   return true;

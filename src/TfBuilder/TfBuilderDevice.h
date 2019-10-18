@@ -73,10 +73,11 @@ class TfBuilderDevice : public DataDistDevice,
   ~TfBuilderDevice() override;
 
   void InitTask() final;
-  void Reset() final;
+  void ResetTask() final;
 
 
  protected:
+  void PreRun() final;
   bool ConditionalRun() final;
 
   // Run the TFBuilder pipeline
@@ -128,7 +129,7 @@ class TfBuilderDevice : public DataDistDevice,
   std::shared_ptr<TfBuilderRpcImpl> mRpc;
 
   /// Input Interface handler
-  TfBuilderInput mFlpInputHandler;
+  std::unique_ptr<TfBuilderInput> mFlpInputHandler;
 
   /// File sink
   SubTimeFrameFileSink mFileSink;
@@ -150,7 +151,9 @@ class TfBuilderDevice : public DataDistDevice,
   RunningSamples<float> mTfFreqSamples;
 
   std::atomic_bool mRunning = false;
+  std::atomic_bool mShouldExit = false;
 };
+
 }
 } /* namespace o2::DataDistribution */
 

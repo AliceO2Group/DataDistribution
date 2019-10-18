@@ -101,9 +101,15 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       // check multipart size
       {
         if (lReadoutHdr.mNumberHbf != (lReadoutMsgs.size() - 1)) {
-          LOG(ERROR) << "READOUT INTERFACE: indicated number of HBFrames in the header does not match "
+          static thread_local std::uint64_t sNumMessages = 0;
+          if (++sNumMessages % 16384 == 0) {
+            LOG(ERROR) << "READOUT INTERFACE: indicated number of HBFrames in the header does not match "
                         " the number of sent blocks: "
-                     << lReadoutHdr.mNumberHbf << " != " << (lReadoutMsgs.size() - 1);
+                       << lReadoutHdr.mNumberHbf << " != " << (lReadoutMsgs.size() - 1)
+                       << ". Total occurrences: " << sNumMessages;
+          }
+
+          lReadoutHdr.mNumberHbf = lReadoutMsgs.size() - 1;
         }
 
         if (lReadoutMsgs.size() > 1) {

@@ -347,6 +347,10 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
       break;
     }
 
+
+    // Decrement buffered STF count
+    mDevice.stfCountDecFetch();
+
     // free up an slot for sending
     {
       std::unique_lock<std::mutex> lLock(mSendSlotLock);
