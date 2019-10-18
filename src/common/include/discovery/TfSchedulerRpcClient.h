@@ -46,15 +46,12 @@ public:
     const auto &lPartitionId = pConfig->status().partition().partition_id();
 
     using namespace std::chrono_literals;
-    do {
-      mTfSchedulerConf.Clear();
-      if (pConfig->getTfSchedulerConfig(lPartitionId, mTfSchedulerConf)) {
-        break;
-      }
-      // sleep for a while and retry to find the scheduler instance
-      std::this_thread::sleep_for(100ms);
-      LOG(WARNING) << "Waiting for TfScheduler instance configuration";
-    } while(true);
+
+    mTfSchedulerConf.Clear();
+    if (!pConfig->getTfSchedulerConfig(lPartitionId, mTfSchedulerConf)) {
+      LOG(INFO) << "TfScheduler instance configuration not found";
+      return false;
+    }
 
     const std::string &lEndpoint = mTfSchedulerConf.rpc_endpoint();
 
@@ -80,6 +77,11 @@ public:
 
   // rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
   bool NumStfSendersInPartitionRequest(std::uint32_t &pNumStfSenders) {
+    if (!mStub) {
+      LOG(ERROR) << "NumStfSendersInPartitionRequest: no gRPC connection to scheduler";
+      return false;
+    }
+
     using namespace std::chrono_literals;
     do {
       ClientContext lContext;
@@ -110,6 +112,11 @@ public:
 
   // rpc TfBuilderConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderConnectionResponse) { }
   bool TfBuilderConnectionRequest(TfBuilderConfigStatus &pParam, TfBuilderConnectionResponse &pRet /*out*/) {
+    if (!mStub) {
+      LOG(ERROR) << "NumStfSendersInPartitionRequest: no gRPC connection to scheduler";
+      return false;
+    }
+
     using namespace std::chrono_literals;
     do {
       ClientContext lContext;
@@ -136,6 +143,11 @@ public:
 
   // rpc TfBuilderDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
   bool TfBuilderDisconnectionRequest(TfBuilderConfigStatus &pParam, StatusResponse &pRet /*out*/) {
+    if (!mStub) {
+      LOG(ERROR) << "NumStfSendersInPartitionRequest: no gRPC connection to scheduler";
+      return false;
+    }
+
     using namespace std::chrono_literals;
     do {
       ClientContext lContext;
@@ -162,6 +174,11 @@ public:
 
   // rpc TfBuilderUpdate(TfBuilderUpdateMessage) returns (google.protobuf.Empty) { }
   bool TfBuilderUpdate(TfBuilderUpdateMessage &pMsg) {
+    if (!mStub) {
+      LOG(ERROR) << "NumStfSendersInPartitionRequest: no gRPC connection to scheduler";
+      return false;
+    }
+
     using namespace std::chrono_literals;
 
     ClientContext lContext;
@@ -182,6 +199,11 @@ public:
 
   // rpc StfSenderStfUpdate(StfSenderStfInfo) returns (SchedulerStfInfoResponse) { }
   bool StfSenderStfUpdate(StfSenderStfInfo &pMsg, SchedulerStfInfoResponse &pRet) {
+    if (!mStub) {
+      LOG(ERROR) << "NumStfSendersInPartitionRequest: no gRPC connection to scheduler";
+      return false;
+    }
+
     ClientContext lContext;
 
     // update timestamp

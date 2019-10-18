@@ -70,7 +70,7 @@ public:
   { }
   ConsulConfig(ConsulConfig &&) = default;
 
-  ~ConsulConfig() { cleanup(); }
+  virtual ~ConsulConfig() { cleanup(); }
 
   bool write(bool pIinitial = false)
   {
@@ -112,7 +112,7 @@ private:
 
   bool createKeyPrefix();
 
-  bool write_string(const std::string &lData, const bool pInitail = false)
+  bool write_string(const std::string &lData, const bool pInitial = false)
   {
     std::unique_ptr<ppconsul::kv::Kv> kv;
 
@@ -126,10 +126,10 @@ private:
     }
 
     try{
-      if (pInitail) {
+      if (pInitial) {
         // make sure the key does not exist before
         if (kv->count(mConsulKey) > 0) {
-          LOG (ERROR) << "Consul kv error, initail write but the key is present: " << mConsulKey;
+          LOG (ERROR) << "Consul kv error, the key is already present: " << mConsulKey;
           return false;
         }
       }
@@ -178,98 +178,103 @@ public:
 
     bool lReqValid = false;
 
-      // check for 'epn/data-dist/request/partition-name' key
-      try {
-        std::scoped_lock lLock(mConsulLock);
+    // check for 'epn/data-dist/request/partition-name' key
+    try {
+      std::scoped_lock lLock(mConsulLock);
 
-        Kv kv(*mConsul);
+      Kv kv(*mConsul);
 
-        const auto lReqItems = kv.items(sReqKeyPrefix);
+      std::vector<KeyValue> lReqItems;
 
-        do {
-          if (lReqItems.size() > 0) {
-            if (lReqItems.size() != 2) {
-              LOG(INFO) << "Incomplete partition request, retrying...";
-              break;
-            }
+      do {
+        lReqItems = kv.items(sReqKeyPrefix);
 
-            // get the request fields
-            auto lPartitionIdIt = std::find_if(std::begin(lReqItems), std::end(lReqItems),
-              [&] (KeyValue const& p) { return p.key == sReqPartitionIdKey; });
-            if (lPartitionIdIt == std::end(lReqItems)) {
-              LOG(ERROR) << "Invalid new partition request. Missing key: " << sReqPartitionIdKey;
-              break;
-            }
-
-            auto lFlpIdList = std::find_if(std::begin(lReqItems), std::end(lReqItems),
-              [&] (KeyValue const& p) { return p.key == sReqStfSenderListKey; });
-            if (lFlpIdList == std::end(lReqItems)) {
-              LOG(ERROR) << "Invalid new partition request. Missing key: " << sReqStfSenderListKey;
-              break;
-            }
-
-            // validate the request fields
-            // partition name, check if already exist
-            const std::string lPartitionId = boost::trim_copy(lPartitionIdIt->value);
-            if (lPartitionId.empty()) {
-              LOG(ERROR) << "Invalid new partition request. Partition (ID) cannot be empty.";
-              break;
-            }
-
-            // validate the flp list
-            std::vector<std::string> lStfSenderIds;
-            const std::string lStfSenderIdsReq = lFlpIdList->value;
-
-            // split, trim, remove empty
-            boost::split(lStfSenderIds, lStfSenderIdsReq, boost::is_any_of(";,\n\t\r "), boost::token_compress_on);
-            const auto lNumStfSendersReq = lStfSenderIds.size();
-
-            // sort and unique
-            std::sort(std::begin(lStfSenderIds), std::end(lStfSenderIds));
-            lStfSenderIds.erase( std::unique(std::begin(lStfSenderIds), std::end(lStfSenderIds)), std::end(lStfSenderIds));
-
-            if (lStfSenderIds.empty()) {
-              LOG(ERROR) << "Invalid new partition request. List of StfSender IDs is empty.";
-              break;
-            }
-
-            if (lNumStfSendersReq != lStfSenderIds.size()) {
-              LOG(ERROR) << "Invalid new partition request. Requested FLP IDs are not unique. Provided: " << lFlpIdList->value;
-              break;
-            }
-
-            pNewPartitionRequest.mPartitionId = lPartitionId;
-            pNewPartitionRequest.mStfSenderIdList = std::move(lStfSenderIds);
-
-            lReqValid = true;
-          }
-        } while(false);
-
-        // move the partition request if exists
-        if (!lReqItems.empty()) {
-          std::string lInfoPrefix;
-          auto [lTimeStr, lTimet] = getCurrentTimeString();
-          // build info key for valid or invalid partition request
-          if (lReqValid) {
-            lInfoPrefix = sInfoKeyPrefix + pNewPartitionRequest.mPartitionId + "/info";
-          } else {
-            lInfoPrefix = sInvalidKeyPrefix + std::to_string(lTimet);
-          }
-
-          kv.set(lInfoPrefix + sTimeSubKey, lTimeStr);
-
-          // move values and erase original request
-          for (const auto &lKeyVal : lReqItems) {
-            auto lNewKey = lInfoPrefix + lKeyVal.key.substr(sReqKeyPrefix.length());
-            kv.set(lNewKey, lKeyVal.value);
-            kv.erase(lKeyVal.key);
-          }
+        if (lReqItems.size() == 0) {
+          return false;
         }
 
-      } catch (std::exception &e) {
-        LOG(ERROR) << "Consul kv partition retrieve error: " << e.what();
-        LOG(ERROR) << "Unable to check for new partition requests.";
+        if (lReqItems.size() < 2) {
+          LOG(DEBUG) << "Incomplete partition request, retrying...";
+          return false;
+        }
+
+        if (lReqItems.size() == 2) {
+          // get the request fields
+          auto lPartitionIdIt = std::find_if(std::begin(lReqItems), std::end(lReqItems),
+            [&] (KeyValue const& p) { return p.key == sReqPartitionIdKey; });
+          if (lPartitionIdIt == std::end(lReqItems)) {
+            LOG(ERROR) << "Invalid new partition request. Missing key: " << sReqPartitionIdKey;
+            break;
+          }
+
+          auto lFlpIdList = std::find_if(std::begin(lReqItems), std::end(lReqItems),
+            [&] (KeyValue const& p) { return p.key == sReqStfSenderListKey; });
+          if (lFlpIdList == std::end(lReqItems)) {
+            LOG(ERROR) << "Invalid new partition request. Missing key: " << sReqStfSenderListKey;
+            break;
+          }
+
+          // validate the request fields
+          // partition name, check if already exist
+          const std::string lPartitionId = boost::trim_copy(lPartitionIdIt->value);
+          if (lPartitionId.empty()) {
+            LOG(ERROR) << "Invalid new partition request. Partition (ID) cannot be empty.";
+            break;
+          }
+
+          // validate the flp list
+          std::vector<std::string> lStfSenderIds;
+          const std::string lStfSenderIdsReq = lFlpIdList->value;
+
+          // split, trim, remove empty
+          boost::split(lStfSenderIds, lStfSenderIdsReq, boost::is_any_of(";,\n\t\r "), boost::token_compress_on);
+          const auto lNumStfSendersReq = lStfSenderIds.size();
+
+          // sort and unique
+          std::sort(std::begin(lStfSenderIds), std::end(lStfSenderIds));
+          lStfSenderIds.erase( std::unique(std::begin(lStfSenderIds), std::end(lStfSenderIds)), std::end(lStfSenderIds));
+
+          if (lStfSenderIds.empty()) {
+            LOG(ERROR) << "Invalid new partition request. List of StfSender IDs is empty.";
+            break;
+          }
+
+          if (lNumStfSendersReq != lStfSenderIds.size()) {
+            LOG(ERROR) << "Invalid new partition request. Requested FLP IDs are not unique. Provided: " << lFlpIdList->value;
+            break;
+          }
+
+          pNewPartitionRequest.mPartitionId = lPartitionId;
+          pNewPartitionRequest.mStfSenderIdList = std::move(lStfSenderIds);
+
+          lReqValid = true;
+        }
+      } while(false);
+
+      // move the partition request if exists
+      if (!lReqItems.empty()) {
+        std::string lInfoPrefix;
+        auto [lTimeStr, lTimet] = getCurrentTimeString();
+        // build info key for valid or invalid partition request
+        if (lReqValid) {
+          lInfoPrefix = sInfoKeyPrefix + pNewPartitionRequest.mPartitionId + "/info";
+        } else {
+          lInfoPrefix = sInvalidKeyPrefix + std::to_string(lTimet);
+        }
+
+        kv.set(lInfoPrefix + sTimeSubKey, lTimeStr);
+
+        // move values and erase original request
+        for (const auto &lKeyVal : lReqItems) {
+          auto lNewKey = lInfoPrefix + lKeyVal.key.substr(sReqKeyPrefix.length());
+          kv.set(lNewKey, lKeyVal.value);
+          kv.erase(lKeyVal.key);
+        }
       }
+    } catch (std::exception &e) {
+      LOG(ERROR) << "Consul kv partition retrieve error: " << e.what();
+      LOG(ERROR) << "Unable to check for new partition requests.";
+    }
 
     return lReqValid;
   }

@@ -101,7 +101,10 @@ void TfSchedulerInstanceRpcImpl::stop()
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderUpdate(::grpc::ServerContext* /*context*/, const ::o2::DataDistribution::TfBuilderUpdateMessage* request, ::google::protobuf::Empty* /*response*/)
 {
-  // LOG(INFO) << "gRPC server: TfBuilderDisconnectionRequest: " <<  request->info().process_id();
+  static std::atomic_uint64_t sTfBuilderUpdates = 0;
+  if (++sTfBuilderUpdates % 10000 == 0) {
+    LOG(DEBUG) << "gRPC server: TfBuilderDisconnectionRequest: " << request->info().process_id() << ", total : " << sTfBuilderUpdates;
+  }
 
   mTfBuilderInfo.updateTfBuilderInfo(*request);
 
@@ -111,9 +114,16 @@ void TfSchedulerInstanceRpcImpl::stop()
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::StfSenderStfUpdate(::grpc::ServerContext* /*context*/, const ::o2::DataDistribution::StfSenderStfInfo* request, ::o2::DataDistribution::SchedulerStfInfoResponse* response)
 {
-  // LOG(INFO) << "gRPC server: StfSenderStfUpdate: " <<  request->info().process_id();
+  static std::atomic_uint64_t sStfUpdates = 0;
+  if (++sStfUpdates % 1000 == 0) {
+    LOG(DEBUG) << "gRPC server: StfSenderStfUpdate from: " <<  request->info().process_id() << ", total : " << sStfUpdates;
+  }
+
+  //
   response->Clear();
   mStfInfo.addAddStfInfo(*request, *response /*out*/);
+
+  //mConnManager.checkStfSenderRpcConn(request->info().process_id());
 
   return Status::OK;
 }

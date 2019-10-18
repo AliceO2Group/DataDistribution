@@ -73,6 +73,9 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
       LOG(INFO) << "TfBuilder joined: " << lTfBuilderId;
     } else {
       auto &lInfo = mGlobalInfo.at(lTfBuilderId);
+
+      // acquire the ready lock, since the data is shared
+      std::scoped_lock lLockReady(mReadyInfoLock);
       lInfo->mUpdateLocalTime = lLocalTime;
 
       // update only when the last scheduled tf is built!

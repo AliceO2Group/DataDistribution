@@ -29,7 +29,7 @@ void addCustomOptions(bpo::options_description& options)
     "Standalone operation. TimeFrames will not be forwarded to other processes.")(
     o2::DataDistribution::TfBuilderDevice::OptionKeyTfMemorySize,
     bpo::value<std::uint64_t>()->default_value(512),
-    "Memory buffer reserved for receiving TimeFrames, in MiB. Should be multiple of expected TF seize.")(
+    "Memory buffer reserved for building and buffering TimeFrames (in MiB).")(
     o2::DataDistribution::TfBuilderDevice::OptionKeyGui,
     bpo::bool_switch()->default_value(false),
     "Enable GUI.");

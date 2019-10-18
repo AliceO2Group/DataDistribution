@@ -72,68 +72,90 @@ public:
   : mDiscoveryConfig(pDiscoveryConfig)
   { }
 
+  ~StfSenderRpcClientCollection() { if (mRunning) { stop(); } }
+
   bool start()
   {
     using namespace std::chrono_literals;
     const auto &lPartId = mDiscoveryConfig->status().partition().partition_id();
 
+    if (lPartId.empty()) {
+      return false;
+    }
+
+    // try to connect to all StfSenders until stop is called
+    mRunning = true;
+
     std::size_t lNumStfSenders = 0;
 
-    do {
-      // connect to all StfSenders gRPC endpoints
+    // try to connect to all StfSenders gRPC endpoints
 
-      // get a set of missing StfSenders
-      TfSchedulerInstanceConfigStatus lSchedulerInst;
-      if (! mDiscoveryConfig->getTfSchedulerConfig(lPartId, lSchedulerInst /*out*/)) {
-        LOG(ERROR) << "TfScheduler for partition: " << lPartId << " is not running!";
-        std::this_thread::sleep_for(1s);
+    // get a set of missing StfSenders
+    TfSchedulerInstanceConfigStatus lSchedulerInst;
+    if (! mDiscoveryConfig->getTfSchedulerConfig(lPartId, lSchedulerInst /*out*/)) {
+      LOG(ERROR) << "TfScheduler for partition: " << lPartId << " is not running!";
+
+      return false;
+    }
+
+    lNumStfSenders = lSchedulerInst.stf_sender_id_list().size();
+    LOG(INFO) << "Connecting gRPC clients to " << lNumStfSenders << " StfSenders.";
+
+    // Connect to all StfSenders
+    for (const std::string &lStfSenderId : lSchedulerInst.stf_sender_id_list()) {
+
+      // check if already connected
+      if (mClients.count(lStfSenderId) == 1) {
         continue;
       }
 
-      lNumStfSenders = lSchedulerInst.stf_sender_id_list().size();
-      LOG(INFO) << "Connecting gRPC clients to " << lNumStfSenders << " StfSenders.";
-
-      // Connect to all StfSenders
-      for (const std::string &lStfSenderId : lSchedulerInst.stf_sender_id_list()) {
-
-        // check if already connected
-        if (mClients.count(lStfSenderId) == 1) {
-          continue;
-        }
-
-        StfSenderConfigStatus lStfSenderStatus;
-        if (! mDiscoveryConfig->getStfSenderConfig(lPartId, lStfSenderId, lStfSenderStatus /*out*/)) {
-          // LOG(ERROR) << "Error while retrieving configuration of StfSender with ID: " << lStfSenderId;
-          continue;
-        }
-
-        if (lStfSenderStatus.rpc_endpoint().empty()) {
-          LOG(WARNING) << "StfSender rpc_endpoint field empty! StfSender ID: " << lStfSenderId;
-          continue;
-        }
-
-        // create the RPC client
-        mClients.try_emplace(
-          lStfSenderId,
-          std::make_unique<StfSenderRpcClient>(lStfSenderStatus.rpc_endpoint())
-        );
+      StfSenderConfigStatus lStfSenderStatus;
+      if (! mDiscoveryConfig->getStfSenderConfig(lPartId, lStfSenderId, lStfSenderStatus /*out*/)) {
+        // LOG(ERROR) << "Error while retrieving configuration of StfSender with ID: " << lStfSenderId;
+        continue;
       }
 
-      LOG(INFO) << "gRPC: Connected to " << mClients.size() << " / " << lNumStfSenders << " StfSender";
-
-      if (mClients.size() != lNumStfSenders) {
-        // back off until gRPC server on all StfSeners becomes ready
-        std::this_thread::sleep_for(100ms);
+      if (lStfSenderStatus.rpc_endpoint().empty()) {
+        LOG(WARNING) << "StfSender rpc_endpoint field empty! StfSender ID: " << lStfSenderId;
+        continue;
       }
 
-    } while (mClients.size() < lNumStfSenders);
+      // create the RPC client
+      mClients.try_emplace(
+        lStfSenderId,
+        std::make_unique<StfSenderRpcClient>(lStfSenderStatus.rpc_endpoint())
+      );
+    }
+
+    LOG(INFO) << "gRPC: Connected to " << mClients.size() << " / " << lNumStfSenders << " StfSender";
+
+    if (mClients.size() != lNumStfSenders) {
+      static int sBackoff = 0;
+      sBackoff = std::min(sBackoff + 1, 20);
+      // back off until gRPC server on all StfSeners becomes ready
+      std::this_thread::sleep_for(sBackoff * 100ms);
+    }
+
+    // retry connecting all Clients
+    if (!mRunning || mClients.size() < lNumStfSenders) {
+      return false;
+    }
 
     return true;
   }
 
   void stop()
   {
+    mRunning = false;
     mClients.clear();
+
+  }
+
+  void checkStfSenderRpcConn(const std::string &lStfSenderId)
+  {
+    if (mClients.count(lStfSenderId) == 1) {
+      start();
+    }
   }
 
   std::size_t size() const { return mClients.size(); }
@@ -144,6 +166,8 @@ public:
   const auto end() const { return mClients.end(); }
 
 private:
+
+  std::atomic_bool mRunning = false;
 
   std::shared_ptr<T> mDiscoveryConfig;
 

@@ -249,7 +249,16 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
         mInfoFile << l3StfFileSize << sSidecarFieldSep;
         mInfoFile << l4DataOrigin.str << sSidecarFieldSep;
         mInfoFile << l5DataDescription.str << sSidecarFieldSep;
-        mInfoFile << l6SubSpec << sSidecarFieldSep;
+
+
+        std::ios_base::fmtflags lFlags( mInfoFile.flags() );
+        mInfoFile << "0x" << std::setfill('0')
+                  << std::setw(8)
+                  << std::hex
+                  << l6SubSpec << sSidecarFieldSep;
+        mInfoFile.flags(lFlags);
+
+
         mInfoFile << l7DataIndex << sSidecarFieldSep;
         mInfoFile << l8HdrOff << sSidecarFieldSep;
         mInfoFile << l9HdrSize << sSidecarFieldSep;

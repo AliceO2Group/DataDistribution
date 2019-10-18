@@ -99,7 +99,16 @@ void StfSenderDevice::InitTask()
 
 void StfSenderDevice::PreRun()
 {
-  mTfSchedulerRpcClient.start(mDiscoveryConfig);
+  while (!mTfSchedulerRpcClient.start(mDiscoveryConfig)) {
+
+    // try to reach the scheduler unless we should exit
+    if (IsRunningState() && NewStatePending()) {
+      return;
+    }
+
+    std::this_thread::sleep_for(250ms);
+  }
+
   // Start output handler
   // NOTE: required even in standalone operation
   mOutputHandler.start(mDiscoveryConfig, mMaxConcurrentSends);

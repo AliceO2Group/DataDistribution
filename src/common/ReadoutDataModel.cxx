@@ -254,25 +254,27 @@ bool ReadoutDataUtils::filterTriggerEmpyBlocksV4(const char* pData, const std::s
       LOG (INFO) << "Filtered " << sNumFiltered16kBlocks << " 16 kiB blocks in trigger mode.";
     }
 
-  } else if (pLen == 8192) {
-    static thread_local std::size_t sNumFiltered8kBlocks = 0;
+  }
+  //  else if (pLen == 8192) {
+  //   static thread_local std::size_t sNumFiltered8kBlocks = 0;
 
-    if (pData[0] != 4) {
-      return false; // not RDH4
-    }
+  //   if (pData[0] != 4) {
+  //     return false; // not RDH4
+  //   }
 
-    std::tie(lMemSize1, lOffsetNext1, lStopBit1) = getRdhNavigationVals(pData);
-    if (lMemSize1 != 64) {
-      return false;
-    }
+  //   std::tie(lMemSize1, lOffsetNext1, lStopBit1) = getRdhNavigationVals(pData);
+  //   if (lMemSize1 != 64) {
+  //     return false;
+  //   }
 
-    sNumFiltered8kBlocks++;
+  //   sNumFiltered8kBlocks++;
 
-    if (sNumFiltered8kBlocks % 2500 == 0) {
-      LOG (INFO) << "Filtered " << sNumFiltered8kBlocks << " 8 kiB blocks in trigger mode.";
-    }
+  //   if (sNumFiltered8kBlocks % 2500 == 0) {
+  //     LOG (INFO) << "Filtered " << sNumFiltered8kBlocks << " 8 kiB blocks in trigger mode.";
+  //   }
 
-  } else {
+  // }
+  else {
     return false; // size does not match
   }
 
