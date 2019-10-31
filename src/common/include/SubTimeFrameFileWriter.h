@@ -80,7 +80,28 @@ class SubTimeFrameFileWriter : public ISubTimeFrameConstVisitor
       std::is_pointer<pointer>::value &&                      // pointers only
       (std::is_void<std::remove_pointer_t<pointer>>::value || // void* or standard layout!
        std::is_standard_layout<std::remove_pointer_t<pointer>>::value)>::type* = nullptr>
-  void buffered_write(const pointer p, std::streamsize count);
+  void buffered_write(const pointer p, std::streamsize pCount)
+  {
+    // make sure we're not doing a short write
+    assert((pCount % sizeof(std::conditional_t<std::is_void<std::remove_pointer_t<pointer>>::value,
+            char, std::remove_pointer_t<pointer>>) == 0) && "Performing short write?");
+
+    const char* lPtr = reinterpret_cast<const char*>(p);
+    // avoid the optimization if the write is large enough
+    if (pCount >= sBuffSize) {
+      mFile.write(lPtr, pCount);
+    } else {
+      // split the write to smaller chunks
+      while (pCount > 0) {
+        const auto lToWrite = std::min(pCount, sChunkSize);
+        assert(lToWrite > 0 && lToWrite <= sChunkSize && lToWrite <= pCount);
+
+        mFile.write(lPtr, lToWrite);
+        lPtr += lToWrite;
+        pCount -= lToWrite;
+      }
+    }
+  }
 
   std::uint64_t getSizeInFile() const;
 

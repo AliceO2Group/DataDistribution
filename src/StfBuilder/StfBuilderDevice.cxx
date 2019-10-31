@@ -186,7 +186,7 @@ void StfBuilderDevice::PreRun()
   // start a thread for readout process
   if (!mFileSource.enabled()) {
     mReadoutInterface.setRdh4FilterTrigger(mRdh4FilterTrigger);
-    mReadoutInterface.start(mDataOrigin);
+    mReadoutInterface.start(4, mDataOrigin);
   }
 
   // gui thread

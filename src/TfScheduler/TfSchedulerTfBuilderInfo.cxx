@@ -152,15 +152,6 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
         }
         lIdsToErase.clear();
       }
-
-      for (const auto &lIdInfo : mGlobalInfo) {
-        const auto &lInfo = lIdInfo.second;
-
-        LOG(DEBUG) << "TfBuilder    : " << lInfo->mTfBuilderUpdate.info().process_id()
-                   << "\n  Free Memory      : " << lInfo->mTfBuilderUpdate.free_memory()
-                   << "\n  num_buffered_tfs : " << lInfo->mTfBuilderUpdate.num_buffered_tfs();
-
-      }
     } // mGlobalInfoLock unlock
 
     std::this_thread::sleep_for(1000ms);

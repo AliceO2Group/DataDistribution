@@ -55,9 +55,8 @@ public:
 
     const std::string &lEndpoint = mTfSchedulerConf.rpc_endpoint();
 
-    mStub = std::move(TfSchedulerInstanceRpc::NewStub(
-      grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials()))
-    );
+    mStub = TfSchedulerInstanceRpc::NewStub(
+      grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials()));
 
     LOG(INFO) << "Connected to TfSchedulerInstance RPC endpoint: " << lEndpoint;
 

@@ -37,7 +37,8 @@ using namespace std::chrono_literals;
 bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 {
   // make max number of listening channels for the partition
-  auto transportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", fair::mq::tools::Uuid(), mDevice.GetConfig());
+  auto transportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq",
+    fair::mq::tools::Uuid(), mDevice.GetConfig());
   auto &lStatus = pConfig->status();
 
   std::uint32_t lNumStfSenders;
@@ -101,7 +102,7 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 
   // Connect all StfSenders
   TfBuilderConnectionResponse lConnResult;
-  while (true) {
+  do {
     lConnResult.Clear();
 
     LOG(INFO) << "Requesting connections from StfSenders from the TfSchedulerInstance";
@@ -123,8 +124,7 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
     }
 
     // connection successful
-    break;
-  }
+   } while(false);
 
   // Update socket map with peer information
   for (auto &[lSocketIdx, lStfSenderId] : lConnResult.connection_map()) {
@@ -247,7 +247,6 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
       LOG(DEBUG) << "Received Stf from flp " << pFlpIndex << " with id " << lTfId << ", total: " << sNumStfs;
     }
 
-
     {
       // Push the STF into the merger queue
       std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
@@ -284,7 +283,7 @@ void TfBuilderInput::StfMergerThread()
       }
     }
 
-    // check spurious signaling
+    // check for spurious signaling
     if (mStfMergeQueue.empty()) {
       continue;
     }
@@ -315,13 +314,13 @@ void TfBuilderInput::StfMergerThread()
       // remove consumed STFs from the merge queue
       mStfMergeQueue.erase(lStfRange.first, lStfRange.second);
 
-      // accunt the size of received TF
+      // account the size of received TF
       mRpc->recordTfBuilt(*lTf);
 
       // Queue out the TF for consumption
       mDevice.queue(mOutStage, std::move(lTf));
 
-    } else if (mStfMergeQueue.size() > (200 * mNumStfSenders)) {
+    } else if (mStfMergeQueue.size() > (50 * mNumStfSenders)) {
       // FIXME: for now, discard incomplete TFs
       LOG(WARN) << "Unbounded merge queue size: " << mStfMergeQueue.size();
 

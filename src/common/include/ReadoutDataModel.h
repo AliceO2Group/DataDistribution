@@ -45,18 +45,19 @@ public:
 
   static std::uint64_t sFirstSeenHBOrbitCnt;
 
-  static std::tuple<std::uint32_t,std::uint32_t,std::uint32_t>
+  [[maybe_unused]] static std::tuple<std::uint32_t,std::uint32_t,std::uint32_t>
   getSubSpecificationComponents(const char* pRdhData, const std::size_t len);
 
   static o2::header::DataHeader::SubSpecificationType getSubSpecification(const char* data, const std::size_t len);
 
   static std::tuple<uint32_t,uint32_t,uint32_t> getRdhNavigationVals(const char* pRdhData);
 
+  static std::tuple<std::size_t, int> getRdhMemorySize(const char* data, const std::size_t len);
+
   enum SanityCheckMode {
     eNoSanityCheck,
     eSanityCheckDrop,
     eSanityCheckPrint
-
   };
 
   static bool rdhSanityCheck(const char* data, const std::size_t len);

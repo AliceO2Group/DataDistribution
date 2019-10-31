@@ -41,7 +41,6 @@ public:
   FMQUnsynchronizedPoolMemoryResource(FairMQChannel &pChan,
                                       const std::size_t pSize, const std::size_t pObjSize)
   : mChan(pChan),
-    mSize(pSize),
     mObjectSize(pObjSize),
     mAlignedSize((pObjSize + sizeof(max_align_t) - 1) / sizeof(max_align_t) * sizeof(max_align_t))
   {
@@ -154,7 +153,6 @@ private:
   FairMQChannel& mChan;
 
   std::unique_ptr<FairMQUnmanagedRegion> mRegion;
-  std::size_t mSize;
   std::size_t mObjectSize;
   std::size_t mAlignedSize;
 

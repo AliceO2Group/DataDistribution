@@ -53,7 +53,7 @@ ReadoutDataUtils::getSubSpecificationComponents(const char* pRdhData, const std:
       lLinkId &= 0x000000FF;
       break;
     }
-    case 4: [[fallthrough]]
+    case 4:
     case 5:
     {
       std::memcpy(&lCruId, pRdhData + (3 * sizeof(std::uint32_t)), sizeof(std::uint32_t));
@@ -99,6 +99,25 @@ ReadoutDataUtils::getSubSpecification(const char* pRdhData, const std::size_t le
   return lSubSpec;
 }
 
+std::tuple<std::size_t, int>
+ReadoutDataUtils::getRdhMemorySize(const char* data, const std::size_t len)
+{
+  std::size_t lMemRet = 0;
+  int lStopRet = 0;
+
+  if (data[0] != 4) {
+    return {-1, -1};
+  }
+
+  for (std::size_t i = 0; i < len / 8192; i++) {
+
+    const auto [lMemSize, lOffsetNext, lStopBit] = getRdhNavigationVals(data + i*8192);
+    lMemRet += lMemSize;
+    lStopRet = lStopBit;
+  }
+
+  return {lMemRet, lStopRet};
+}
 
 std::tuple<uint32_t,uint32_t,uint32_t>
 ReadoutDataUtils::getRdhNavigationVals(const char* pRdhData)

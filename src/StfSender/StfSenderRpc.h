@@ -14,8 +14,11 @@
 #ifndef ALICEO2_STF_SENDER_RPC_H_
 #define ALICEO2_STF_SENDER_RPC_H_
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <grpcpp/grpcpp.h>
 #include <discovery.grpc.pb.h>
+#pragma GCC diagnostic pop
 
 #include <vector>
 #include <map>

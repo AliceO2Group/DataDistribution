@@ -56,7 +56,6 @@ class StfSenderDevice : public DataDistDevice,
   static constexpr const char* OptionKeyInputChannelName = "input-channel-name";
   static constexpr const char* OptionKeyStandalone = "stand-alone";
   static constexpr const char* OptionKeyMaxBufferedStfs = "max-buffered-stfs";
-  static constexpr const char* OptionKeyMaxConcurrentSends = "max-concurrent-sends";
   static constexpr const char* OptionKeyGui = "gui";
 
   /// Default constructor
@@ -104,6 +103,8 @@ class StfSenderDevice : public DataDistDevice,
         }
 
         if (mFileSink.enabled()) {
+          // NOTE: if we are sending this stf, Inc will happen in eFileSinkOut
+          stfCountDecFetch();
           lNextStage = eFileSinkIn;
           break;
         }

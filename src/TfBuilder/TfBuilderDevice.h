@@ -72,6 +72,9 @@ class TfBuilderDevice : public DataDistDevice,
   /// Default destructor
   ~TfBuilderDevice() override;
 
+  bool start();
+  void stop();
+
   void InitTask() final;
   void ResetTask() final;
 

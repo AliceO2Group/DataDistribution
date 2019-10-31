@@ -90,11 +90,11 @@ class RunningSamples
     return { *min, *max };
   }
 
-  const auto begin() const
+  auto begin() const
   {
     return mSamples.begin();
   }
-  const auto end() const
+  auto end() const
   {
     return mSamples.begin() + mCount;
   }

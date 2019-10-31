@@ -70,7 +70,7 @@ void TfBuilderDevice::InitTask()
 
     // File sink
     if (!mFileSink.loadVerifyConfig(*(this->GetConfig()))) {
-      mShouldExit = true;
+      throw "File Sink options";
       return;
     }
 
@@ -89,7 +89,7 @@ void TfBuilderDevice::InitTask()
     if (! mDiscoveryConfig->write(true)) {
       LOG(ERROR) << "Can not start TfBuilder with id: " << lStatus.info().process_id();
       LOG(ERROR) << "Process with the same id already running? If not, clear the key manually.";
-      mShouldExit = true;
+      throw "Discovery database error";
       return;
     }
 
@@ -110,12 +110,13 @@ void TfBuilderDevice::InitTask()
       auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("shmem", "", GetConfig());
       if (!lTransportFactory) {
         LOG(ERROR) << "Creating transport factory failed!";
-        exit(-1);
+        throw "Transport factory";
+        return;
       }
       mStandaloneChannel = std::make_unique<FairMQChannel>(
         "standalone-chan[0]" ,  // name
-        "pair",              // type
-        "bind",              // method
+        "pair",                 // type
+        "bind",                 // method
         "ipc:///tmp/standalone-chan-tfb", // address
         lTransportFactory
       );
@@ -135,16 +136,17 @@ void TfBuilderDevice::InitTask()
 
 void TfBuilderDevice::PreRun()
 {
-  if (mShouldExit) {
-    return;
-  }
+  start();
+}
 
+bool TfBuilderDevice::start()
+{
   // start all gRPC clients
   while (!mRpc->start(mTfBufferSize << 20 /* MiB */)) {
     // try to reach the scheduler unless we should exit
     if (IsRunningState() && NewStatePending()) {
       mShouldExit = true;
-      return;
+      return false;
     }
 
     std::this_thread::sleep_for(1s);
@@ -161,10 +163,9 @@ void TfBuilderDevice::PreRun()
   // Start input handlers
   if (!mFlpInputHandler->start(mDiscoveryConfig)) {
     mShouldExit = true;
-
     LOG(ERROR) << "Could not initialize input connections. Exiting.";
-
-    return;
+    throw "Input connection error";
+    return false;
   }
 
   // start file source
@@ -176,9 +177,11 @@ void TfBuilderDevice::PreRun()
 
   // finally start accepting TimeFrames
   mRpc->startAcceptingTfs();
+
+  return true;
 }
 
-void TfBuilderDevice::ResetTask()
+void TfBuilderDevice::stop()
 {
   mRpc->stopAcceptingTfs();
 
@@ -209,19 +212,16 @@ void TfBuilderDevice::ResetTask()
   LOG(DEBUG) << "Reset() done... ";
 }
 
+void TfBuilderDevice::ResetTask()
+{
+  stop();
+}
+
 bool TfBuilderDevice::ConditionalRun()
 {
   if (mShouldExit) {
-    LOG(DEBUG) << "Calling TransitionTo(Exiting) from ConditionalRun";
-
-    // TransitionTo(fair::mq::State::Exiting);
-
     mRunning = false;
-
-    LOG(DEBUG) << "Exiting from ConditionalRun()";
-
     throw std::string("intentional exit");
-
     return false;
   }
 
@@ -257,7 +257,7 @@ void TfBuilderDevice::TfForwardThread()
 
     const auto lTfId = lTf->header().mId;
 
-    // record frequency and size of TFs
+    // MON: record frequency and size of TFs
     if (mBuildHistograms) {
       mTfFreqSamples.Fill(
         1.0 / std::chrono::duration<double>(

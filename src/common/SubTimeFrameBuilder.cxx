@@ -35,7 +35,6 @@ using namespace o2::header;
 
 SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(FairMQChannel& pChan, bool pDplEnabled)
   : mStf(nullptr),
-    mChan(pChan),
     mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
@@ -61,17 +60,51 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
   // filter empty trigger RDHv4
   {
     if (mRdh4FilterTrigger) {
+      // filter 2 empty 8kiB pages
+      if (pHbFrames.size() == 3 && lKeepBlocks[1] == true && lKeepBlocks[2] == true) {
+        if (pHbFrames[1]->GetSize() == 8192 && pHbFrames[2]->GetSize() == 8192) {
 
+          bool lRem1 = false, lRem2 = false;
+          {
+            const auto [lMemSize, lOffsetNext, lStopBit] = ReadoutDataUtils::getRdhNavigationVals(
+              reinterpret_cast<const char*>(pHbFrames[1]->GetData()));
+
+            if (lStopBit && lMemSize == 64) {
+              lRem1 = true;
+            }
+          }
+
+          {
+            const auto [lMemSize, lOffsetNext, lStopBit] = ReadoutDataUtils::getRdhNavigationVals(
+              reinterpret_cast<const char*>(pHbFrames[2]->GetData()));
+
+            if (lStopBit && lMemSize == 64) {
+              lRem2 = true;
+            }
+          }
+          if (lRem1 && lRem2) {
+            lKeepBlocks[1] = false;
+            lKeepBlocks[2] = false;
+          }
+        }
+      }
+
+      // filter empty 16kiB start stop pages
       for (std::size_t i = 1; i < pHbFrames.size(); i++) {
+        if (lKeepBlocks[i] == false) {
+          continue; // already discarded
+        }
 
-        if (! ReadoutDataUtils::filterTriggerEmpyBlocksV4(
-                                    reinterpret_cast<const char*>(pHbFrames[i]->GetData()),
-                                    pHbFrames[i]->GetSize()) ) {
+        if (!ReadoutDataUtils::filterTriggerEmpyBlocksV4(
+                                  reinterpret_cast<const char*>(pHbFrames[i]->GetData()),
+                                  pHbFrames[i]->GetSize()) ) {
           lKeepBlocks[i] = true;
         } else {
           lKeepBlocks[i] = false;
         }
       }
+
+
     }
   }
 
@@ -177,7 +210,9 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 
 std::unique_ptr<SubTimeFrame> SubTimeFrameReadoutBuilder::getStf()
 {
-  return std::move(mStf);
+  std::unique_ptr<SubTimeFrame> lStf = std::move(mStf);
+  mStf = nullptr;
+  return lStf;
 }
 
 
@@ -186,8 +221,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameReadoutBuilder::getStf()
 ////////////////////////////////////////////////////////////////////////////////
 
 SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(FairMQChannel& pChan, bool pDplEnabled)
-  : mChan(pChan),
-    mDplEnabled(pDplEnabled)
+  : mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
     pChan, 32ULL << 20 /* make configurable */,
@@ -238,7 +272,7 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
               o2::framework::DataProcessingHeader{pStf->header().mId}
             );
 
-            lStfDataIter.mHeader = std::move(mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data()));
+            lStfDataIter.mHeader = mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data());
             assert(lStfDataIter.mHeader->GetSize() > sizeof (DataHeader));
           }
         }
@@ -252,8 +286,7 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
 ////////////////////////////////////////////////////////////////////////////////
 
 TimeFrameBuilder::TimeFrameBuilder(FairMQChannel& pChan, bool pDplEnabled)
-  : mChan(pChan),
-    mDplEnabled(pDplEnabled)
+  : mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
     pChan, 64ULL << 20 /* make configurable */,
@@ -311,7 +344,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
               o2::framework::DataProcessingHeader{pStf->header().mId}
             );
 
-            lStfDataIter.mHeader = std::move(mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data()));
+            lStfDataIter.mHeader = mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data());
             assert(lStfDataIter.mHeader->GetSize() > sizeof (DataHeader));
           }
         }

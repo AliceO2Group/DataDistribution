@@ -82,7 +82,7 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
 {
   mEnabled = pFMQProgOpt.GetValue<bool>(OptionKeyStfSinkEnable);
 
-  LOG(INFO) << "(Sub)TimeFrame file sink is" << (mEnabled ? "enabled" : "disabled");
+  LOG(INFO) << "(Sub)TimeFrame file sink is " << (mEnabled ? "enabled." : "disabled.");
 
   if (!mEnabled)
     return true;
