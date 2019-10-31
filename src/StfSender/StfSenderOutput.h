@@ -39,7 +39,7 @@ class StfSenderOutput
   {
   }
 
-  void start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig, const std::int64_t pNumSendSlots);
+  void start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig);
   void stop();
 
   bool running() const;
@@ -78,11 +78,7 @@ class StfSenderOutput
   mutable std::mutex mOutputMapLock;
   std::map<std::string, OutputChannelObjects> mOutputMap;
 
-  /// Number of Stfs on the network
-  mutable std::mutex mSendSlotLock;
-  std::condition_variable mSendSlotCond;
-  std::uint64_t mNumSendSlots = std::numeric_limits<std::uint64_t>::max();
-  std::map<SubTimeFrameIdType, std::unique_ptr<SubTimeFrame>> mScheduledStf; // keep STFs until requested by Scheduler/TfBuilder
+
 
 };
 }

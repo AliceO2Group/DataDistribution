@@ -64,7 +64,9 @@ SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pF
       mInfoFile << "HEADER_OFFSET ";
       mInfoFile << "HEADER_SIZE ";
       mInfoFile << "DATA_OFFSET ";
-      mInfoFile << "DATA_SIZE" << '\n';
+      mInfoFile << "DATA_SIZE ";
+      mInfoFile << "RDH_MEM_SIZE ";
+      mInfoFile << "RDH_STOP_BIT" << '\n';
     }
   } catch (std::ifstream::failure& eOpenErr) {
     LOG(ERROR) << "Failed to open/create TF file for writing. Error: " << eOpenErr.what();
@@ -127,35 +129,6 @@ void SubTimeFrameFileWriter::visit(const SubTimeFrame& pStf)
       assert(lIdSize > sizeof(DataHeader));
       mStfDataIndex.AddStfElement(lId, IdCnt, lCurrOff, lIdSize);
       lCurrOff += lIdSize;
-    }
-  }
-}
-
-template <
-    typename pointer,
-    typename std::enable_if<
-      std::is_pointer<pointer>::value &&                      // pointers only
-      (std::is_void<std::remove_pointer_t<pointer>>::value || // void* or standard layout!
-       std::is_standard_layout<std::remove_pointer_t<pointer>>::value)>::type* = nullptr>
-void SubTimeFrameFileWriter::buffered_write(const pointer p, std::streamsize pCount)
-{
-  // make sure we're not doing a short write
-  assert((pCount % sizeof(std::conditional_t<std::is_void<std::remove_pointer_t<pointer>>::value,
-          char, std::remove_pointer_t<pointer>>) == 0) && "Performing short write?");
-
-  const char* lPtr = reinterpret_cast<const char*>(p);
-  // avoid the optimization if the write is large enough
-  if (pCount >= sBuffSize) {
-    mFile.write(lPtr, pCount);
-  } else {
-    // split the write to smaller chunks
-    while (pCount > 0) {
-      const auto lToWrite = std::min(pCount, sChunkSize);
-      assert(lToWrite > 0 && lToWrite <= sChunkSize && lToWrite <= pCount);
-
-      mFile.write(lPtr, lToWrite);
-      lPtr += lToWrite;
-      pCount -= lToWrite;
     }
   }
 }
@@ -243,6 +216,9 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
         const auto l10DataOff = lDataOffset;
         lDataOffset += lStfData->mData->GetSize();
         const auto l11DataSize = lStfData->mData->GetSize();
+        const auto [l12MemSize, l13StopBit] = ReadoutDataUtils::getRdhMemorySize(
+          reinterpret_cast<const char*>(lStfData->mData->GetData()),
+          lStfData->mData->GetSize());
 
         mInfoFile << l1StfId << sSidecarFieldSep;
         mInfoFile << l2StfFileOff << sSidecarFieldSep;
@@ -263,7 +239,9 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
         mInfoFile << l8HdrOff << sSidecarFieldSep;
         mInfoFile << l9HdrSize << sSidecarFieldSep;
         mInfoFile << l10DataOff << sSidecarFieldSep;
-        mInfoFile << l11DataSize << sSidecarRecordSep;
+        mInfoFile << l11DataSize << sSidecarFieldSep;
+        mInfoFile << l12MemSize << sSidecarFieldSep;
+        mInfoFile << l13StopBit << sSidecarRecordSep;
       }
       mInfoFile.flush();
     } catch (const std::ios_base::failure& eFailExc) {

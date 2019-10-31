@@ -18,6 +18,8 @@
 
 #include <FairMQLogger.h>
 
+#include <boost/algorithm/string/join.hpp>
+
 #include <set>
 #include <tuple>
 #include <algorithm>
@@ -34,14 +36,16 @@ void TfSchedulerStfInfo::SchedulingThread()
   LOG(DEBUG) << "Starting StfInfo Scheduling thread...";
 
   const auto lNumStfSenders = mDiscoveryConfig->status().stf_sender_count();
-  std::vector<std::uint64_t> mStfsToErase;
+  const std::set<std::string> lStfSenderIdSet = mConnManager.getStfSenderSet();
+  std::vector<std::uint64_t> lStfsToErase;
+  lStfsToErase.reserve(1000);
   auto lLastReapTime = std::chrono::system_clock::now();
-
-  std::vector<StfInfo> lStfInfos;
 
   while (mRunning) {
 
     {
+      std::vector<StfInfo> lStfInfos;
+
       {
         std::unique_lock lLock(mCompleteStfInfoLock);
 
@@ -49,7 +53,7 @@ void TfSchedulerStfInfo::SchedulingThread()
           lStfInfos.clear();
         } else {
           lStfInfos = std::move(mCompleteStfsInfo.front());
-          mCompleteStfsInfo.erase(mCompleteStfsInfo.begin());
+          mCompleteStfsInfo.pop_front();
         }
       }
 
@@ -69,6 +73,14 @@ void TfSchedulerStfInfo::SchedulingThread()
         // 1: Get the best TfBuilder candidate
         std::string lTfBuilderId;
         if ( mTfBuilderInfo.findTfBuilderForTf(lTfSize, lTfBuilderId /*out*/) ) {
+
+          {
+            static std::uint64_t sNumTfScheds = 0;
+            if (++sNumTfScheds % 50 == 0) {
+              LOG(DEBUG) << "Scheduling TF: " << lTfId << " to TfBuilder: " << lTfBuilderId << ", total: " << sNumTfScheds;
+            }
+          }
+
           assert (!lTfBuilderId.empty());
           // Notify TfBuilder to build the TF
           TfBuilderRpcClient lRpcCli = mConnManager.getTfBuilderRpcClient(lTfBuilderId);
@@ -113,6 +125,7 @@ void TfSchedulerStfInfo::SchedulingThread()
             // We drop the current TF as this is not a likely situation
             LOG (WARNING) << "Selected TfBuilder is not reachable for TF: " << lTfId
                           << ", TfBuilded id: " << lTfBuilderId;
+
             mConnManager.dropAllStfsAsync(lTfId);
             mConnManager.removeTfBuilder(lTfBuilderId);
             mTfBuilderInfo.removeReadyTfBuilder(lTfBuilderId);
@@ -129,7 +142,7 @@ void TfSchedulerStfInfo::SchedulingThread()
     if (lNow - lLastReapTime  > sStfReapTime) {
       lLastReapTime = lNow;
 
-      mStfsToErase.clear();
+      lStfsToErase.clear();
       {
         std::unique_lock lLock(mGlobalStfInfoLock);
 
@@ -147,20 +160,36 @@ void TfSchedulerStfInfo::SchedulingThread()
             LOG(WARNING) << "Reaping SubTimeFrames with ID: " << lStfId
                          << ". Received STF infos: "
                          << lStfInfoVec.size() << " / " << lNumStfSenders;
+
+            // find missing StfSenders
+            std::set<std::string> lMissingStfSenders = lStfSenderIdSet;
+
+            for (const auto &lUpdate : lStfInfoVec) {
+              lMissingStfSenders.erase(lUpdate.process_id());
+            }
+
+            std::string lMissingIds = boost::algorithm::join(lMissingStfSenders, ", ");
+            // for (const auto &lMissingId : lMissingStfSenders) {
+            //   lMissingIds += lMissingId;
+            // }
+
+            LOG(WARNING) << "  Missing StfSender IDs: " << lMissingIds;
+
             // TODO: more robust reporting needed!
             //       which stfSenders did not send?
 
-            mStfsToErase.push_back(lStfId);
+            lStfsToErase.push_back(lStfId);
           }
         }
 
-        for (const auto &lStfId : mStfsToErase) {
+        for (const auto &lStfId : lStfsToErase) {
+          mConnManager.dropAllStfsAsync(lStfId);
           mStfInfoMap.erase(lStfId);
         }
       }
 
-      if (mStfsToErase.size() > 0) {
-        LOG(WARNING) << "SchedulingThread: Number of reaped STFs:" << mStfsToErase.size();
+      if (lStfsToErase.size() > 0) {
+        LOG(WARNING) << "SchedulingThread: Number of reaped STFs:" << lStfsToErase.size();
       }
     }
 
@@ -172,7 +201,7 @@ void TfSchedulerStfInfo::SchedulingThread()
       }
 
       if (std::cv_status::timeout == mStfScheduleCondition.wait_for(lLock, sStfReapTime)) {
-        LOG(INFO) << "Starting StfInfo reap procedure...";
+        LOG(INFO) << "No new completed SubTimeFrame updates in " << sStfReapTime.count() << "s. Starting StfInfo reap procedure...";
       }
     }
   }
@@ -193,19 +222,28 @@ void TfSchedulerStfInfo::addAddStfInfo(const StfSenderStfInfo &pStfInfo, Schedul
   {
     std::unique_lock lLock(mGlobalStfInfoLock);
 
-    mLastStfId = std::max(mLastStfId, lStfId);
+    if (lStfId > mLastStfId + 100) {
+      LOG(DEBUG) << "addAddStfInfo: STF id much larger than the current TF id: (" << lStfId << ") > (" << mLastStfId << ") from: " << pStfInfo.info().process_id();
+    }
 
     // Sanity check for delayed Stf info
-    if ((lStfId < mLastStfId) && (mStfInfoMap.count(lStfId) == 0)) {
+    // TODO: define tolerable delay here
+    const std::uint64_t lMaxDelayTf = sStfReapTime.count() * 44;
+    const auto lMinAccept = mLastStfId < lMaxDelayTf ? 0 : mLastStfId - lMaxDelayTf;
+
+    if ((lStfId < lMinAccept) && (mStfInfoMap.count(lStfId) == 0)) {
       LOG(WARNING) << "Delayed or duplicate STF info for STF_id: " << lStfId
                    << " from StfBuilder: " << pStfInfo.info().process_id()
                    << ". Currently processing STF_id: " << mLastStfId;
 
       // TODO: reaped or scheduled?
-      pResponse.set_status(SchedulerStfInfoResponse::DROP_SCHED_REAPED);
-      return;
+      // pResponse.set_status(SchedulerStfInfoResponse::DROP_SCHED_REAPED);
+      // return;
     }
 
+    mLastStfId = std::max(mLastStfId, lStfId);
+
+    // get or create a new vector of Stf updates
     auto &lStfIdVector = mStfInfoMap[lStfId];
 
     if (lStfIdVector.size() == 0) {

@@ -27,6 +27,7 @@ target_link_libraries(ReadoutEmulator
   PRIVATE
     FairMQ::FairMQ
     AliceO2::Headers
+    AliceO2::Framework
     ROOT::Gui
 )
 

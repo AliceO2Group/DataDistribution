@@ -30,9 +30,6 @@ void addCustomOptions(bpo::options_description& options)
     bpo::value<std::int64_t>()->default_value(-1),
     "Maximum number of buffered SubTimeFrames before starting to drop data. "
     "Unlimited: -1.")(
-    o2::DataDistribution::StfSenderDevice::OptionKeyMaxConcurrentSends,
-    bpo::value<std::int64_t>()->default_value(-1),
-    "Maximum number of concurrent transfers from FLP to EPNs. Unlimited: -1.")(
     o2::DataDistribution::StfSenderDevice::OptionKeyGui,
     bpo::bool_switch()->default_value(false),
     "Enable GUI.");

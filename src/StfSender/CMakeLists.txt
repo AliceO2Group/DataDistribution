@@ -34,6 +34,7 @@ target_link_libraries(StfSender
     protobuf::libprotobuf
     gRPC::grpc++_unsecure
     AliceO2::Headers
+    AliceO2::Framework
     ROOT::Gui
 )
 

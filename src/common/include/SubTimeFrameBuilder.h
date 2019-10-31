@@ -49,7 +49,6 @@ class SubTimeFrameReadoutBuilder
 
   std::unique_ptr<SubTimeFrame> mStf;
 
-  FairMQChannel& mChan;
   bool mDplEnabled;
 
   std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
@@ -75,7 +74,6 @@ class SubTimeFrameFileBuilder
 
  private:
 
-  FairMQChannel& mChan;
   bool mDplEnabled;
 
   std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
@@ -95,7 +93,6 @@ class TimeFrameBuilder
 
  private:
 
-  FairMQChannel& mChan;
   bool mDplEnabled;
 
   std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;

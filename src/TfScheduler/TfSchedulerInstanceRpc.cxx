@@ -36,7 +36,7 @@ void TfSchedulerInstanceRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, 
   lSrvBuilder.RegisterService(this);
 
   assert(!mServer);
-  mServer = std::move(lSrvBuilder.BuildAndStart());
+  mServer = lSrvBuilder.BuildAndStart();
 
   LOG(INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
 }
@@ -98,7 +98,6 @@ void TfSchedulerInstanceRpcImpl::stop()
   return Status::OK;
 }
 
-
 ::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderUpdate(::grpc::ServerContext* /*context*/, const ::o2::DataDistribution::TfBuilderUpdateMessage* request, ::google::protobuf::Empty* /*response*/)
 {
   static std::atomic_uint64_t sTfBuilderUpdates = 0;
@@ -111,7 +110,6 @@ void TfSchedulerInstanceRpcImpl::stop()
   return Status::OK;
 }
 
-
 ::grpc::Status TfSchedulerInstanceRpcImpl::StfSenderStfUpdate(::grpc::ServerContext* /*context*/, const ::o2::DataDistribution::StfSenderStfInfo* request, ::o2::DataDistribution::SchedulerStfInfoResponse* response)
 {
   static std::atomic_uint64_t sStfUpdates = 0;
@@ -123,7 +121,9 @@ void TfSchedulerInstanceRpcImpl::stop()
   response->Clear();
   mStfInfo.addAddStfInfo(*request, *response /*out*/);
 
-  //mConnManager.checkStfSenderRpcConn(request->info().process_id());
+  // if (sStfUpdates % 1000 == 0) {
+  //   LOG(DEBUG) << "gRPC server: StfSenderStfUpdate::Done";
+  // }
 
   return Status::OK;
 }

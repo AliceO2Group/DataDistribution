@@ -29,15 +29,13 @@ namespace DataDistribution
 
 using namespace std::chrono_literals;
 
-void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig, const std::int64_t pNumSendSlots)
+void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
 {
   assert(pDiscoveryConfig);
   mDiscoveryConfig = pDiscoveryConfig;
 
-  mNumSendSlots = pNumSendSlots <= 0 ? std::numeric_limits<std::uint64_t>::max() : pNumSendSlots;
-
   std::scoped_lock lLock(mOutputMapLock);
-  mScheduledStf.clear();
+
   // create scheduler thread
   mSchedulerThread = std::thread(&StfSenderOutput::StfSchedulerThread, this);
 
@@ -48,9 +46,7 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig, c
 
 void StfSenderOutput::stop()
 {
-  // stop the scheduler
-  // release cond variable
-  mSendSlotCond.notify_all();
+  // stop the scheduler: on pipeline interrupt
 
   if (mSchedulerThread.joinable()) {
     mSchedulerThread.join();
@@ -76,7 +72,6 @@ void StfSenderOutput::stop()
   {
     std::scoped_lock lLock(mOutputMapLock);
     mOutputMap.clear();
-    mScheduledStf.clear();
   }
 }
 
@@ -103,9 +98,9 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
 
   auto lNewChannel = std::make_unique<FairMQChannel>(
     "tf_builder_" + pTfBuilderId ,  // name
-    "pair",               // type
+    "pair",                  // type
     "connect",               // method
-    pEndpoint,             // address (TODO: this should only ever be ib interface)
+    pEndpoint,               // address (TODO: this should only ever be ib interface)
     transportFactory
   );
 
@@ -208,14 +203,21 @@ void StfSenderOutput::StfSchedulerThread()
 
   while ((lStf = mDevice.dequeue(eSenderIn)) != nullptr) {
 
+    // take a ref for later use
+    SubTimeFrame &lStfRef = *lStf;
+    const auto lStfId = lStfRef.header().mId;
+
+    {
+      static std::uint64_t sStfSchedulerThread = 0;
+      if (++sStfSchedulerThread % 10 == 0) {
+        LOG(DEBUG) << "StfSchedulerThread: stf id: " << lStfId << ", total: " << sStfSchedulerThread;
+      }
+    }
+
     if (mDevice.standalone()) {
       // Do not forward STFs
       continue;
     }
-
-    // take a ref for later use
-    SubTimeFrame &lStfRef = *lStf;
-    const auto lStfId = lStfRef.header().mId;
 
     // move the stf into triage map (before notifying the scheduler to avoid races)
     {
@@ -243,6 +245,13 @@ void StfSenderOutput::StfSchedulerThread()
 
       mDevice.TfSchedRpcCli().StfSenderStfUpdate(lStfInfo, lSchedResponse);
 
+      {
+        static std::uint64_t sNumStfSentUpdates = 0;
+        if (++sNumStfSentUpdates % 2 == 0) {
+          LOG(DEBUG) << "Sent STF announce, id: " << lStfId << ", size: " << lStfInfo.stf_size() << ", total: " << sNumStfSentUpdates;
+        }
+      }
+
       // check if the scheduler rejected the data
       if (lSchedResponse.status() != SchedulerStfInfoResponse::OK) {
         LOG (INFO) << "TfScheduler rejected the Stf announce: " << lStfId
@@ -250,8 +259,10 @@ void StfSenderOutput::StfSchedulerThread()
 
         // remove from the scheduling map
         std::scoped_lock lLock(mScheduledStfMapLock);
-        mScheduledStfMap.erase(lStfId);
-        continue;
+        if (mScheduledStfMap.erase(lStfId) == 1) {
+          // Decrement buffered STF count
+          mDevice.stfCountDecFetch();
+        }
       }
     }
   }
@@ -267,36 +278,37 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
 
   // check if it is drop request from the scheduler
   if (pTfBuilderId == "-1") {
+    {
+      static std::atomic_uint64_t sNumDropRequests = 0;
+      if (++sNumDropRequests % 50 == 0) {
+        LOG(DEBUG) << "Scheduler requested drop of STF: " << pStfId << ", total requests: " << sNumDropRequests;
+      }
+    }
     pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
-
+    if (mScheduledStfMap.erase(pStfId) == 1) {
+      // Decrement buffered STF count
+      mDevice.stfCountDecFetch();
+    }
+    return;
+  } else {
     auto lStfIter = mScheduledStfMap.find(pStfId);
     if (lStfIter == mScheduledStfMap.end()) {
       pRes.set_status(StfDataResponse::DATA_DROPPED_UNKNOWN);
-    } else {
-      pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
-      mScheduledStfMap.erase(lStfIter);
+      return;
     }
-    return;
+
+    auto lTfBuilderIter = mOutputMap.find(pTfBuilderId);
+    if (lTfBuilderIter == mOutputMap.end()) {
+      pRes.set_status(StfDataResponse::TF_BUILDER_UNKNOWN);
+      return;
+    }
+
+    // all is well, schedule the stf and cleanup
+    lTfBuilderIter->second.mStfQueue->push(std::move(lStfIter->second));
+    mScheduledStfMap.erase(lStfIter);
+
+    pRes.set_status(StfDataResponse::OK);
   }
-
-  auto lTfBuilderIter = mOutputMap.find(pTfBuilderId);
-  auto lStfIter = mScheduledStfMap.find(pStfId);
-
-  if (lTfBuilderIter == mOutputMap.end()) {
-    pRes.set_status(StfDataResponse::TF_BUILDER_UNKNOWN);
-    return;
-  }
-
-  if (lStfIter == mScheduledStfMap.end()) {
-    pRes.set_status(StfDataResponse::DATA_DROPPED_UNKNOWN);
-    return;
-  }
-
-  // all is well, schedule the stf and cleanup
-  lTfBuilderIter->second.mStfQueue->push(std::move(lStfIter->second));
-  mScheduledStfMap.erase(lStfIter);
-
-  pRes.set_status(StfDataResponse::OK);
 }
 
 /// Sending thread
@@ -330,8 +342,11 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
       break;
     }
 
-    if (rand() % 100 < 5) {
-      LOG(DEBUG) << "Sendig Stf to " << pTfBuilderId << " with id " << lStf->header().mId;
+    {
+      static std::atomic_uint64_t sNumSentStfs = 0;
+      if (++sNumSentStfs % 100 == 0) {
+        LOG(DEBUG) << "Sending Stf to " << pTfBuilderId << " with id " << lStf->header().mId << ", total sent: " << sNumSentStfs;
+      }
     }
 
     try {
@@ -351,16 +366,10 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
     // Decrement buffered STF count
     mDevice.stfCountDecFetch();
 
-    // free up an slot for sending
-    {
-      std::unique_lock<std::mutex> lLock(mSendSlotLock);
-      mNumSendSlots++;
-      lLock.unlock(); // reduce contention on the lock by unlocking before notifyng
-      mSendSlotCond.notify_one();
-    }
   }
 
   LOG(INFO) << "Exiting StfSenderOutput[" << pTfBuilderId << "]";
 }
+
 }
 } /* o2::DataDistribution */

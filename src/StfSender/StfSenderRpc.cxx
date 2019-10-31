@@ -36,7 +36,7 @@ void StfSenderRpcImpl::start(const std::string pRpcSrvBindIp, int &lRealPort /*[
   lSrvBuilder.RegisterService(this);
 
   assert(!mServer);
-  mServer = std::move(lSrvBuilder.BuildAndStart());
+  mServer = lSrvBuilder.BuildAndStart();
 
   LOG(INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
 }

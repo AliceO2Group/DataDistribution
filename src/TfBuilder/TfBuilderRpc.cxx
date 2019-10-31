@@ -33,7 +33,7 @@ void TfBuilderRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, int &lReal
   lSrvBuilder.AddListeningPort(pRpcSrvBindIp + ":0", grpc::InsecureServerCredentials(), &lRealPort);
   lSrvBuilder.RegisterService(this);
   assert(!mServer);
-  mServer = std::move(lSrvBuilder.BuildAndStart());
+  mServer = lSrvBuilder.BuildAndStart();
   LOG(INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
 }
 
@@ -201,6 +201,13 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
 
     std::scoped_lock lLock(mTfIdSizesLock);
     lUpdate.set_free_memory(mCurrentTfBufferSize);
+  }
+
+  {
+    static thread_local std::uint64_t sUpdateCnt = 0;
+    if (++sUpdateCnt % 10 == 0) {
+      LOG(DEBUG) << "Sending TfBuilder update, accepting: " << mAcceptingTfs << ", total: " << sUpdateCnt;
+    }
   }
 
   auto lRet = mTfSchedulerRpcClient.TfBuilderUpdate(lUpdate);

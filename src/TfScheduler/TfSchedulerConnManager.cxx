@@ -192,11 +192,11 @@ void TfSchedulerConnManager::removeTfBuilder(const std::string &plTfBuilderId)
 void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
 {
 
-  auto lDropLambda = [&]() -> std::uint64_t {
+  auto lDropLambda = [&](const std::uint64_t pLamStfId) -> std::uint64_t {
     StfDataRequestMessage lStfRequest;
     StfDataResponse lStfResponse;
     lStfRequest.set_tf_builder_id("-1");
-    lStfRequest.set_stf_id(pStfId);
+    lStfRequest.set_stf_id(pLamStfId);
 
     for (auto &lStfSenderIdCli : mStfSenderRpcClients) {
       const auto &lStfSenderId = lStfSenderIdCli.first;
@@ -205,31 +205,31 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
       auto lStatus = lStfSenderRpcCli->StfDataRequest(lStfRequest, lStfResponse);
       if (!lStatus.ok()) {
         // gRPC problem... continue asking for other STFs
-        LOG (WARNING) << "StfSender gRPC connection problem. Code: " <<lStatus.error_code()
-                      << ", message: " << lStatus.error_message();
+        LOG (WARNING) << "StfSender (" << lStfSenderId << ") gRPC connection problem. Code: "
+                      <<lStatus.error_code() << ", message: " << lStatus.error_message();
       }
 
       if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_TIMEOUT) {
-        LOG (WARNING) << "StfSender " << lStfSenderId << " dropped STF " << pStfId <<
+        LOG (WARNING) << "StfSender " << lStfSenderId << " dropped STF " << pLamStfId <<
                          " before notification from TfScheduler. Check StfSender buffer state.";
       } else if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_UNKNOWN) {
-        LOG (WARNING) << "StfSender " << lStfSenderId << " dropped STF " << pStfId << " for unknown reason "
+        LOG (WARNING) << "StfSender " << lStfSenderId << " dropped STF " << pLamStfId << " for unknown reason"
                          " before notification from TfScheduler. Check StfSender buffer state.";
       }
     }
 
-    return pStfId;
+    return pLamStfId;
   };
 
   try {
-    auto lFeature = std::async(std::launch::async, lDropLambda);
+    auto lFeature = std::async(std::launch::async, lDropLambda, pStfId);
 
     std::scoped_lock lLock(mStfDropFuturesLock);
     mStfDropFutures.emplace_back(std::move(lFeature));
 
   } catch (std::exception &) {
     LOG(WARNING) << "dropAllStfsAsync: async method failed. Calling synchronously.";
-    lDropLambda();
+    lDropLambda(pStfId);
   }
 
 }

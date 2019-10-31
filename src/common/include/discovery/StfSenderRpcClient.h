@@ -16,9 +16,12 @@
 
 #include "ConfigConsul.h"
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <discovery.pb.h>
 #include <discovery.grpc.pb.h>
 #include <grpcpp/grpcpp.h>
+#pragma GCC diagnostic pop
 
 #include <vector>
 #include <map>
@@ -162,8 +165,8 @@ public:
   std::size_t count(const std::string &pId) const { return mClients.count(pId); }
   auto& operator[](const std::string &pId) const { return mClients.at(pId); }
 
-  const auto begin() const { return mClients.begin(); }
-  const auto end() const { return mClients.end(); }
+  auto begin() const { return mClients.begin(); }
+  auto end() const { return mClients.end(); }
 
 private:
 

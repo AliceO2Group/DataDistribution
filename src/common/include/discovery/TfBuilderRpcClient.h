@@ -58,9 +58,8 @@ public:
 
     std::this_thread::sleep_for(2s);
 
-    mStub = std::move(TfBuilderRpc::NewStub(
-      grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials()))
-    );
+    mStub = TfBuilderRpc::NewStub(
+      grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials()));
 
     LOG(INFO) << "Connected gRPC client to TfBuilder: " << pTfBuilderId
               << ", endpoint: " << lEndpoint;
@@ -223,8 +222,8 @@ public:
   std::size_t count(const std::string &pId) const { return mClients.count(pId); }
   // auto& operator[] const (const std::string &pId) const { return mClients.at(pId); }
 
-  const auto begin() const { return mClients.begin(); }
-  const auto end() const { return mClients.end(); }
+  auto begin() const { return mClients.begin(); }
+  auto end() const { return mClients.end(); }
 
 private:
 

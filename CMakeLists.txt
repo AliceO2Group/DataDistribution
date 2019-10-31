@@ -22,7 +22,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -pedantic -Werror")
-set(CMAKE_CXX_FLAGS_DEBUG "-ggdb3 -Og -fno-inline -fno-omit-frame-pointer -fmax-errors=10")
+set(CMAKE_CXX_FLAGS_DEBUG "-fno-inline -fno-omit-frame-pointer -fmax-errors=10")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb3 -O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 

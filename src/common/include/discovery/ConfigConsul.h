@@ -17,7 +17,10 @@
 #include "Config.h"
 #include "ConfigParameters.h"
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "discovery.pb.h"
+#pragma GCC diagnostic pop
 
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>

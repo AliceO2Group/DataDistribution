@@ -110,21 +110,28 @@ class StfBuilderDevice : public DataDistDevice,
         mNumStfs++;
 
         if (mPipelineLimit && (mNumStfs >= mMaxStfsInPipeline)) {
-          mNumStfs--;
 
           LOG(WARNING) << "Dropping an STF due to reaching the maximum number of buffered "
                           "STFs in the process ("
                        << mMaxStfsInPipeline
                        << "). Consider increasing the limit, or reducing the input data rate.";
 
+          mNumStfs--;
           lNextStage = eStfNullIn;
+          break;
+        }
+
+        if (mFileSink.enabled()) {
+          mNumStfs--;
+          lNextStage = eStfFileSinkIn;
         } else {
-          lNextStage = mFileSink.enabled() ? eStfFileSinkIn : eStfSendIn;
+          lNextStage = eStfSendIn;
         }
         break;
       }
       case eStfFileSinkOut:
       {
+        mNumStfs++;
         lNextStage = eStfSendIn;
         break;
       }

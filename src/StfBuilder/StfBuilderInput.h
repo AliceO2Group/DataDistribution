@@ -14,6 +14,7 @@
 #ifndef ALICEO2_STFBUILDER_INPUT_H_
 #define ALICEO2_STFBUILDER_INPUT_H_
 
+#include <SubTimeFrameBuilder.h>
 #include <ConcurrentQueue.h>
 #include <Utilities.h>
 
@@ -40,10 +41,11 @@ class StfInputInterface
   {
   }
 
-  void start(const o2::header::DataOrigin &);
+  void start(const std::size_t pNumBuilders, const o2::header::DataOrigin &);
   void stop();
 
   void DataHandlerThread(const unsigned pInputChannelIdx);
+  void StfBuilderThread(const std::size_t pIdx);
 
   const RunningSamples<float>& StfFreqSamples() const { return mStfFreqSamples; }
 
@@ -62,11 +64,18 @@ class StfInputInterface
   /// Readout flags
   bool mRdh4FilterTrigger = false;  // filter out empty HBFs in triggered mode with RDHv4
 
-  bool mFilterTriggerEmpty = false; // Filter out empty CRU blocks in trigger mode
   RunningSamples<float> mStfNumFilteredMessages;
 
   o2::header::DataOrigin mDataOrigin;
+
+  /// StfBuilding threads
+  /// Start a thread per building slot: updates are distributed with % numBuildingThreads
+  std::size_t mNumBuilders = 1;
+  std::vector<ConcurrentFifo<std::vector<FairMQMessagePtr>>> mBuilderInputQueues;
+  std::vector<SubTimeFrameReadoutBuilder> mStfBuilders;
+  std::vector<std::thread> mBuilderThreads;
 };
+
 }
 } /* namespace o2::DataDistribution */
 

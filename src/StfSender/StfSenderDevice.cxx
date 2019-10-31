@@ -49,7 +49,6 @@ void StfSenderDevice::InitTask()
   mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
-  mMaxConcurrentSends = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxConcurrentSends);
   mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
 
   // Discovery
@@ -111,7 +110,7 @@ void StfSenderDevice::PreRun()
 
   // Start output handler
   // NOTE: required even in standalone operation
-  mOutputHandler.start(mDiscoveryConfig, mMaxConcurrentSends);
+  mOutputHandler.start(mDiscoveryConfig);
 
   // start the RPC server after output
   int lRpcRealPort = 0;
@@ -181,8 +180,9 @@ void StfSenderDevice::StfReceiverThread()
 
     { // rate-limited LOG: print stats every 100 TFs
       static unsigned long floodgate = 0;
-      if (++floodgate % 100 == 1)
+      if (floodgate++ % 100 == 0) {
         LOG(DEBUG) << "TF[" << lStfId << "] size: " << lStf->getDataSize();
+      }
     }
 
     queue(eReceiverOut, std::move(lStf));
@@ -207,6 +207,8 @@ void StfSenderDevice::GuiThread()
 
     mGui->Canvas().Modified();
     mGui->Canvas().Update();
+
+    LOG(INFO) << "* Queued STFs in StfSender: " << this->getPipelineSize();
 
     std::this_thread::sleep_for(5s);
   }

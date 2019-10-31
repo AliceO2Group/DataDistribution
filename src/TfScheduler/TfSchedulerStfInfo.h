@@ -121,7 +121,7 @@ private:
   /// Stfs for scheduling
   mutable std::mutex mCompleteStfInfoLock;
   std::condition_variable mStfScheduleCondition;
-  std::vector<std::vector<StfInfo>> mCompleteStfsInfo;
+  std::deque<std::vector<StfInfo>> mCompleteStfsInfo;
 
 };
 }

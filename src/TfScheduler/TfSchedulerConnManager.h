@@ -28,6 +28,7 @@
 
 #include <vector>
 #include <map>
+#include <set>
 #include <thread>
 #include <list>
 #include <future>
@@ -79,6 +80,14 @@ class TfSchedulerConnManager
   std::size_t checkStfSenders();
 
   bool stfSendersReady() { return mStfSenderRpcClients.size() == mPartitionInfo.mStfSenderIdList.size(); }
+
+  std::set<std::string> getStfSenderSet() const
+  {
+    std::set<std::string> lSet;
+    const auto &lIdList = mDiscoveryConfig->status().stf_sender_id_list();
+    lSet.insert(lIdList.begin(), lIdList.end());
+    return lSet;
+  }
 
   void StfSenderMonitoringThread();
 

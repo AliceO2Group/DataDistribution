@@ -21,6 +21,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <iterator>
+#include <chrono>
 
 #include <Utilities.h>
 
@@ -44,116 +45,139 @@ class ConcurrentContainerImpl
  public:
   typedef T value_type;
 
-  ~ConcurrentContainerImpl()
-  {
-    stop();
-  }
+  ConcurrentContainerImpl()
+  : mImpl(std::make_unique<QueueInternals>()) { }
+
+  ConcurrentContainerImpl(ConcurrentContainerImpl &&) = default;
+
+  ~ConcurrentContainerImpl() { stop(); }
 
   void stop()
   {
-    std::unique_lock<std::mutex> lLock(mLock);
-    mRunning = false;
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    mImpl->mRunning = false;
     lLock.unlock();
-    mCond.notify_all();
+    mImpl->mCond.notify_all();
   }
 
   void flush()
   {
-    std::unique_lock<std::mutex> lLock(mLock);
-    mContainer.clear();
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    mImpl->mContainer.clear();
     lLock.unlock();
-    mCond.notify_all();
+    mImpl->mCond.notify_all();
   }
 
   template <typename... Args>
   void push(Args&&... args)
   {
-    std::unique_lock<std::mutex> lLock(mLock);
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
 
     if (type == eFIFO) {
-      mContainer.emplace_back(std::forward<Args>(args)...);
+      mImpl->mContainer.emplace_back(std::forward<Args>(args)...);
     } else if (type == eLIFO) {
-      mContainer.emplace_front(std::forward<Args>(args)...);
+      mImpl->mContainer.emplace_front(std::forward<Args>(args)...);
     }
 
     lLock.unlock(); // reduce contention
-    mCond.notify_one();
+    mImpl->mCond.notify_one();
   }
 
   bool pop(T& d)
   {
-    std::unique_lock<std::mutex> lLock(mLock);
-    while (mContainer.empty() && mRunning) {
-      mCond.wait(lLock);
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    while (mImpl->mContainer.empty() && mImpl->mRunning) {
+      mImpl->mCond.wait(lLock);
     }
 
-    if (!mRunning && mContainer.empty())
+    if (!mImpl->mRunning && mImpl->mContainer.empty())
       return false;
 
-    assert(!mContainer.empty());
-    d = std::move(mContainer.front());
-    mContainer.pop_front();
+    assert(!mImpl->mContainer.empty());
+    d = std::move(mImpl->mContainer.front());
+    mImpl->mContainer.pop_front();
     return true;
   }
+
+  bool pop_wait_for(T& d, const std::chrono::microseconds &us)
+  {
+    {
+      std::unique_lock<std::mutex> lLock(mImpl->mLock);
+      if (mImpl->mContainer.empty() && (mImpl->mRunning)) {
+        if (std::cv_status::timeout == mImpl->mCond.wait_for(lLock, us)) {
+          if (mImpl->mContainer.empty()) {
+            return false;
+          }
+        }
+      }
+    }
+
+    return try_pop(d);
+  }
+
 
   template <class OutputIt>
   unsigned long pop_n(const unsigned long pCnt, OutputIt pDstIter)
   {
-    std::unique_lock<std::mutex> lLock(mLock);
-    while (mContainer.empty() && mRunning) {
-      mCond.wait(lLock);
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    while (mImpl->mContainer.empty() && mImpl->mRunning) {
+      mImpl->mCond.wait(lLock);
     }
 
-    if (!mRunning && mContainer.empty())
+    if (!mImpl->mRunning && mImpl->mContainer.empty())
       return false; // should stop
 
-    assert(!mContainer.empty());
+    assert(!mImpl->mContainer.empty());
 
-    unsigned long ret = std::min(mContainer.size(), pCnt);
-    std::move(std::begin(mContainer), std::begin(mContainer) + ret, pDstIter);
-    mContainer.erase(std::begin(mContainer), std::begin(mContainer) + ret);
+    unsigned long ret = std::min(mImpl->mContainer.size(), pCnt);
+    std::move(std::begin(mImpl->mContainer), std::begin(mImpl->mContainer) + ret, pDstIter);
+    mImpl->mContainer.erase(std::begin(mImpl->mContainer), std::begin(mImpl->mContainer) + ret);
     return ret;
   }
 
   bool try_pop(T& d)
   {
-    std::unique_lock<std::mutex> lLock(mLock);
-    if (mContainer.empty()) {
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    if (mImpl->mContainer.empty()) {
       return false;
     }
 
-    d = std::move(mContainer.front());
-    mContainer.pop_front();
+    d = std::move(mImpl->mContainer.front());
+    mImpl->mContainer.pop_front();
     return true;
   }
 
   template <class OutputIt>
   unsigned long try_pop_n(const unsigned long pCnt, OutputIt pDstIter)
   {
-    std::unique_lock<std::mutex> lLock(mLock);
-    if (mContainer.empty()) {
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    if (mImpl->mContainer.empty()) {
       return 0;
     }
 
-    unsigned long ret = std::min(mContainer.size(), pCnt);
-    std::move(std::begin(mContainer), std::begin(mContainer) + ret, pDstIter);
-    mContainer.erase(std::begin(mContainer), std::begin(mContainer) + ret);
+    unsigned long ret = std::min(mImpl->mContainer.size(), pCnt);
+    std::move(std::begin(mImpl->mContainer), std::begin(mImpl->mContainer) + ret, pDstIter);
+    mImpl->mContainer.erase(std::begin(mImpl->mContainer), std::begin(mImpl->mContainer) + ret);
     return ret;
   }
 
   std::size_t size() const
   {
-    std::unique_lock<std::mutex> lLock(mLock);
-    return mContainer.size();
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    return mImpl->mContainer.size();
   }
 
-  bool is_running() const { return mRunning; }
+  bool is_running() const { return mImpl->mRunning; }
 
- private:
-  std::deque<T> mContainer;
-  mutable std::mutex mLock;
-  std::condition_variable mCond;
-  bool mRunning = true;
+  private:
+  struct QueueInternals {
+    std::deque<T> mContainer;
+    mutable std::mutex mLock;
+    std::condition_variable mCond;
+    bool mRunning = true;
+  };
+
+  std::unique_ptr<QueueInternals> mImpl;
 };
 
 } /* namespace impl*/

@@ -29,10 +29,31 @@ namespace o2
 namespace DataDistribution
 {
 
-void StfInputInterface::start(const o2::header::DataOrigin &pDataOrig)
+void StfInputInterface::start(const std::size_t pNumBuilders, const o2::header::DataOrigin &pDataOrig)
 {
+  mNumBuilders = pNumBuilders;
   mDataOrigin = pDataOrig;
   mRunning = true;
+
+  mBuilderInputQueues.clear();
+  mBuilderInputQueues.resize(mNumBuilders);
+
+  // Reference to the output or DPL channel
+  const auto &lOutChanName = mDevice.dplEnabled() ?
+    mDevice.getDplChannelName() :
+    mDevice.getOutputChannelName();
+
+  auto& lOutputChan = mDevice.GetChannel(lOutChanName);
+
+  // NOTE: create the mStfBuilders first to avid resizing the vector; then threads
+  for (std::size_t i = 0; i < mNumBuilders; i++) {
+    mStfBuilders.emplace_back(lOutputChan, mDevice.dplEnabled());
+  }
+
+  for (std::size_t i = 0; i < mNumBuilders; i++) {
+    mBuilderThreads.emplace_back(std::thread(&StfInputInterface::StfBuilderThread, this, i));
+  }
+
   mInputThread = std::thread(&StfInputInterface::DataHandlerThread, this, 0);
 }
 
@@ -42,32 +63,32 @@ void StfInputInterface::stop()
   if (mInputThread.joinable()) {
     mInputThread.join();
   }
+
+  for (auto &lQueue : mBuilderInputQueues) {
+    lQueue.stop();
+  }
+
+  for (auto &lBldThread : mBuilderThreads) {
+    if (lBldThread.joinable()) {
+      lBldThread.join();
+    }
+  }
+
+  mStfBuilders.clear();
+  mBuilderThreads.clear();
+  mBuilderInputQueues.clear();
 }
 
 /// Receiving thread
 void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
 {
-  // current TF Id
-  std::int64_t lCurrentStfId = -1;
   std::vector<FairMQMessagePtr> lReadoutMsgs;
   lReadoutMsgs.reserve(1U << 20);
+  // current TF Id
+  std::uint64_t lCurrentStfId = 0;
 
   // Reference to the input channel
   auto& lInputChan = mDevice.GetChannel(mDevice.getInputChannelName(), pInputChannelIdx);
-
-  // Reference to the output or DPL channel
-  const auto &lOutChanName = mDevice.dplEnabled() ?
-    mDevice.getDplChannelName() :
-    mDevice.getOutputChannelName();
-
-  auto& lOutputChan = mDevice.GetChannel(lOutChanName);
-
-  // Stf builder
-  SubTimeFrameReadoutBuilder lStfBuilder(lOutputChan, mDevice.dplEnabled());
-  lStfBuilder.setRdh4FilterTrigger(mRdh4FilterTrigger);
-
-  using hres_clock = std::chrono::high_resolution_clock;
-  auto lStfStartTime = hres_clock::now();
 
   try {
     while (mRunning) {
@@ -80,21 +101,130 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       const auto lRet = lInputChan.Receive(lReadoutMsgs);
       if (lRet < 0 && mRunning) {
         // LOG(WARNING) << "StfHeader receive failed (err = " + std::to_string(lRet) + ")";
-        std::this_thread::yield();
+        // std::this_thread::yield();
         continue;
       } else if (lRet < 0) {
         break; // should exit?
+      }
+
+      if (lReadoutMsgs.empty() ) {
+        // nothing received?
+        continue;
       }
 
       // Copy to avoid surprises. The receiving header is not O2 compatible and can be discarded
       assert(lReadoutMsgs[0]->GetSize() == sizeof(ReadoutSubTimeframeHeader));
       std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
 
-      if (lReadoutHdr.mTimeFrameId % 100 == 0) {
-        static std::uint64_t sStfSeen = 0;
+      {
+        static thread_local std::uint64_t sNumContIncProblems = 0;
+        static thread_local std::uint64_t sNumContDecProblems = 0;
+
+        if (lReadoutHdr.mTimeFrameId < lCurrentStfId) {
+          if (sNumContIncProblems++ % 50 == 0) {
+            LOG(ERROR) << "READOUT INTERFACE: "
+              "TF ID decreased! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
+              "readout.exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
+              "Total occurrences: " << sNumContIncProblems;
+          }
+        }
+
+        if (lReadoutHdr.mTimeFrameId > (lCurrentStfId + 1)) {
+          if (sNumContDecProblems++ % 50 == 0) {
+            LOG(ERROR) << "READOUT INTERFACE: "
+              "TF ID non-contiguous increase! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
+              "readout.exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
+              "Total occurrences: " << sNumContDecProblems;
+          }
+        }
+      }
+
+      lCurrentStfId = std::max(lCurrentStfId, std::uint64_t(lReadoutHdr.mTimeFrameId));
+
+      mBuilderInputQueues[lReadoutHdr.mTimeFrameId % mNumBuilders].push(std::move(lReadoutMsgs));
+    }
+  } catch (std::runtime_error& e) {
+    LOG(ERROR) << "Receive failed. Stopping input thread[" << pInputChannelIdx << "]...";
+    return;
+  }
+
+  LOG(INFO) << "Exiting input thread[" << pInputChannelIdx << "]...";
+}
+
+/// StfBuilding thread
+void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
+{
+  using namespace std::chrono_literals;
+  // current TF Id
+  std::int64_t lCurrentStfId = 0;
+  std::vector<FairMQMessagePtr> lReadoutMsgs;
+  lReadoutMsgs.reserve(1U << 20);
+
+  // Reference to the input channel
+  assert (mBuilderInputQueues.size() == mNumBuilders);
+  assert (pIdx < mBuilderInputQueues.size());
+  auto &lInputQueue = mBuilderInputQueues[pIdx];
+
+  // Stf builder
+  SubTimeFrameReadoutBuilder &lStfBuilder = mStfBuilders[pIdx];
+  lStfBuilder.setRdh4FilterTrigger(mRdh4FilterTrigger);
+
+  const std::chrono::microseconds cMinWaitTime = 20000us;
+  const std::chrono::microseconds cDesiredWaitTime = 22500us * mNumBuilders / 3;
+  const auto cStfDataWaitFor = std::max(cMinWaitTime, cDesiredWaitTime);
+
+  using hres_clock = std::chrono::high_resolution_clock;
+  auto lStfStartTime = hres_clock::now();
+
+    while (mRunning) {
+
+      bool lFinishStf = false;
+
+      // Equipment ID for the HBFrames (from the header)
+      lReadoutMsgs.clear();
+
+      // receive readout messages
+      const auto lRet = lInputQueue.pop_wait_for(lReadoutMsgs, cStfDataWaitFor);
+      if (!lRet && mRunning) {
+        lFinishStf = true;
+        assert (lReadoutMsgs.empty());
+      } else if (!mRunning) {
+        break;
+      }
+
+      if (lFinishStf) {
+        std::unique_ptr<SubTimeFrame> lStf = lStfBuilder.getStf();
+        if (lStf) {
+          mDevice.queue(eStfBuilderOut, std::move(lStf));
+
+          { // MON: data of a new STF received, get the freq and new start time
+            if (mDevice.guiEnabled()) {
+              const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
+              mStfFreqSamples.Fill(1.0f / lStfDur.count() * mNumBuilders);
+              lStfStartTime = hres_clock::now();
+            }
+          }
+        }
+
+        continue;
+      }
+
+      if (lReadoutMsgs.empty()) {
+        LOG(ERROR) << "READOUT INTERFACE: empty readout multipart.";
+        continue;
+      }
+
+      // Copy to avoid surprises. The receiving header is not O2 compatible and can be discarded
+      ReadoutSubTimeframeHeader lReadoutHdr;
+      assert(lReadoutMsgs[0]->GetSize() == sizeof(ReadoutSubTimeframeHeader));
+      std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
+
+      if (lReadoutHdr.mTimeFrameId % (100 + pIdx) == 0) {
+        static thread_local std::uint64_t sStfSeen = 0;
         if (lReadoutHdr.mTimeFrameId != sStfSeen) {
           sStfSeen = lReadoutHdr.mTimeFrameId;
-          LOG(DEBUG) << "Received update for STF ID: " << lReadoutHdr.mTimeFrameId;
+          LOG(DEBUG) << "READOUT INTERFACE [" << pIdx << "]: "
+            "Received an update for STF ID: " << lReadoutHdr.mTimeFrameId;
         }
       }
 
@@ -102,9 +232,9 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       {
         if (lReadoutHdr.mNumberHbf != (lReadoutMsgs.size() - 1)) {
           static thread_local std::uint64_t sNumMessages = 0;
-          if (++sNumMessages % 16384 == 0) {
-            LOG(ERROR) << "READOUT INTERFACE: indicated number of HBFrames in the header does not match "
-                        " the number of sent blocks: "
+          if (sNumMessages++ % 8192 == 0) {
+            LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: "
+              "indicated number of HBFrames in the header does not match the number of sent blocks: "
                        << lReadoutHdr.mNumberHbf << " != " << (lReadoutMsgs.size() - 1)
                        << ". Total occurrences: " << sNumMessages;
           }
@@ -119,14 +249,15 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
             lReadoutMsgs[1]->GetSize());
 
           if (lLinkId != lReadoutHdr.mLinkId) {
-            LOG(ERROR) << "READOUT INTERFACE: indicated link ID does not match RDH in data block "
+            LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: "
+                          "indicated link ID does not match RDH in data block "
                        << (unsigned)lReadoutHdr.mLinkId << " != " << lLinkId;
           }
         }
       }
 
       if (lReadoutMsgs.size() < 2) {
-        LOG(WARNING) << "READOUT INTERFACE: no data sent.";
+        LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: no data sent.";
         continue;
       }
 
@@ -147,32 +278,20 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
           ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
         }
 
-        { // MON: data of a new STF received, get the freq and new start time
-          if (mDevice.guiEnabled()) {
-            const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
-            mStfFreqSamples.Fill(1.0f / lStfDur.count());
-            lStfStartTime = hres_clock::now();
-          }
-        }
-
-        if (lCurrentStfId > 0 && (lReadoutHdr.mTimeFrameId < lCurrentStfId)) {
-          LOG(ERROR) << "TF ID decreased! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
-                        " readout.exe sent messages with non-monotonic TF id!. SubTimeFrames will be incomplete! ";
-        }
-
-        if (lCurrentStfId > 0 && (lReadoutHdr.mTimeFrameId > (lCurrentStfId + 1))) {
-          LOG(ERROR) << "TF ID non-contiguous increase! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
-                        " readout.exe sent messages with non-monotonic TF id!. SubTimeFrames will be incomplete! ";
-        }
-
         if (lCurrentStfId >= 0) {
           // Finished: queue the current STF and start a new one
           std::unique_ptr<SubTimeFrame> lStf = lStfBuilder.getStf();
           if (lStf) {
             // LOG(DEBUG) << "Received TF[" << lStf->header().mId<< "]::size= " << lStf->getDataSize();
             mDevice.queue(eStfBuilderOut, std::move(lStf));
-          } else {
-            LOG(INFO) << "No data received? This should not happen. ";
+
+            { // MON: data of a new STF received, get the freq and new start time
+              if (mDevice.guiEnabled()) {
+                const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
+                mStfFreqSamples.Fill(1.0f / lStfDur.count() * mNumBuilders);
+                lStfStartTime = hres_clock::now();
+              }
+            }
           }
         }
 
@@ -186,12 +305,8 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
 
       lStfBuilder.addHbFrames(mDataOrigin, lSubSpecification, lReadoutHdr, std::move(lReadoutMsgs));
     }
-  } catch (std::runtime_error& e) {
-    LOG(ERROR) << "Receive failed. Stopping input thread[" << pInputChannelIdx << "]...";
-    return;
-  }
 
-  LOG(INFO) << "Exiting input thread[" << pInputChannelIdx << "]...";
+  LOG(INFO) << "Exiting StfBuilder thread[" << pIdx << "]...";
 }
 
 }
