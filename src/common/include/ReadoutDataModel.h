@@ -45,7 +45,7 @@ public:
 
   static std::uint64_t sFirstSeenHBOrbitCnt;
 
-  [[maybe_unused]] static std::tuple<std::uint32_t,std::uint32_t,std::uint32_t>
+  static std::tuple<std::uint32_t,std::uint32_t,std::uint32_t>
   getSubSpecificationComponents(const char* pRdhData, const std::size_t len);
 
   static o2::header::DataHeader::SubSpecificationType getSubSpecification(const char* data, const std::size_t len);
@@ -69,22 +69,7 @@ public:
   static SanityCheckMode getRdhSanityCheckMode() { return sRdhSanityCheckMode; }
 };
 
-[[maybe_unused]] static
-std::istream& operator>>(std::istream& in, ReadoutDataUtils::SanityCheckMode& pRetVal) {
-  std::string token;
-  in >> token;
-
-  if (token == "off") {
-    pRetVal = ReadoutDataUtils::eNoSanityCheck;
-  } else if (token == "drop") {
-    pRetVal = ReadoutDataUtils::eSanityCheckDrop;
-  } else if (token == "print") {
-    pRetVal = ReadoutDataUtils::eSanityCheckPrint;
-  } else {
-    in.setstate(std::ios_base::failbit);
-  }
-  return in;
-}
+std::istream& operator>>(std::istream& in, ReadoutDataUtils::SanityCheckMode& pRetVal);
 
 }
 } /* o2::DataDistribution */

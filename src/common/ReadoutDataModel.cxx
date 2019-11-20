@@ -112,6 +112,8 @@ ReadoutDataUtils::getRdhMemorySize(const char* data, const std::size_t len)
   for (std::size_t i = 0; i < len / 8192; i++) {
 
     const auto [lMemSize, lOffsetNext, lStopBit] = getRdhNavigationVals(data + i*8192);
+    (void) lOffsetNext;
+
     lMemRet += lMemSize;
     lStopRet = lStopBit;
   }
@@ -299,6 +301,23 @@ bool ReadoutDataUtils::filterTriggerEmpyBlocksV4(const char* pData, const std::s
 
   // looks like it should be empty trigger message
   return true;
+}
+
+std::istream& operator>>(std::istream& in, ReadoutDataUtils::SanityCheckMode& pRetVal)
+{
+  std::string token;
+  in >> token;
+
+  if (token == "off") {
+    pRetVal = ReadoutDataUtils::eNoSanityCheck;
+  } else if (token == "drop") {
+    pRetVal = ReadoutDataUtils::eSanityCheckDrop;
+  } else if (token == "print") {
+    pRetVal = ReadoutDataUtils::eSanityCheckPrint;
+  } else {
+    in.setstate(std::ios_base::failbit);
+  }
+  return in;
 }
 
 

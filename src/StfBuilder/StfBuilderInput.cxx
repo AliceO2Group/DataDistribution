@@ -243,10 +243,12 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         }
 
         if (lReadoutMsgs.size() > 1) {
-          [[maybe_unused]]
+
           const auto [lCruId, lEndPoint, lLinkId] = ReadoutDataUtils::getSubSpecificationComponents(
             static_cast<const char*>(lReadoutMsgs[1]->GetData()),
             lReadoutMsgs[1]->GetSize());
+
+          (void)lCruId;
 
           if (lLinkId != lReadoutHdr.mLinkId) {
             LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: "
