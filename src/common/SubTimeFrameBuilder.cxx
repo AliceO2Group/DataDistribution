@@ -69,6 +69,8 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
             const auto [lMemSize, lOffsetNext, lStopBit] = ReadoutDataUtils::getRdhNavigationVals(
               reinterpret_cast<const char*>(pHbFrames[1]->GetData()));
 
+            (void) lOffsetNext; /*unused*/
+
             if (lStopBit && lMemSize == 64) {
               lRem1 = true;
             }
@@ -77,6 +79,8 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
           {
             const auto [lMemSize, lOffsetNext, lStopBit] = ReadoutDataUtils::getRdhNavigationVals(
               reinterpret_cast<const char*>(pHbFrames[2]->GetData()));
+
+            (void) lOffsetNext; /*unused*/
 
             if (lStopBit && lMemSize == 64) {
               lRem2 = true;
