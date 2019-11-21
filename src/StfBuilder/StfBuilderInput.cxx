@@ -248,7 +248,8 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
             static_cast<const char*>(lReadoutMsgs[1]->GetData()),
             lReadoutMsgs[1]->GetSize());
 
-          (void)lCruId;
+          (void) lCruId; /* unused */
+          (void) lEndPoint; /* unused */
 
           if (lLinkId != lReadoutHdr.mLinkId) {
             LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: "
