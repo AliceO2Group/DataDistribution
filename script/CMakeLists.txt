@@ -11,7 +11,6 @@ set(DEMO_CONFIGS
   discovery-flp-epn-chain.json
   flp-epn-dds-topology.xml
   readout_cfg/readout_emu.cfg
-  readout_cfg/readout_cru.cfg
 )
 
 foreach(SCRIPT ${DEMO_SCRIPTS})
