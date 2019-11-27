@@ -71,8 +71,12 @@ if [[ "$EMU" == "emu" ]]; then
   READOUT_PARAM_1="--link-id-offset 1000 --id readout-1 --session flp-s1"
   READOUT_PARAM_2="--link-id-offset 2000 --id readout-2 --session flp-s2"
 else
+  if ! [ -x "$(command -v readout.exe)" ]; then
+    echo "ERROR: Make sure readout.exe is installed (and the Readout module is loaded)"
+    exit -1
+  fi
+
   echo "Using readout.exe in emulation mode. Configuration is read from $readoutConfig"
-  echo "Make sure the Readout is installed or the Readout module is loaded."
   echo "Only 1 FLP chain can be emulated when using the readout source."
   FLP_CNT=1
 
