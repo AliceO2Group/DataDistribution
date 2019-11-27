@@ -94,7 +94,8 @@ ReadoutDataUtils::getSubSpecification(const char* pRdhData, const std::size_t le
 
   const auto [lCruId, lEndPoint, lLinkId] = getSubSpecificationComponents(pRdhData, len);
 
-  lSubSpec = (lCruId << 16) | (lLinkId << (lEndPoint == 0 ? 0 : 8));
+  /* add 1 to linkID because they start with 0 */
+  lSubSpec = (lCruId << 16) | ((lLinkId + 1) << (lEndPoint == 0 ? 0 : 8));
 
   return lSubSpec;
 }
