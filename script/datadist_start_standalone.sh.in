@@ -2,7 +2,7 @@
 
 set -u
 
-chainConfig="@CMAKE_INSTALL_PREFIX@/config/readout-emu-flp-epn-chain.json"
+chainConfig="@CMAKE_INSTALL_PREFIX@/config/datadist_standalone_chain.json"
 readoutConfig="@CMAKE_INSTALL_PREFIX@/config/readout_emu.cfg"
 
 function parse_parameters() {
@@ -10,8 +10,9 @@ read -d '' PARSER <<"EOF"
 import argparse
 
 parser = argparse.ArgumentParser(description='Run FLP-EPN chain',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--readout', dest='readout', required=False, action='store_true', help='Use readout.exe data source in emulation mode.')
+                                 formatter_class=lambda prog: argparse.HelpFormatter(prog,max_help_position=40, width=120))
+parser.add_argument('--readout', dest='readout', required=False, action='store_true', help='Use readout.exe data source in emulation mode')
+parser.add_argument('--readout_cfg',required=False, default='', action='store', help='Optional configuration file for readout.exe')
 
 parser.add_argument('--tmux', required=False, action='store_true', help='Run in tmux CC mode')
 parser.add_argument('--no-gui', dest='nogui', required=False, action='store_true', help='Show GUI')
@@ -21,8 +22,10 @@ parser.add_argument('-r', '--rate', required=False, default=2.0, action='store',
 parser.add_argument('-s', '--rsize', required=False, default=4, action='store', type=int, help='Size of the readout memory segment (in GiB)')
 parser.add_argument('-p', '--spsize', required=False, default=2, action='store', type=int, help='Size of the readout super-pages (in MiB)')
 
-parser.add_argument('--flp-dpl-channel', required=False, default='', action='store', help='Name of the DPL input channel on FLP for STFs.')
-parser.add_argument('--stf-builder-sink-dir', required=False, default='', action='store', help='Dir where to store STFs from SubTimeFrameBuilder')
+parser.add_argument('--dpl-channel', required=False, default='', action='store', help='Name of the DPL input channel on FLP for STFs.')
+parser.add_argument('--data-source-dir', required=False, default='', action='store', help='Directory where to find recorded STF data')
+
+parser.add_argument('--data-sink-dir', required=False, default='', action='store', help='Directory where to store STFs from SubTimeFrameBuilder')
 
 try:
   args = parser.parse_args()
@@ -30,18 +33,21 @@ except SystemExit:
   exit(1) # return error to stop the script if help is shown
 
 print("EMU=%s" % ("readout" if args.readout else "emu"))
+print("READOUT_CFG='%s'" % args.readout_cfg)
 print("EQUIPMENT_CNT=%s" % args.equip)
 print("EQUIPMENT_RATE=%s" % int(args.rate * 1e+9))
 print("DATA_REGION_SIZE=%s" % int(args.rsize * (1<<30)))
 print("SUPERPAGE_SIZE=%s" % int(args.spsize * (1<<20)))
-print("STF_BUILDER_DPL_CHAN='%s'" % args.flp_dpl_channel)
+print("STF_BUILDER_DPL_CHAN='%s'" % args.dpl_channel)
+print("STF_BUILDER_SOURCE_DIR='%s'" % args.data_source_dir)
+print("STF_BUILDER_SINK_DIR='%s'" % args.data_sink_dir)
+
 print("GUI=%s" % ("" if args.nogui else "--gui"))
-print("STF_BUILDER_SINK_DIR='%s'" % args.stf_builder_sink_dir)
 
 print("USE_TMUX=%s" % ("1" if args.tmux else ""))
 EOF
 
-python -c "$PARSER" "$@"
+python3 -c "$PARSER" "$@"
 }
 
 ARGS="$(parse_parameters "$@")"
@@ -55,6 +61,8 @@ eval $ARGS
 
 IO_THREADS=8
 
+PRESS="read -s -n1 -p 'Press any key...'"
+
 if [[ "$EMU" == "emu" ]]; then
   READOUT="ReadoutEmulator"
   READOUT+=" --transport shmem"
@@ -67,9 +75,8 @@ if [[ "$EMU" == "emu" ]]; then
   READOUT+=" $GUI"
   READOUT+=" --io-threads $IO_THREADS"
 
-  READOUT_PARAM_0="--link-id-offset 0    --id readout-0 --session default"
-  READOUT_PARAM_1="--link-id-offset 1000 --id readout-1 --session flp-s1"
-  READOUT_PARAM_2="--link-id-offset 2000 --id readout-2 --session flp-s2"
+  READOUT_PARAM="--link-id-offset 0    --id readout-0 --session default"
+
 else
   if ! [ -x "$(command -v readout.exe)" ]; then
     echo "ERROR: Make sure readout.exe is installed (and the Readout module is loaded)"
@@ -81,11 +88,15 @@ else
   FLP_CNT=1
 
   READOUT="readout.exe"
-  READOUT+=" file://$readoutConfig"
 
-  READOUT_PARAM_0=""
-  READOUT_PARAM_1=""
-  READOUT_PARAM_2=""
+
+  if [[ ! -z $READOUT_CFG ]]; then
+    READOUT+=" file://$READOUT_CFG"
+  else
+    READOUT+=" file://$readoutConfig"
+  fi
+
+  READOUT_PARAM=""
 fi
 
 STF_BUILDER="StfBuilder"
@@ -113,23 +124,38 @@ if [[ ! -z $STF_BUILDER_SINK_DIR ]]; then
   STF_BUILDER+=" --data-sink-sidecar"
 fi
 
+if [[ ! -z $STF_BUILDER_SOURCE_DIR ]]; then
+  if [[ ! -d $STF_BUILDER_SOURCE_DIR ]]; then
+    echo "STF Builder file source directory does not exist!"
+    exit 1
+  fi
+
+  STF_BUILDER+=" --data-source-enable"
+  STF_BUILDER+=" --data-source-dir $STF_BUILDER_SOURCE_DIR"
+  STF_BUILDER+=" --data-source-rate 44"
+  STF_BUILDER+=" --data-source-repeat"
+
+  # disable readout process
+  READOUT=${PRESS}
+  READOUT_PARAM=""
+fi
+
 if [[ -z $USE_TMUX ]]; then
   # (FLP) Start FLP processes
   xterm -geometry 90x57+560+0 -hold -e $STF_BUILDER --id stf_builder-0 --session default &
-  xterm -geometry 90x57+0+0 -hold -e $READOUT $READOUT_PARAM_0 &
-
+  xterm -geometry 90x57+0+0 -hold -e $READOUT $READOUT_PARAM &
 else
   # poor man's tmux environment cloning; make sure you're running tmux in control center (-CC) mode
   ENV_VAR_FILE=$(mktemp)
   typeset -gx > $ENV_VAR_FILE
 
   # cat $ENV_VAR_FILE
-  if [[ $EPN_CNT -gt 0 ]]; then
-    tmux -CC \
-      new-window \
-      "source $ENV_VAR_FILE; $READOUT $READOUT_PARAM_0; read" \; \
-      split-window \
-      "source $ENV_VAR_FILE; $STF_BUILDER --id stf_builder-0 --session default; read; rm $ENV_VAR_FILE" \; \
-      select-layout even-horizontal
-  fi
+
+  tmux -CC \
+    new-window \
+    "source $ENV_VAR_FILE; $READOUT $READOUT_PARAM; $PRESS" \; \
+    split-window \
+    "source $ENV_VAR_FILE; $STF_BUILDER --id stf_builder-0 --session default; $PRESS; rm $ENV_VAR_FILE" \; \
+    select-layout even-horizontal
+
 fi
