@@ -2,12 +2,12 @@
 # @brief  Demonstration and test chain scripts
 
 set(DEMO_SCRIPTS
-  start_Emulator-3FLP-3EPN.sh
+  datadist_start_standalone.sh
   start_Discovery-3FLP-3EPN.sh
 )
 
 set(DEMO_CONFIGS
-  readout-emu-flp-epn-chain.json
+  datadist_standalone_chain.json
   discovery-flp-epn-chain.json
   flp-epn-dds-topology.xml
   readout_cfg/readout_emu.cfg
