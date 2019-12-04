@@ -37,8 +37,8 @@ using namespace std::chrono_literals;
 bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 {
   // make max number of listening channels for the partition
-  auto transportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq",
-    fair::mq::tools::Uuid(), mDevice.GetConfig());
+  auto transportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq");
+
   auto &lStatus = pConfig->status();
 
   std::uint32_t lNumStfSenders;

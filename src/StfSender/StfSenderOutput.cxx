@@ -18,6 +18,7 @@
 #include <SubTimeFrameVisitors.h>
 
 #include <FairMQLogger.h>
+#include <fairmq/tools/Unique.h>
 
 #include <condition_variable>
 #include <stdexcept>
@@ -94,7 +95,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
   }
 
   // create a socket and connect
-  auto transportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", fair::mq::tools::Uuid(), mDevice.GetConfig());
+  auto transportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq");
 
   auto lNewChannel = std::make_unique<FairMQChannel>(
     "tf_builder_" + pTfBuilderId ,  // name
