@@ -88,20 +88,26 @@ to files, before they are sent out.
 **--output-channel-name** name
 :   Name of the output channel for non-DPL deployments (**required**).
 
-**--cru-count** num
-:   Number of CRU Readout processes (each connects to the readout channel, index 0 to N-1).
-    The default value of this parameter is '*1*'.
-
 **--gui**
-:   Enable GUI.
+:   Enable basic GUI monitor (X forwarding required).
 
 ## StfBuilder DPL options
 
-**--enable-dpl**
-:   Enable DPL.
-
 **--dpl-channel-name** name
-:   Name of the DPL output channel for DPL deployments (**required** when --enable-dpl is used).
+:   Enable DPL workflow: Specify name of the DPL output channel. NOTE: Channel specification
+    is given using '*--channel-config*' option.
+
+
+## SubTimeFrameBuilder data source
+
+**--detector** name
+:   Specifies the detector string for SubTimeFrame building. Allowed are: ACO, CPV,
+    CTP, EMC, FT0, FV0, FDD, HMP, ITS, MCH, MFT, MID, PHS, TOF, TPC, TRD, ZDC.
+
+## Options controlling SubTimeFrame building
+
+**--rdh-data-check** arg (=off)
+:   Enable extensive RDH verification. Permitted values: off, print, drop.
 
 
 ## (Sub)TimeFrame file sink options
@@ -129,6 +135,22 @@ to files, before they are sent out.
 :   Write a sidecar file for each (Sub)TimeFrame file containing information about data blocks
     written in the data file. Note: Useful for debugging.
     *Warning: Format of sidecar files is not stable. This option is for debugging only.*
+
+## (Sub)TimeFrame file source options
+
+**--data-source-enable**
+:   Enable reading of (Sub)TimeFrames from files.
+
+**--data-source-dir** arg
+:   Specifies the source directory where (Sub)TimeFrame files are located. NOTE:
+    Only (Sub)TimeFrame data files are allowed in this directory.
+
+**--data-source-rate** arg (=44)
+:   Rate of injecting new (Sub)TimeFrames (approximate). 0 to inject as fast as possible.
+
+**--data-source-repeat**
+:   If enabled, repeatedly inject (Sub)TimeFrames into the chain.
+
 
 # NOTES
 

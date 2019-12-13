@@ -124,27 +124,31 @@ Name of the output channel for non\-DPL deployments (\f[B]required\f[]).
 .RS
 .RE
 .TP
-.B \f[B]\-\-cru\-count\f[] num
-Number of CRU Readout processes (each connects to the readout channel,
-index 0 to N\-1).
-The default value of this parameter is \[aq]\f[I]1\f[]\[aq].
-.RS
-.RE
-.TP
 .B \f[B]\-\-gui\f[]
-Enable GUI.
+Enable basic GUI monitor (X forwarding required).
 .RS
 .RE
 .SS StfBuilder DPL options
 .TP
-.B \f[B]\-\-enable\-dpl\f[]
-Enable DPL.
+.B \f[B]\-\-dpl\-channel\-name\f[] name
+Enable DPL workflow: Specify name of the DPL output channel.
+NOTE: Channel specification is given using
+\[aq]\f[I]\-\-channel\-config\f[]\[aq] option.
 .RS
 .RE
+.SS SubTimeFrameBuilder data source
 .TP
-.B \f[B]\-\-dpl\-channel\-name\f[] name
-Name of the DPL output channel for DPL deployments (\f[B]required\f[]
-when \-\-enable\-dpl is used).
+.B \f[B]\-\-detector\f[] name
+Specifies the detector string for SubTimeFrame building.
+Allowed are: ACO, CPV, CTP, EMC, FT0, FV0, FDD, HMP, ITS, MCH, MFT, MID,
+PHS, TOF, TPC, TRD, ZDC.
+.RS
+.RE
+.SS Options controlling SubTimeFrame building
+.TP
+.B \f[B]\-\-rdh\-data\-check\f[] arg (=off)
+Enable extensive RDH verification.
+Permitted values: off, print, drop.
 .RS
 .RE
 .SS (Sub)TimeFrame file sink options
@@ -186,6 +190,29 @@ about data blocks written in the data file.
 Note: Useful for debugging.
 \f[I]Warning: Format of sidecar files is not stable. This option is for
 debugging only.\f[]
+.RS
+.RE
+.SS (Sub)TimeFrame file source options
+.TP
+.B \f[B]\-\-data\-source\-enable\f[]
+Enable reading of (Sub)TimeFrames from files.
+.RS
+.RE
+.TP
+.B \f[B]\-\-data\-source\-dir\f[] arg
+Specifies the source directory where (Sub)TimeFrame files are located.
+NOTE: Only (Sub)TimeFrame data files are allowed in this directory.
+.RS
+.RE
+.TP
+.B \f[B]\-\-data\-source\-rate\f[] arg (=44)
+Rate of injecting new (Sub)TimeFrames (approximate).
+0 to inject as fast as possible.
+.RS
+.RE
+.TP
+.B \f[B]\-\-data\-source\-repeat\f[]
+If enabled, repeatedly inject (Sub)TimeFrames into the chain.
 .RS
 .RE
 .SH NOTES
