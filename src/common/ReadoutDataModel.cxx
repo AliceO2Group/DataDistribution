@@ -110,13 +110,23 @@ ReadoutDataUtils::getRdhMemorySize(const char* data, const std::size_t len)
     return {-1, -1};
   }
 
-  for (std::size_t i = 0; i < len / 8192; i++) {
+  const char *p = data;
 
-    const auto [lMemSize, lOffsetNext, lStopBit] = getRdhNavigationVals(data + i*8192);
-    (void) lOffsetNext;
-
+  while (p < data + len) {
+    const auto [lMemSize, lOffsetNext, lStopBit] = getRdhNavigationVals(p);
     lMemRet += lMemSize;
     lStopRet = lStopBit;
+
+    if( lStopBit ) {
+      break;
+    }
+
+    p += lOffsetNext;
+  }
+
+  if (p > data + len) {
+    LOG (ERROR) << "BLOCK CHECK: StopBit lookup failed: advanced beyond end of the buffer.";
+    lStopRet = -1;
   }
 
   return {lMemRet, lStopRet};
