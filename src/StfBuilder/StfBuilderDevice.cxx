@@ -112,19 +112,20 @@ void StfBuilderDevice::InitTask()
     }
   }
 
-  // check if output enabled
-  if (mStandalone && !mFileSink.enabled()) {
-    LOG(WARNING) << "Running in standalone mode and with STF file sink disabled. "
-                    "Data will be lost.";
-  }
-
   // Using DPL?
-  if (mDplChannelName != "" && !mStandalone) {
+  if (mDplChannelName != "") {
+    mStandalone = false;
     mDplEnabled = true;
     LOG(INFO) << "DPL Channel name: " << mDplChannelName;
   } else {
     mDplEnabled = false;
     LOG(INFO) << "Not sending to DPL.";
+  }
+
+  // check if output enabled
+  if (mStandalone && !mFileSink.enabled()) {
+    LOG(WARNING) << "Running in standalone mode and with STF file sink disabled. "
+                    "Data will be lost.";
   }
 }
 
@@ -237,12 +238,13 @@ void StfBuilderDevice::StfOutputThread()
   std::unique_ptr<StfDplAdapter> lStfDplAdapter;
 
   // cannot get the channels in standalone mode
+  auto& lOutputChan = getOutputChannel();
   if (!mStandalone) {
     if (!dplEnabled()) {
-      auto& lOutputChan = GetChannel(getOutputChannelName(), 0);
+      // auto& lOutputChan = GetChannel(getOutputChannelName(), 0);
       lStfSerializer = std::make_unique<InterleavedHdrDataSerializer>(lOutputChan);
     } else {
-      auto& lOutputChan = GetChannel(getDplChannelName(), 0);
+      // auto& lOutputChan = GetChannel(getDplChannelName(), 0);
       lStfDplAdapter = std::make_unique<StfDplAdapter>(lOutputChan);
     }
   }
