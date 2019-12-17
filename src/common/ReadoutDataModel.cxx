@@ -254,25 +254,40 @@ bool ReadoutDataUtils::filterTriggerEmpyBlocksV4(const char* pData, const std::s
   std::uint32_t lMemSize1, lOffsetNext1, lStopBit1;
   std::uint32_t lMemSize2, lOffsetNext2, lStopBit2;
 
-  if (pLen == 16384) { /* usual case */
+  if (pLen == 128 || pLen == 16384) { /* usual case */
+    static thread_local std::size_t sNumFiltered128Blocks = 0;
     static thread_local std::size_t sNumFiltered16kBlocks = 0;
 
     if (pData[0] != 4) {
       return false; // not RDH4
     }
 
-    if (getSubSpecification(pData, 8192) != getSubSpecification(pData + 8192, 8192)) {
+    std::tie(lMemSize1, lOffsetNext1, lStopBit1) = getRdhNavigationVals(pData);
+
+    if (lStopBit1) {
       return false;
     }
 
-    std::tie(lMemSize1, lOffsetNext1, lStopBit1) = getRdhNavigationVals(pData);
-    std::tie(lMemSize2, lOffsetNext2, lStopBit2) = getRdhNavigationVals(pData + 8192);
+    if (lOffsetNext1 > pLen) {
+      LOG(ERROR) << "BLOCK CHECK: Invalid offset " << lOffsetNext1 << " (beyond end of the buffer)";
+    } if (lOffsetNext1 < 64) {
+      LOG(ERROR) << "BLOCK CHECK: Invalid offset " << lOffsetNext1 << " (less than RDH size)";
+    }
+
+    const char *lRDH1 = pData;
+    const std::size_t lRDH1Size = std::min(std::size_t(lOffsetNext1), std::size_t(8192));
+
+    const char *lRDH2 = lRDH1 + lOffsetNext1;
+
+    std::tie(lMemSize2, lOffsetNext2, lStopBit2) = getRdhNavigationVals(lRDH2);
+    const std::size_t lRDH2Size = std::min(std::size_t(lMemSize2), std::size_t(8192));
+
+    if (getSubSpecification(lRDH1, lRDH1Size) != getSubSpecification(lRDH2, lRDH2Size)) {
+      return false;
+    }
+
 
     if (lMemSize1 != lMemSize2 || lMemSize1 != 64) {
-      return false;
-    }
-
-    if ((lOffsetNext1 != lOffsetNext2) || (lOffsetNext1 != 8192)) {
       return false;
     }
 
@@ -280,33 +295,20 @@ bool ReadoutDataUtils::filterTriggerEmpyBlocksV4(const char* pData, const std::s
       return false;
     }
 
-    sNumFiltered16kBlocks++;
-
-    if (sNumFiltered16kBlocks % 250000 == 0) {
-      LOG (INFO) << "Filtered " << sNumFiltered16kBlocks << " 16 kiB blocks in trigger mode.";
+    if (pLen == 128) {
+      sNumFiltered128Blocks++;
+      if (sNumFiltered128Blocks % 250000 == 0) {
+        LOG (INFO) << "Filtered " << sNumFiltered128Blocks << " 128 B blocks in trigger mode.";
+      }
+    } else if (pLen == 16384) {
+      sNumFiltered16kBlocks++;
+      if (sNumFiltered16kBlocks % 250000 == 0) {
+        LOG (INFO) << "Filtered " << sNumFiltered16kBlocks << " 16 kiB blocks in trigger mode.";
+      }
     }
 
-  }
-  //  else if (pLen == 8192) {
-  //   static thread_local std::size_t sNumFiltered8kBlocks = 0;
 
-  //   if (pData[0] != 4) {
-  //     return false; // not RDH4
-  //   }
-
-  //   std::tie(lMemSize1, lOffsetNext1, lStopBit1) = getRdhNavigationVals(pData);
-  //   if (lMemSize1 != 64) {
-  //     return false;
-  //   }
-
-  //   sNumFiltered8kBlocks++;
-
-  //   if (sNumFiltered8kBlocks % 2500 == 0) {
-  //     LOG (INFO) << "Filtered " << sNumFiltered8kBlocks << " 8 kiB blocks in trigger mode.";
-  //   }
-
-  // }
-  else {
+  } else {
     return false; // size does not match
   }
 
