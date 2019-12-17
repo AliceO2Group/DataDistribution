@@ -39,11 +39,8 @@ void StfInputInterface::start(const std::size_t pNumBuilders, const o2::header::
   mBuilderInputQueues.resize(mNumBuilders);
 
   // Reference to the output or DPL channel
-  const auto &lOutChanName = mDevice.dplEnabled() ?
-    mDevice.getDplChannelName() :
-    mDevice.getOutputChannelName();
-
-  auto& lOutputChan = mDevice.GetChannel(lOutChanName);
+  // const auto &lOutChanName = mDevice.getOutputChannelName();
+  auto& lOutputChan = mDevice.getOutputChannel();
 
   // NOTE: create the mStfBuilders first to avid resizing the vector; then threads
   for (std::size_t i = 0; i < mNumBuilders; i++) {
@@ -214,6 +211,11 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         continue;
       }
 
+      if (lReadoutMsgs.size() < 2) {
+        LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: no data sent, only header.";
+        continue;
+      }
+
       // Copy to avoid surprises. The receiving header is not O2 compatible and can be discarded
       ReadoutSubTimeframeHeader lReadoutHdr;
       assert(lReadoutMsgs[0]->GetSize() == sizeof(ReadoutSubTimeframeHeader));
@@ -260,7 +262,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       }
 
       if (lReadoutMsgs.size() < 2) {
-        LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: no data sent.";
+        LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: no data sent, invalid blocks removed.";
         continue;
       }
 

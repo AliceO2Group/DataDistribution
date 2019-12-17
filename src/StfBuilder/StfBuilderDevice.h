@@ -87,12 +87,25 @@ class StfBuilderDevice : public DataDistDevice,
   void InitTask() final;
   void ResetTask() final;
 
-  const std::string& getInputChannelName() const { return mInputChannelName; }
-  const std::string& getOutputChannelName() const { return mOutputChannelName; }
-  const std::string& getDplChannelName() const { return mDplChannelName; }
-
   bool guiEnabled() const noexcept { return mBuildHistograms; }
   bool dplEnabled() const noexcept { return mDplEnabled; }
+  bool isSandalone() const noexcept { return mStandalone; }
+
+  const std::string& getInputChannelName() const { return mInputChannelName; }
+  // const std::string& getOutputChannelName() const { return mOutputChannelName; }
+  const std::string& getDplChannelName() const { return mDplChannelName; }
+
+  auto& getOutputChannel() {
+    if (isSandalone()) {
+      return *mStandaloneChannel;
+    }
+
+    if (dplEnabled()) {
+      return this->GetChannel(mDplChannelName);
+    }
+
+    return this->GetChannel(mOutputChannelName);
+  }
 
  protected:
   void PreRun() final;
