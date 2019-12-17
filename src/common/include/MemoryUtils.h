@@ -23,6 +23,8 @@
 #include <vector>
 #include <mutex>
 #include <memory>
+#include <thread>
+#include <chrono>
 
 class DataHeader;
 class FairMQUnmanagedRegion;
@@ -93,17 +95,26 @@ public:
 protected:
   virtual void* do_allocate(std::size_t , std::size_t) override
   {
+    unsigned long lAllocAttempt= 0;
     auto lRet = try_alloc();
-    if (lRet)
-      return lRet;
+    // we cannot fail! report problem if failing to allocate block often
+    while (!lRet) {
+      using namespace std::chrono_literals;
 
-    // try to reclaim if possible
-    if (try_reclaim()) {
+      if (++lAllocAttempt % 1000 == 0) {
+        LOG(ERROR) << "FMQUnsynchronizedPoolMemoryResource: failing to get free block of "
+                     << mObjectSize << " B, total region size: " << mRegion->GetSize() << " B";
+        LOG(ERROR) << "Downstream components are creating back-pressure!";
+      }
+
+      std::this_thread::sleep_for(1ms);
+      // try to reclaim if possible
+      try_reclaim();
       // try again
-      return try_alloc();
+      lRet = try_alloc();
     }
 
-    return nullptr;
+    return lRet;
   }
 
   virtual void do_deallocate(void *, std::size_t, std::size_t) override

@@ -193,6 +193,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
         lDataHdr,
         o2::framework::DataProcessingHeader{mStf->header().mId}
       );
+
       lHdrMsg = mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data());
     } else {
       auto lHdrMsgStack = Stack(mHeaderMemRes->allocator(), lDataHdr);
