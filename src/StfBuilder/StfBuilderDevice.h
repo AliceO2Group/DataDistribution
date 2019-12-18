@@ -112,6 +112,20 @@ class StfBuilderDevice : public DataDistDevice,
   void PostRun() final { };
   bool ConditionalRun() final;
 
+  bool tryPopOldestStfs()
+  {
+    // try to drop one STF starting from back-end queues
+    if (this->try_pop(eStfSendIn)) {
+      return true;
+    }
+
+    if (this->try_pop(eStfFileSinkIn)) {
+      return true;
+    }
+
+    return false;
+  }
+
   unsigned getNextPipelineStage(unsigned pStage) final
   {
     StfBuilderPipeline lNextStage = eStfInvalidStage;
@@ -124,14 +138,17 @@ class StfBuilderDevice : public DataDistDevice,
 
         if (mPipelineLimit && (mNumStfs >= mMaxStfsInPipeline)) {
 
-          LOG(WARNING) << "Dropping an STF due to reaching the maximum number of buffered "
+          // DROP policy in StfBuilder is to keep most current STFs. This will ensure that all
+          // StfBuilders have the same set of STFs ready for distribution
+
+          LOG(WARNING) << "Dropping oldest STF due to reaching the maximum number of buffered "
                           "STFs in the process ("
                        << mMaxStfsInPipeline
                        << "). Consider increasing the limit, or reducing the input data rate.";
 
-          mNumStfs--;
-          lNextStage = eStfNullIn;
-          break;
+          if (tryPopOldestStfs()) {
+            mNumStfs--;
+          }
         }
 
         if (mFileSink.enabled()) {

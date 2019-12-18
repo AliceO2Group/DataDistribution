@@ -245,6 +245,12 @@ class IFifoPipeline
     return std::move(t);
   }
 
+  bool try_pop(unsigned pStage)
+  {
+    T t;
+    return mPipelineQueues[pStage].try_pop(t);
+  }
+
   long getPipelineSize() const noexcept { return mPipelinedSize; }
 
   const auto& getPipelinedSizeSamples() const noexcept { return mPipelinedSizeSamples; }
