@@ -23,6 +23,7 @@
 #include <vector>
 #include <queue>
 #include <chrono>
+#include <sstream>
 
 namespace o2
 {
@@ -118,20 +119,30 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
         static thread_local std::uint64_t sNumContDecProblems = 0;
 
         if (lReadoutHdr.mTimeFrameId < lCurrentStfId) {
-          if (sNumContIncProblems++ % 50 == 0) {
-            LOG(ERROR) << "READOUT INTERFACE: "
+          std::stringstream lErrMsg;
+          lErrMsg << "READOUT INTERFACE: "
               "TF ID decreased! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
               "readout.exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
               "Total occurrences: " << sNumContIncProblems;
+
+          if (sNumContIncProblems++ % 20 == 0) {
+            LOG(ERROR) << lErrMsg.str();
+          } else {
+            LOG(DEBUG) << lErrMsg.str();
           }
         }
 
         if (lReadoutHdr.mTimeFrameId > (lCurrentStfId + 1)) {
-          if (sNumContDecProblems++ % 50 == 0) {
-            LOG(ERROR) << "READOUT INTERFACE: "
-              "TF ID non-contiguous increase! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
-              "readout.exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
-              "Total occurrences: " << sNumContDecProblems;
+          std::stringstream lErrMsg;
+          lErrMsg << "READOUT INTERFACE: "
+            "TF ID non-contiguous increase! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
+            "readout.exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
+            "Total occurrences: " << sNumContDecProblems;
+
+          if (sNumContDecProblems++ % 10 == 0) {
+            LOG(ERROR) << lErrMsg.str();
+          } else {
+            LOG(DEBUG) << lErrMsg.str();
           }
         }
       }
@@ -166,8 +177,8 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
   SubTimeFrameReadoutBuilder &lStfBuilder = mStfBuilders[pIdx];
   lStfBuilder.setRdh4FilterTrigger(mRdh4FilterTrigger);
 
-  const std::chrono::microseconds cMinWaitTime = 20000us;
-  const std::chrono::microseconds cDesiredWaitTime = 22500us * mNumBuilders / 3;
+  const std::chrono::microseconds cMinWaitTime = 2s;
+  const std::chrono::microseconds cDesiredWaitTime = 2s * mNumBuilders / 3;
   const auto cStfDataWaitFor = std::max(cMinWaitTime, cDesiredWaitTime);
 
   using hres_clock = std::chrono::high_resolution_clock;
@@ -190,8 +201,11 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       }
 
       if (lFinishStf) {
+
         std::unique_ptr<SubTimeFrame> lStf = lStfBuilder.getStf();
         if (lStf) {
+          LOG(DEBUG) << "StfBuilderThread " << pIdx << ": finishing STF on timeout, id[" << lStf->header().mId<< "]::size= " << lStf->getDataSize();
+
           mDevice.queue(eStfBuilderOut, std::move(lStf));
 
           { // MON: data of a new STF received, get the freq and new start time
