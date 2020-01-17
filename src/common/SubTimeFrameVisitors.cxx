@@ -62,6 +62,11 @@ void InterleavedHdrDataSerializer::visit(SubTimeFrame& pStf)
     for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
       for (auto& lStfDataIter : lSubSpecMapIter.second) {
         mMessages.emplace_back(std::move(lStfDataIter.mHeader));
+
+        if (lStfDataIter.mData->GetSize() == 0) {
+          LOG(ERROR) << "Sending STF data payload with zero size";
+        }
+
         mMessages.emplace_back(std::move(lStfDataIter.mData));
       }
     }
@@ -103,7 +108,14 @@ void InterleavedHdrDataDeserializer::visit(SubTimeFrame& pStf)
 
   // iterate over all incoming HBFrame data sources
   for (size_t i = 2; i < mMessages.size(); i += 2) {
-    pStf.addStfData({ std::move(mMessages[i]), std::move(mMessages[i + 1]) });
+
+    auto &lDataMsg = mMessages[i + 1];
+
+    if (lDataMsg->GetSize() == 0) {
+      LOG(ERROR) << "Received STF data payload with zero size";
+    }
+
+    pStf.addStfData({ std::move(mMessages[i]), std::move(lDataMsg) });
   }
 }
 

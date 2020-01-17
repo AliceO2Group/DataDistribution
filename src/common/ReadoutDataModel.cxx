@@ -298,12 +298,12 @@ bool ReadoutDataUtils::filterTriggerEmpyBlocksV4(const char* pData, const std::s
     if (pLen == 128) {
       sNumFiltered128Blocks++;
       if (sNumFiltered128Blocks % 250000 == 0) {
-        LOG (INFO) << "Filtered " << sNumFiltered128Blocks << " 128 B blocks in trigger mode.";
+        LOG (INFO) << "Filtered " << sNumFiltered128Blocks << " of 128 B blocks in trigger mode.";
       }
     } else if (pLen == 16384) {
       sNumFiltered16kBlocks++;
       if (sNumFiltered16kBlocks % 250000 == 0) {
-        LOG (INFO) << "Filtered " << sNumFiltered16kBlocks << " 16 kiB blocks in trigger mode.";
+        LOG (INFO) << "Filtered " << sNumFiltered16kBlocks << " of 16 kiB blocks in trigger mode.";
       }
     }
 
