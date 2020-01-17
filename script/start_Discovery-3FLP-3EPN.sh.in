@@ -9,7 +9,7 @@ function parse_parameters() {
 read -d '' PARSER <<"EOF"
 import argparse
 
-parser = argparse.ArgumentParser(description='Run FLP-EPN chain',
+parser = argparse.ArgumentParser(description='Run FLP-EPN chain (for testing only)',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--readout', dest='readout', required=False, action='store_true', help='Use readout.exe data source in emulation mode.')
 
@@ -32,7 +32,7 @@ parser.add_argument('--tf-builder-sink-dir', required=False, default='', action=
 parser.add_argument('--flp-netif', required=True, default='', action='store', help='Name of the FLP network interface to use.')
 parser.add_argument('--epn-netif', required=True, default='', action='store', help='Name of the EPN network interface to use.')
 
-parser.add_argument('--detector', required=False, default='', action='store', help='Name of detector for StfBuilder (uppercase).')
+parser.add_argument('--detector', required=False, default='TPC', action='store', help='Name of detector for StfBuilder (uppercase).')
 parser.add_argument('--check-rdh', required=False, default='', action='store_true', help='Check all RDH headers.')
 
 try:
@@ -74,9 +74,10 @@ fi
 echo "$ARGS"
 eval $ARGS
 
-
+# make sure consul is running
+docker start consul-datadist
 # delete everything
-docker exec consul-datadist consul kv delete -recurse /epn/data-dist
+docker exec -it consul-datadist consul kv delete -recurse /epn/data-dist
 
 # start processes and then add a new partition request
 NET_INTERFACE="eth0"
@@ -182,6 +183,8 @@ fi
 TF_SCHEDULER="TfScheduler"
 TF_SCHEDULER+=" --discovery-net-if=$EPN_NETIF"
 
+echo $STF_BUILDER
+
 if [[ -z $USE_TMUX ]]; then
 
   # start TF scheduler
@@ -219,10 +222,6 @@ if [[ -z $USE_TMUX ]]; then
   fi
 
 
-  # send request to scheduler to create a new partition
-  docker exec consul-datadist consul kv put epn/data-dist/request/partition-id "$PARTITION"
-  docker exec consul-datadist consul kv put epn/data-dist/request/stf-sender-id-list "$FLP_ID_LIST"
-
 else
   # poor man's tmux environment cloning; make sure you're running tmux in control center (-CC) mode
   ENV_VAR_FILE=$(mktemp)
@@ -233,13 +232,20 @@ else
   if [[ $EPN_CNT -gt 0 ]]; then
     tmux -CC \
       new-window \
+      "source $ENV_VAR_FILE; $TF_SCHEDULER --discovery-id=sched0 --id tf_scheduler --session sched-session; read" \; \
+      split-window \
       "source $ENV_VAR_FILE; $READOUT $READOUT_PARAM_0; read" \; \
       split-window \
       "source $ENV_VAR_FILE; $STF_BUILDER --id stf_builder-0 --session default; read" \; \
       split-window  \
-      "source $ENV_VAR_FILE; $STF_SENDER --id stf_sender-0 --session default; read" \; \
+      "source $ENV_VAR_FILE; $STF_SENDER --id stf_sender-0 --discovery-id=flp0 --session default; read" \; \
       split-window  \
-      "source $ENV_VAR_FILE; $TF_BUILDER --id tf_builder-0 --session epn-s0; read; rm $ENV_VAR_FILE" \; \
+      "source $ENV_VAR_FILE; $TF_BUILDER --id tf_builder-0 --discovery-id=epn0 --session epn-s0; read; rm $ENV_VAR_FILE" \; \
       select-layout even-horizontal
   fi
 fi
+
+
+# send request to scheduler to create a new partition
+docker exec -it consul-datadist consul kv put epn/data-dist/request/partition-id "$PARTITION"
+docker exec -it consul-datadist consul kv put epn/data-dist/request/stf-sender-id-list "$FLP_ID_LIST"
