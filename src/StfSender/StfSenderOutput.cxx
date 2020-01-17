@@ -207,6 +207,7 @@ void StfSenderOutput::StfSchedulerThread()
     // take a ref for later use
     SubTimeFrame &lStfRef = *lStf;
     const auto lStfId = lStfRef.header().mId;
+    const auto lStfSize = lStfRef.getDataSize();
 
     {
       static std::uint64_t sStfSchedulerThread = 0;
@@ -242,7 +243,7 @@ void StfSenderOutput::StfSchedulerThread()
       *lStfInfo.mutable_partition() = lStatus.partition();
 
       lStfInfo.set_stf_id(lStfId);
-      lStfInfo.set_stf_size(lStfRef.getDataSize());
+      lStfInfo.set_stf_size(lStfSize);
 
       mDevice.TfSchedRpcCli().StfSenderStfUpdate(lStfInfo, lSchedResponse);
 
