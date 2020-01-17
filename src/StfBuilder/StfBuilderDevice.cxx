@@ -127,6 +127,30 @@ void StfBuilderDevice::InitTask()
     LOG(WARNING) << "Running in standalone mode and with STF file sink disabled. "
                     "Data will be lost.";
   }
+
+    // channel for FileSource: stf or dpl, or generic one in case of standalone
+  if (mStandalone) {
+    // create default FMQ shm channel
+    auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("shmem", "", GetConfig());
+    if (!lTransportFactory) {
+      LOG(ERROR) << "Creating transport factory failed!";
+      exit(-1);
+    }
+    mStandaloneChannel = std::make_unique<FairMQChannel>(
+      "standalone-chan[0]" ,  // name
+      "pair",              // type
+      "bind",              // method
+      "ipc:///tmp/standalone-chan-stfb", // address
+      lTransportFactory
+    );
+
+    // mStandaloneChannel.Init();
+    mStandaloneChannel->Init();
+    // mStandaloneChannel->BindEndpoint("ipc:///tmp/standalone-chan");
+    mStandaloneChannel->Validate();
+  }
+
+  LOG(INFO) << "Sending data to channel: " << getOutputChannel().GetName();
 }
 
 void StfBuilderDevice::PreRun()
@@ -159,35 +183,12 @@ void StfBuilderDevice::PreRun()
 
   // start file source
   // channel for FileSource: stf or dpl, or generic one in case of standalone
-  if (mStandalone) {
-    // create default FMQ shm channel
-    auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("shmem", "", GetConfig());
-    if (!lTransportFactory) {
-      LOG(ERROR) << "Creating transport factory failed!";
-      exit(-1);
-    }
-    mStandaloneChannel = std::make_unique<FairMQChannel>(
-      "standalone-chan[0]" ,  // name
-      "pair",              // type
-      "bind",              // method
-      "ipc:///tmp/standalone-chan-stfb", // address
-      lTransportFactory
-    );
-
-    // mStandaloneChannel.Init();
-    mStandaloneChannel->Init();
-    // mStandaloneChannel->BindEndpoint("ipc:///tmp/standalone-chan");
-    mStandaloneChannel->Validate();
-    mFileSource.start(*mStandaloneChannel, mDplEnabled);
-  } else {
-    mFileSource.start(GetChannel(mDplEnabled ? mDplChannelName : mOutputChannelName), mDplEnabled);
-  }
-
+  mFileSource.start(getOutputChannel(), mDplEnabled);
 
   // start a thread for readout process
   if (!mFileSource.enabled()) {
     mReadoutInterface.setRdh4FilterTrigger(mRdh4FilterTrigger);
-    mReadoutInterface.start(4, mDataOrigin);
+    mReadoutInterface.start(1, mDataOrigin);
   }
 
   // gui thread
