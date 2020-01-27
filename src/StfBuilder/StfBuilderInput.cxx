@@ -130,6 +130,10 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
           } else {
             LOG(DEBUG) << lErrMsg.str();
           }
+
+          // TODO: accout for lost data
+          lReadoutMsgs.clear();
+          continue;
         }
 
         if (lReadoutHdr.mTimeFrameId > (lCurrentStfId + 1)) {
@@ -147,6 +151,7 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
         }
       }
 
+      // make sure we never jump down
       lCurrentStfId = std::max(lCurrentStfId, std::uint64_t(lReadoutHdr.mTimeFrameId));
 
       mBuilderInputQueues[lReadoutHdr.mTimeFrameId % mNumBuilders].push(std::move(lReadoutMsgs));
@@ -155,6 +160,7 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
     LOG(ERROR) << "Receive failed. Stopping input thread[" << pInputChannelIdx << "]...";
     return;
   }
+
 
   LOG(INFO) << "Exiting input thread[" << pInputChannelIdx << "]...";
 }
@@ -186,25 +192,18 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
 
     while (mRunning) {
 
-      bool lFinishStf = false;
-
       // Equipment ID for the HBFrames (from the header)
       lReadoutMsgs.clear();
 
       // receive readout messages
       const auto lRet = lInputQueue.pop_wait_for(lReadoutMsgs, cStfDataWaitFor);
       if (!lRet && mRunning) {
-        lFinishStf = true;
-        assert (lReadoutMsgs.empty());
-      } else if (!mRunning) {
-        break;
-      }
 
-      if (lFinishStf) {
-
+        // timeout! should finish the Stf if have outstanding data
         std::unique_ptr<SubTimeFrame> lStf = lStfBuilder.getStf();
+
         if (lStf) {
-          LOG(DEBUG) << "StfBuilderThread " << pIdx << ": finishing STF on timeout, id[" << lStf->header().mId<< "]::size= " << lStf->getDataSize();
+          LOG(WARNING) << "StfBuilderThread " << pIdx << ": finishing STF on timeout, id[" << lStf->header().mId<< "]::size= " << lStf->getDataSize();
 
           mDevice.queue(eStfBuilderOut, std::move(lStf));
 
@@ -217,7 +216,11 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
           }
         }
 
+        lReadoutMsgs.clear();
         continue;
+
+      } else if (!mRunning) {
+        break;
       }
 
       if (lReadoutMsgs.empty()) {
@@ -235,6 +238,8 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       assert(lReadoutMsgs[0]->GetSize() == sizeof(ReadoutSubTimeframeHeader));
       std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
 
+
+      // log only
       if (lReadoutHdr.mTimeFrameId % (100 + pIdx) == 0) {
         static thread_local std::uint64_t sStfSeen = 0;
         if (lReadoutHdr.mTimeFrameId != sStfSeen) {
@@ -246,7 +251,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
 
       // check multipart size
       {
-        if (lReadoutHdr.mNumberHbf != (lReadoutMsgs.size() - 1)) {
+        if (lReadoutHdr.mNumberHbf != lReadoutMsgs.size() - 1) {
           static thread_local std::uint64_t sNumMessages = 0;
           if (sNumMessages++ % 8192 == 0) {
             LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: "
@@ -262,7 +267,8 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
 
           const auto [lCruId, lEndPoint, lLinkId] = ReadoutDataUtils::getSubSpecificationComponents(
             static_cast<const char*>(lReadoutMsgs[1]->GetData()),
-            lReadoutMsgs[1]->GetSize());
+            lReadoutMsgs[1]->GetSize()
+          );
 
           (void) lCruId; /* unused */
           (void) lEndPoint; /* unused */
@@ -275,17 +281,12 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         }
       }
 
-      if (lReadoutMsgs.size() < 2) {
+      if (lReadoutMsgs.size() <= 1) {
         LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: no data sent, invalid blocks removed.";
         continue;
       }
 
-      const auto lSubSpecification = ReadoutDataUtils::getSubSpecification(
-        static_cast<const char*>(lReadoutMsgs[1]->GetData()),
-        lReadoutMsgs[1]->GetSize()
-      );
-
-      // LOG(DEBUG) << "RECEIVED::Header::size: " << lReadoutMsgs[0]->GetSize() << ", "
+      // LOG(DEBUG) << "RECEIVED:: "
       //           << "TF id: " << lReadoutHdr.mTimeFrameId << ", "
       //           << "#HBF: " << lReadoutHdr.mNumberHbf << ", "
       //           << "EQ: " << lReadoutHdr.linkId;
@@ -300,6 +301,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         if (lCurrentStfId >= 0) {
           // Finished: queue the current STF and start a new one
           std::unique_ptr<SubTimeFrame> lStf = lStfBuilder.getStf();
+
           if (lStf) {
             // LOG(DEBUG) << "Received TF[" << lStf->header().mId<< "]::size= " << lStf->getDataSize();
             mDevice.queue(eStfBuilderOut, std::move(lStf));
@@ -318,11 +320,53 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         lCurrentStfId = lReadoutHdr.mTimeFrameId;
       }
 
-      // handle HBFrames
-      assert(lReadoutHdr.mNumberHbf > 0);
-      assert(lReadoutHdr.mNumberHbf == lReadoutMsgs.size() - 1);
+      // check subspecifications of all messages
+      auto lSubSpecification = ReadoutDataUtils::getSubSpecification(
+        static_cast<const char*>(lReadoutMsgs[1]->GetData()),
+        lReadoutMsgs[1]->GetSize()
+      );
 
-      lStfBuilder.addHbFrames(mDataOrigin, lSubSpecification, lReadoutHdr, std::move(lReadoutMsgs));
+      assert (lReadoutMsgs.size() > 1);
+      auto lStartHbf = lReadoutMsgs.begin() + 1; // skip the meta message
+      auto lEndHbf = lStartHbf + 1;
+
+      std::size_t lAdded = 0;
+
+      while (1) {
+        if (lEndHbf == lReadoutMsgs.end()) {
+          //insert
+          lStfBuilder.addHbFrames(mDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
+          lAdded += (lEndHbf - lStartHbf);
+          break;
+        }
+
+        const auto lNewSubSpec = ReadoutDataUtils::getSubSpecification(
+          reinterpret_cast<const char*>((*lEndHbf)->GetData()),
+          (*lEndHbf)->GetSize()
+        );
+
+        if (lNewSubSpec != lSubSpecification) {
+
+          LOG(ERROR) << "READOUT INTERFACE [" << pIdx << "]: update with mismatched subspecification. "
+            "block[0]: " << std::hex << "0x" << lSubSpecification
+            << ", block[" << std::dec << (lEndHbf - (lReadoutMsgs.begin() + 1)) << "]: "
+            << std::hex << "0x"  << lNewSubSpec;
+
+          // insert
+          lStfBuilder.addHbFrames(mDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
+          lAdded += (lEndHbf - lStartHbf);
+          lStartHbf = lEndHbf;
+
+          lSubSpecification = lNewSubSpec;
+        }
+        lEndHbf = lEndHbf + 1;
+      }
+
+      if (lAdded != lReadoutMsgs.size() - 1 ) {
+        LOG(ERROR) << "BUG: Not all received HBFRames added to the STF...";
+      }
+
+      lReadoutMsgs.clear();
     }
 
   LOG(INFO) << "Exiting StfBuilder thread[" << pIdx << "]...";

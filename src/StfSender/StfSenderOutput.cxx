@@ -249,7 +249,7 @@ void StfSenderOutput::StfSchedulerThread()
 
       {
         static std::uint64_t sNumStfSentUpdates = 0;
-        if (++sNumStfSentUpdates % 2 == 0) {
+        if (++sNumStfSentUpdates % 1000 == 0) {
           LOG(DEBUG) << "Sent STF announce, id: " << lStfId << ", size: " << lStfInfo.stf_size() << ", total: " << sNumStfSentUpdates;
         }
       }

@@ -53,6 +53,8 @@ public:
   static std::tuple<uint32_t,uint32_t,uint32_t> getRdhNavigationVals(const char* pRdhData);
 
   static std::tuple<std::size_t, int> getRdhMemorySize(const char* data, const std::size_t len);
+  static std::uint16_t getFeeId(const char* data, const std::size_t len);
+  static std::uint32_t getHBOrbit(const char* data, const std::size_t len);
 
   enum SanityCheckMode {
     eNoSanityCheck,

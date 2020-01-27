@@ -127,8 +127,8 @@ void TfSchedulerStfInfo::SchedulingThread()
                           << ", TfBuilded id: " << lTfBuilderId;
 
             mConnManager.dropAllStfsAsync(lTfId);
-            mConnManager.removeTfBuilder(lTfBuilderId);
-            mTfBuilderInfo.removeReadyTfBuilder(lTfBuilderId);
+            // mConnManager.removeTfBuilder(lTfBuilderId);
+            // mTfBuilderInfo.removeReadyTfBuilder(lTfBuilderId);
           }
         } else {
           // No candidate for scheduling

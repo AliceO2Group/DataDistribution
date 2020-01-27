@@ -56,8 +56,6 @@ public:
 
     const std::string &lEndpoint = mTfBuilderConf.rpc_endpoint();
 
-    std::this_thread::sleep_for(2s);
-
     mStub = TfBuilderRpc::NewStub(
       grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials()));
 

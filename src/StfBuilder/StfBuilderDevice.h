@@ -92,7 +92,6 @@ class StfBuilderDevice : public DataDistDevice,
   bool isSandalone() const noexcept { return mStandalone; }
 
   const std::string& getInputChannelName() const { return mInputChannelName; }
-  // const std::string& getOutputChannelName() const { return mOutputChannelName; }
   const std::string& getDplChannelName() const { return mDplChannelName; }
 
   auto& getOutputChannel() {

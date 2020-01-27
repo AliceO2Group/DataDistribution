@@ -132,6 +132,33 @@ ReadoutDataUtils::getRdhMemorySize(const char* data, const std::size_t len)
   return {lMemRet, lStopRet};
 }
 
+std::uint16_t ReadoutDataUtils::getFeeId(const char* data, const std::size_t len)
+{
+  std::uint16_t lFeeId = 0;
+
+  if (len < 64 || data[0] != 4) {
+    return std::uint16_t(-1);
+  }
+
+  std::memcpy(&lFeeId, data + (1 * sizeof(std::uint32_t)), sizeof(std::uint16_t));
+
+  return lFeeId;
+}
+
+std::uint32_t ReadoutDataUtils::getHBOrbit(const char* data, const std::size_t len)
+{
+  std::uint32_t lHBOrbit = 0;
+
+  if (len < 64 || data[0] != 4) {
+    return std::uint32_t(-1);
+  }
+
+  std::memcpy(&lHBOrbit, data + (5 * sizeof(std::uint32_t)), sizeof(std::uint32_t));
+
+  return lHBOrbit;
+}
+
+
 std::tuple<uint32_t,uint32_t,uint32_t>
 ReadoutDataUtils::getRdhNavigationVals(const char* pRdhData)
 {

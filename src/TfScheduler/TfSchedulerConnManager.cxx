@@ -159,18 +159,18 @@ void TfSchedulerConnManager::disconnectTfBuilder(const TfBuilderConfigStatus &pT
 }
 
 
-void TfSchedulerConnManager::removeTfBuilder(const std::string &plTfBuilderId)
+void TfSchedulerConnManager::removeTfBuilder(const std::string &pTfBuilderId)
 {
   std::scoped_lock lLock(mStfSenderClientsLock);
 
   // Stop talking to TfBuilder
-  deleteTfBuilderRpcClient(plTfBuilderId);
+  deleteTfBuilderRpcClient(pTfBuilderId);
 
-  LOG(DEBUG) << "TfBuilder RpcClient deleted, id: " << plTfBuilderId;
+  LOG(DEBUG) << "TfBuilder RpcClient deleted, id: " << pTfBuilderId;
 
   // Tell all StfSenders to disconnect
   TfBuilderEndpoint lParam;
-  lParam.set_tf_builder_id(plTfBuilderId);
+  lParam.set_tf_builder_id(pTfBuilderId);
 
   for (auto &lStfSenderIdCli : mStfSenderRpcClients) {
     const auto &lStfSenderId = lStfSenderIdCli.first;
@@ -178,14 +178,14 @@ void TfSchedulerConnManager::removeTfBuilder(const std::string &plTfBuilderId)
 
     StatusResponse lResponse;
     if(!lStfSenderRpcCli->DisconnectTfBuilderRequest(lParam, lResponse).ok()) {
-      LOG(ERROR) << "TfBuilder Connection error: gRPC error when connecting StfSender " << lStfSenderId << " to " << plTfBuilderId;
+      LOG(ERROR) << "TfBuilder Connection error: gRPC error when connecting StfSender " << lStfSenderId << " to " << pTfBuilderId;
     }
 
     // check StfSender status
     if (lResponse.status() != 0) {
-      LOG(ERROR) << "TfBuilder Connection error: StfSender " << lStfSenderId << " could not connect to " << plTfBuilderId;
+      LOG(ERROR) << "DisconnectTfBuilderRequest( StfSender: " << lStfSenderId
+        << ", TfBuilder: " << pTfBuilderId << "): response status: " << lResponse.status();
     }
-
   }
 }
 
@@ -264,7 +264,7 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
       }
       sort(lDroppedStfs.begin(), lDroppedStfs.end());
       for (auto &lDroppedId : lDroppedStfs) {
-        static std::atomic_uint64_t lsDropLogRate = 0;
+        static std::uint64_t lsDropLogRate = 0;
         if (++lsDropLogRate % 256 == 0) {
           LOG (INFO) << "Dropped SubTimeFrame (cannot schedule): " << lDroppedId << ", total: " << lsDropLogRate;
         }

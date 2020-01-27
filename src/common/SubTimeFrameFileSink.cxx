@@ -108,7 +108,7 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   }
 
   // make a session directory
-  mCurrentDir = (bfs::path(mRootDir) / FilePathUtils::getNextSeqName(mRootDir)).string();
+  mCurrentDir = (bfs::path(mRootDir) / FilePathUtils::getDataDirName(mRootDir)).string();
   if (!bfs::create_directory(mCurrentDir)) {
     LOG(ERROR) << "Directory '" << mCurrentDir << "' for (Sub)TimeFrame file sink cannot be created";
     return false;
