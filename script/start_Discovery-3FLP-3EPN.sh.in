@@ -230,6 +230,7 @@ else
   # NOTE: does not work with the updated configuration
   # cat $ENV_VAR_FILE
   if [[ $EPN_CNT -gt 0 ]]; then
+    FLP_ID_LIST+="flp0"
     tmux -CC \
       new-window \
       "source $ENV_VAR_FILE; $TF_SCHEDULER --discovery-id=sched0 --id tf_scheduler --session sched-session; read" \; \
@@ -240,8 +241,11 @@ else
       split-window  \
       "source $ENV_VAR_FILE; $STF_SENDER --id stf_sender-0 --discovery-id=flp0 --session default; read" \; \
       split-window  \
-      "source $ENV_VAR_FILE; $TF_BUILDER --id tf_builder-0 --discovery-id=epn0 --session epn-s0; read; rm $ENV_VAR_FILE" \; \
+      "source $ENV_VAR_FILE; $TF_BUILDER --id tf_builder-0 --discovery-id=epn0 --session epn-s0; read" \; \
       select-layout even-horizontal
+
+    sleep 2
+    rm $ENV_VAR_FILE
   fi
 fi
 
