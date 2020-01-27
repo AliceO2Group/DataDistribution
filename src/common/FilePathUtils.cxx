@@ -13,10 +13,12 @@
 
 #include <boost/filesystem.hpp>
 #include <boost/range/iterator_range.hpp>
+#include <boost/algorithm/string/replace.hpp>
 #include <regex>
 
 #include <string>
 #include <iomanip>
+#include <chrono>
 
 #include "FilePathUtils.h"
 
@@ -26,6 +28,50 @@ namespace DataDistribution
 {
 
 namespace fsb = boost::filesystem;
+
+static
+std::string getDateTimeStr()
+{
+  using namespace std::chrono;
+  std::ostringstream ss;
+  const auto lTimet = std::chrono::system_clock::to_time_t(system_clock::now());
+  ss << std::put_time(gmtime(&lTimet), "%FT%TZ");
+  return boost::replace_all_copy(ss.str(), ":", "_");
+}
+
+std::string FilePathUtils::getDataDirName(const std::string& pRootDir)
+{
+  const fsb::path lRootPath(pRootDir);
+
+  // check if root directory exists
+  if (!fsb::is_directory(lRootPath)) {
+    using namespace std::string_literals;
+    throw std::invalid_argument("'"s + pRootDir + "' is not a directory"s);
+  }
+
+  // storage dir is has format of ISO datetime string
+  const std::string lNowString = o2::DataDistribution::getDateTimeStr();
+
+  // see if already exists, add sequence number if so
+  std::string lCheckName = lNowString;
+  std::uint64_t lCurrSeq = 0;
+  do {
+    for (auto& entry : boost::make_iterator_range(fsb::directory_iterator(lRootPath), {})) {
+      std::smatch result;
+      const std::string lBaseName = entry.path().filename().string();
+      if (lBaseName == lNowString) {
+        lCurrSeq++;
+        lCheckName += lNowString + "_" + std::to_string(lCurrSeq);
+        continue;
+      }
+    }
+  } while (0);
+
+  return lCheckName;
+}
+
+
+
 
 std::string FilePathUtils::getNextSeqName(const std::string& pRootDir)
 {
