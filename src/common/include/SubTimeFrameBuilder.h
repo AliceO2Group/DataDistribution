@@ -40,7 +40,8 @@ class SubTimeFrameReadoutBuilder
 
   void addHbFrames(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
-    ReadoutSubTimeframeHeader& pHdr, std::vector<FairMQMessagePtr>&& pHbFrames);
+    ReadoutSubTimeframeHeader& pHdr,
+    std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen);
   std::unique_ptr<SubTimeFrame> getStf();
 
   void setRdh4FilterTrigger(bool pVal) { mRdh4FilterTrigger = pVal; }

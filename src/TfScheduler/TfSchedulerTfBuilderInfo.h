@@ -115,6 +115,10 @@ class TfSchedulerTfBuilderInfo
 
   bool findTfBuilderForTf(const std::uint64_t pSize, std::string& pTfBuilderId /*out*/)
   {
+
+    static std::atomic_uint64_t sNoTfBuilderAvailable = 0;
+    static std::atomic_uint64_t sNoMemoryAvailable = 0;
+
     // NOTE: we will overestimate memory requirement by a factor, until TfBuilder updates
     //       us with the actual size.
     const auto lTfEstSize = pSize * (sTfSizeOverestimatePercent + 100) / 100;
@@ -130,10 +134,21 @@ class TfSchedulerTfBuilderInfo
 
     // not found?
     if ( lIt == mReadyTfBuilders.end() ) {
+
+      if (mReadyTfBuilders.empty()) {
+        if (++sNoTfBuilderAvailable % 10 == 0) {
+          LOG(INFO) << "FindTfBuilder: TfBuilder not found, reason: No TfBuilders present. Occurrences: " << sNoTfBuilderAvailable;
+        }
+      } else {
+        if (++sNoMemoryAvailable % 10 == 0) {
+          LOG(INFO) << "FindTfBuilder: TfBuilder not found, reason: Not enough memory at TfBuilders. Occurrences: " << sNoMemoryAvailable;
+        }
+      }
+
       return false;
     }
 
-    // reposition the element
+    // reposition the StfBuilder to the end of the list
     auto lTfBuilder = std::move(*lIt);
 
     assert (lTfBuilder->mEstimatedFreeMemory >= lTfEstSize);

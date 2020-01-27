@@ -114,12 +114,12 @@ public:
 
       StfSenderConfigStatus lStfSenderStatus;
       if (! mDiscoveryConfig->getStfSenderConfig(lPartId, lStfSenderId, lStfSenderStatus /*out*/)) {
-        // LOG(ERROR) << "Error while retrieving configuration of StfSender with ID: " << lStfSenderId;
+        LOG(DEBUG) << "Missing configuration of StfSender with ID: " << lStfSenderId <<". Connection will be retried..." ;
         continue;
       }
 
       if (lStfSenderStatus.rpc_endpoint().empty()) {
-        LOG(WARNING) << "StfSender rpc_endpoint field empty! StfSender ID: " << lStfSenderId;
+        LOG(ERROR) << "StfSender rpc_endpoint field empty! StfSender ID: " << lStfSenderId;
         continue;
       }
 

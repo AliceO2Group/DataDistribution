@@ -175,9 +175,6 @@ bool TfBuilderDevice::start()
     mFileSource.start(GetChannel(mDplChannelName), mDplEnabled);
   }
 
-  // finally start accepting TimeFrames
-  mRpc->startAcceptingTfs();
-
   return true;
 }
 
@@ -246,9 +243,8 @@ void TfBuilderDevice::TfForwardThread()
     }
   }
 
+  auto lFreqStartTime = std::chrono::high_resolution_clock::now();
   while (mRunning) {
-    auto lFreqStartTime = std::chrono::high_resolution_clock::now();
-
     std::unique_ptr<SubTimeFrame> lTf = dequeue(eTfFwdIn);
     if (!lTf) {
       LOG(WARNING) << "TfForwardThread(): Exiting... ";

@@ -240,6 +240,9 @@ void StfBuilderDevice::StfOutputThread()
 
   // cannot get the channels in standalone mode
   auto& lOutputChan = getOutputChannel();
+
+  LOG(INFO) << "StfOutputThread: sending data to channel: " << lOutputChan.GetName();
+
   if (!mStandalone) {
     if (!dplEnabled()) {
       // auto& lOutputChan = GetChannel(getOutputChannelName(), 0);
@@ -309,6 +312,13 @@ void StfBuilderDevice::StfOutputThread()
     }
 #else
 
+    static thread_local unsigned long lThrottle = 0;
+    if (lThrottle++ % 88 == 0) {
+      LOG(DEBUG) << "Sending STF::id:" << lStf->header().mId
+        << " to channel: " << lOutputChan.GetName()
+        << ", data size: " << lStf->getDataSize()
+        << ", unique equipments: " << lStf->getEquipmentIdentifiers().size();
+    }
 
     if (mBuildHistograms) {
       mStfSizeSamples.Fill(lStf->getDataSize());
@@ -321,15 +331,6 @@ void StfBuilderDevice::StfOutputThread()
           assert (lStfSerializer);
           lStfSerializer->serialize(std::move(lStf));
         } else {
-
-          // DPL Channel
-          static thread_local unsigned long lThrottle = 0;
-          if (++lThrottle % 88 == 0) {
-            LOG(DEBUG) << "Sending STF to DPL: id:" << lStf->header().mId
-                       << " data size: " << lStf->getDataSize()
-                       << " unique equipments: " << lStf->getEquipmentIdentifiers().size();
-          }
-
           // Send to DPL bridge
           assert (lStfDplAdapter);
           lStfDplAdapter->sendToDpl(std::move(lStf));

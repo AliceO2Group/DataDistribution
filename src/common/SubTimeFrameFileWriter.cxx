@@ -66,7 +66,9 @@ SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pF
       mInfoFile << "DATA_OFFSET ";
       mInfoFile << "DATA_SIZE ";
       mInfoFile << "RDH_MEM_SIZE ";
-      mInfoFile << "RDH_STOP_BIT" << '\n';
+      mInfoFile << "RDH_STOP_BIT ";
+      mInfoFile << "FEE_ID ";
+      mInfoFile << "HB_ORBIT" << '\n';
     }
   } catch (std::ifstream::failure& eOpenErr) {
     LOG(ERROR) << "Failed to open/create TF file for writing. Error: " << eOpenErr.what();
@@ -220,6 +222,14 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
           reinterpret_cast<const char*>(lStfData->mData->GetData()),
           lStfData->mData->GetSize());
 
+        const auto l14FeeId = ReadoutDataUtils::getFeeId(
+          reinterpret_cast<const char*>(lStfData->mData->GetData()),
+          lStfData->mData->GetSize());
+
+        const auto l15Orbit = ReadoutDataUtils::getHBOrbit(
+          reinterpret_cast<const char*>(lStfData->mData->GetData()),
+          lStfData->mData->GetSize());
+
         mInfoFile << l1StfId << sSidecarFieldSep;
         mInfoFile << l2StfFileOff << sSidecarFieldSep;
         mInfoFile << l3StfFileSize << sSidecarFieldSep;
@@ -234,14 +244,15 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
                   << l6SubSpec << sSidecarFieldSep;
         mInfoFile.flags(lFlags);
 
-
         mInfoFile << l7DataIndex << sSidecarFieldSep;
         mInfoFile << l8HdrOff << sSidecarFieldSep;
         mInfoFile << l9HdrSize << sSidecarFieldSep;
         mInfoFile << l10DataOff << sSidecarFieldSep;
         mInfoFile << l11DataSize << sSidecarFieldSep;
         mInfoFile << l12MemSize << sSidecarFieldSep;
-        mInfoFile << l13StopBit << sSidecarRecordSep;
+        mInfoFile << l13StopBit << sSidecarFieldSep;
+        mInfoFile << l14FeeId << sSidecarFieldSep;
+        mInfoFile << l15Orbit << sSidecarRecordSep;
       }
       mInfoFile.flush();
     } catch (const std::ios_base::failure& eFailExc) {

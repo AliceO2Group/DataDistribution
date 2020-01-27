@@ -103,10 +103,9 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
   // Connect all StfSenders
   TfBuilderConnectionResponse lConnResult;
   do {
-    lConnResult.Clear();
-
     LOG(INFO) << "Requesting connections from StfSenders from the TfSchedulerInstance";
 
+    lConnResult.Clear();
     if (!mRpc->TfSchedRpcCli().TfBuilderConnectionRequest(lStatus, lConnResult)) {
       LOG(ERROR) << "RPC error: Request for StfSender connection failed .";
       return false;
@@ -124,7 +123,9 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
     }
 
     // connection successful
-   } while(false);
+    break;
+
+   } while(true);
 
   // Update socket map with peer information
   for (auto &[lSocketIdx, lStfSenderId] : lConnResult.connection_map()) {
@@ -153,11 +154,17 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
     mInputThreads.try_emplace(lStfSenderId, std::thread(&TfBuilderInput::DataHandlerThread, this, lSocketIdx));
   }
 
+  // finally start accepting TimeFrames
+  mRpc->startAcceptingTfs();
+
   return true;
 }
 
 void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
 {
+  // first stop accepting TimeFrames
+  mRpc->stopAcceptingTfs();
+
   mState = TERMINATED;
 
   // Disconnect all input channels
