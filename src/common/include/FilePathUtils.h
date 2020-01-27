@@ -30,6 +30,7 @@ class FilePathUtils
  public:
   FilePathUtils() = delete;
 
+  static std::string getDataDirName(const std::string& pRoot);
   static std::string getNextSeqName(const std::string& pRoot);
 
   static std::vector<std::string> getAllFiles(const std::string& pDir);
