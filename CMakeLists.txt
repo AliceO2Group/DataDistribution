@@ -1,7 +1,6 @@
-cmake_minimum_required(VERSION 3.12.2 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
 project(DataDistribution
-  VERSION 0.5.1
   DESCRIPTION "O2 data distribution components"
   LANGUAGES CXX
 )
@@ -64,6 +63,8 @@ endif()
 #--- DEPENDENCIES --------------------------------------------------------------------
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+
+include(FindThreads) # create Threads::Threads target
 
 find_package(FairMQ 1.4 REQUIRED)
 find_package(FairLogger ${FairMQ_FairLogger_VERSION} REQUIRED)
