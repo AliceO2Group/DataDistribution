@@ -262,7 +262,7 @@ class SubTimeFrame : public IDataModelObject
  public:
   SubTimeFrame(TimeFrameIdType pStfId);
   //SubTimeFrame() = default;
-  ~SubTimeFrame() = default;
+  virtual ~SubTimeFrame() = default;
   // no copy
   SubTimeFrame(const SubTimeFrame&) = delete;
   SubTimeFrame& operator=(const SubTimeFrame&) = delete;

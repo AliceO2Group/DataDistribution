@@ -33,7 +33,7 @@ void CruLinkEmulator::linkReadoutThread()
   const auto cSuperpageSize = mMemHandler->getSuperpageSize();
   const auto cHBFrameSize = (mLinkBitsPerS / cHBFrameFreq) >> 3;
   const auto cStfLinkSize = cHBFrameSize * cHBFrameFreq / cStfPerS;
-  const auto cNumDmaChunkPerSuperpage = std::min(size_t(256), cSuperpageSize / mDmaChunkSize);
+  const auto cNumDmaChunkPerSuperpage = std::min(size_t(256), size_t(cSuperpageSize / mDmaChunkSize));
   constexpr int64_t cStfTimeUs = std::chrono::microseconds(1000000 / cStfPerS).count();
 
   LOG(DEBUG) << "Superpage size: " << cSuperpageSize;

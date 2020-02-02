@@ -41,6 +41,8 @@ class InterleavedHdrDataSerializer : public ISubTimeFrameVisitor
     mMessages.reserve(1024);
   }
 
+  virtual ~InterleavedHdrDataSerializer() = default;
+
   void serialize(std::unique_ptr<SubTimeFrame>&& pStf);
 
  protected:
@@ -59,6 +61,7 @@ class InterleavedHdrDataDeserializer : public ISubTimeFrameVisitor
 {
  public:
   InterleavedHdrDataDeserializer() = default;
+  virtual ~InterleavedHdrDataDeserializer() = default;
 
   std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan);
   std::unique_ptr<SubTimeFrame> deserialize(FairMQParts& pMsgs);
