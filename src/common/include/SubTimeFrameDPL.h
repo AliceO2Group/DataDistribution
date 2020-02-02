@@ -38,6 +38,8 @@ class StfDplAdapter : public ISubTimeFrameVisitor
     mMessages.reserve(1024);
   }
 
+  virtual ~StfDplAdapter() = default;
+
   void sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf);
 
  protected:

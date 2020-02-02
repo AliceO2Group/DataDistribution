@@ -40,7 +40,7 @@ class SubTimeFrameFileWriter : public ISubTimeFrameConstVisitor
  public:
   SubTimeFrameFileWriter() = delete;
   SubTimeFrameFileWriter(const boost::filesystem::path& pFileName, bool pWriteInfo = false);
-  ~SubTimeFrameFileWriter();
+  virtual ~SubTimeFrameFileWriter();
 
   ///
   /// Writes a (Sub)TimeFrame
