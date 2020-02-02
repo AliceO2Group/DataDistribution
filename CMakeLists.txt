@@ -20,14 +20,18 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -pedantic -Werror")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-fno-inline -fno-omit-frame-pointer -fmax-errors=10")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb3 -O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
-set(CMAKE_EXE_LINKER_FLAGS    "-Wl,--as-needed")
-set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--as-needed")
-set(CMAKE_MODULE_LINKER_FLAGS "-Wl,--as-needed")
+if(NOT APPLE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Werror")
+
+  set(CMAKE_EXE_LINKER_FLAGS    "-Wl,--as-needed")
+  set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--as-needed")
+  set(CMAKE_MODULE_LINKER_FLAGS "-Wl,--as-needed")
+endif()
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
@@ -61,11 +65,14 @@ endif()
 
 #
 #--- DEPENDENCIES --------------------------------------------------------------------
+message(STATUS "Looking for dependencies.")
+message(STATUS "CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
+message(STATUS "CMAKE_CXX_STANDARD = ${CMAKE_CXX_STANDARD}")
+
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
-include(FindThreads) # create Threads::Threads target
-
+find_package(Threads REQUIRED)
 find_package(FairMQ 1.4 REQUIRED)
 find_package(FairLogger ${FairMQ_FairLogger_VERSION} REQUIRED)
 

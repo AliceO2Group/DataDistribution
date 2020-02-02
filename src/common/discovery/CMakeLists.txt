@@ -12,38 +12,41 @@ set (LIB_DISCOVERY_PROTOS
 )
 
 protobuf_generate_cpp(PB_SRCS PB_HDRS ${LIB_DISCOVERY_PROTOS})
-# GRPC_GENERATE_CPP(GRPC_SRCS GRPC_HDRS ${CMAKE_CURRENT_BINARY_DIR} ${LIB_DISCOVERY_PROTOS})
-
 
 
 set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
 set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
 
 
+if(APPLE)
+  set(gRPC_LIB_DIR DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:gRPC::grpc++>:$<TARGET_FILE_DIR:protobuf::libprotobuf>)
+endif()
 
 # get_filename_component(DISCOVERY_PROTO_PATH "${hw_proto}" PATH)
 set(GRPC_SRCS "${CMAKE_CURRENT_BINARY_DIR}/discovery.grpc.pb.cc")
 set(GRPC_HDRS "${CMAKE_CURRENT_BINARY_DIR}/discovery.grpc.pb.h")
 add_custom_command(
       OUTPUT "${GRPC_SRCS}" "${GRPC_HDRS}"
-      COMMAND ${_PROTOBUF_PROTOC}
+      COMMAND ${gRPC_LIB_DIR} ${_PROTOBUF_PROTOC}
       ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
         -I "${CMAKE_CURRENT_SOURCE_DIR}"
-        --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
+        --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN_EXECUTABLE}
         "${CMAKE_CURRENT_SOURCE_DIR}/${LIB_DISCOVERY_PROTOS}"
-      DEPENDS "${LIB_DISCOVERY_PROTOS}"
+      DEPENDS ${LIB_DISCOVERY_PROTOS} protobuf::protoc gRPC::grpc_cpp_plugin
+      VERBATIM
 )
-        #-I "${hw_proto_path}"
-
 
 
 add_library(discovery OBJECT ${LIB_DISCOVERY_SOURCES} ${PB_SRCS} ${PB_HDRS} ${GRPC_SRCS} ${GRPC_HDRS})
 
 
+
 # protobuf triggers warning, disable strict no-warning policy here
-set_target_properties(discovery PROPERTIES
-    COMPILE_FLAGS "-Wno-error -Wno-useless-cast"
-)
+if(NOT APPLE)
+  set_target_properties(discovery PROPERTIES
+      COMPILE_FLAGS "-Wno-error -Wno-useless-cast"
+  )
+endif()
 
 set_target_properties(discovery PROPERTIES
     PB_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
