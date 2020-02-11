@@ -34,8 +34,12 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
   using namespace std::chrono_literals;
   const auto lLocalTime = std::chrono::system_clock::now();
 
+  // recreate timepoint from the received millisecond time stamp
+  const std::chrono::milliseconds lUpdateDuration(pTfBuilderUpdate.info().last_update_t());
+  const std::chrono::time_point<std::chrono::system_clock> lUpdateTimepoint(lUpdateDuration);
+
   // check for system time drifts; account for gRPC latency
-  const auto lTimeDiff = lLocalTime - std::chrono::system_clock::from_time_t(pTfBuilderUpdate.info().last_update_t());
+  const auto lTimeDiff = lLocalTime - lUpdateTimepoint;
   if (lTimeDiff < 0s || lTimeDiff > 1s) {
     LOG(WARNING) << "Large system clock drift detected: "
                  << std::chrono::duration_cast<std::chrono::milliseconds>(lTimeDiff).count()

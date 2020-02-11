@@ -212,7 +212,7 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
 
   auto lRet = mTfSchedulerRpcClient.TfBuilderUpdate(lUpdate);
   if (!lRet) {
-    LOG(WARN) << "Sending TfBuilder update failed";
+    LOG(WARN) << "Sending TfBuilder status update failed.";
   }
   return lRet;
 }
