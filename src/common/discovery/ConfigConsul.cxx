@@ -62,12 +62,21 @@ std::string to_string(const ProcessTypePB pType) {
   return std::string("UnknownType");
 }
 
-std::tuple<std::string, std::time_t> getCurrentTimeString() {
+// human readable and milliseconds since epoch
+std::tuple<std::string, std::uint64_t> getCurrentTimeString() {
   using namespace std::chrono;
   std::ostringstream ss;
-  const auto lTimet = std::chrono::system_clock::to_time_t(system_clock::now());
+  const auto lNow = system_clock::now();
+
+  // get human readable string
+  const auto lTimet = std::chrono::system_clock::to_time_t(lNow);
   ss << std::put_time(gmtime(&lTimet), "%FT%TZ");
-  return { ss.str(), lTimet };
+
+  // get milliseconds
+  const auto lSinceEpoch = lNow.time_since_epoch();
+  const auto lMillis = std::chrono::duration_cast<std::chrono::milliseconds>(lSinceEpoch).count();
+
+  return { ss.str(), lMillis };
 }
 
 template <>

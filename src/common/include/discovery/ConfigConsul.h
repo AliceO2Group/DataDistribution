@@ -39,7 +39,7 @@ namespace DataDistribution
 namespace ConsulImpl {
 
 std::string to_string(const ProcessTypePB pType);
-std::tuple<std::string, std::time_t> getCurrentTimeString();
+std::tuple<std::string, std::uint64_t> getCurrentTimeString();
 
 class BasicInfo;
 class PartitionInfo;
