@@ -27,14 +27,13 @@ namespace DataDistribution
 
 void CruLinkEmulator::linkReadoutThread()
 {
-  static const size_t cHBFrameFreq = 11223;
-  static const size_t cStfPerS = 43; /* Parametrize this? */
+  static const std::uint64_t cHBFrameFreq = 11223;
 
   const auto cSuperpageSize = mMemHandler->getSuperpageSize();
   const auto cHBFrameSize = (mLinkBitsPerS / cHBFrameFreq) >> 3;
-  const auto cStfLinkSize = cHBFrameSize * cHBFrameFreq / cStfPerS;
+  const auto cStfLinkSize = cHBFrameSize * cHBFrameFreq * 256 / cHBFrameFreq;
   const auto cNumDmaChunkPerSuperpage = std::min(size_t(256), size_t(cSuperpageSize / mDmaChunkSize));
-  constexpr int64_t cStfTimeUs = std::chrono::microseconds(1000000 / cStfPerS).count();
+  constexpr int64_t cStfTimeUs = std::chrono::microseconds(std::uint64_t(1000000) * 256 / cHBFrameFreq).count();
 
   LOG(DEBUG) << "Superpage size: " << cSuperpageSize;
   LOG(DEBUG) << "mDmaChunkSize size: " << mDmaChunkSize;
@@ -57,9 +56,7 @@ void CruLinkEmulator::linkReadoutThread()
     const int64_t lStfToSend = lUsSinceStart / cStfTimeUs - lSentStf;
 
     if (lStfToSend <= 0) {
-      // std::this_thread::sleep_for(std::chrono::microseconds());
       usleep(500);
-      // std::this_thread::yield();
       continue;
     }
 

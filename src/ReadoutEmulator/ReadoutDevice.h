@@ -58,6 +58,7 @@ class ReadoutDevice : public DataDistDevice
 
 
   void GuiThread();
+  void SendingThread();
 
   // data and Descriptor regions
   // must be here because NewUnmanagedRegionFor() is a method of FairMQDevice...
@@ -79,6 +80,7 @@ class ReadoutDevice : public DataDistDevice
 
   // messages to send
   std::vector<FairMQMessagePtr> mDataBlockMsgs;
+  std::thread mSendingThread;
 
   /// Observables
   bool mBuildHistograms = true;
