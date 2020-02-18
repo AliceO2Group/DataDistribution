@@ -157,9 +157,9 @@ void TfSchedulerStfInfo::SchedulingThread()
           const auto &lLastStfInfo = lStfInfoVec.back();
           const auto lTimeDiff = std::chrono::abs(lLastStfInfo.mUpdateLocalTime - lNow);
           if (lTimeDiff > sStfReapTime) {
-            LOG(WARNING) << "Reaping SubTimeFrames with ID: " << lStfId
-                         << ". Received STF infos: "
-                         << lStfInfoVec.size() << " / " << lNumStfSenders;
+            LOG(WARNING) << "Reaping SubTimeFrames. Received STF infos: "
+                         << lStfInfoVec.size() << " / " << lNumStfSenders
+                         <<" stf_id=" << lStfId;
 
             // find missing StfSenders
             std::set<std::string> lMissingStfSenders = lStfSenderIdSet;

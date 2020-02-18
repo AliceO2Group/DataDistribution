@@ -124,15 +124,17 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
 {
   using namespace std::chrono_literals;
   LOG(DEBUG) << "Starting TfBuilderInfo-Housekeeping thread...";
-  // wait for the device to go into RUNNING state
 
   std::vector<std::string> lIdsToErase;
 
   while (mRunning) {
-    const auto lNow = std::chrono::system_clock::now();
+
+    std::this_thread::sleep_for(1000ms);
 
     {
       std::scoped_lock lLock(mGlobalInfoLock);
+
+      const auto lNow = std::chrono::system_clock::now();
 
       // reap stale TfBuilders
       assert (lIdsToErase.empty());
@@ -143,22 +145,20 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
           lIdsToErase.emplace_back(lInfo->mTfBuilderUpdate.info().process_id());
         }
 
-        LOG(DEBUG) << "TfBuilder    : " << lInfo->mTfBuilderUpdate.info().process_id()
-                   << "\n  Free Memory      : " << lInfo->mTfBuilderUpdate.free_memory()
-                   << "\n  num_buffered_tfs : " << lInfo->mTfBuilderUpdate.num_buffered_tfs();
+        LOG(DEBUG) << "TfBuilder info id=" << lInfo->mTfBuilderUpdate.info().process_id()
+                   << " free_mem=" << lInfo->mTfBuilderUpdate.free_memory()
+                   << " num_buffered_tfs=" << lInfo->mTfBuilderUpdate.num_buffered_tfs();
       }
 
       if (!lIdsToErase.empty()) {
         for (const auto &lId : lIdsToErase) {
           mGlobalInfo.erase(lId);
           removeReadyTfBuilder(lId);
-          LOG (INFO) << "TfBuilder removed from scheduling (stale info), id: " << lId;
+          LOG (INFO) << "TfBuilder removed from scheduling (stale info), id=" << lId;
         }
         lIdsToErase.clear();
       }
-    } // mGlobalInfoLock unlock
-
-    std::this_thread::sleep_for(1000ms);
+    } // mGlobalInfoLock unlock (to be able to sleep)
   }
 
   LOG(DEBUG) << "Exiting TfBuilderInfo-Housekeeping thread...";

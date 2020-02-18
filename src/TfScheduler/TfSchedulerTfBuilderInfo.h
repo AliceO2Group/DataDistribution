@@ -181,7 +181,7 @@ private:
   static constexpr std::uint64_t sTfSizeOverestimatePercent = 20;
 
   /// Reap time for non-complete TFs
-  static constexpr auto sTfBuilderReapTime = 2s;
+  static constexpr auto sTfBuilderReapTime = 5s;
 
   /// Discovery configuration
   std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;
