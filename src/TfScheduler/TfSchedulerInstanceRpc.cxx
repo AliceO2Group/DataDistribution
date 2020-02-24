@@ -119,7 +119,7 @@ void TfSchedulerInstanceRpcImpl::stop()
 
   //
   response->Clear();
-  mStfInfo.addAddStfInfo(*request, *response /*out*/);
+  mStfInfo.addStfInfo(*request, *response /*out*/);
 
   // if (sStfUpdates % 1000 == 0) {
   //   LOG(DEBUG) << "gRPC server: StfSenderStfUpdate::Done";
