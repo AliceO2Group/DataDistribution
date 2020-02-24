@@ -209,7 +209,7 @@ void TfSchedulerStfInfo::SchedulingThread()
   LOG(DEBUG) << "Exiting StfInfo Scheduling thread...";
 }
 
-void TfSchedulerStfInfo::addAddStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse)
+void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse)
 {
   const auto lNumStfSenders = mDiscoveryConfig->status().stf_sender_count();
   const auto lStfId = pStfInfo.stf_id();
@@ -222,8 +222,10 @@ void TfSchedulerStfInfo::addAddStfInfo(const StfSenderStfInfo &pStfInfo, Schedul
   {
     std::unique_lock lLock(mGlobalStfInfoLock);
 
-    if (lStfId > mLastStfId + 100) {
-      LOG(DEBUG) << "addAddStfInfo: STF id much larger than the current TF id: (" << lStfId << ") > (" << mLastStfId << ") from: " << pStfInfo.info().process_id();
+    if (lStfId > mLastStfId + 200) {
+      LOG(DEBUG) << "STF id much larger than the current TF id. stf_id=" << lStfId
+                 << " current_stf_id=" << mLastStfId
+                 << " from_stf_sender=" << pStfInfo.info().process_id();
     }
 
     // Sanity check for delayed Stf info
@@ -232,9 +234,10 @@ void TfSchedulerStfInfo::addAddStfInfo(const StfSenderStfInfo &pStfInfo, Schedul
     const auto lMinAccept = mLastStfId < lMaxDelayTf ? 0 : mLastStfId - lMaxDelayTf;
 
     if ((lStfId < lMinAccept) && (mStfInfoMap.count(lStfId) == 0)) {
-      LOG(WARNING) << "Delayed or duplicate STF info for STF_id: " << lStfId
-                   << " from StfBuilder: " << pStfInfo.info().process_id()
-                   << ". Currently processing STF_id: " << mLastStfId;
+      LOG(WARNING) << "Delayed or duplicate STF info. stf_id=" << lStfId
+                   << " current_stf_id=" << mLastStfId
+                   << " from_stf_sender=" << pStfInfo.info().process_id();
+
 
       // TODO: reaped or scheduled?
       // pResponse.set_status(SchedulerStfInfoResponse::DROP_SCHED_REAPED);

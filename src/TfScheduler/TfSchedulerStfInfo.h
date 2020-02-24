@@ -93,7 +93,7 @@ public:
   }
 
   void SchedulingThread();
-  void addAddStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse);
+  void addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse);
 
 
 private:
