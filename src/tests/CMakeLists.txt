@@ -5,7 +5,7 @@
 
 set(TEST_FILE_PATH_SOURCES
   test_FilePathUtils
-  ../common/FilePathUtils
+  ../common/base/FilePathUtils
 )
 add_executable(test_FilePathUtils ${TEST_FILE_PATH_SOURCES})
 
@@ -13,6 +13,7 @@ target_include_directories(test_FilePathUtils
   PRIVATE
     ${Boost_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/../common/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/base
 )
 target_compile_definitions(test_FilePathUtils PRIVATE "BOOST_TEST_DYN_LINK=1")
 target_link_libraries(test_FilePathUtils

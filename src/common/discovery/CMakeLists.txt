@@ -1,5 +1,8 @@
 
+# @author Gvozden Neskovic
+# @brief  Discovery, protobuf, and gRPC
 
+#-------------------------------------------------------------------------------
 
 set (LIB_DISCOVERY_SOURCES
   ConfigConsul
@@ -39,8 +42,6 @@ add_custom_command(
 
 add_library(discovery OBJECT ${LIB_DISCOVERY_SOURCES} ${PB_SRCS} ${PB_HDRS} ${GRPC_SRCS} ${GRPC_HDRS})
 
-
-
 # protobuf triggers warning, disable strict no-warning policy here
 if(NOT APPLE)
   set_target_properties(discovery PROPERTIES
@@ -52,20 +53,19 @@ set_target_properties(discovery PROPERTIES
     PB_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-
 target_include_directories(discovery
   PUBLIC
-  PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include/discovery
     ${CMAKE_CURRENT_BINARY_DIR} # protobuf puts generated c++ files there
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/discovery
 )
 
 target_link_libraries(discovery
   PUBLIC
-  PRIVATE
     ppconsul
-    Boost::program_options
-    FairMQ::FairMQ
     protobuf::libprotobuf
     gRPC::grpc++_unsecure
+  PRIVATE
+    base
+    FairMQ::FairMQ
+    Boost::program_options
 )

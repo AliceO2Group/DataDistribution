@@ -106,7 +106,7 @@ class TfSchedulerTfBuilderInfo
     std::scoped_lock lLock(mReadyInfoLock);
     for (auto it = mReadyTfBuilders.begin(); it != mReadyTfBuilders.end(); it++) {
       if ((*it)->id() == pId) {
-        LOG(DEBUG) << "Removed TfBuilder from the ready list :" << pId;
+        DDLOG(fair::Severity::DEBUG) << "Removed TfBuilder from the ready list :" << pId;
         mReadyTfBuilders.erase(it);
         break;
       }
@@ -132,23 +132,25 @@ class TfSchedulerTfBuilderInfo
       }
     }
 
-    // not found?
+    // TfBuilder not found?
     if ( lIt == mReadyTfBuilders.end() ) {
-
       if (mReadyTfBuilders.empty()) {
         if (++sNoTfBuilderAvailable % 10 == 0) {
-          LOG(INFO) << "FindTfBuilder: TfBuilder not found, reason: No TfBuilders present. Occurrences: " << sNoTfBuilderAvailable;
+          DDLOGF(fair::Severity::INFO,
+            "FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={:d}", sNoTfBuilderAvailable);
         }
       } else {
         if (++sNoMemoryAvailable % 10 == 0) {
-          LOG(INFO) << "FindTfBuilder: TfBuilder not found, reason: Not enough memory at TfBuilders. Occurrences: " << sNoMemoryAvailable;
+          DDLOGF(fair::Severity::INFO,
+            "FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={:d}", sNoMemoryAvailable);
         }
       }
 
       return false;
     }
 
-    // reposition the StfBuilder to the end of the list
+
+    // reposition the selected StfBuilder to the end of the list
     auto lTfBuilder = std::move(*lIt);
 
     assert (lTfBuilder->mEstimatedFreeMemory >= lTfEstSize);
@@ -180,8 +182,8 @@ private:
   /// Overestimation of actual size for TF building
   static constexpr std::uint64_t sTfSizeOverestimatePercent = 20;
 
-  /// Reap time for non-complete TFs
-  static constexpr auto sTfBuilderReapTime = 5s;
+  /// Discard timeout for non-complete TFs
+  static constexpr auto sTfBuilderDiscardTimeout = 5s;
 
   /// Discovery configuration
   std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;

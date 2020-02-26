@@ -15,8 +15,6 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include <FairMQLogger.h>
-
 #include <condition_variable>
 #include <stdexcept>
 
@@ -38,7 +36,7 @@ void TfSchedulerInstanceRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, 
   assert(!mServer);
   mServer = lSrvBuilder.BuildAndStart();
 
-  LOG(INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
+  DDLOG(fair::Severity::INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
 }
 
 void TfSchedulerInstanceRpcImpl::start()
@@ -69,7 +67,7 @@ void TfSchedulerInstanceRpcImpl::stop()
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::NumStfSendersInPartitionRequest(::grpc::ServerContext* /*context*/, const ::google::protobuf::Empty* /*request*/, ::o2::DataDistribution::NumStfSendersInPartitionResponse* response)
 {
-  LOG(INFO) << "gRPC server: NumStfSendersInPartitionRequest";
+  DDLOG(fair::Severity::TRACE) << "gRPC server: NumStfSendersInPartitionRequest";
 
   response->set_num_stf_senders(mPartitionInfo.mStfSenderIdList.size());
 
@@ -80,7 +78,7 @@ void TfSchedulerInstanceRpcImpl::stop()
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderConnectionRequest(::grpc::ServerContext* /*context*/, const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::TfBuilderConnectionResponse* response)
 {
-  LOG(INFO) << "gRPC server: TfBuilderConnectionRequest";
+  DDLOG(fair::Severity::TRACE) << "gRPC server: TfBuilderConnectionRequest";
 
   mConnManager.connectTfBuilder(*request, *response /*out*/);
 
@@ -91,7 +89,7 @@ void TfSchedulerInstanceRpcImpl::stop()
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderDisconnectionRequest(::grpc::ServerContext* /*context*/, const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::StatusResponse* response)
 {
-  LOG(INFO) << "gRPC server: TfBuilderDisconnectionRequest";
+  DDLOG(fair::Severity::TRACE) << "gRPC server: TfBuilderDisconnectionRequest";
 
   mConnManager.disconnectTfBuilder(*request, *response /*out*/);
 
@@ -102,7 +100,7 @@ void TfSchedulerInstanceRpcImpl::stop()
 {
   static std::atomic_uint64_t sTfBuilderUpdates = 0;
   if (++sTfBuilderUpdates % 10000 == 0) {
-    LOG(DEBUG) << "gRPC server: TfBuilderDisconnectionRequest: " << request->info().process_id() << ", total : " << sTfBuilderUpdates;
+    DDLOG(fair::Severity::DEBUG) << "gRPC server: TfBuilderDisconnectionRequest: " << request->info().process_id() << ", total : " << sTfBuilderUpdates;
   }
 
   mTfBuilderInfo.updateTfBuilderInfo(*request);
@@ -114,7 +112,7 @@ void TfSchedulerInstanceRpcImpl::stop()
 {
   static std::atomic_uint64_t sStfUpdates = 0;
   if (++sStfUpdates % 1000 == 0) {
-    LOG(DEBUG) << "gRPC server: StfSenderStfUpdate from: " <<  request->info().process_id() << ", total : " << sStfUpdates;
+    DDLOG(fair::Severity::DEBUG) << "gRPC server: StfSenderStfUpdate from: " <<  request->info().process_id() << ", total : " << sStfUpdates;
   }
 
   //
@@ -122,7 +120,7 @@ void TfSchedulerInstanceRpcImpl::stop()
   mStfInfo.addStfInfo(*request, *response /*out*/);
 
   // if (sStfUpdates % 1000 == 0) {
-  //   LOG(DEBUG) << "gRPC server: StfSenderStfUpdate::Done";
+  //   DDLOG(fair::Severity::DEBUG) << "gRPC server: StfSenderStfUpdate::Done";
   // }
 
   return Status::OK;

@@ -14,6 +14,7 @@
 #include "SubTimeFrameFileSource.h"
 #include "SubTimeFrameFileReader.h"
 #include "FilePathUtils.h"
+#include "DataDistLogger.h"
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
@@ -104,7 +105,7 @@ std::vector<std::string> SubTimeFrameFileSource::getDataFileList() const
   // Remove side-car files
   auto lRemIt = std::remove_if(lFilesVector.begin(), lFilesVector.end(),
     [](const std::string &lElem) {
-      LOG(DEBUG) << "Checking if should remove file: " << lElem << " ? " << (boost::ends_with(lElem, ".info")? "yes" : "no");
+      DDLOG(fair::Severity::DEBUG) << "Checking if should remove file: " << lElem << " ? " << (boost::ends_with(lElem, ".info")? "yes" : "no");
       return boost::ends_with(lElem, ".info");
     }
   );
@@ -118,7 +119,7 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
 {
   mEnabled = pFMQProgOpt.GetValue<bool>(OptionKeyStfSourceEnable);
 
-  LOG(INFO) << "(Sub)TimeFrame file source is " << (mEnabled ? "enabled." : "disabled.");
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame file source is " << (mEnabled ? "enabled." : "disabled.");
 
   if (!mEnabled) {
     return true;
@@ -126,14 +127,14 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
 
   mDir = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSourceDir);
   if (mDir.empty()) {
-    LOG(ERROR) << "(Sub)TimeFrame file source directory must be specified.";
+    DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame file source directory must be specified.";
     return false;
   }
 
   // make sure directory exists and it is readable
   bfs::path lDirPath(mDir);
   if (!bfs::is_directory(lDirPath)) {
-    LOG(ERROR) << "(Sub)TimeFrame file source directory does not exist.";
+    DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame file source directory does not exist.";
     return false;
   }
 
@@ -142,16 +143,16 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
 
   const auto lFilesVector = getDataFileList();
   if (lFilesVector.empty()) {
-    LOG(ERROR) << "(Sub)TimeFrame directory contains no data files.";
+    DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame directory contains no data files.";
     return false;
   }
 
   // print options
-  LOG(INFO) << "(Sub)TimeFrame source :: enabled         = " << (mEnabled ? "yes" : "no");
-  LOG(INFO) << "(Sub)TimeFrame source :: directory       = " << mDir;
-  LOG(INFO) << "(Sub)TimeFrame source :: (s)tf load rate = " << mLoadRate;
-  LOG(INFO) << "(Sub)TimeFrame source :: repeat data     = " << mRepeat;
-  LOG(INFO) << "(Sub)TimeFrame source :: num files       = " << lFilesVector.size();
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame source :: enabled         = " << (mEnabled ? "yes" : "no");
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame source :: directory       = " << mDir;
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame source :: (s)tf load rate = " << mLoadRate;
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame source :: repeat data     = " << mRepeat;
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame source :: num files       = " << lFilesVector.size();
 
   return true;
 }
@@ -161,7 +162,7 @@ void SubTimeFrameFileSource::DataInjectThread()
 {
   const std::chrono::microseconds lIntervalUs(mLoadRate > 0 ? 1000000 / mLoadRate : 0);
 
-  LOG(INFO) << "(Sub)TimeFrame Source: Injecting new STF every " << lIntervalUs.count() << " us";
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Source: Injecting new STF every " << lIntervalUs.count() << " us";
 
   auto lRatePrevTime = std::chrono::high_resolution_clock::now();
 
@@ -180,7 +181,7 @@ void SubTimeFrameFileSource::DataInjectThread()
     lRatePrevTime = std::chrono::high_resolution_clock::now();
   }
 
-  LOG(INFO) << "Exiting file source inject thread...";
+  DDLOG(fair::Severity::INFO) << "Exiting file source inject thread...";
 }
 
 /// File reading thread
@@ -191,7 +192,7 @@ void SubTimeFrameFileSource::DataHandlerThread()
   // Load the sorted list of StfFiles
   auto lFilesVector = getDataFileList();
   if (lFilesVector.empty()) {
-    LOG(ERROR) << "(Sub)TimeFrame directory contains no data files.";
+    DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame directory contains no data files.";
     return;
   }
 
@@ -205,7 +206,7 @@ void SubTimeFrameFileSource::DataHandlerThread()
       auto lFileNameAbs = bfs::path(mDir) / bfs::path(lFileName);
       SubTimeFrameFileReader lStfReader(lFileNameAbs);
 
-      LOG(DEBUG) << "FileSource: opened new file " << lFileNameAbs;
+      DDLOG(fair::Severity::DEBUG) << "FileSource: opened new file " << lFileNameAbs.string();
 
       while (mRunning) {
         // prevent large read-ahead
@@ -227,11 +228,11 @@ void SubTimeFrameFileSource::DataHandlerThread()
     }
 
     if (!mRepeat) {
-      LOG(INFO) << "(Sub)TimeFrame Source: Finished reading all input files. Exiting...";
+      DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Source: Finished reading all input files. Exiting...";
       break;
     }
   }
-  LOG(INFO) << "Exiting file source data load thread...";
+  DDLOG(fair::Severity::INFO) << "Exiting file source data load thread...";
 }
 
 }

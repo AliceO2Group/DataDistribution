@@ -1,10 +1,13 @@
 # @author Gvozden Neskovic
-# @brief  DataDistribution common stuff: DataModel and Utilities
+# @brief  DataDistribution common DataModel related stuff
 
 #-------------------------------------------------------------------------------
-set (LIB_COMMONG_SOURCES
+
+add_subdirectory(base)
+add_subdirectory(discovery)
+
+set (LIB_COMMON_SOURCES
   ReadoutDataModel
-  FilePathUtils
   RootGui
   SubTimeFrameBuilder
   SubTimeFrameDataModel
@@ -18,7 +21,7 @@ set (LIB_COMMONG_SOURCES
   SubTimeFrameDPL
 )
 
-add_library(common OBJECT ${LIB_COMMONG_SOURCES})
+add_library(common OBJECT ${LIB_COMMON_SOURCES})
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT result)
@@ -28,18 +31,14 @@ endif()
 
 target_include_directories(common
   PUBLIC
-  PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-
 target_link_libraries(common
   PUBLIC
-  PRIVATE
-    Boost::filesystem
+    base
     FairMQ::FairMQ
     AliceO2::Headers
+    AliceO2::Framework
     ROOT::Gui
 )
-
-add_subdirectory(discovery)

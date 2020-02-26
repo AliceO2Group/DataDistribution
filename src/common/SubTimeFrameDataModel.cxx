@@ -14,6 +14,8 @@
 #include "ReadoutDataModel.h"
 #include "SubTimeFrameDataModel.h"
 
+#include "DataDistLogger.h"
+
 #include <map>
 #include <iterator>
 #include <algorithm>
@@ -70,7 +72,7 @@ void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf)
 
   for (const auto& lId : pStf->getEquipmentIdentifiers()) {
     if (lUnionSet.emplace(lId).second == false /* not inserted */) {
-      LOG(ERROR) << "Equipment already present" << lId.info();
+      DDLOG(fair::Severity::ERROR) << "Equipment already present" << lId.info();
     }
   }
 

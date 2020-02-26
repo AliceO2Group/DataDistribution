@@ -72,8 +72,6 @@ std::string FilePathUtils::getDataDirName(const std::string& pRootDir)
 }
 
 
-
-
 std::string FilePathUtils::getNextSeqName(const std::string& pRootDir)
 {
   static const std::regex seq_regex("(\\d+)(?=\\D*$)", std::regex::icase);

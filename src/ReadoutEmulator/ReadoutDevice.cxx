@@ -9,11 +9,11 @@
 // or submit itself to any jurisdiction.
 
 #include "ReadoutDevice.h"
+#include "DataDistLogger.h"
 
 #include <ReadoutDataModel.h>
 
 #include <options/FairMQProgOptions.h>
-#include <FairMQLogger.h>
 
 #include <TH1.h>
 
@@ -52,12 +52,12 @@ void ReadoutDevice::InitTask()
   mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
 
   if (mSuperpageSize < (1ULL << 19)) {
-    LOG(WARN) << "Superpage size too low (" << mSuperpageSize << " Setting to 512kiB...";
+    DDLOG(fair::Severity::WARN) << "Superpage size too low (" << mSuperpageSize << " Setting to 512kiB...";
     mSuperpageSize = (1ULL << 19);
   }
 
   mDmaChunkSize = (mCruLinkBitsPerS / 11223ULL) >> 3;
-  LOG(INFO) << "Using HBFrame size of " << mDmaChunkSize;
+  DDLOG(fair::Severity::INFO) << "Using HBFrame size of " << mDmaChunkSize;
 
   mDataRegion.reset();
 
@@ -69,7 +69,7 @@ void ReadoutDevice::InitTask()
       mCruMemoryHandler->put_data_buffer(static_cast<char*>(data), size);
     });
 
-  LOG(INFO) << "Memory regions created";
+  DDLOG(fair::Severity::INFO) << "Memory regions created";
 
   mCruMemoryHandler->init(mDataRegion.get(), mSuperpageSize);
 
@@ -141,7 +141,7 @@ void ReadoutDevice::SendingThread()
 
     ReadoutLinkO2Data lCruLinkData;
     if (!mCruMemoryHandler->getLinkData(lCruLinkData)) {
-      LOG(INFO) << "GetLinkData failed. Stopping interface thread.";
+      DDLOG(fair::Severity::INFO) << "GetLinkData failed. Stopping interface thread.";
       return;
     }
 
@@ -152,7 +152,7 @@ void ReadoutDevice::SendingThread()
     // check no data signal
     if (lCruLinkData.mLinkDataHeader.subSpecification ==
       o2::header::DataHeader::SubSpecificationType(-1)) {
-      // LOG(WARN) << "No Superpages left! Losing data...";
+      // DDLOG(fair::Severity::WARN) << "No Superpages left! Losing data...";
     }
 
     ReadoutSubTimeframeHeader lHBFHeader;
@@ -194,7 +194,7 @@ void ReadoutDevice::GuiThread()
   WaitForRunningState();
 
   while (IsRunningState()) {
-    LOG(INFO) << "Updating histograms...";
+    DDLOG(fair::Severity::INFO) << "Updating histograms...";
 
     mGui->Canvas().cd();
     mGui->DrawHist(lFreeSuperpagesHist.get(), mFreeSuperpagesSamples);
@@ -205,7 +205,7 @@ void ReadoutDevice::GuiThread()
     using namespace std::chrono_literals;
     std::this_thread::sleep_for(5s);
   }
-  LOG(INFO) << "Exiting GUI thread...";
+  DDLOG(fair::Severity::INFO) << "Exiting GUI thread...";
 }
 }
 } /* namespace o2::DataDistribution */

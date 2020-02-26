@@ -12,6 +12,9 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "SubTimeFrameDPL.h"
+
+#include "DataDistLogger.h"
+
 #include <Framework/DataProcessingHeader.h>
 #include <Headers/Stack.h>
 
@@ -44,7 +47,7 @@ void StfDplAdapter::visit(SubTimeFrame& pStf)
 
     auto lDataHeaderMsg = mChan.NewMessage(lHdrStack.size());
     if (!lDataHeaderMsg) {
-      LOG(ERROR) << "Allocation error: Stf DataHeader::size: " << sizeof(DataHeader);
+      DDLOG(fair::Severity::ERROR) << "Allocation error: Stf DataHeader::size: " << sizeof(DataHeader);
       throw std::bad_alloc();
     }
 
@@ -52,7 +55,7 @@ void StfDplAdapter::visit(SubTimeFrame& pStf)
 
     auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
     if (!lDataMsg) {
-      LOG(ERROR) << "Allocation error: Stf::Header::size: " << sizeof(SubTimeFrame::Header);
+      DDLOG(fair::Severity::ERROR) << "Allocation error: Stf::Header::size: " << sizeof(SubTimeFrame::Header);
       throw std::bad_alloc();
     }
     std::memcpy(lDataMsg->GetData(), &pStf.header(), sizeof(SubTimeFrame::Header));
@@ -79,7 +82,6 @@ void StfDplAdapter::visit(SubTimeFrame& pStf)
         assert(lHBFrameVector[i].getDataHeader().splitPayloadIndex == i);
         assert(lHBFrameVector[i].getDataHeader().splitPayloadParts == lHBFrameVector.size());
 
-
         mMessages.emplace_back(std::move(lHBFrameVector[i].mHeader));
         mMessages.emplace_back(std::move(lHBFrameVector[i].mData));
       }
@@ -94,10 +96,10 @@ void StfDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
   pStf->accept(*this);
 
 #if 0
-  LOG(DEBUG) << "Content of the Stf:";
+  DDLOG(fair::Severity::DEBUG) << "Content of the Stf:";
   uint64_t lMsgIdx = 0;
   for (auto lM = mMessages.cbegin(); lM != mMessages.cend(); ) {
-    LOG(DEBUG) << "  o2: message " << lMsgIdx++;
+    DDLOG(fair::Severity::DEBUG) << "  o2: message " << lMsgIdx++;
     o2::header::hexDump("o2 header", (*lM)->GetData(), (*lM)->GetSize());
     lM++;
     o2::header::hexDump("o2 payload", (*lM)->GetData(), std::clamp((*lM)->GetSize(), std::size_t(0), std::size_t(256)) );

@@ -20,7 +20,6 @@
 #include <SubTimeFrameDPL.h>
 
 #include <options/FairMQProgOptions.h>
-#include <FairMQLogger.h>
 
 #include <TH1.h>
 
@@ -46,11 +45,13 @@ TfBuilderDevice::TfBuilderDevice()
 
 TfBuilderDevice::~TfBuilderDevice()
 {
-  LOG(DEBUG) << "TfBuilderDevice::~TfBuilderDevice()";
+  DDLOG(fair::Severity::TRACE) << "TfBuilderDevice::~TfBuilderDevice()";
 }
 
 void TfBuilderDevice::InitTask()
 {
+  DataDistLogger::SetThreadName("tfb-main");
+
   {
     mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
     mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
@@ -87,8 +88,8 @@ void TfBuilderDevice::InitTask()
     lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
 
     if (! mDiscoveryConfig->write(true)) {
-      LOG(ERROR) << "Can not start TfBuilder with id: " << lStatus.info().process_id();
-      LOG(ERROR) << "Process with the same id already running? If not, clear the key manually.";
+      DDLOGF(fair::Severity::ERROR, "Can not start TfBuilder. id={:d}", lStatus.info().process_id());
+      DDLOG(fair::Severity::ERROR) << "Process with the same id already running? If not, clear the key manually.";
       throw "Discovery database error";
       return;
     }
@@ -97,11 +98,11 @@ void TfBuilderDevice::InitTask()
     if (mDplChannelName != "") {
       mDplEnabled = true;
       mStandalone = false;
-      LOG(INFO) << "DPL Channel name: " << mDplChannelName;
+      DDLOGF(fair::Severity::INFO, "Using DPL channel. channel_name={:s}", mDplChannelName);
     } else {
       mDplEnabled = false;
       mStandalone = true;
-      LOG(INFO) << "Not sending to DPL.";
+      DDLOGF(fair::Severity::INFO, "Not sending to DPL.");
     }
 
     // channel for FileSource: stf or dpl, or generic one in case of standalone
@@ -109,7 +110,7 @@ void TfBuilderDevice::InitTask()
       // create default FMQ shm channel
       auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("shmem", "", GetConfig());
       if (!lTransportFactory) {
-        LOG(ERROR) << "Creating transport factory failed!";
+        DDLOG(fair::Severity::ERROR) << "Creating transport factory failed!";
         throw "Transport factory";
         return;
       }
@@ -163,7 +164,7 @@ bool TfBuilderDevice::start()
   // Start input handlers
   if (!mFlpInputHandler->start(mDiscoveryConfig)) {
     mShouldExit = true;
-    LOG(ERROR) << "Could not initialize input connections. Exiting.";
+    DDLOG(fair::Severity::ERROR) << "Could not initialize input connections. Exiting.";
     throw "Input connection error";
     return false;
   }
@@ -206,7 +207,7 @@ void TfBuilderDevice::stop()
 
   mDiscoveryConfig.reset();
 
-  LOG(DEBUG) << "Reset() done... ";
+  DDLOG(fair::Severity::trace) << "Reset() done... ";
 }
 
 void TfBuilderDevice::ResetTask()
@@ -247,7 +248,7 @@ void TfBuilderDevice::TfForwardThread()
   while (mRunning) {
     std::unique_ptr<SubTimeFrame> lTf = dequeue(eTfFwdIn);
     if (!lTf) {
-      LOG(WARNING) << "TfForwardThread(): Exiting... ";
+      DDLOG(fair::Severity::WARNING) << "TfForwardThread(): Exiting... ";
       break;
     }
 
@@ -270,18 +271,19 @@ void TfBuilderDevice::TfForwardThread()
       try {
         static std::uint64_t sTfOutCnt = 0;
         if (++sTfOutCnt % 256 == 0) {
-          LOG(INFO) << "Forwarding new TF id: " << lTf->header().mId << ", total: " << sTfOutCnt;
+          DDLOGF(fair::Severity::TRACE, "Forwarding new TF to DPL. tf_id={:d} total={:d}",
+            lTf->header().mId, sTfOutCnt);
         }
 
-        lTfBuilder->adaptHeaders(lTf.get());
-
         if (dplEnabled()) {
+          // adapt headers to include DPL processing header on the stack
+          lTfBuilder->adaptHeaders(lTf.get());
+
           // DPL Channel
           static thread_local unsigned long lThrottle = 0;
           if (++lThrottle % 100 == 0) {
-            LOG(DEBUG) << "Sending STF to DPL: id:" << lTf->header().mId
-                       << " data size: " << lTf->getDataSize()
-                       << " unique equipments: " << lTf->getEquipmentIdentifiers().size();
+            DDLOGF(fair::Severity::TRACE, "Sending STF to DPL. stf_id={:d} stf_size={:d} unique_equipments={:d}",
+              lTf->header().mId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size());
           }
 
           // Send to DPL bridge
@@ -290,9 +292,9 @@ void TfBuilderDevice::TfForwardThread()
         }
       } catch (std::exception& e) {
         if (IsRunningState()) {
-          LOG(ERROR) << "StfOutputThread: exception on send: " << e.what();
+          DDLOGF(fair::Severity::ERROR, "StfOutputThread: exception on send. exception_what={:s}", e.what());
         } else {
-          LOG(INFO) << "StfOutputThread(NOT_RUNNING): shutting down: " << e.what();
+          DDLOGF(fair::Severity::INFO, "StfOutputThread: shutting down. exception_what={:s}", e.what());
         }
         break;
       }
@@ -304,7 +306,7 @@ void TfBuilderDevice::TfForwardThread()
 
   }
 
-  LOG(INFO) << "Exiting TF forwarding thread... ";
+  DDLOG(fair::Severity::INFO) << "Exiting TF forwarding thread... ";
 }
 
 void TfBuilderDevice::GuiThread()
@@ -322,7 +324,7 @@ void TfBuilderDevice::GuiThread()
   WaitForRunningState();
 
   while (IsRunningState()) {
-    LOG(INFO) << "Updating histograms...";
+    DDLOG(fair::Severity::INFO) << "Updating histograms...";
 
     mGui->Canvas().cd(1);
     mGui->DrawHist(lTfSizeHist.get(), mTfSizeSamples);
@@ -336,14 +338,14 @@ void TfBuilderDevice::GuiThread()
     mGui->Canvas().Modified();
     mGui->Canvas().Update();
 
-    LOG(INFO) << "Mean size of TimeFrames : " << mTfSizeSamples.Mean();
-    LOG(INFO) << "Mean TimeFrame frequency: " << mTfFreqSamples.Mean();
-    LOG(INFO) << "Number of queued TFs    : " << getPipelineSize(); // current value
+    DDLOG(fair::Severity::INFO) << "Mean size of TimeFrames : " << mTfSizeSamples.Mean();
+    DDLOG(fair::Severity::INFO) << "Mean TimeFrame frequency: " << mTfFreqSamples.Mean();
+    DDLOG(fair::Severity::INFO) << "Number of queued TFs    : " << getPipelineSize(); // current value
 
     std::this_thread::sleep_for(5s);
   }
 
-  LOG(INFO) << "Exiting GUI thread...";
+  DDLOG(fair::Severity::INFO) << "Exiting GUI thread...";
 }
 }
 } /* namespace o2::DataDistribution */

@@ -13,6 +13,8 @@
 
 #include "DataModelUtils.h"
 #include "ReadoutDataModel.h"
+#include "DataDistLogger.h"
+
 
 #include <fairmq/FairMQDevice.h>
 
@@ -72,7 +74,7 @@ ReadoutDataUtils::getSubSpecificationComponents(const char* pRdhData, const std:
     {
       static auto lErrorRate = 0;
       if (lErrorRate++ % 2048 == 0) {
-        LOG(ERROR) << "Unknown RDH version: " << lVer << ". Please report the issue.";
+        DDLOG(fair::Severity::ERROR) << "Unknown RDH version: " << lVer << ". Please report the issue.";
       }
       return std::tuple{~lCruId, ~lEndPoint, ~lLinkId};
       break;
@@ -125,7 +127,7 @@ ReadoutDataUtils::getRdhMemorySize(const char* data, const std::size_t len)
   }
 
   if (p > data + len) {
-    LOG (ERROR) << "BLOCK CHECK: StopBit lookup failed: advanced beyond end of the buffer.";
+    DDLOG(fair::Severity::ERROR) << "BLOCK CHECK: StopBit lookup failed: advanced beyond end of the buffer.";
     lStopRet = -1;
   }
 
@@ -192,7 +194,7 @@ ReadoutDataUtils::getRdhNavigationVals(const char* pRdhData)
 bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
 {
   if (pLen < 64) { // size of one RDH
-    LOG(ERROR) << "Data block is shorter than RDH: " << pLen;
+    DDLOG(fair::Severity::ERROR) << "Data block is shorter than RDH: " << pLen;
     o2::header::hexDump("Short readout block", pData, pLen);
     return false;
   }
@@ -205,11 +207,11 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
       sFirstSeenHBOrbitCnt = lOrbit;
     } else {
       if (lOrbit < sFirstSeenHBOrbitCnt) {
-        LOG (ERROR) << "Orbit counter of current data packet (HBF) is smaller than first orbit of STF"
+        DDLOG(fair::Severity::ERROR) << "Orbit counter of current data packet (HBF) is smaller than first orbit of STF"
                     << lOrbit << " < " << sFirstSeenHBOrbitCnt << " diff:" << sFirstSeenHBOrbitCnt-lOrbit;
         return false;
       } else if (lOrbit > (sFirstSeenHBOrbitCnt+255)) {
-        LOG (ERROR) << "Orbit counter of current data packet (HBF) is larger than first orbit of STF + 255"
+        DDLOG(fair::Severity::ERROR) << "Orbit counter of current data packet (HBF) is larger than first orbit of STF + 255"
                     << lOrbit << " > (255 + " << sFirstSeenHBOrbitCnt << ") diff:" << lOrbit - sFirstSeenHBOrbitCnt;
         return false;
       }
@@ -226,14 +228,14 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
   while(lDataLen > 0) {
 
     if (lDataLen > 0 && lDataLen < 64/*RDH*/ ) {
-      LOG(ERROR) << "BLOCK CHECK: Data is shorter than RDH. Block offset: " << lCurrData - pData;
+      DDLOG(fair::Severity::ERROR) << "BLOCK CHECK: Data is shorter than RDH. Block offset: " << lCurrData - pData;
       o2::header::hexDump("Data at the end of the block", lCurrData, lDataLen);
       return false;
     }
 
     // check if sub spec matches
     if (lSubSpec != getSubSpecification(lCurrData, lDataLen)) {
-      LOG(ERROR) << "BLOCK CHECK: Data sub-specification of trailing RDHs does not match."
+      DDLOG(fair::Severity::ERROR) << "BLOCK CHECK: Data sub-specification of trailing RDHs does not match."
                     " Subspecification of the first RDH: 0x" << std::hex << lSubSpec
                  << " Subspecification of " << lPacketCnt << ". RDH: 0x" << std::hex << getSubSpecification(lCurrData, lDataLen);
       return false;
@@ -246,7 +248,7 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
       if (lMemSize <= lDataLen) {
         return true; // all memory is accounted for
       } else {
-        LOG(ERROR) << "BLOCK CHECK: RDH has bit stop set, but memory size is different from remaining block size."
+        DDLOG(fair::Severity::ERROR) << "BLOCK CHECK: RDH has bit stop set, but memory size is different from remaining block size."
                       " memory size: " << lMemSize <<
                       " remaining buffer size: " << lDataLen;
         return false;
@@ -254,17 +256,17 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
     }
 
     if (lOffsetNext == 0) {
-      LOG(ERROR) << "BLOCK CHECK: Next block offset is 0.";
+      DDLOG(fair::Severity::ERROR) << "BLOCK CHECK: Next block offset is 0.";
       return false;
     }
 
     if (lOffsetNext >= lDataLen) {
-      LOG(ERROR) << "BLOCK CHECK: Next offset points beyond end of data block (stop bit is not set).";
+      DDLOG(fair::Severity::ERROR) << "BLOCK CHECK: Next offset points beyond end of data block (stop bit is not set).";
       return false;
     }
 
     if (lMemSize >= lDataLen) {
-      LOG(ERROR) << "BLOCK CHECK: Memory size is larger than remaining data block size for packet " << lPacketCnt;
+      DDLOG(fair::Severity::ERROR) << "BLOCK CHECK: Memory size is larger than remaining data block size for packet " << lPacketCnt;
       return false;
     }
 
@@ -296,9 +298,9 @@ bool ReadoutDataUtils::filterTriggerEmpyBlocksV4(const char* pData, const std::s
     }
 
     if (lOffsetNext1 > pLen) {
-      LOG(ERROR) << "BLOCK CHECK: Invalid offset " << lOffsetNext1 << " (beyond end of the buffer)";
+      DDLOG(fair::Severity::ERROR) << "BLOCK CHECK: Invalid offset " << lOffsetNext1 << " (beyond end of the buffer)";
     } if (lOffsetNext1 < 64) {
-      LOG(ERROR) << "BLOCK CHECK: Invalid offset " << lOffsetNext1 << " (less than RDH size)";
+      DDLOG(fair::Severity::ERROR) << "BLOCK CHECK: Invalid offset " << lOffsetNext1 << " (less than RDH size)";
     }
 
     const char *lRDH1 = pData;
@@ -325,12 +327,12 @@ bool ReadoutDataUtils::filterTriggerEmpyBlocksV4(const char* pData, const std::s
     if (pLen == 128) {
       sNumFiltered128Blocks++;
       if (sNumFiltered128Blocks % 250000 == 0) {
-        LOG (INFO) << "Filtered " << sNumFiltered128Blocks << " of 128 B blocks in trigger mode.";
+        DDLOG(fair::Severity::INFO) << "Filtered " << sNumFiltered128Blocks << " of 128 B blocks in trigger mode.";
       }
     } else if (pLen == 16384) {
       sNumFiltered16kBlocks++;
       if (sNumFiltered16kBlocks % 250000 == 0) {
-        LOG (INFO) << "Filtered " << sNumFiltered16kBlocks << " of 16 kiB blocks in trigger mode.";
+        DDLOG(fair::Severity::INFO) << "Filtered " << sNumFiltered16kBlocks << " of 16 kiB blocks in trigger mode.";
       }
     }
 

@@ -16,8 +16,6 @@
 
 #include <StfSenderRpcClient.h>
 
-#include <FairMQLogger.h>
-
 #include <set>
 #include <tuple>
 #include <algorithm>
@@ -37,20 +35,19 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
   // recreate timepoint from the received millisecond time stamp
   const std::chrono::milliseconds lUpdateDuration(pTfBuilderUpdate.info().last_update_t());
   const std::chrono::time_point<std::chrono::system_clock> lUpdateTimepoint(lUpdateDuration);
+  const auto &lTfBuilderId = pTfBuilderUpdate.info().process_id();
 
   // check for system time drifts; account for gRPC latency
   const auto lTimeDiff = lLocalTime - lUpdateTimepoint;
   if (lTimeDiff < 0s || lTimeDiff > 1s) {
-    LOG(WARNING) << "Large system clock drift detected: "
-                 << std::chrono::duration_cast<std::chrono::milliseconds>(lTimeDiff).count()
-                 << " ms. Check the time synchronization in the cluster (NTP)!";
+    DDLOGF(fair::Severity::WARNING,
+      "Large system clock drift detected. tfb_id={:s} drift_ms={:d}", lTfBuilderId,
+      std::chrono::duration_cast<std::chrono::milliseconds>(lTimeDiff).count());
   }
 
   {
     // lock the global info
     std::scoped_lock lLock(mGlobalInfoLock);
-
-    const auto &lTfBuilderId = pTfBuilderUpdate.info().process_id();
 
     // check if should remove
     if (pTfBuilderUpdate.state() == TfBuilderUpdateMessage::NOT_RUNNING) {
@@ -61,7 +58,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
         removeReadyTfBuilder(lTfBuilderId);
         // remove from global
         mGlobalInfo.erase(lTfIter);
-        LOG(INFO) << "TfBuilder left: " << lTfBuilderId;
+        DDLOGF(fair::Severity::INFO, "TfBuilder left the partition. tfb_id={:s} reason=NOT_RUNNING", lTfBuilderId);
       }
       return;
     }
@@ -74,7 +71,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
       );
       addReadyTfBuilder(mGlobalInfo.at(lTfBuilderId));
 
-      LOG(INFO) << "TfBuilder joined: " << lTfBuilderId;
+      DDLOGF(fair::Severity::INFO, "TfBuilder joined the partition. tfb_id={:s}", lTfBuilderId);
     } else {
       auto &lInfo = mGlobalInfo.at(lTfBuilderId);
 
@@ -89,8 +86,9 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
 
         // verify the memory estimation is correct
         if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory() ) {
-          LOG (WARNING) << "TfBuilder memory estimate is too high: "
-                        << double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory());
+          DDLOGF(fair::Severity::DEBUG,
+            "TfBuilder memory estimate is too high. tfb_id={:s} mem_estimate={f}", lTfBuilderId,
+            (double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory())));
         }
 
         lInfo->mEstimatedFreeMemory = pTfBuilderUpdate.free_memory();
@@ -100,8 +98,10 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
         // update scheduler's estimate to be on the safe side
         if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory() ) {
 
-          LOG(DEBUG) << "Ignoring TfBuilder info: last_build < last_scheduled, fixing estimate ratio: "
-                     << double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory());
+          DDLOGF(fair::Severity::DEBUG,
+            "Ignoring TfBuilder info (last_build < last_scheduled). Fixing the estimate ratio. "
+            "tfb_id={:s} new_mem_stimate={f}", lTfBuilderId,
+            (double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory())));
 
           lInfo->mEstimatedFreeMemory = pTfBuilderUpdate.free_memory();
 
@@ -123,45 +123,49 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
 void TfSchedulerTfBuilderInfo::HousekeepingThread()
 {
   using namespace std::chrono_literals;
-  LOG(DEBUG) << "Starting TfBuilderInfo-Housekeeping thread...";
+
+  DataDistLogger::SetThreadName("TfBuilder::HousekeepingThread");
+  DDLOGF(fair::Severity::TRACE, "Starting TfBuilderInfo-Housekeeping thread.");
 
   std::vector<std::string> lIdsToErase;
 
   while (mRunning) {
-
     std::this_thread::sleep_for(1000ms);
 
     {
       std::scoped_lock lLock(mGlobalInfoLock);
 
-      const auto lNow = std::chrono::system_clock::now();
-
       // reap stale TfBuilders
       assert (lIdsToErase.empty());
       for (const auto &lIdInfo : mGlobalInfo) {
         const auto &lInfo = lIdInfo.second;
+        const auto lNow = std::chrono::system_clock::now();
         const auto lTimeDiff = std::chrono::abs(lNow - lInfo->mUpdateLocalTime);
-        if (lTimeDiff >= sTfBuilderReapTime) {
+        if (lTimeDiff >= sTfBuilderDiscardTimeout) {
           lIdsToErase.emplace_back(lInfo->mTfBuilderUpdate.info().process_id());
         }
 
-        LOG(DEBUG) << "TfBuilder info id=" << lInfo->mTfBuilderUpdate.info().process_id()
-                   << " free_mem=" << lInfo->mTfBuilderUpdate.free_memory()
-                   << " num_buffered_tfs=" << lInfo->mTfBuilderUpdate.num_buffered_tfs();
+        DDLOGF(fair::Severity::DEBUG,
+          "TfBuilder information: tfb_id={:s} free_memory={:d} num_buffered_tfs={:d}",
+          lInfo->mTfBuilderUpdate.info().process_id(), lInfo->mTfBuilderUpdate.free_memory(),
+          lInfo->mTfBuilderUpdate.num_buffered_tfs());
       }
 
-      if (!lIdsToErase.empty()) {
-        for (const auto &lId : lIdsToErase) {
-          mGlobalInfo.erase(lId);
-          removeReadyTfBuilder(lId);
-          LOG (INFO) << "TfBuilder removed from scheduling (stale info), id=" << lId;
-        }
-        lIdsToErase.clear();
-      }
     } // mGlobalInfoLock unlock (to be able to sleep)
+
+    if (!lIdsToErase.empty()) {
+      for (const auto &lId : lIdsToErase) {
+        std::scoped_lock lLock(mGlobalInfoLock); // CHECK if we need this lock?
+
+        mGlobalInfo.erase(lId);
+        removeReadyTfBuilder(lId);
+        DDLOGF(fair::Severity::WARNING, "TfBuilder removed from the partition. reason=STALE_INFO tfb_id={:s}", lId);
+      }
+      lIdsToErase.clear();
+    }
   }
 
-  LOG(DEBUG) << "Exiting TfBuilderInfo-Housekeeping thread...";
+  DDLOGF(fair::Severity::TRACE, "Exiting TfBuilderInfo-Housekeeping thread.");
 }
 
 }

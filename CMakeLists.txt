@@ -69,8 +69,34 @@ message(STATUS "Looking for dependencies.")
 message(STATUS "CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
 message(STATUS "CMAKE_CXX_STANDARD = ${CMAKE_CXX_STANDARD}")
 
-
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+
+
+# see if our 3rd parties are Installed
+find_package(spdlog
+  HINTS "${CMAKE_BINARY_DIR}/spdlog"
+)
+if (NOT spdlog_FOUND)
+  configure_file(
+    ${CMAKE_SOURCE_DIR}/cmake/CMakeLists.txt.in
+    3rdparty/CMakeLists.txt
+  )
+
+  execute_process(
+    COMMAND ${CMAKE_COMMAND} -G "Unix Makefiles" .
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/3rdparty
+  )
+  execute_process(
+    COMMAND ${CMAKE_COMMAND} --build . --parallel 2
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/3rdparty
+  )
+
+  # make sure we succeeded
+  find_package(spdlog REQUIRED
+    HINTS "${CMAKE_BINARY_DIR}/spdlog"
+  )
+endif()
+
 
 find_package(Threads REQUIRED)
 find_package(FairMQ 1.4 REQUIRED)

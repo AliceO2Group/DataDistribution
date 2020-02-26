@@ -14,6 +14,8 @@
 #include "SubTimeFrameFile.h"
 #include "SubTimeFrameFileReader.h"
 
+#include "DataDistLogger.h"
+
 namespace o2
 {
 namespace DataDistribution
@@ -39,12 +41,12 @@ SubTimeFrameFileReader::SubTimeFrameFileReader(boost::filesystem::path& pFileNam
     mFile.seekg(0, std::ios_base::beg);
 
   } catch (std::ifstream::failure& eOpenErr) {
-    LOG(ERROR) << "Failed to open TF file for reading. Error: " << eOpenErr.what();
+    DDLOG(fair::Severity::ERROR) << "Failed to open TF file for reading. Error: " << eOpenErr.what();
   } catch (std::exception &err) {
-    LOG(ERROR) << "Failed to open TF file for reading. Error: " << err.what();
+    DDLOG(fair::Severity::ERROR) << "Failed to open TF file for reading. Error: " << err.what();
   }
 
-  // LOG(DEBUG) << "Opened new STF file for reading: " << pFileName.string();
+  // DDLOG(fair::Severity::DEBUG) << "Opened new STF file for reading: " << pFileName.string();
 }
 
 SubTimeFrameFileReader::~SubTimeFrameFileReader()
@@ -53,9 +55,9 @@ SubTimeFrameFileReader::~SubTimeFrameFileReader()
     if (mFile.is_open())
       mFile.close();
   } catch (std::ifstream::failure& eCloseErr) {
-    LOG(ERROR) << "Closing TF file failed. Error: " << eCloseErr.what();
+    DDLOG(fair::Severity::ERROR) << "Closing TF file failed. Error: " << eCloseErr.what();
   } catch (...) {
-    LOG(ERROR) << "Closing TF file failed.";
+    DDLOG(fair::Severity::ERROR) << "Closing TF file failed.";
   }
 }
 
@@ -127,7 +129,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
   }
 
   if (!mFile.good()) {
-    LOG(WARNING) << "Error while reading a TF from file. (bad stream state)";
+   DDLOG(fair::Severity::WARNING) << "Error while reading a TF from file. (bad stream state)";
     return nullptr;
   }
 
@@ -143,13 +145,13 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
     buffered_read(&lStfFileMeta, sizeof(SubTimeFrameFileMeta));
 
   } catch (const std::ios_base::failure& eFailExc) {
-    LOG(ERROR) << "Reading from file failed. Error: " << eFailExc.what();
+    DDLOG(fair::Severity::ERROR) << "Reading from file failed. Error: " << eFailExc.what();
     return nullptr;
   }
 
   // verify we're actually reading the correct data in
   if (!(SubTimeFrameFileMeta::getDataHeader().dataDescription == lStfMetaDataHdr.dataDescription)) {
-    LOG(WARNING) << "Reading bad data: SubTimeFrame META header";
+   DDLOG(fair::Severity::WARNING) << "Reading bad data: SubTimeFrame META header";
     mFile.close();
     return nullptr;
   }
@@ -157,13 +159,13 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
   // prepare to read the TF data
   const auto lStfSizeInFile = lStfFileMeta.mStfSizeInFile;
   if (lStfSizeInFile == (sizeof(DataHeader) + sizeof(SubTimeFrameFileMeta))) {
-    LOG(WARNING) << "Reading an empty TF from file. Only meta information present";
+   DDLOG(fair::Severity::WARNING) << "Reading an empty TF from file. Only meta information present";
     return nullptr;
   }
 
   // check there's enough data in the file
   if ((lTfStartPosition + lStfSizeInFile) > this->size()) {
-    LOG(WARNING) << "Not enough data in file for this TF. Required: " << lStfSizeInFile
+   DDLOG(fair::Severity::WARNING) << "Not enough data in file for this TF. Required: " << lStfSizeInFile
                  << ", available: " << (this->size() - lTfStartPosition);
     mFile.close();
     return nullptr;
@@ -177,7 +179,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
     buffered_read(&lStfIndexHdr, sizeof(DataHeader));
     mFile.seekg(lStfIndexHdr.payloadSize, std::ios_base::cur);
   } catch (const std::ios_base::failure& eFailExc) {
-    LOG(ERROR) << "Reading from file failed. Error: " << eFailExc.what();
+    DDLOG(fair::Severity::ERROR) << "Reading from file failed. Error: " << eFailExc.what();
     return nullptr;
   }
 
@@ -197,14 +199,14 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
       const std::int64_t lHdrSize = getHeaderStackSize();
       if (lHdrSize < std::int64_t(sizeof(DataHeader))) {
         // error while checking headers
-        LOG(WARNING) << "Reading bad data: Header stack cannot be parsed";
+       DDLOG(fair::Severity::WARNING) << "Reading bad data: Header stack cannot be parsed";
         mFile.close();
         return nullptr;
       }
       // allocate and read the Headers
       auto lHdrStackMsg = pDstChan.NewMessage(lHdrSize);
       if (!lHdrStackMsg) {
-        LOG(WARNING) << "Out of memory: header message, allocation size: " << lHdrSize;
+       DDLOG(fair::Severity::WARNING) << "Out of memory: header message, allocation size: " << lHdrSize;
         mFile.close();
         return nullptr;
       }
@@ -218,7 +220,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
 
       auto lDataMsg = pDstChan.NewMessage(lDataSize);
       if (!lDataMsg) {
-        LOG(WARNING) << "Out of memory: data message, allocation size: " << lDataSize;
+       DDLOG(fair::Severity::WARNING) << "Out of memory: data message, allocation size: " << lDataSize;
         mFile.close();
         return nullptr;
       }
@@ -234,19 +236,19 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
     }
 
     if (lLeftToRead < 0) {
-      LOG(ERROR) << "FileRead: Read more data than it is indicated in the META header!";
+      DDLOG(fair::Severity::ERROR) << "FileRead: Read more data than it is indicated in the META header!";
       return nullptr;
     }
 
   } catch (const std::ios_base::failure& eFailExc) {
-    LOG(ERROR) << "Reading from file failed. Error: " << eFailExc.what();
+    DDLOG(fair::Severity::ERROR) << "Reading from file failed. Error: " << eFailExc.what();
     return nullptr;
   }
 
   // build the SubtimeFrame
   lStf->accept(*this);
 
-  LOG(DEBUG) << "FileReader: read TF size: " << lStfFileMeta.mStfSizeInFile
+  DDLOG(fair::Severity::DEBUG) << "FileReader: read TF size: " << lStfFileMeta.mStfSizeInFile
             << ", created on " << lStfFileMeta.getTimeString()
             << " (timestamp: " << lStfFileMeta.mWriteTimeMs << ")";
 

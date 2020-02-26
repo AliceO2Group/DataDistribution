@@ -20,6 +20,8 @@
 #include <fairmq/FairMQDevice.h>
 #include <fairmq/FairMQChannel.h>
 
+#include "DataDistLogger.h"
+
 #include <vector>
 #include <mutex>
 #include <memory>
@@ -74,7 +76,7 @@ public:
       // Log warning to increase the pool size
       static thread_local unsigned throttle = 0;
       if (++throttle > (1U << 18)) {
-        LOG(WARNING) << "Header pool exhausted. Allocating from the global SHM pool.";
+       DDLOG(fair::Severity::WARNING) << "Header pool exhausted. Allocating from the global SHM pool.";
         throttle = 0;
       }
 
@@ -102,9 +104,9 @@ protected:
       using namespace std::chrono_literals;
 
       if (++lAllocAttempt % 1000 == 0) {
-        LOG(ERROR) << "FMQUnsynchronizedPoolMemoryResource: failing to get free block of "
+        DDLOG(fair::Severity::ERROR) << "FMQUnsynchronizedPoolMemoryResource: failing to get free block of "
                      << mObjectSize << " B, total region size: " << mRegion->GetSize() << " B";
-        LOG(ERROR) << "Downstream components are creating back-pressure!";
+        DDLOG(fair::Severity::ERROR) << "Downstream components are creating back-pressure!";
       }
 
       std::this_thread::sleep_for(1ms);

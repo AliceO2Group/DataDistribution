@@ -19,7 +19,6 @@
 #include <SubTimeFrameVisitors.h>
 
 #include <options/FairMQProgOptions.h>
-#include <FairMQLogger.h>
 
 #include <chrono>
 #include <thread>
@@ -46,6 +45,8 @@ StfSenderDevice::~StfSenderDevice()
 
 void StfSenderDevice::InitTask()
 {
+  DataDistLogger::SetThreadName("stfs-main");
+
   mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
@@ -67,14 +68,14 @@ void StfSenderDevice::InitTask()
   if (mMaxStfsInPipeline > 0) {
     if (mMaxStfsInPipeline < 4) {
       mMaxStfsInPipeline = 4;
-      LOG(INFO) << "Max buffered SubTimeFrames limit increased to: " << mMaxStfsInPipeline;
+      DDLOG(fair::Severity::INFO) << "Max buffered SubTimeFrames limit increased to: " << mMaxStfsInPipeline;
     }
     mPipelineLimit = true;
-    LOG(WARN) << "Max buffered SubTimeFrames limit is set to " << mMaxStfsInPipeline
+    DDLOG(fair::Severity::WARN) << "Max buffered SubTimeFrames limit is set to " << mMaxStfsInPipeline
               << ". Consider increasing it if data loss occurs.";
   } else {
     mPipelineLimit = false;
-    LOG(INFO) << "Not imposing limits on number of buffered SubTimeFrames. "
+    DDLOG(fair::Severity::INFO) << "Not imposing limits on number of buffered SubTimeFrames. "
                  "Possibility of creating back-pressure";
   }
 
@@ -84,7 +85,7 @@ void StfSenderDevice::InitTask()
 
   // check if any outputs enabled
   if (mStandalone && !mFileSink.enabled()) {
-    LOG(WARNING) << "Running in standalone mode and with STF file sink disabled. "
+    DDLOG(fair::Severity::WARNING) << "Running in standalone mode and with STF file sink disabled. "
                     "Data will be lost.";
   }
 
@@ -156,7 +157,7 @@ void StfSenderDevice::ResetTask()
     mGuiThread.join();
   }
 
-  LOG(INFO) << "ResetTask() done... ";
+  DDLOG(fair::Severity::INFO) << "ResetTask() done... ";
 }
 
 void StfSenderDevice::StfReceiverThread()
@@ -181,14 +182,14 @@ void StfSenderDevice::StfReceiverThread()
     { // rate-limited LOG: print stats every 100 TFs
       static unsigned long floodgate = 0;
       if (floodgate++ % 100 == 0) {
-        LOG(DEBUG) << "TF[" << lStfId << "] size: " << lStf->getDataSize();
+        DDLOG(fair::Severity::DEBUG) << "TF[" << lStfId << "] size: " << lStf->getDataSize();
       }
     }
 
     queue(eReceiverOut, std::move(lStf));
   }
 
-  LOG(INFO) << "Exiting StfOutputThread...";
+  DDLOG(fair::Severity::INFO) << "Exiting StfOutputThread...";
 }
 
 void StfSenderDevice::GuiThread()
@@ -200,7 +201,7 @@ void StfSenderDevice::GuiThread()
   WaitForRunningState();
 
   while (IsRunningState()) {
-    LOG(INFO) << "Updating histograms...";
+    DDLOG(fair::Severity::INFO) << "Updating histograms...";
 
     mGui->Canvas().cd(1);
     mGui->DrawHist(lStfPipelinedCntHist.get(), this->getPipelinedSizeSamples());
@@ -208,11 +209,11 @@ void StfSenderDevice::GuiThread()
     mGui->Canvas().Modified();
     mGui->Canvas().Update();
 
-    LOG(INFO) << "* Queued STFs in StfSender: " << this->getPipelineSize();
+    DDLOG(fair::Severity::INFO) << "* Queued STFs in StfSender: " << this->getPipelineSize();
 
     std::this_thread::sleep_for(5s);
   }
-  LOG(INFO) << "Exiting GUI thread...";
+  DDLOG(fair::Severity::INFO) << "Exiting GUI thread...";
 }
 
 bool StfSenderDevice::ConditionalRun()

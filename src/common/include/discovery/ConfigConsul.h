@@ -64,7 +64,7 @@ public:
     try {
       mConsul = std::make_unique<ppconsul::Consul>(mEndpoint);
     } catch (std::exception &err) {
-      LOG(ERROR) << "Consul enpoint error while connecting to " << mEndpoint<< " Error: " << err.what();
+      DDLOG(fair::Severity::ERROR) << "Consul enpoint error while connecting to " << mEndpoint<< " Error: " << err.what();
     }
   }
 
@@ -101,11 +101,11 @@ public:
 
     try {
       Kv kv(*mConsul);
-      LOG(DEBUG) << "Erasing DataDistribution discovery key: " << mConsulKey;
+      DDLOG(fair::Severity::DEBUG) << "Erasing DataDistribution discovery key: " << mConsulKey;
       kv.eraseAll(mConsulKey);
     } catch (std::exception &e) {
-      LOG(ERROR) << "Consul kv erase error: " << e.what();
-      LOG(ERROR) << "Unable to cleanup the DataDistribution discovery configuration.";
+      DDLOG(fair::Severity::ERROR) << "Consul kv erase error: " << e.what();
+      DDLOG(fair::Severity::ERROR) << "Unable to cleanup the DataDistribution discovery configuration.";
     }
   }
 
@@ -124,7 +124,7 @@ private:
     try {
       kv = std::make_unique<ppconsul::kv::Kv>(*mConsul);
     } catch (std::exception &e) {
-      LOG(ERROR) << "Consul kv init error: " << e.what();
+      DDLOG(fair::Severity::ERROR) << "Consul kv init error: " << e.what();
       return false;
     }
 
@@ -132,14 +132,14 @@ private:
       if (pInitial) {
         // make sure the key does not exist before
         if (kv->count(mConsulKey) > 0) {
-          LOG (ERROR) << "Consul kv error, the key is already present: " << mConsulKey;
+          DDLOG(fair::Severity::ERROR) << "Consul kv error, the key is already present: " << mConsulKey;
           return false;
         }
       }
 
       kv->set(mConsulKey, lData);
     } catch (std::exception &e) {
-      LOG(ERROR) << "Consul kv set error: " << e.what();
+      DDLOG(fair::Severity::ERROR) << "Consul kv set error: " << e.what();
       return false;
     }
 
@@ -197,7 +197,7 @@ public:
         }
 
         if (lReqItems.size() < 2) {
-          LOG(DEBUG) << "Incomplete partition request, retrying...";
+          DDLOG(fair::Severity::DEBUG) << "Incomplete partition request, retrying...";
           return false;
         }
 
@@ -206,14 +206,14 @@ public:
           auto lPartitionIdIt = std::find_if(std::begin(lReqItems), std::end(lReqItems),
             [&] (KeyValue const& p) { return p.key == sReqPartitionIdKey; });
           if (lPartitionIdIt == std::end(lReqItems)) {
-            LOG(ERROR) << "Invalid new partition request. Missing key: " << sReqPartitionIdKey;
+            DDLOG(fair::Severity::ERROR) << "Invalid new partition request. Missing key: " << sReqPartitionIdKey;
             break;
           }
 
           auto lFlpIdList = std::find_if(std::begin(lReqItems), std::end(lReqItems),
             [&] (KeyValue const& p) { return p.key == sReqStfSenderListKey; });
           if (lFlpIdList == std::end(lReqItems)) {
-            LOG(ERROR) << "Invalid new partition request. Missing key: " << sReqStfSenderListKey;
+            DDLOG(fair::Severity::ERROR) << "Invalid new partition request. Missing key: " << sReqStfSenderListKey;
             break;
           }
 
@@ -221,7 +221,7 @@ public:
           // partition name, check if already exist
           const std::string lPartitionId = boost::trim_copy(lPartitionIdIt->value);
           if (lPartitionId.empty()) {
-            LOG(ERROR) << "Invalid new partition request. Partition (ID) cannot be empty.";
+            DDLOG(fair::Severity::ERROR) << "Invalid new partition request. Partition (ID) cannot be empty.";
             break;
           }
 
@@ -238,12 +238,12 @@ public:
           lStfSenderIds.erase( std::unique(std::begin(lStfSenderIds), std::end(lStfSenderIds)), std::end(lStfSenderIds));
 
           if (lStfSenderIds.empty()) {
-            LOG(ERROR) << "Invalid new partition request. List of StfSender IDs is empty.";
+            DDLOG(fair::Severity::ERROR) << "Invalid new partition request. List of StfSender IDs is empty.";
             break;
           }
 
           if (lNumStfSendersReq != lStfSenderIds.size()) {
-            LOG(ERROR) << "Invalid new partition request. Requested FLP IDs are not unique. Provided: " << lFlpIdList->value;
+            DDLOG(fair::Severity::ERROR) << "Invalid new partition request. Requested FLP IDs are not unique. Provided: " << lFlpIdList->value;
             break;
           }
 
@@ -275,8 +275,8 @@ public:
         }
       }
     } catch (std::exception &e) {
-      LOG(ERROR) << "Consul kv partition retrieve error: " << e.what();
-      LOG(ERROR) << "Unable to check for new partition requests.";
+      DDLOG(fair::Severity::ERROR) << "Consul kv partition retrieve error: " << e.what();
+      DDLOG(fair::Severity::ERROR) << "Unable to check for new partition requests.";
     }
 
     return lReqValid;
@@ -301,18 +301,18 @@ public:
       }
 
       if (lReqItem.value.empty()) {
-        LOG(ERROR) << "Consul: no data returned for key:" << lConsulKey;
+        DDLOG(fair::Severity::ERROR) << "Consul: no data returned for key:" << lConsulKey;
         return false;
       }
 
       if (!pStfSenderStat.ParseFromString(lReqItem.value)) {
-        LOG(ERROR) << "Cannot parse protobuf message from consul! (type StfSenderConfigStatus)";
+        DDLOG(fair::Severity::ERROR) << "Cannot parse protobuf message from consul! (type StfSenderConfigStatus)";
       }
 
       return true;
 
     } catch (std::exception &e) {
-      LOG(ERROR) << "Consul kv StfSender retrieve error: " << e.what();
+      DDLOG(fair::Severity::ERROR) << "Consul kv StfSender retrieve error: " << e.what();
     }
     return false;
   }
@@ -331,23 +331,23 @@ public:
       const auto lReqItem = kv.item(lConsulKey);
 
       if (!lReqItem.valid()) {
-        LOG(ERROR) << "Consul: key does not exist: " << lConsulKey;
+        DDLOG(fair::Severity::ERROR) << "Consul: key does not exist: " << lConsulKey;
         return false;
       }
 
       if (lReqItem.value.empty()) {
-        LOG(ERROR) << "Consul: no data returned for key: " << lConsulKey;
+        DDLOG(fair::Severity::ERROR) << "Consul: no data returned for key: " << lConsulKey;
         return false;
       }
 
       if (!pTfBuilderStat.ParseFromString(lReqItem.value)) {
-        LOG(ERROR) << "Cannot parse protobuf message from consul! (type StfSenderConfigStatus)";
+        DDLOG(fair::Severity::ERROR) << "Cannot parse protobuf message from consul! (type StfSenderConfigStatus)";
       }
 
       return true;
 
     } catch (std::exception &e) {
-      LOG(ERROR) << "Consul kv StfSender retrieve error: " << e.what();
+      DDLOG(fair::Severity::ERROR) << "Consul kv StfSender retrieve error: " << e.what();
     }
 
     return false;
@@ -378,13 +378,13 @@ public:
 
 
       if (!pTfSchedulerStat.ParseFromString(lReqItems.begin()->value)) {
-        LOG(ERROR) << "Cannot parse protobuf message from consul! (type StfSenderConfigStatus)";
+        DDLOG(fair::Severity::ERROR) << "Cannot parse protobuf message from consul! (type StfSenderConfigStatus)";
       }
 
       return true;
 
     } catch (std::exception &e) {
-      LOG(ERROR) << "Consul kv StfSender retrieve error: " << e.what();
+      DDLOG(fair::Severity::ERROR) << "Consul kv StfSender retrieve error: " << e.what();
     }
     return false;
   }

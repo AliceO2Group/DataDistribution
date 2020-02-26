@@ -50,7 +50,7 @@ public:
 
     mTfBuilderConf.Clear();
     if (!pConfig->getTfBuilderConfig(lPartitionId, pTfBuilderId, mTfBuilderConf)) {
-      LOG(WARNING) << "TfBuilder information is not discoverable";
+     DDLOG(fair::Severity::WARNING) << "TfBuilder information is not discoverable";
       return false;
     }
 
@@ -59,8 +59,8 @@ public:
     mStub = TfBuilderRpc::NewStub(
       grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials()));
 
-    LOG(INFO) << "Connected gRPC client to TfBuilder: " << pTfBuilderId
-              << ", endpoint: " << lEndpoint;
+    DDLOGF(fair::Severity::INFO,
+      "Connected gRPC client to TfBuilder. tf_builder={:s} endpoint={:s}", pTfBuilderId, lEndpoint);
 
     mRunning = true;
     return true;
@@ -92,7 +92,8 @@ public:
       return true;
     }
 
-    LOG(ERROR) << "gRPC request error code: " << lStatus.error_code() << " message: " << lStatus.error_message();
+    DDLOGF(fair::Severity::ERROR, "gRPC request error. code={:d} message={:s}",
+      lStatus.error_code(), lStatus.error_message());
 
     return false;
   }

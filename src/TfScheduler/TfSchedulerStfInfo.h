@@ -97,8 +97,8 @@ public:
 
 
 private:
-  /// Reap time for non-complete TFs
-  static constexpr auto sStfReapTime = 5s;
+  /// Discard timeout for incomplete TFs
+  static constexpr auto sStfDiscardTimeout = 10s;
 
   /// Discovery configuration
   std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;

@@ -16,9 +16,6 @@
 
 #include <StfSenderRpcClient.h>
 
-
-#include <FairMQLogger.h>
-
 #include <set>
 #include <tuple>
 #include <algorithm>
@@ -44,7 +41,7 @@ void TfSchedulerConnManager::connectTfBuilder(const TfBuilderConfigStatus &pTfBu
   const std::string &lTfBuilderId = pTfBuilderStatus.info().process_id();
 
   if (pTfBuilderStatus.sockets().map().size() != mPartitionInfo.mStfSenderIdList.size()) {
-    LOG(ERROR) << "TfBuilder Connection error: Number of open sockets doesn't match number of StfSenders: " <<
+    DDLOG(fair::Severity::ERROR) << "TfBuilder Connection error: Number of open sockets doesn't match number of StfSenders: " <<
       pTfBuilderStatus.sockets().map().size() << " != " << mPartitionInfo.mStfSenderIdList.size();
     pResponse.set_status(ERROR_SOCKET_COUNT);
     return;
@@ -53,14 +50,14 @@ void TfSchedulerConnManager::connectTfBuilder(const TfBuilderConfigStatus &pTfBu
   std::scoped_lock lLock(mStfSenderClientsLock);
 
   if (!stfSendersReady()) {
-    LOG(DEBUG) << "TfBuilder Connection error: StfSenders not ready.";
+    DDLOG(fair::Severity::DEBUG) << "TfBuilder Connection error: StfSenders not ready.";
     pResponse.set_status(ERROR_STF_SENDERS_NOT_READY);
     return;
   }
 
   // Open the gRPC connection to the new TfBuilder
   if (!newTfBuilderRpcClient(lTfBuilderId)) {
-    LOG (WARNING) << "TfBuilder gRPC connection error: Cannot open the gRPC connection to the TfBuilder: " << lTfBuilderId;
+    DDLOG(fair::Severity::WARNING) << "TfBuilder gRPC connection error: Cannot open the gRPC connection to the TfBuilder: " << lTfBuilderId;
     pResponse.set_status(ERROR_GRPC_TF_BUILDER);
     return;
   }
@@ -78,7 +75,7 @@ void TfSchedulerConnManager::connectTfBuilder(const TfBuilderConfigStatus &pTfBu
 
     ConnectTfBuilderResponse lResponse;
     if(!lRpcClient->ConnectTfBuilderRequest(lParam, lResponse).ok()) {
-      LOG(ERROR) << "TfBuilder Connection error: gRPC error when connecting StfSender " << lStfSenderId << " to " << lTfBuilderId;
+      DDLOG(fair::Severity::ERROR) << "TfBuilder Connection error: gRPC error when connecting StfSender " << lStfSenderId << " to " << lTfBuilderId;
       pResponse.set_status(ERROR_GRPC_STF_SENDER);
       lConnectionsOk = false;
       break;
@@ -86,7 +83,7 @@ void TfSchedulerConnManager::connectTfBuilder(const TfBuilderConfigStatus &pTfBu
 
     // check StfSender status
     if (lResponse.status() != OK) {
-      LOG(ERROR) << "TfBuilder Connection error: StfSender " << lStfSenderId << " could not connect to " << lTfBuilderId;
+      DDLOG(fair::Severity::ERROR) << "TfBuilder Connection error: StfSender " << lStfSenderId << " could not connect to " << lTfBuilderId;
       pResponse.set_status(lResponse.status());
       lConnectionsOk = false;
       break;
@@ -116,7 +113,7 @@ void TfSchedulerConnManager::disconnectTfBuilder(const TfBuilderConfigStatus &pT
   deleteTfBuilderRpcClient(lTfBuilderId);
 
   if (!stfSendersReady()) {
-    LOG(DEBUG) << "TfBuilder Connection error: StfSenders not ready.";
+    DDLOG(fair::Severity::DEBUG) << "TfBuilder Connection error: StfSenders not ready.";
     pResponse.set_status(ERROR_STF_SENDERS_NOT_READY);
     return;
   }
@@ -136,7 +133,7 @@ void TfSchedulerConnManager::disconnectTfBuilder(const TfBuilderConfigStatus &pT
     lParam.set_endpoint(lSocketInfo.endpoint());
 
     if (mStfSenderRpcClients.count(lStfSenderId) == 0) {
-      LOG(WARN) << "disconnectTfBuilder: Unknown StfSender Id: " << lStfSenderId;
+      DDLOG(fair::Severity::WARN) << "disconnectTfBuilder: Unknown StfSender Id: " << lStfSenderId;
       continue;
     }
 
@@ -144,14 +141,14 @@ void TfSchedulerConnManager::disconnectTfBuilder(const TfBuilderConfigStatus &pT
 
     StatusResponse lResponse;
     if(!lRpcClient->DisconnectTfBuilderRequest(lParam, lResponse).ok()) {
-      LOG(ERROR) << "TfBuilder Connection error: gRPC error when connecting StfSender " << lStfSenderId << " to " << lTfBuilderId;
+      DDLOG(fair::Severity::ERROR) << "TfBuilder Connection error: gRPC error when connecting StfSender " << lStfSenderId << " to " << lTfBuilderId;
       pResponse.set_status(ERROR_GRPC_STF_SENDER);
       break;
     }
 
     // check StfSender status
     if (lResponse.status() != 0) {
-      LOG(ERROR) << "TfBuilder Connection error: StfSender " << lStfSenderId << " could not connect to " << lTfBuilderId;
+      DDLOG(fair::Severity::ERROR) << "TfBuilder Connection error: StfSender " << lStfSenderId << " could not connect to " << lTfBuilderId;
       pResponse.set_status(ERROR_STF_SENDER_CONNECTING);
       break;
     }
@@ -166,7 +163,7 @@ void TfSchedulerConnManager::removeTfBuilder(const std::string &pTfBuilderId)
   // Stop talking to TfBuilder
   deleteTfBuilderRpcClient(pTfBuilderId);
 
-  LOG(DEBUG) << "TfBuilder RpcClient deleted, id: " << pTfBuilderId;
+  DDLOG(fair::Severity::DEBUG) << "TfBuilder RpcClient deleted, id: " << pTfBuilderId;
 
   // Tell all StfSenders to disconnect
   TfBuilderEndpoint lParam;
@@ -178,12 +175,12 @@ void TfSchedulerConnManager::removeTfBuilder(const std::string &pTfBuilderId)
 
     StatusResponse lResponse;
     if(!lStfSenderRpcCli->DisconnectTfBuilderRequest(lParam, lResponse).ok()) {
-      LOG(ERROR) << "TfBuilder Connection error: gRPC error when connecting StfSender " << lStfSenderId << " to " << pTfBuilderId;
+      DDLOG(fair::Severity::ERROR) << "TfBuilder Connection error: gRPC error when connecting StfSender " << lStfSenderId << " to " << pTfBuilderId;
     }
 
     // check StfSender status
     if (lResponse.status() != 0) {
-      LOG(ERROR) << "DisconnectTfBuilderRequest( StfSender: " << lStfSenderId
+      DDLOG(fair::Severity::ERROR) << "DisconnectTfBuilderRequest( StfSender: " << lStfSenderId
         << ", TfBuilder: " << pTfBuilderId << "): response status: " << lResponse.status();
     }
   }
@@ -205,15 +202,15 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
       auto lStatus = lStfSenderRpcCli->StfDataRequest(lStfRequest, lStfResponse);
       if (!lStatus.ok()) {
         // gRPC problem... continue asking for other STFs
-        LOG (WARNING) << "StfSender (" << lStfSenderId << ") gRPC connection problem. Code: "
+        DDLOG(fair::Severity::WARNING) << "StfSender (" << lStfSenderId << ") gRPC connection problem. Code: "
                       <<lStatus.error_code() << ", message: " << lStatus.error_message();
       }
 
       if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_TIMEOUT) {
-        LOG (WARNING) << "StfSender " << lStfSenderId << " dropped STF " << pLamStfId <<
+        DDLOG(fair::Severity::WARNING) << "StfSender " << lStfSenderId << " dropped STF " << pLamStfId <<
                          " before notification from TfScheduler. Check StfSender buffer state.";
       } else if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_UNKNOWN) {
-        LOG (WARNING) << "StfSender " << lStfSenderId << " dropped STF " << pLamStfId << " for unknown reason"
+        DDLOG(fair::Severity::WARNING) << "StfSender " << lStfSenderId << " dropped STF " << pLamStfId << " for unknown reason"
                          " before notification from TfScheduler. Check StfSender buffer state.";
       }
     }
@@ -228,7 +225,7 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
     mStfDropFutures.emplace_back(std::move(lFeature));
 
   } catch (std::exception &) {
-    LOG(WARNING) << "dropAllStfsAsync: async method failed. Calling synchronously.";
+    DDLOG(fair::Severity::WARNING) << "dropAllStfsAsync: async method failed. Calling synchronously.";
     lDropLambda(pStfId);
   }
 
@@ -236,7 +233,7 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
 
 void TfSchedulerConnManager::StfSenderMonitoringThread()
 {
-  LOG(DEBUG) << "Starting StfSender RPC Monitoring thread...";
+  DDLOG(fair::Severity::DEBUG) << "Starting StfSender RPC Monitoring thread...";
   // wait for the device to go into RUNNING state
   //
   std::vector<std::uint64_t> lDroppedStfs;
@@ -245,7 +242,7 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
     // make sure all StfSenders are alive
     const std::uint32_t lNumStfSenders = checkStfSenders();
     if (lNumStfSenders < mPartitionInfo.mStfSenderIdList.size()) {
-      LOG(INFO) << "Connected StfSenders: " << lNumStfSenders << " out of " << mPartitionInfo.mStfSenderIdList.size();
+      DDLOG(fair::Severity::INFO) << "Connected StfSenders: " << lNumStfSenders << " out of " << mPartitionInfo.mStfSenderIdList.size();
       std::this_thread::sleep_for(1000ms);
       continue;
     }
@@ -266,7 +263,7 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
       for (auto &lDroppedId : lDroppedStfs) {
         static std::uint64_t lsDropLogRate = 0;
         if (++lsDropLogRate % 256 == 0) {
-          LOG (INFO) << "Dropped SubTimeFrame (cannot schedule): " << lDroppedId << ", total: " << lsDropLogRate;
+          DDLOG(fair::Severity::INFO) << "Dropped SubTimeFrame (cannot schedule): " << lDroppedId << ", total: " << lsDropLogRate;
         }
       }
       lDroppedStfs.clear();
@@ -275,7 +272,7 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
     std::this_thread::sleep_for(1000ms);
   }
 
-  LOG(DEBUG) << "Exiting StfSender RPC Monitoring thread...";
+  DDLOG(fair::Severity::DEBUG) << "Exiting StfSender RPC Monitoring thread...";
 }
 
 
