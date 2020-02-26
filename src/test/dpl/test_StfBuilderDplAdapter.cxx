@@ -12,7 +12,6 @@
 
 #include <Framework/runDataProcessing.h>
 #include <Framework/ExternalFairMQDeviceProxy.h>
-#include <FairMQLogger.h>
 #include <Headers/HeartbeatFrame.h>
 
 using namespace o2::framework;
@@ -82,7 +81,7 @@ WorkflowSpec defineDataProcessing(ConfigContext const& specs)
               const auto* msgHdr = o2::header::get<o2::header::DataHeader*>(itInputs.header);
 
               o2::DataDistribution::EquipmentIdentifier lId = *msgHdr;
-              LOG(INFO) << "Equipment identifier: " << lId.info() << " Payload size: " << msgHdr->payloadSize;
+              DDLOG(fair::Severity::INFO) << "Equipment identifier: " << lId.info() << " Payload size: " << msgHdr->payloadSize;
             }
           }
         } } });

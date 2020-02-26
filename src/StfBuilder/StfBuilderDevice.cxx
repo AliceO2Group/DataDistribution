@@ -23,12 +23,13 @@
 #include <TH1.h>
 
 #include <options/FairMQProgOptions.h>
-#include <FairMQLogger.h>
 
 #include <chrono>
 #include <thread>
 #include <exception>
 #include <boost/algorithm/string.hpp>
+
+#include <DataDistLogger.h>
 
 namespace o2
 {
@@ -57,6 +58,8 @@ StfBuilderDevice::~StfBuilderDevice()
 
 void StfBuilderDevice::InitTask()
 {
+  DataDistLogger::SetThreadName("stfb-main");
+
   mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
   mOutputChannelName = GetConfig()->GetValue<std::string>(OptionKeyOutputChannelName);
   mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
@@ -75,14 +78,14 @@ void StfBuilderDevice::InitTask()
   if (mMaxStfsInPipeline > 0) {
     if (mMaxStfsInPipeline < 4) {
       mMaxStfsInPipeline = 4;
-      LOG(WARN) << "Configuration: max buffered SubTimeFrames limit increased to: " << mMaxStfsInPipeline;
+      DDLOG(fair::Severity::WARNING) << "Configuration: max buffered SubTimeFrames limit increased to: " << mMaxStfsInPipeline;
     }
     mPipelineLimit = true;
-    LOG(WARN) << "Configuration: Max buffered SubTimeFrames limit is set to " << mMaxStfsInPipeline
+    DDLOG(fair::Severity::WARNING) << "Configuration: Max buffered SubTimeFrames limit is set to " << mMaxStfsInPipeline
               << ". Consider increasing it if data loss occurs.";
   } else {
     mPipelineLimit = false;
-    LOG(INFO) << "Not imposing limits on number of buffered SubTimeFrames. "
+    DDLOG(fair::Severity::info) << "Not imposing limits on number of buffered SubTimeFrames. "
                  "Possibility of creating back-pressure.";
   }
 
@@ -99,16 +102,16 @@ void StfBuilderDevice::InitTask()
   // make sure we have detector if not using files
   if (!mFileSource.enabled()) {
     if (mDataOrigin == gDataOriginInvalid) {
-      LOG(ERROR) << "Detector string parameter not specified (required when not using file source).";
+      DDLOG(fair::Severity::ERROR) << "Detector string parameter not specified (required when not using file source).";
       exit(-1);
     }
 
     if (ReadoutDataUtils::getRdhSanityCheckMode()) {
-      LOG(INFO) << "Extensive RDH checks enabled. Data that does not meet the criteria will be dropped.";
+      DDLOG(fair::Severity::info) << "Extensive RDH checks enabled. Data that does not meet the criteria will be dropped.";
     }
 
     if (mRdh4FilterTrigger) {
-      LOG(INFO) << "Filtering of empty HBFrames in triggered mode enabled for RDHv4.";
+      DDLOG(fair::Severity::info) << "Filtering of empty HBFrames in triggered mode enabled for RDHv4.";
     }
   }
 
@@ -116,15 +119,15 @@ void StfBuilderDevice::InitTask()
   if (mDplChannelName != "") {
     mStandalone = false;
     mDplEnabled = true;
-    LOG(INFO) << "DPL Channel name: " << mDplChannelName;
+    DDLOG(fair::Severity::info) << "DPL Channel name: " << mDplChannelName;
   } else {
     mDplEnabled = false;
-    LOG(INFO) << "Not sending to DPL.";
+    DDLOG(fair::Severity::info) << "Not sending to DPL.";
   }
 
   // check if output enabled
   if (mStandalone && !mFileSink.enabled()) {
-    LOG(WARNING) << "Running in standalone mode and with STF file sink disabled. "
+    DDLOG(fair::Severity::WARNING) << "Running in standalone mode and with STF file sink disabled. "
                     "Data will be lost.";
   }
 
@@ -133,7 +136,7 @@ void StfBuilderDevice::InitTask()
     // create default FMQ shm channel
     auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("shmem", "", GetConfig());
     if (!lTransportFactory) {
-      LOG(ERROR) << "Creating transport factory failed!";
+      DDLOG(fair::Severity::ERROR) << "Creating transport factory failed!";
       exit(-1);
     }
     mStandaloneChannel = std::make_unique<FairMQChannel>(
@@ -150,7 +153,7 @@ void StfBuilderDevice::InitTask()
     mStandaloneChannel->Validate();
   }
 
-  LOG(INFO) << "Sending data to channel: " << getOutputChannel().GetName();
+  DDLOG(fair::Severity::info) << "Sending data to channel: " << getOutputChannel().GetName();
 }
 
 void StfBuilderDevice::PreRun()
@@ -161,7 +164,7 @@ void StfBuilderDevice::PreRun()
       try {
         GetChannel(mInputChannelName);
       } catch(std::exception &) {
-        LOG(ERROR) << "Input channel not configured (from readout.exe) and not running with file source enabled.";
+        DDLOG(fair::Severity::ERROR) << "Input channel not configured (from readout.exe) and not running with file source enabled.";
         exit(-1);
       }
     }
@@ -171,7 +174,7 @@ void StfBuilderDevice::PreRun()
         GetChannel(mDplEnabled ? mDplChannelName : mOutputChannelName);
       }
     } catch(std::exception &) {
-      LOG(ERROR) << "Output channel not configured (to DPL or StfSender) and not running in standalone mode.";
+      DDLOG(fair::Severity::ERROR) << "Output channel not configured (to DPL or StfSender) and not running in standalone mode.";
       exit(-1);
     }
   }
@@ -198,7 +201,7 @@ void StfBuilderDevice::PreRun()
     mGuiThread = std::thread(&StfBuilderDevice::GuiThread, this);
   }
 
-  LOG(INFO) << "PreRun() done... ";
+  DDLOG(fair::Severity::info) << "PreRun() done... ";
 }
 
 void StfBuilderDevice::ResetTask()
@@ -227,7 +230,7 @@ void StfBuilderDevice::ResetTask()
     mGuiThread.join();
   }
 
-  LOG(INFO) << "ResetTask() done... ";
+  DDLOG(fair::Severity::info) << "ResetTask() done... ";
 }
 
 void StfBuilderDevice::StfOutputThread()
@@ -241,7 +244,7 @@ void StfBuilderDevice::StfOutputThread()
   // cannot get the channels in standalone mode
   auto& lOutputChan = getOutputChannel();
 
-  LOG(INFO) << "StfOutputThread: sending data to channel: " << lOutputChan.GetName();
+  DDLOG(fair::Severity::info) << "StfOutputThread: sending data to channel: " << lOutputChan.GetName();
 
   if (!mStandalone) {
     if (!dplEnabled()) {
@@ -304,9 +307,9 @@ void StfBuilderDevice::StfOutputThread()
         }
       } catch (std::exception& e) {
         if (IsRunningState())
-          LOG(ERROR) << "StfOutputThread: exception on send: " << e.what();
+          DDLOG(fair::Severity::ERROR) << "StfOutputThread: exception on send: " << e.what();
         else
-          LOG(INFO) << "StfOutputThread(NOT_RUNNING): exception on send: " << e.what();
+          DDLOG(fair::Severity::info) << "StfOutputThread(NOT_RUNNING): exception on send: " << e.what();
         break;
       }
     }
@@ -314,7 +317,7 @@ void StfBuilderDevice::StfOutputThread()
 
     static thread_local unsigned long lThrottle = 0;
     if (lThrottle++ % 88 == 0) {
-      LOG(DEBUG) << "Sending STF::id:" << lStf->header().mId
+      DDLOG(fair::Severity::DEBUG) << "Sending STF::id:" << lStf->header().mId
         << " to channel: " << lOutputChan.GetName()
         << ", data size: " << lStf->getDataSize()
         << ", unique equipments: " << lStf->getEquipmentIdentifiers().size();
@@ -337,9 +340,9 @@ void StfBuilderDevice::StfOutputThread()
         }
       } catch (std::exception& e) {
         if (IsRunningState()) {
-          LOG(ERROR) << "StfOutputThread: exception on send: " << e.what();
+          DDLOG(fair::Severity::ERROR) << "StfOutputThread: exception on send: " << e.what();
         } else {
-          LOG(INFO) << "StfOutputThread(NOT_RUNNING): shutting down: " << e.what();
+          DDLOG(fair::Severity::info) << "StfOutputThread(NOT_RUNNING): shutting down: " << e.what();
         }
         break;
       }
@@ -352,7 +355,7 @@ void StfBuilderDevice::StfOutputThread()
     }
   }
 
-  LOG(INFO) << "Exiting StfOutputThread...";
+  DDLOG(fair::Severity::info) << "Exiting StfOutputThread...";
 }
 
 void StfBuilderDevice::GuiThread()
@@ -389,13 +392,13 @@ void StfBuilderDevice::GuiThread()
     mGui->Canvas().Modified();
     mGui->Canvas().Update();
 
-    LOG(INFO) << "Readout data size per STF: " << mStfSizeSamples.Mean();
-    LOG(INFO) << "SubTimeFrame frequency   : " << mReadoutInterface.StfFreqSamples().Mean();
-    LOG(INFO) << "Queued STFs in StfBuilder: " << mNumStfs;
+    DDLOG(fair::Severity::info) << "Readout data size per STF: " << mStfSizeSamples.Mean();
+    DDLOG(fair::Severity::info) << "SubTimeFrame frequency   : " << mReadoutInterface.StfFreqSamples().Mean();
+    DDLOG(fair::Severity::info) << "Queued STFs in StfBuilder: " << mNumStfs;
 
     std::this_thread::sleep_for(5s);
   }
-  LOG(INFO) << "Exiting GUI thread...";
+  DDLOG(fair::Severity::info) << "Exiting GUI thread...";
 }
 
 bool StfBuilderDevice::ConditionalRun()

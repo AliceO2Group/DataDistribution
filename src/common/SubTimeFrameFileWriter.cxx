@@ -14,6 +14,8 @@
 #include "SubTimeFrameFile.h"
 #include "SubTimeFrameFileWriter.h"
 
+#include "DataDistLogger.h"
+
 #include <iomanip>
 
 namespace o2
@@ -71,7 +73,7 @@ SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pF
       mInfoFile << "HB_ORBIT" << '\n';
     }
   } catch (std::ifstream::failure& eOpenErr) {
-    LOG(ERROR) << "Failed to open/create TF file for writing. Error: " << eOpenErr.what();
+    DDLOG(fair::Severity::ERROR) << "Failed to open/create TF file for writing. Error: " << eOpenErr.what();
     throw eOpenErr;
   }
 }
@@ -84,9 +86,9 @@ SubTimeFrameFileWriter::~SubTimeFrameFileWriter()
       mInfoFile.close();
     }
   } catch (std::ifstream::failure& eCloseErr) {
-    LOG(ERROR) << "Closing TF file failed. Error: " << eCloseErr.what();
+    DDLOG(fair::Severity::ERROR) << "Closing TF file failed. Error: " << eCloseErr.what();
   } catch (...) {
-    LOG(ERROR) << "Closing TF file failed.";
+    DDLOG(fair::Severity::ERROR) << "Closing TF file failed.";
   }
 }
 
@@ -143,7 +145,7 @@ std::uint64_t SubTimeFrameFileWriter::getSizeInFile() const
 std::uint64_t SubTimeFrameFileWriter::write(const SubTimeFrame& pStf)
 {
   if (!mFile.good()) {
-    LOG(WARNING) << "Error while writing a TF to file. (bad stream state)";
+   DDLOG(fair::Severity::WARNING) << "Error while writing a TF to file. (bad stream state)";
     return std::uint64_t(0);
   }
 
@@ -190,7 +192,7 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
     mFile.flush();
 
   } catch (const std::ios_base::failure& eFailExc) {
-    LOG(ERROR) << "Writing to file failed. Error: " << eFailExc.what();
+    DDLOG(fair::Severity::ERROR) << "Writing to file failed. Error: " << eFailExc.what();
     return std::uint64_t(0);
   }
 
@@ -256,7 +258,7 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
       }
       mInfoFile.flush();
     } catch (const std::ios_base::failure& eFailExc) {
-      LOG(ERROR) << "Writing to file failed. Error: " << eFailExc.what();
+      DDLOG(fair::Severity::ERROR) << "Writing to file failed. Error: " << eFailExc.what();
       return std::uint64_t(0);
     }
   }

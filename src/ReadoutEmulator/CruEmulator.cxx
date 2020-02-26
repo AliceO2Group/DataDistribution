@@ -9,11 +9,11 @@
 // or submit itself to any jurisdiction.
 
 #include "CruEmulator.h"
+#include "DataDistLogger.h"
 
 #include <ConcurrentQueue.h>
 
 #include <options/FairMQProgOptions.h>
-#include <FairMQLogger.h>
 
 #include <chrono>
 #include <thread>
@@ -35,12 +35,12 @@ void CruLinkEmulator::linkReadoutThread()
   const auto cNumDmaChunkPerSuperpage = std::min(size_t(256), size_t(cSuperpageSize / mDmaChunkSize));
   constexpr int64_t cStfTimeUs = std::chrono::microseconds(std::uint64_t(1000000) * 256 / cHBFrameFreq).count();
 
-  LOG(DEBUG) << "Superpage size: " << cSuperpageSize;
-  LOG(DEBUG) << "mDmaChunkSize size: " << mDmaChunkSize;
-  LOG(DEBUG) << "HBFrameSize size: " << cHBFrameSize;
-  LOG(DEBUG) << "StfLinkSize size: " << cStfLinkSize;
-  LOG(DEBUG) << "cNumDmaChunkPerSuperpage: " << cNumDmaChunkPerSuperpage;
-  LOG(DEBUG) << "Sleep time us: " << cStfTimeUs;
+  DDLOG(fair::Severity::DEBUG) << "Superpage size: " << cSuperpageSize;
+  DDLOG(fair::Severity::DEBUG) << "mDmaChunkSize size: " << mDmaChunkSize;
+  DDLOG(fair::Severity::DEBUG) << "HBFrameSize size: " << cHBFrameSize;
+  DDLOG(fair::Severity::DEBUG) << "StfLinkSize size: " << cStfLinkSize;
+  DDLOG(fair::Severity::DEBUG) << "cNumDmaChunkPerSuperpage: " << cNumDmaChunkPerSuperpage;
+  DDLOG(fair::Severity::DEBUG) << "Sleep time us: " << cStfTimeUs;
 
   // os might sleep much longer than requested
   // keep count of transmitted pages and adjust when needed
@@ -61,7 +61,7 @@ void CruLinkEmulator::linkReadoutThread()
     }
 
     if (lStfToSend > 1 || lStfToSend < 0) {
-      LOG(WARNING) << "Data producer running slow. StfBacklog: " << lStfToSend;
+      DDLOG(fair::Severity::WARNING) << "Data producer is running slow. StfBacklog: " << lStfToSend;
     }
 
     const std::int64_t lPagesToSend = std::max(lStfToSend, int64_t(lStfToSend * (cStfLinkSize + cSuperpageSize - 1) / cSuperpageSize));
@@ -135,7 +135,7 @@ void CruLinkEmulator::linkReadoutThread()
     }
   }
 
-  LOG(INFO) << "Exiting ReadoutEmulator thread...";
+  DDLOG(fair::Severity::TRACE) << "Exiting ReadoutEmulator thread...";
 }
 
 /// Start "data taking" thread

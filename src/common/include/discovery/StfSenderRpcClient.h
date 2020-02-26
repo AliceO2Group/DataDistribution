@@ -96,13 +96,13 @@ public:
     // get a set of missing StfSenders
     TfSchedulerInstanceConfigStatus lSchedulerInst;
     if (! mDiscoveryConfig->getTfSchedulerConfig(lPartId, lSchedulerInst /*out*/)) {
-      LOG(ERROR) << "TfScheduler for partition: " << lPartId << " is not running!";
+      DDLOG(fair::Severity::ERROR) << "TfScheduler for partition: " << lPartId << " is not running!";
 
       return false;
     }
 
     lNumStfSenders = lSchedulerInst.stf_sender_id_list().size();
-    LOG(INFO) << "Connecting gRPC clients to " << lNumStfSenders << " StfSenders.";
+    DDLOG(fair::Severity::INFO) << "Connecting gRPC clients to " << lNumStfSenders << " StfSenders.";
 
     // Connect to all StfSenders
     for (const std::string &lStfSenderId : lSchedulerInst.stf_sender_id_list()) {
@@ -114,12 +114,12 @@ public:
 
       StfSenderConfigStatus lStfSenderStatus;
       if (! mDiscoveryConfig->getStfSenderConfig(lPartId, lStfSenderId, lStfSenderStatus /*out*/)) {
-        LOG(DEBUG) << "Missing configuration of StfSender with ID: " << lStfSenderId <<". Connection will be retried..." ;
+        DDLOG(fair::Severity::DEBUG) << "Missing configuration of StfSender with ID: " << lStfSenderId <<". Connection will be retried..." ;
         continue;
       }
 
       if (lStfSenderStatus.rpc_endpoint().empty()) {
-        LOG(ERROR) << "StfSender rpc_endpoint field empty! StfSender ID: " << lStfSenderId;
+        DDLOG(fair::Severity::ERROR) << "StfSender rpc_endpoint field empty! StfSender ID: " << lStfSenderId;
         continue;
       }
 
@@ -130,7 +130,7 @@ public:
       );
     }
 
-    LOG(INFO) << "gRPC: Connected to " << mClients.size() << " / " << lNumStfSenders << " StfSender";
+    DDLOG(fair::Severity::INFO) << "gRPC: Connected to " << mClients.size() << " / " << lNumStfSenders << " StfSender";
 
     if (mClients.size() != lNumStfSenders) {
       static int sBackoff = 0;

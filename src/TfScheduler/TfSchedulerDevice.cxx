@@ -18,7 +18,6 @@
 #include <ConfigConsul.h>
 
 #include <options/FairMQProgOptions.h>
-#include <FairMQLogger.h>
 
 #include <chrono>
 #include <thread>
@@ -42,6 +41,8 @@ TfSchedulerDevice::~TfSchedulerDevice()
 
 void TfSchedulerDevice::InitTask()
 {
+  DataDistLogger::SetThreadName("tfs-main");
+
   // Discovery
   mDiscoveryConfig = std::make_shared<ConsulTfSchedulerService>(ProcessType::TfSchedulerService, Config::getEndpointOption(*GetConfig()));
 
@@ -77,7 +78,7 @@ void TfSchedulerDevice::ResetTask()
   mSchedulerInstances.clear();
 
 
-  LOG(INFO) << "ResetTask() done... ";
+  DDLOG(fair::Severity::INFO) << "ResetTask() done... ";
 }
 
 bool TfSchedulerDevice::ConditionalRun()
@@ -99,10 +100,10 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
 
     // check for new requests
     PartitionRequest lNewPartitionRequest;
-    // LOG(DEBUG) << "Checking for new partition creation requests";
+    // DDLOG(fair::Severity::DEBUG) << "Checking for new partition creation requests";
     if (mDiscoveryConfig->getNewPartitionRequest(lNewPartitionRequest)) {
       // new request
-      LOG(INFO) << "Request for starting new partition: " << lNewPartitionRequest.mPartitionId;
+      DDLOG(fair::Severity::INFO) << "Request for starting new partition: " << lNewPartitionRequest.mPartitionId;
 
       // check if we already have instance for the requested partition
       if (mSchedulerInstances.count(lNewPartitionRequest.mPartitionId) == 0) {
@@ -120,9 +121,9 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
           auto &lNewInstance = lNewInstIt->second;
           lNewInstance->start();
         }
-        LOG(DEBUG) << "Created new scheduler instance for partition: " << lNewPartitionRequest.mPartitionId;
+        DDLOG(fair::Severity::DEBUG) << "Created new scheduler instance for partition: " << lNewPartitionRequest.mPartitionId;
       } else {
-        LOG(DEBUG) << "Already have a scheduler instance for partition: " << lNewPartitionRequest.mPartitionId;
+        DDLOG(fair::Severity::DEBUG) << "Already have a scheduler instance for partition: " << lNewPartitionRequest.mPartitionId;
       }
 
 
@@ -131,7 +132,7 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
     std::this_thread::sleep_for(2000ms);
   }
 
-  LOG(INFO) << "Exiting TfSchedulerServiceThread...";
+  DDLOG(fair::Severity::INFO) << "Exiting TfSchedulerServiceThread...";
 }
 
 }

@@ -35,6 +35,8 @@
 
 #include <stdexcept>
 
+#include <DataDistLogger.h>
+
 namespace o2
 {
 namespace DataDistribution
@@ -140,7 +142,7 @@ class StfBuilderDevice : public DataDistDevice,
           // DROP policy in StfBuilder is to keep most current STFs. This will ensure that all
           // StfBuilders have the same set of STFs ready for distribution
 
-          LOG(WARNING) << "Dropping oldest STF due to reaching the maximum number of buffered "
+          DDLOG(fair::Severity::WARNING) << "Dropping oldest STF due to reaching the maximum number of buffered "
                           "STFs in the process ("
                        << mMaxStfsInPipeline
                        << "). Consider increasing the limit, or reducing the input data rate.";
@@ -169,7 +171,7 @@ class StfBuilderDevice : public DataDistDevice,
     }
 
     if (!(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn)) {
-      LOG(ERROR) << "Stage error! next: " << lNextStage;
+      DDLOG(fair::Severity::ERROR) << "Stage error! next: " << lNextStage;
     }
 
     assert(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn);

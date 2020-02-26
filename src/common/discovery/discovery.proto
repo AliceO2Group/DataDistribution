@@ -192,7 +192,7 @@ message SchedulerStfInfoResponse {
     OK                        = 0;
     DROP_NOT_RUNNING          = 1;
     DROP_RESOURCES            = 2; // not able to schedule
-    DROP_SCHED_REAPED         = 3; // scheduler already processed that tf
+    DROP_SCHED_DISCARDED      = 3; // scheduler already processed that tf
   }
 
   StfInfoStatus  status = 1;

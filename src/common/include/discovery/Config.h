@@ -19,6 +19,8 @@
 
 #include <boost/program_options/options_description.hpp>
 
+#include <DataDistLogger.h>
+
 #include <string>
 #include <map>
 #include <cassert>
@@ -130,7 +132,7 @@ public:
   {
     auto lIf = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryNetInterface);
     if (lIf.empty()) {
-      LOG(ERROR) << "Network interface for DataDistribution discovery must be provided.";
+      DDLOG(fair::Severity::ERROR) << "Network interface for DataDistribution discovery must be provided.";
       throw std::invalid_argument("Network interface not provided.");
     }
 
@@ -139,12 +141,12 @@ public:
     try {
       lAddr = fair::mq::tools::getInterfaceIP(lIf);
     } catch (...) {
-      LOG(ERROR) << "Could not determine IP address for network interface " << lIf;
+      DDLOG(fair::Severity::ERROR) << "Could not determine IP address for network interface " << lIf;
       throw std::invalid_argument("Error while looking up address for interface " + lIf);
     }
 
     if (lAddr.empty()) {
-      LOG(ERROR) << "Could not determine IP address for network interface " << lIf;
+      DDLOG(fair::Severity::ERROR) << "Could not determine IP address for network interface " << lIf;
       throw std::invalid_argument("Could not find address for interface " + lIf);
     }
 
@@ -156,8 +158,8 @@ public:
   {
     auto lOpt = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryEndpoint);
     if (lOpt.empty()) {
-      LOG(ERROR) << "Endpoint for DataDistribution discovery must be provided.";
-      LOG(ERROR) << "Connection to local endpoint will be attempted... Not suitable for production!";
+      DDLOG(fair::Severity::ERROR) << "Endpoint for DataDistribution discovery must be provided.";
+      DDLOG(fair::Severity::ERROR) << "Connection to local endpoint will be attempted... Not suitable for production!";
     }
     return lOpt;
   }
@@ -167,7 +169,7 @@ public:
   {
     auto lId = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryId);
     if (lId.empty()) {
-      LOG(ERROR) << "Process must have unique ID for DataDistribution discovery.";
+      DDLOG(fair::Severity::ERROR) << "Process must have unique ID for DataDistribution discovery.";
       throw std::invalid_argument("Process ID for DataDiscovery must be provided.");
     }
     return lId;

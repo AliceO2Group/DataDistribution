@@ -17,6 +17,7 @@
 #include "SubTimeFrameDataModel.h"
 #include "SubTimeFrameFileWriter.h"
 #include "ConcurrentQueue.h"
+#include "DataDistLogger.h"
 
 #include <Headers/DataHeader.h>
 
@@ -58,6 +59,7 @@ class SubTimeFrameFileSink
       mPipelineStageIn(pPipelineStageIn),
       mPipelineStageOut(pPipelineStageOut)
   {
+    DDLOG(fair::Severity::TRACE) << "(Sub)TimeFrame Sink created...";
   }
 
   ~SubTimeFrameFileSink()
@@ -65,7 +67,7 @@ class SubTimeFrameFileSink
     if (mSinkThread.joinable()) {
       mSinkThread.join();
     }
-    LOG(INFO) << "(Sub)TimeFrame Sink terminated...";
+    DDLOG(fair::Severity::TRACE) << "(Sub)TimeFrame Sink terminated...";
   }
 
   bool loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt);

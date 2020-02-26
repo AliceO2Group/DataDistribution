@@ -13,6 +13,7 @@
 
 #include "SubTimeFrameFileSink.h"
 #include "FilePathUtils.h"
+#include "DataDistLogger.h"
 
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/program_options/options_description.hpp>
@@ -82,14 +83,14 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
 {
   mEnabled = pFMQProgOpt.GetValue<bool>(OptionKeyStfSinkEnable);
 
-  LOG(INFO) << "(Sub)TimeFrame file sink is " << (mEnabled ? "enabled." : "disabled.");
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame file sink is " << (mEnabled ? "enabled." : "disabled.");
 
   if (!mEnabled)
     return true;
 
   mRootDir = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSinkDir);
   if (mRootDir.length() == 0) {
-    LOG(ERROR) << "(Sub)TimeFrame file sink directory must be specified";
+    DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame file sink directory must be specified";
     return false;
   }
 
@@ -103,25 +104,25 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   namespace bfs = boost::filesystem;
   bfs::path lDirPath(mRootDir);
   if (!bfs::is_directory(lDirPath)) {
-    LOG(ERROR) << "(Sub)TimeFrame file sink directory does not exist";
+    DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame file sink directory does not exist";
     return false;
   }
 
   // make a session directory
   mCurrentDir = (bfs::path(mRootDir) / FilePathUtils::getDataDirName(mRootDir)).string();
   if (!bfs::create_directory(mCurrentDir)) {
-    LOG(ERROR) << "Directory '" << mCurrentDir << "' for (Sub)TimeFrame file sink cannot be created";
+    DDLOG(fair::Severity::ERROR) << "Directory '" << mCurrentDir << "' for (Sub)TimeFrame file sink cannot be created";
     return false;
   }
 
   // print options
-  LOG(INFO) << "(Sub)TimeFrame Sink :: enabled       = " << (mEnabled ? "yes" : "no");
-  LOG(INFO) << "(Sub)TimeFrame Sink :: root dir      = " << mRootDir;
-  LOG(INFO) << "(Sub)TimeFrame Sink :: file pattern  = " << mFileNamePattern;
-  LOG(INFO) << "(Sub)TimeFrame Sink :: stfs per file = " << (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" );
-  LOG(INFO) << "(Sub)TimeFrame Sink :: max file size = " << mFileSize;
-  LOG(INFO) << "(Sub)TimeFrame Sink :: sidecar files = " << (mSidecar ? "yes" : "no");
-  LOG(INFO) << "(Sub)TimeFrame Sink :: write dir     = " << mCurrentDir;
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: enabled       = " << (mEnabled ? "yes" : "no");
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: root dir      = " << mRootDir;
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: file pattern  = " << mFileNamePattern;
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: stfs per file = " << (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" );
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: max file size = " << mFileSize;
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: sidecar files = " << (mSidecar ? "yes" : "no");
+  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: write dir     = " << mCurrentDir;
 
   return true;
 }
@@ -166,7 +167,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
     lStf->updateStf();
 
     if (!enabled()) {
-      LOG(ERROR) << "Pipeline error, disabled file sing receiving STFs";
+      DDLOG(fair::Severity::ERROR) << "Pipeline error, disabled file sing receiving STFs";
       break;
     }
 
@@ -184,8 +185,8 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
     } else {
       mStfWriter.reset();
       mEnabled = false;
-      LOG(ERROR) << "(Sub)TimeFrame file sink: error while writing a file";
-      LOG(ERROR) << "(Sub)TimeFrame file sink: disabling writing";
+      DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame file sink: error while writing a file";
+      DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame file sink: disabling writing";
     }
 
     // check if we should rotate the file
@@ -197,7 +198,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 
     mPipelineI.queue(mPipelineStageOut, std::move(lStf));
   }
-  LOG(INFO) << "Exiting file sink thread[" << pIdx << "]...";
+  DDLOG(fair::Severity::INFO) << "Exiting file sink thread[" << pIdx << "]...";
 }
 }
 } /* o2::DataDistribution */

@@ -20,8 +20,6 @@
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameVisitors.h>
 
-#include <FairMQLogger.h>
-
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -43,18 +41,18 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 
   std::uint32_t lNumStfSenders;
   if (!mRpc->TfSchedRpcCli().NumStfSendersInPartitionRequest(lNumStfSenders)) {
-    LOG(ERROR) << "RPC error: cannot reach scheduler on : " << mRpc->TfSchedRpcCli().getEndpoint();
+    DDLOG(fair::Severity::ERROR) << "RPC error: cannot reach scheduler on : " << mRpc->TfSchedRpcCli().getEndpoint();
     return false;
   }
 
   if (lNumStfSenders == 0 || lNumStfSenders == std::uint32_t(-1)) {
-    LOG(ERROR) << "RPC error: number of StfSenders in partition: " << lNumStfSenders;
+    DDLOG(fair::Severity::ERROR) << "RPC error: number of StfSenders in partition: " << lNumStfSenders;
     return false;
   }
 
   mNumStfSenders = lNumStfSenders;
 
-  LOG(INFO) << "Creating " << mNumStfSenders << " input channels for partition " << lStatus.partition().partition_id();
+  DDLOG(fair::Severity::INFO) << "Creating " << mNumStfSenders << " input channels for partition " << lStatus.partition().partition_id();
 
   const auto &lAaddress = lStatus.info().ip_address();
 
@@ -79,12 +77,12 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
     lNewChannel->UpdateAutoBind(true); // make sure bind succeeds
 
     if (!lNewChannel->BindEndpoint(lAddress)) {
-      LOG (ERROR) << "Cannot bind channel to a free port! Check user permissions. Bind address: " << lAddress;
+      DDLOG(fair::Severity::ERROR) << "Cannot bind channel to a free port! Check user permissions. Bind address: " << lAddress;
       return false;
     }
 
     if (!lNewChannel->Validate()) {
-      LOG (ERROR) << "Channel validation failed! Exiting...\n";
+      DDLOG(fair::Severity::ERROR) << "Channel validation failed! Exiting...\n";
       return false;
     }
 
@@ -96,29 +94,29 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
     mStfSenderChannels.emplace_back(std::move(lNewChannel));
   }
 
-  LOG(INFO) << "New channels created. Writing Discovery configuration...";
+  DDLOG(fair::Severity::INFO) << "New channels created. Writing Discovery configuration...";
   pConfig->write();
 
 
   // Connect all StfSenders
   TfBuilderConnectionResponse lConnResult;
   do {
-    LOG(INFO) << "Requesting connections from StfSenders from the TfSchedulerInstance";
+    DDLOG(fair::Severity::INFO) << "Requesting connections from StfSenders from the TfSchedulerInstance";
 
     lConnResult.Clear();
     if (!mRpc->TfSchedRpcCli().TfBuilderConnectionRequest(lStatus, lConnResult)) {
-      LOG(ERROR) << "RPC error: Request for StfSender connection failed .";
+      DDLOG(fair::Severity::ERROR) << "RPC error: Request for StfSender connection failed .";
       return false;
     }
 
     if (lConnResult.status() == ERROR_STF_SENDERS_NOT_READY) {
-      LOG(WARN) << "StfSenders are not ready. Retrying...";
+      DDLOG(fair::Severity::WARN) << "StfSenders are not ready. Retrying...";
       std::this_thread::sleep_for(1s);
       continue;
     }
 
     if (lConnResult.status() != 0) {
-      LOG(ERROR) << "Request for StfSender connection failed, scheduler error: " << TfBuilderConnectionStatus_Name(lConnResult.status());
+      DDLOG(fair::Severity::ERROR) << "Request for StfSender connection failed, scheduler error: " << TfBuilderConnectionStatus_Name(lConnResult.status());
       return false;
     }
 
@@ -129,7 +127,7 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 
   // Update socket map with peer information
   for (auto &[lSocketIdx, lStfSenderId] : lConnResult.connection_map()) {
-    LOG(INFO) << "Connected StfSender ID[" << lStfSenderId << "] to input socket index " << lSocketIdx;
+    DDLOG(fair::Severity::INFO) << "Connected StfSender ID[" << lStfSenderId << "] to input socket index " << lSocketIdx;
 
     // save socket peers to configuration
     lSocketMap[lSocketIdx].set_peer_id(lStfSenderId);
@@ -174,40 +172,40 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
     auto &lStatus = pConfig->status();
 
     if (mRpc->TfSchedRpcCli().TfBuilderDisconnectionRequest(lStatus, lResult)) {
-      LOG(INFO) << "RPC Request for StfSender disconnect successful.";
+      DDLOG(fair::Severity::INFO) << "RPC Request for StfSender disconnect successful.";
     } else {
-      LOG(ERROR) << "RPC error: Request for StfSender disconnect failed .";
+      DDLOG(fair::Severity::ERROR) << "RPC error: Request for StfSender disconnect failed .";
     }
   }
 
   // Wait for input threads to stop
-  LOG(DEBUG) << "TfBuilderInput::stop: Waiting for input threads to terminate.";
+  DDLOG(fair::Severity::DEBUG) << "TfBuilderInput::stop: Waiting for input threads to terminate.";
   for (auto& lIdThread : mInputThreads) {
     if (lIdThread.second.joinable())
       lIdThread.second.join();
   }
   mInputThreads.clear();
-  LOG(DEBUG) << "TfBuilderInput::stop: All input threads terminated.";
+  DDLOG(fair::Severity::DEBUG) << "TfBuilderInput::stop: All input threads terminated.";
 
   // disconnect and close the sockets
   for (auto &lFmqChannelPtr : mStfSenderChannels) {
     if (!lFmqChannelPtr->IsValid()) {
-      LOG(WARN) << "TfBuilderInput::stop: Socket not found for channel " << lFmqChannelPtr->GetAddress();
+      DDLOG(fair::Severity::WARN) << "TfBuilderInput::stop: Socket not found for channel " << lFmqChannelPtr->GetAddress();
       continue;
     }
     lFmqChannelPtr->GetSocket().SetLinger(0);
     lFmqChannelPtr->GetSocket().Close();
   }
   mStfSenderChannels.clear();
-  LOG(DEBUG) << "TfBuilderInput::stop: All input channels are closed.";
+  DDLOG(fair::Severity::DEBUG) << "TfBuilderInput::stop: All input channels are closed.";
 
   // Make sure the merger stopped
   {
-    LOG(INFO) << "TfBuilderInput::stop: Stopping the Stf merger thread.";
+    DDLOG(fair::Severity::INFO) << "TfBuilderInput::stop: Stopping the Stf merger thread.";
     {
       std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
       mStfMergeQueue.clear();
-      LOG(INFO) << "TfBuilderInput::stop: Merger queue emptied.";
+      DDLOG(fair::Severity::INFO) << "TfBuilderInput::stop: Merger queue emptied.";
       mStfMergerCondition.notify_all();
     }
 
@@ -216,9 +214,9 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
       mStfMergerThread = {};
     }
   }
-  LOG(DEBUG) << "TfBuilderInput::stop: Merger thread stopped.";
+  DDLOG(fair::Severity::DEBUG) << "TfBuilderInput::stop: Merger thread stopped.";
 
-  LOG(INFO) << "TfBuilderInput: Teardown complete...";
+  DDLOG(fair::Severity::INFO) << "TfBuilderInput: Teardown complete...";
 }
 
 
@@ -230,7 +228,7 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
 /// Receiving thread
 void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
 {
-  LOG(INFO) << "Starting input thread for StfSender[" << pFlpIndex << "]...";
+  DDLOG(fair::Severity::INFO) << "Starting input thread for StfSender[" << pFlpIndex << "]...";
 
   // Reference to the input channel
   auto& lInputChan = *mStfSenderChannels[pFlpIndex];
@@ -251,7 +249,7 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
     {
       static thread_local std::atomic_uint64_t sNumStfs = 0;
       if (++sNumStfs % 88 == 0)
-      LOG(DEBUG) << "Received Stf from flp " << pFlpIndex << " with id " << lTfId << ", total: " << sNumStfs;
+      DDLOG(fair::Severity::DEBUG) << "Received Stf from flp " << pFlpIndex << " with id " << lTfId << ", total: " << sNumStfs;
     }
 
     {
@@ -271,7 +269,7 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
     }
   }
 
-  LOG(INFO) << "Exiting input thread[" << pFlpIndex << "]...";
+  DDLOG(fair::Severity::INFO) << "Exiting input thread[" << pFlpIndex << "]...";
 }
 
 /// STF->TF Merger thread
@@ -314,7 +312,7 @@ void TfBuilderInput::StfMergerThread()
       }
 
       if (lStfCount < mNumStfSenders) {
-        LOG(WARN) << "STF MergerThread: merging incomplete TF[" << lTf->header().mId << "]: contains "
+        DDLOG(fair::Severity::WARN) << "STF MergerThread: merging incomplete TF[" << lTf->header().mId << "]: contains "
                   << lStfCount << " instead of " << mNumStfSenders << " SubTimeFrames";
       }
 
@@ -326,20 +324,20 @@ void TfBuilderInput::StfMergerThread()
 
       // Queue out the TF for consumption
       mDevice.queue(mOutStage, std::move(lTf));
-
-    } else if (mStfMergeQueue.size() > (50 * mNumStfSenders)) {
-      // FIXME: for now, discard incomplete TFs
-      LOG(WARN) << "Unbounded merge queue size: " << mStfMergeQueue.size();
-
-      const auto lDroppedStfs = mStfMergeQueue.count(lTfId);
-
-      mStfMergeQueue.erase(lTfId);
-
-      LOG(WARN) << "Dropping oldest incomplete TF... (" << lDroppedStfs << " STFs)";
     }
+    // else if (mStfMergeQueue.size() > (50 * mNumStfSenders)) {
+    //   // FIXME: for now, discard incomplete TFs
+    //   DDLOG(fair::Severity::WARN) << "Unbounded merge queue size: " << mStfMergeQueue.size();
+
+    //   const auto lDroppedStfs = mStfMergeQueue.count(lTfId);
+
+    //   mStfMergeQueue.erase(lTfId);
+
+    //   DDLOG(fair::Severity::WARN) << "Dropping oldest incomplete TF... (" << lDroppedStfs << " STFs)";
+    // }
   }
 
-  LOG(INFO) << "Exiting STF merger thread...";
+  DDLOG(fair::Severity::INFO) << "Exiting STF merger thread...";
 }
 }
 } /* namespace o2::DataDistribution */

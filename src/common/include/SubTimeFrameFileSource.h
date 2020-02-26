@@ -17,6 +17,8 @@
 #include "ConcurrentQueue.h"
 #include "SubTimeFrameBuilder.h"
 
+#include "DataDistLogger.h"
+
 #include <boost/program_options/options_description.hpp>
 
 #include <fstream>
@@ -53,6 +55,7 @@ class SubTimeFrameFileSource
     : mPipelineI(pPipeline),
       mPipelineStageOut(pPipelineStageOut)
   {
+    DDLOG(fair::Severity::TRACE) << "(Sub)TimeFrame Source started...";
   }
 
   ~SubTimeFrameFileSource()
@@ -60,7 +63,7 @@ class SubTimeFrameFileSource
     if (mSourceThread.joinable()) {
       mSourceThread.join();
     }
-    LOG(INFO) << "(Sub)TimeFrame Source terminated...";
+    DDLOG(fair::Severity::TRACE) << "(Sub)TimeFrame Source terminated...";
   }
 
   bool loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt);

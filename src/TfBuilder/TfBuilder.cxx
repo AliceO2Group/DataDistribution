@@ -14,8 +14,6 @@
 #include "TfBuilderRpc.h"
 #include <grpcpp/grpcpp.h>
 
-#include <FairMQLogger.h>
-
 #include <condition_variable>
 #include <stdexcept>
 
@@ -37,10 +35,9 @@ TfBuilderRpcImpl::ConnectTfBuilderRequest(::grpc::ServerContext* /*context*/,
 
 
   // handle the request
-  LOG(INFO) << "Requested to connect to TfBuilder " << lTfSenderId << " at endpoint: " << lTfSenderEndpoint;
+  DDLOG(fair::Severity::INFO) << "Requested to connect to TfBuilder " << lTfSenderId << " at endpoint: " << lTfSenderEndpoint;
 
   response->set_status(0);
-
   return Status::OK;
 }
 
@@ -53,7 +50,7 @@ void TfBuilderRpcImpl::start(const std::string pRpcSrvBindIp, int &lRealPort /*[
   assert(!mServer);
   mServer = std::move(lSrvBuilder.BuildAndStart());
 
-  LOG(INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
+  DDLOG(fair::Severity::INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
 }
 
 void TfBuilderRpcImpl::stop()

@@ -15,8 +15,6 @@
 #include "StfSenderOutput.h"
 #include <grpcpp/grpcpp.h>
 
-#include <FairMQLogger.h>
-
 #include <condition_variable>
 #include <stdexcept>
 
@@ -38,7 +36,7 @@ void StfSenderRpcImpl::start(const std::string pRpcSrvBindIp, int &lRealPort /*[
   assert(!mServer);
   mServer = lSrvBuilder.BuildAndStart();
 
-  LOG(INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
+  DDLOG(fair::Severity::INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
 }
 
 void StfSenderRpcImpl::stop()
@@ -57,7 +55,7 @@ void StfSenderRpcImpl::stop()
   const std::string lTfSenderEndpoint = request->endpoint();
 
   // handle the request
-  LOG(INFO) << "Requested to connect to TfBuilder " << lTfSenderId << " at endpoint: " << lTfSenderEndpoint;
+  DDLOG(fair::Severity::INFO) << "Requested to connect to TfBuilder " << lTfSenderId << " at endpoint: " << lTfSenderEndpoint;
   response->set_status(OK);
 
   const auto lStatus = mOutput.connectTfBuilder(lTfSenderId, lTfSenderEndpoint);
@@ -76,8 +74,6 @@ void StfSenderRpcImpl::stop()
   return Status::OK;
 }
 
-
-
 ::grpc::Status StfSenderRpcImpl::DisconnectTfBuilderRequest(::grpc::ServerContext* /*context*/,
                                           const TfBuilderEndpoint* request,
                                           StatusResponse* response)
@@ -87,7 +83,7 @@ void StfSenderRpcImpl::stop()
   const std::string lTfSenderEndpoint = request->endpoint();
 
   // handle the request
-  LOG(INFO) << "Requested to disconnect TfBuilder " << lTfSenderId << " at endpoint: " << lTfSenderEndpoint;
+  DDLOG(fair::Severity::INFO) << "Requested to disconnect TfBuilder " << lTfSenderId << " at endpoint: " << lTfSenderEndpoint;
   response->set_status(0);
 
   if (!mOutput.disconnectTfBuilder(lTfSenderId, lTfSenderEndpoint)) {
