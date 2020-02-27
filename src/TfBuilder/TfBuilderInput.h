@@ -75,7 +75,19 @@ class TfBuilderInput
   std::thread mStfMergerThread;
   std::mutex mStfMergerQueueLock;
   std::condition_variable mStfMergerCondition;
-  std::multimap<TimeFrameIdType, std::unique_ptr<SubTimeFrame>> mStfMergeQueue;
+
+  struct ReceivedStfMeta {
+    std::chrono::time_point<std::chrono::system_clock> mTimeReceived;
+    std::unique_ptr<SubTimeFrame> mStf;
+
+    ReceivedStfMeta(std::unique_ptr<SubTimeFrame>&& pStf)
+    : mTimeReceived(std::chrono::system_clock::now()),
+      mStf(std::move(pStf))
+    {}
+  };
+
+  std::map<TimeFrameIdType, std::vector<ReceivedStfMeta>> mStfMergeMap;
+  std::uint64_t mStfCount = 0;
 
   /// Output pipeline stage
   unsigned mOutStage;

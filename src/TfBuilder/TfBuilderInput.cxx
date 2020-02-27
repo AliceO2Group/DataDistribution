@@ -139,7 +139,8 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
   // Start the merger
   {
     std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
-    mStfMergeQueue.clear();
+    mStfMergeMap.clear();
+    mStfCount = 0;
 
     // start the merger thread
     mStfMergerThread = std::thread(&TfBuilderInput::StfMergerThread, this);
@@ -201,10 +202,10 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
 
   // Make sure the merger stopped
   {
-    DDLOG(fair::Severity::INFO) << "TfBuilderInput::stop: Stopping the Stf merger thread.";
+    DDLOG(fair::Severity::INFO) << "TfBuilderInput::stop: Stopping the STF merger thread.";
     {
       std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
-      mStfMergeQueue.clear();
+      mStfMergeMap.clear();
       DDLOG(fair::Severity::INFO) << "TfBuilderInput::stop: Merger queue emptied.";
       mStfMergerCondition.notify_all();
     }
@@ -228,7 +229,9 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
 /// Receiving thread
 void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
 {
-  DDLOG(fair::Severity::INFO) << "Starting input thread for StfSender[" << pFlpIndex << "]...";
+  DataDistLogger::SetThreadName(fmt::format("Receiver[{}]", pFlpIndex));
+
+  DDLOGF(fair::Severity::TRACE, "Starting receiver thread for StfSender[{}]", pFlpIndex);
 
   // Reference to the input channel
   auto& lInputChan = *mStfSenderChannels[pFlpIndex];
@@ -247,22 +250,21 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
     const TimeFrameIdType lTfId = lStf->header().mId;
 
     {
-      static thread_local std::atomic_uint64_t sNumStfs = 0;
-      if (++sNumStfs % 88 == 0)
-      DDLOG(fair::Severity::DEBUG) << "Received Stf from flp " << pFlpIndex << " with id " << lTfId << ", total: " << sNumStfs;
+      static thread_local std::uint64_t sNumStfs = 0;
+      if (++sNumStfs % 100 == 0) {
+        DDLOGF(fair::Severity::DEBUG, "Received STF. flp_id={} stf_id={} total={}",
+          pFlpIndex, lTfId, sNumStfs);
+      }
     }
 
     {
       // Push the STF into the merger queue
       std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
-      mStfMergeQueue.emplace(std::make_pair(lTfId, std::move(lStf)));
 
-      // Notify the Merger if enough inputs are collected
-      // NOW:  Merge STFs if exactly |FLP| chunks have been received
-      //       or a next TF started arriving (STFs from previous delayed or not
-      //       available)
-      // TODO: Find out exactly how many STFs is arriving.
-      if (mStfMergeQueue.size() >= mNumStfSenders){
+      mStfMergeMap[lTfId].emplace_back(std::move(lStf));
+      mStfCount++;
+
+      if (mStfMergeMap[lTfId].size() == mNumStfSenders) {
         lQueueLock.unlock();
         mStfMergerCondition.notify_one();
       }
@@ -281,60 +283,63 @@ void TfBuilderInput::StfMergerThread()
 
     std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
 
-    if (mStfMergeQueue.empty()) {
-      // wait for the signal
+    if (mStfCount < mNumStfSenders) {
       if (std::cv_status::timeout == mStfMergerCondition.wait_for(lQueueLock, 500ms)) {
-        continue; // should exit?
+        continue;
       }
     }
 
-    // check for spurious signaling
-    if (mStfMergeQueue.empty()) {
+    if (mStfCount < mNumStfSenders) {
       continue;
     }
 
-    // check the merge queue for partial TFs first
-    const SubTimeFrameIdType lTfId = mStfMergeQueue.begin()->first;
+    for (auto &lStfInfoIt : mStfMergeMap) {
+      auto &lStfMetaVec = lStfInfoIt.second;
+      const auto lStfId = lStfInfoIt.first;
 
-    // Case 1: a full TF can be merged
-    if (mStfMergeQueue.count(lTfId) == mNumStfSenders) {
-
-      auto lStfRange = mStfMergeQueue.equal_range(lTfId);
-      assert(std::distance(lStfRange.first, lStfRange.second) == mNumStfSenders);
-
-      auto lStfCount = 1UL; // start from the first element
-      std::unique_ptr<SubTimeFrame> lTf = std::move(lStfRange.first->second);
-
-      for (auto lStfIter = std::next(lStfRange.first); lStfIter != lStfRange.second; ++lStfIter) {
-        // Add them all up
-        lTf->mergeStf(std::move(lStfIter->second));
-        lStfCount++;
+      if (lStfMetaVec.size() < mNumStfSenders) {
+        continue;
       }
 
-      if (lStfCount < mNumStfSenders) {
-        DDLOG(fair::Severity::WARN) << "STF MergerThread: merging incomplete TF[" << lTf->header().mId << "]: contains "
-                  << lStfCount << " instead of " << mNumStfSenders << " SubTimeFrames";
+      if (lStfMetaVec.size() > mNumStfSenders) {
+        DDLOGF(fair::Severity::ERROR,
+          "StfMerger: number of STFs is larger than expected. stf_id={:d} num_stfs={:d} num_stf_senders={:d}",
+          lStfId, lStfMetaVec.size(), mNumStfSenders);
+      }
+
+      // merge the current TF!
+      const auto lBuildDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        lStfMetaVec.rbegin()->mTimeReceived - lStfMetaVec.begin()->mTimeReceived);
+
+      // start from the first element (using it as the seed for the TF)
+      std::unique_ptr<SubTimeFrame> lTf = std::move(lStfMetaVec.begin()->mStf);
+
+      for (auto lStfIter = std::next(lStfMetaVec.begin()); lStfIter != lStfMetaVec.end(); ++lStfIter) {
+          // Add them all up
+          lTf->mergeStf(std::move(lStfIter->mStf));
+      }
+
+      {
+        static std::uint64_t sNumBuiltTfs = 0;
+        if (++sNumBuiltTfs % 10 == 0) {
+          DDLOGF(fair::Severity::DEBUG, "Building of TF completed. tf_id={:d} duration_ms={} total_tf={:d}",
+            lStfId, lBuildDurationMs.count(), sNumBuiltTfs);
+        }
       }
 
       // remove consumed STFs from the merge queue
-      mStfMergeQueue.erase(lStfRange.first, lStfRange.second);
+      mStfMergeMap.erase(lStfId);
+      mStfCount -= mNumStfSenders;
 
       // account the size of received TF
       mRpc->recordTfBuilt(*lTf);
 
       // Queue out the TF for consumption
       mDevice.queue(mOutStage, std::move(lTf));
+
+      // break from the for loop and try again
+      break;
     }
-    // else if (mStfMergeQueue.size() > (50 * mNumStfSenders)) {
-    //   // FIXME: for now, discard incomplete TFs
-    //   DDLOG(fair::Severity::WARN) << "Unbounded merge queue size: " << mStfMergeQueue.size();
-
-    //   const auto lDroppedStfs = mStfMergeQueue.count(lTfId);
-
-    //   mStfMergeQueue.erase(lTfId);
-
-    //   DDLOG(fair::Severity::WARN) << "Dropping oldest incomplete TF... (" << lDroppedStfs << " STFs)";
-    // }
   }
 
   DDLOG(fair::Severity::INFO) << "Exiting STF merger thread...";
