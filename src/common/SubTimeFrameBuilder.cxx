@@ -108,8 +108,6 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
           lKeepBlocks[i] = false;
         }
       }
-
-
     }
   }
 

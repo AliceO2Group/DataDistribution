@@ -29,7 +29,7 @@ namespace DataDistribution
 ReadoutDataUtils::SanityCheckMode ReadoutDataUtils::sRdhSanityCheckMode = eNoSanityCheck;
 
 /// static
-std::uint64_t ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
+thread_local std::uint64_t ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
 
 std::tuple<std::uint32_t,std::uint32_t,std::uint32_t>
 ReadoutDataUtils::getSubSpecificationComponents(const char* pRdhData, const std::size_t len)
@@ -123,7 +123,7 @@ ReadoutDataUtils::getRdhMemorySize(const char* data, const std::size_t len)
       break;
     }
 
-    p += lOffsetNext;
+    p += std::max(lOffsetNext, uint32_t(64));
   }
 
   if (p > data + len) {
@@ -147,17 +147,24 @@ std::uint16_t ReadoutDataUtils::getFeeId(const char* data, const std::size_t len
   return lFeeId;
 }
 
-std::uint32_t ReadoutDataUtils::getHBOrbit(const char* data, const std::size_t len)
+std::tuple<uint32_t,uint32_t,uint32_t> // orbit, bc, trig
+ReadoutDataUtils::getOrbitBcTrg(const char* data, const std::size_t len)
 {
-  std::uint32_t lHBOrbit = 0;
+  std::uint32_t lOrbit = 0;
+  std::uint32_t lBc = 0;
+  std::uint32_t lTrg = 0;
 
   if (len < 64 || data[0] != 4) {
-    return std::uint32_t(-1);
+    return {std::uint32_t(-1), std::uint32_t(-1), std::uint32_t(-1)};
   }
 
-  std::memcpy(&lHBOrbit, data + (5 * sizeof(std::uint32_t)), sizeof(std::uint32_t));
+  std::memcpy(&lOrbit, data + (5 * sizeof(std::uint32_t)), sizeof(std::uint32_t));
+  std::memcpy(&lBc, data + (8 * sizeof(std::uint32_t)), sizeof(std::uint32_t));
+  lBc &= 0x00000FFF; // 12-bit
 
-  return lHBOrbit;
+  std::memcpy(&lTrg, data + (9 * sizeof(std::uint32_t)), sizeof(std::uint32_t));
+
+  return { lOrbit, lBc, lTrg};
 }
 
 
@@ -209,10 +216,6 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
       if (lOrbit < sFirstSeenHBOrbitCnt) {
         DDLOG(fair::Severity::ERROR) << "Orbit counter of current data packet (HBF) is smaller than first orbit of STF"
                     << lOrbit << " < " << sFirstSeenHBOrbitCnt << " diff:" << sFirstSeenHBOrbitCnt-lOrbit;
-        return false;
-      } else if (lOrbit > (sFirstSeenHBOrbitCnt+255)) {
-        DDLOG(fair::Severity::ERROR) << "Orbit counter of current data packet (HBF) is larger than first orbit of STF + 255"
-                    << lOrbit << " > (255 + " << sFirstSeenHBOrbitCnt << ") diff:" << lOrbit - sFirstSeenHBOrbitCnt;
         return false;
       }
     }

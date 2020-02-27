@@ -60,8 +60,8 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
     "Specifies a destination directory where (Sub)TimeFrames are to be written. "
     "Note: A new directory will be created here for all output files.")(
     OptionKeyStfSinkFileName,
-    bpo::value<std::string>()->default_value("%n"),
-    "Specifies file name pattern: %n - file index, %D - date, %T - time.")(
+    bpo::value<std::string>()->default_value("%i"),
+    "Specifies file name pattern: %n - file index, %i - starting (S)TF id, %D - date, %T - time.")(
     OptionKeyStfSinkStfsPerFile,
     bpo::value<std::uint64_t>()->default_value(0),
     "Specifies number of (Sub)TimeFrames per file. Default: 0 (unlimited)")(
@@ -116,18 +116,18 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   }
 
   // print options
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: enabled       = " << (mEnabled ? "yes" : "no");
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: root dir      = " << mRootDir;
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: file pattern  = " << mFileNamePattern;
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: stfs per file = " << (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" );
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: max file size = " << mFileSize;
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: sidecar files = " << (mSidecar ? "yes" : "no");
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Sink :: write dir     = " << mCurrentDir;
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: enabled       = {:s}", (mEnabled ? "yes" : "no"));
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: root dir      = {:s}", mRootDir);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: file pattern  = {:s}", mFileNamePattern);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: stfs per file = {:s}", (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" ));
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: max file size = {:d}", mFileSize);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: sidecar files = {:s}", (mSidecar ? "yes" : "no"));
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: write dir     = {:s}", mCurrentDir);
 
   return true;
 }
 
-std::string SubTimeFrameFileSink::newStfFileName()
+std::string SubTimeFrameFileSink::newStfFileName(const std::uint64_t pStfId) const
 {
   time_t lNow;
   time(&lNow);
@@ -139,13 +139,16 @@ std::string SubTimeFrameFileSink::newStfFileName()
   lIdxString << std::dec << std::setw(8) << std::setfill('0') << mCurrentFileIdx;
   boost::replace_all(lFileName, "%n", lIdxString.str());
 
+  std::stringstream lStfIdString;
+  lStfIdString << std::dec << std::setw(8) << std::setfill('0') << pStfId;
+  boost::replace_all(lFileName, "%i", lStfIdString.str());
+
   strftime(lTimeBuf, sizeof(lTimeBuf), "%F", localtime(&lNow));
   boost::replace_all(lFileName, "%D", lTimeBuf);
 
   strftime(lTimeBuf, sizeof(lTimeBuf), "%H_%M_%S", localtime(&lNow));
   boost::replace_all(lFileName, "%T", lTimeBuf);
 
-  mCurrentFileIdx++;
   return lFileName;
 }
 
@@ -154,6 +157,8 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 {
   std::uint64_t lCurrentFileSize = 0;
   std::uint64_t lCurrentFileStfs = 0;
+
+  std::string lCurrentFileName;
 
   while (mDeviceI.IsRunningState()) {
     // Get the next STF
@@ -167,15 +172,19 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
     lStf->updateStf();
 
     if (!enabled()) {
-      DDLOG(fair::Severity::ERROR) << "Pipeline error, disabled file sing receiving STFs";
+      DDLOGF(fair::Severity::FATAL, "Pipeline error, disabled file sink receiving STFs");
       break;
     }
 
     // check if we need a writer
     if (!mStfWriter) {
+      const auto lStfId = lStf->id();
+      lCurrentFileName = newStfFileName(lStfId);
       namespace bfs = boost::filesystem;
       mStfWriter = std::make_unique<SubTimeFrameFileWriter>(
-        bfs::path(mCurrentDir) / bfs::path(newStfFileName()), mSidecar);
+        bfs::path(mCurrentDir) / bfs::path(lCurrentFileName), mSidecar);
+
+      mCurrentFileIdx++;
     }
 
     // write
@@ -185,8 +194,8 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
     } else {
       mStfWriter.reset();
       mEnabled = false;
-      DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame file sink: error while writing a file";
-      DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame file sink: disabling writing";
+      DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: error while writing to file {:d}", lCurrentFileName);
+      DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: disabling file sink");
     }
 
     // check if we should rotate the file

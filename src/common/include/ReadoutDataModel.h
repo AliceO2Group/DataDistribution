@@ -43,7 +43,7 @@ struct ReadoutSubTimeframeHeader {
 class ReadoutDataUtils {
 public:
 
-  static std::uint64_t sFirstSeenHBOrbitCnt;
+  static thread_local std::uint64_t sFirstSeenHBOrbitCnt;
 
   static std::tuple<std::uint32_t,std::uint32_t,std::uint32_t>
   getSubSpecificationComponents(const char* pRdhData, const std::size_t len);
@@ -54,7 +54,8 @@ public:
 
   static std::tuple<std::size_t, int> getRdhMemorySize(const char* data, const std::size_t len);
   static std::uint16_t getFeeId(const char* data, const std::size_t len);
-  static std::uint32_t getHBOrbit(const char* data, const std::size_t len);
+  static std::tuple<uint32_t,uint32_t,uint32_t> // orbit, bc, trig
+  getOrbitBcTrg(const char* data, const std::size_t len);
 
   enum SanityCheckMode {
     eNoSanityCheck,
