@@ -64,7 +64,6 @@ public:
 
     if (log_enabled()) {
       if (mSeverity >= fair::Severity::debug && sThisThreadName) {
-        // mLogMessage << '[' << sThisThreadName << "] ";
         fmt::format_to(std::back_inserter(mLogMessage), "[{:s}]", sThisThreadName);
       }
 
@@ -135,6 +134,7 @@ private:
 // Log with values
 #define DDLOGV(severity, ...) \
   if (true) DataDistLogger(severity, __VA_ARGS__)
+
 // Log with fmt
 #define DDLOGF(severity, ...) \
   if (true) DataDistLogger(severity, fmt::format(__VA_ARGS__))
@@ -147,7 +147,7 @@ private:
 namespace impl {
   struct DataDistLoggerCtx {
     DataDistLoggerCtx() {
-      DDLOGF(fair::Severity::DEBUG, "Switching the logging to spdlog's nonblocking async backend.");
+      // DDLOGF(fair::Severity::DEBUG, "Switching the logging to spdlog's nonblocking async backend.");
 
       fair::Logger::SetConsoleSeverity(fair::Severity::nolog);
 
@@ -161,7 +161,7 @@ namespace impl {
       // check if the FairLogger is still alive and remove spdlog's sink
       // NOTE: this is tricky, depends on static global variable destruction
       if (! fair::Logger::fIsDestructed) {
-        DDLOGF(fair::Severity::DEBUG, "Switching the logging back to FairMQLogger.");
+        // DDLOGF(fair::Severity::DEBUG, "Switching the logging back to FairMQLogger.");
         fair::Logger::RemoveCustomSink("TraceSink");
         fair::Logger::SetConsoleSeverity(fair::Severity::trace);
       }

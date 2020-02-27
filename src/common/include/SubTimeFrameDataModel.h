@@ -282,6 +282,7 @@ class SubTimeFrame : public IDataModelObject
   };
 
   const Header& header() const { return mHeader; }
+  TimeFrameIdType id() const { return mHeader.mId; }
 
   void updateStf() { updateStf(mData); }
 

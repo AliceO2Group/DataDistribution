@@ -28,6 +28,72 @@ using namespace o2::header;
 ////////////////////////////////////////////////////////////////////////////////
 /// SubTimeFrameFileWriter
 ////////////////////////////////////////////////////////////////////////////////
+namespace impl {
+  struct SidecarInfoData {
+    const char *mHdrFmt;  // not including sep
+    const char *mHdr;
+    const char *mValFmt;
+  };
+
+  enum SidecarInfoDataType {
+    TF_ID = 0,
+    TF_OFFSET,
+    TF_SIZE,
+    ORIGIN,
+    DESC,
+    SUBSPEC,
+    DATA_IDX,
+    HDR_OFF,
+    HDR_SIZE,
+    DATA_OFF,
+    DATA_SIZE,
+    RDH_MEM_SIZE,
+    RDH_STOP_BIT,
+    RDH_FEE_ID,
+    RDH_ORBIT,
+    RDH_BC,
+    RDH_TRG,
+  };
+
+  static const SidecarInfoData sInfoData[] = {
+    [TF_ID]         = { "{:<10}", "TF_ID",        "{:<10d}"   },
+    [TF_OFFSET]     = { "{:<10}", "TF_OFFSET",    "{:<10d}"   },
+    [TF_SIZE]       = { "{:<9}",  "TF_SIZE",      "{:<9d}"    },
+    [ORIGIN]        = { "{:<6}",  "ORIGIN",       "{:<6}"     },
+    [DESC]          = { "{:<9}",  "DESC",         "{:<9}"     },
+    [SUBSPEC]       = { "{:<10}", "SUBSPEC",      "{:<#010x}" },
+    [DATA_IDX]      = { "{:<8}",  "DATA_IDX",     "{:<8}"     },
+    [HDR_OFF]       = { "{:<10}", "HDR_OFF",      "{:<10}"    },
+    [HDR_SIZE]      = { "{:<8}",  "HDR_SIZE",     "{:<8}"     },
+    [DATA_OFF]      = { "{:<10}", "DATA_OFF",     "{:<10}"    },
+    [DATA_SIZE]     = { "{:<9}",  "DATA_SIZE",    "{:<9}"     },
+    [RDH_MEM_SIZE]  = { "{:<12}", "RDH_MEM_SIZE", "{:<12}"    },
+    [RDH_STOP_BIT]  = { "{:<12}", "RDH_STOP_BIT", "{:<12}"    },
+    [RDH_FEE_ID]    = { "{:<10}", "RDH_FEE_ID",   "{:<10}"    },
+    [RDH_ORBIT]     = { "{:<12}", "RDH_ORBIT",    "{:<#12d}"  },
+    [RDH_BC]        = { "{:<10}", "RDH_BC",       "{:<#10d}"  },
+    [RDH_TRG]       = { "{:<10}", "RDH_TRG",      "{:<#010x}" },
+  };
+
+  static std::string sInfoToHdrString() {
+    fmt::memory_buffer lHeader;
+    const auto lHdrCnt = sizeof(sInfoData) / sizeof(SidecarInfoData);
+
+    for (std::size_t i = 0; i < lHdrCnt; i++) {
+      fmt::format_to(std::back_inserter(lHeader), sInfoData[i].mHdrFmt, sInfoData[i].mHdr);
+      fmt::format_to(std::back_inserter(lHeader), "{}", (i < lHdrCnt - 1) ? " " : "");
+    }
+
+    return std::string(std::string(lHeader.begin(), lHeader.end()));
+  }
+
+  template<class T>
+  static void sInfoVal(fmt::memory_buffer &pBuf, const SidecarInfoDataType pType, const T& pVal) {
+    const auto lHdrCnt = sizeof(sInfoData) / sizeof(SidecarInfoData);
+    fmt::format_to(std::back_inserter(pBuf), sInfoData[pType].mValFmt, pVal);
+    fmt::format_to(std::back_inserter(pBuf), "{}", (pType < lHdrCnt - 1) ? " " : "");
+  }
+}
 
 SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pFileName, bool pWriteInfo)
   : mWriteInfo(pWriteInfo)
@@ -55,22 +121,7 @@ SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pF
       lInfoFileName += ".info";
 
       mInfoFile.open(lInfoFileName, ios::trunc | ios::out);
-
-      mInfoFile << "TF_ID ";
-      mInfoFile << "TF_OFFSET ";
-      mInfoFile << "TF_SIZE ";
-      mInfoFile << "ORIGIN ";
-      mInfoFile << "DESCRIPTION ";
-      mInfoFile << "SUBSPECIFICATION ";
-      mInfoFile << "DATA_INDEX ";
-      mInfoFile << "HEADER_OFFSET ";
-      mInfoFile << "HEADER_SIZE ";
-      mInfoFile << "DATA_OFFSET ";
-      mInfoFile << "DATA_SIZE ";
-      mInfoFile << "RDH_MEM_SIZE ";
-      mInfoFile << "RDH_STOP_BIT ";
-      mInfoFile << "FEE_ID ";
-      mInfoFile << "HB_ORBIT" << '\n';
+      mInfoFile << impl::sInfoToHdrString() << '\n';
     }
   } catch (std::ifstream::failure& eOpenErr) {
     DDLOG(fair::Severity::ERROR) << "Failed to open/create TF file for writing. Error: " << eOpenErr.what();
@@ -200,12 +251,16 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
 
   // sidecar
   if (mWriteInfo) {
+
     try {
+
       const auto l1StfId = pStf.header().mId;
       const auto l2StfFileOff = lPrevSize;
       const auto l3StfFileSize = lStfSizeInFile;
 
       for (const auto& lStfData : mStfData) {
+        fmt::memory_buffer lValRow;
+
         DataHeader lDH;
         std::memcpy(&lDH, lStfData->mHeader->GetData(), sizeof(DataHeader));
 
@@ -228,33 +283,30 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
           reinterpret_cast<const char*>(lStfData->mData->GetData()),
           lStfData->mData->GetSize());
 
-        const auto l15Orbit = ReadoutDataUtils::getHBOrbit(
+        const auto [l15Orbit, l16Bc, l17Trig] = ReadoutDataUtils::getOrbitBcTrg(
           reinterpret_cast<const char*>(lStfData->mData->GetData()),
-          lStfData->mData->GetSize());
+          lStfData->mData->GetSize()
+        );
 
-        mInfoFile << l1StfId << sSidecarFieldSep;
-        mInfoFile << l2StfFileOff << sSidecarFieldSep;
-        mInfoFile << l3StfFileSize << sSidecarFieldSep;
-        mInfoFile << l4DataOrigin.str << sSidecarFieldSep;
-        mInfoFile << l5DataDescription.str << sSidecarFieldSep;
+        impl::sInfoVal(lValRow, impl::TF_ID, l1StfId);
+        impl::sInfoVal(lValRow, impl::TF_OFFSET, l2StfFileOff);
+        impl::sInfoVal(lValRow, impl::TF_SIZE, l3StfFileSize);
+        impl::sInfoVal(lValRow, impl::ORIGIN, l4DataOrigin.str);
+        impl::sInfoVal(lValRow, impl::DESC, l5DataDescription.str);
+        impl::sInfoVal(lValRow, impl::SUBSPEC, l6SubSpec);
+        impl::sInfoVal(lValRow, impl::DATA_IDX, l7DataIndex);
+        impl::sInfoVal(lValRow, impl::HDR_OFF, l8HdrOff);
+        impl::sInfoVal(lValRow, impl::HDR_SIZE, l9HdrSize);
+        impl::sInfoVal(lValRow, impl::DATA_OFF, l10DataOff);
+        impl::sInfoVal(lValRow, impl::DATA_SIZE, l11DataSize);
+        impl::sInfoVal(lValRow, impl::RDH_MEM_SIZE, l12MemSize);
+        impl::sInfoVal(lValRow, impl::RDH_STOP_BIT, l13StopBit);
+        impl::sInfoVal(lValRow, impl::RDH_FEE_ID, l14FeeId);
+        impl::sInfoVal(lValRow, impl::RDH_ORBIT, l15Orbit);
+        impl::sInfoVal(lValRow, impl::RDH_BC, l16Bc);
+        impl::sInfoVal(lValRow, impl::RDH_TRG, l17Trig);
 
-
-        std::ios_base::fmtflags lFlags( mInfoFile.flags() );
-        mInfoFile << "0x" << std::setfill('0')
-                  << std::setw(8)
-                  << std::hex
-                  << l6SubSpec << sSidecarFieldSep;
-        mInfoFile.flags(lFlags);
-
-        mInfoFile << l7DataIndex << sSidecarFieldSep;
-        mInfoFile << l8HdrOff << sSidecarFieldSep;
-        mInfoFile << l9HdrSize << sSidecarFieldSep;
-        mInfoFile << l10DataOff << sSidecarFieldSep;
-        mInfoFile << l11DataSize << sSidecarFieldSep;
-        mInfoFile << l12MemSize << sSidecarFieldSep;
-        mInfoFile << l13StopBit << sSidecarFieldSep;
-        mInfoFile << l14FeeId << sSidecarFieldSep;
-        mInfoFile << l15Orbit << sSidecarRecordSep;
+        mInfoFile << std::string_view(lValRow.begin(), lValRow.size()) << '\n';
       }
       mInfoFile.flush();
     } catch (const std::ios_base::failure& eFailExc) {

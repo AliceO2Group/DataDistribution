@@ -79,7 +79,7 @@ class SubTimeFrameFileSink
 
   void DataHandlerThread(const unsigned pIdx);
 
-  std::string newStfFileName();
+  std::string newStfFileName(const std::uint64_t pStfId) const;
 
  private:
   const DataDistDevice& mDeviceI;
