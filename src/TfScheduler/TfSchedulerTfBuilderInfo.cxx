@@ -39,7 +39,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
 
   // check for system time drifts; account for gRPC latency
   const auto lTimeDiff = lLocalTime - lUpdateTimepoint;
-  if (lTimeDiff < 0s || lTimeDiff > 1s) {
+  if (std::chrono::abs(lTimeDiff) > 1s) {
     DDLOGF(fair::Severity::WARNING,
       "Large system clock drift detected. tfb_id={:s} drift_ms={:d}", lTfBuilderId,
       std::chrono::duration_cast<std::chrono::milliseconds>(lTimeDiff).count());
