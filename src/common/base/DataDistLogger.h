@@ -64,7 +64,7 @@ public:
 
     if (log_enabled()) {
       if (mSeverity >= fair::Severity::debug && sThisThreadName) {
-        fmt::format_to(std::back_inserter(mLogMessage), "[{:s}]", sThisThreadName);
+        fmt::format_to(std::back_inserter(mLogMessage), "[{:s}] ", sThisThreadName);
       }
 
       (fmt::format_to(std::back_inserter(mLogMessage), "{}", pArgs), ...);
@@ -104,7 +104,6 @@ public:
   template<typename T>
   DataDistLogger& operator<<(const T& pTObj) {
     if (log_enabled()) {
-      // mLogMessage << pTObj;
       fmt::format_to(std::back_inserter(mLogMessage), "{}", pTObj);
     }
     return *this;
@@ -113,7 +112,6 @@ public:
   DataDistLogger& operator<<(const char* cstr) {
     if (cstr != NULL) {
       if (log_enabled()) {
-        // mLogMessage << cstr;
         fmt::format_to(std::back_inserter(mLogMessage), "{}", cstr);
       }
     }
