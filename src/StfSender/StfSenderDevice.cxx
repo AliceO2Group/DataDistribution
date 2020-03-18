@@ -50,7 +50,6 @@ void StfSenderDevice::InitTask()
   mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
-  mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
 
   if (!mStandalone) {
     // Discovery
@@ -89,12 +88,8 @@ void StfSenderDevice::InitTask()
                     "Data will be lost.";
   }
 
-  // gui thread
-  if (mBuildHistograms) {
-    mGui = std::make_unique<RootGui>("STFSender", "STF Sender", 400, 400);
-    mGui->Canvas().Divide(1, 1);
-    mGuiThread = std::thread(&StfSenderDevice::GuiThread, this);
-  }
+  // Info thread
+  mInfoThread = std::thread(&StfSenderDevice::InfoThread, this);
 }
 
 void StfSenderDevice::PreRun()
@@ -155,9 +150,9 @@ void StfSenderDevice::ResetTask()
     mTfSchedulerRpcClient.stop();
   }
 
-  // wait for the gui thread
-  if (mBuildHistograms && mGuiThread.joinable()) {
-    mGuiThread.join();
+  // wait the Info thread
+  if (mInfoThread.joinable()) {
+    mInfoThread.join();
   }
 
   DDLOGF(fair::Severity::trace, "ResetTask() done... ");
@@ -196,28 +191,17 @@ void StfSenderDevice::StfReceiverThread()
   DDLOG(fair::Severity::INFO) << "Exiting StfOutputThread...";
 }
 
-void StfSenderDevice::GuiThread()
+void StfSenderDevice::InfoThread()
 {
-  std::unique_ptr<TH1S> lStfPipelinedCntHist = std::make_unique<TH1S>("StfQueuedH", "Queued STFs", 150, -0.5, 150 - 0.5);
-  lStfPipelinedCntHist->GetXaxis()->SetTitle("Number of queued Stf");
-
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
   while (IsRunningState()) {
-    DDLOG(fair::Severity::INFO) << "Updating histograms...";
+    DDLOGF(fair::Severity::INFO, "StfSender queued_stfs={}", this->getPipelineSize());
 
-    mGui->Canvas().cd(1);
-    mGui->DrawHist(lStfPipelinedCntHist.get(), this->getPipelinedSizeSamples());
-
-    mGui->Canvas().Modified();
-    mGui->Canvas().Update();
-
-    DDLOG(fair::Severity::INFO) << "* Queued STFs in StfSender: " << this->getPipelineSize();
-
-    std::this_thread::sleep_for(5s);
+    std::this_thread::sleep_for(2s);
   }
-  DDLOG(fair::Severity::INFO) << "Exiting GUI thread...";
+  DDLOGF(fair::Severity::trace, "Exiting Info thread...");
 }
 
 bool StfSenderDevice::ConditionalRun()

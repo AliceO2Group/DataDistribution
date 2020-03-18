@@ -22,7 +22,6 @@
 
 #include <SubTimeFrameFileSink.h>
 #include <Utilities.h>
-#include <RootGui.h>
 
 #include <thread>
 #include <vector>
@@ -74,9 +73,6 @@ class StfSenderDevice : public DataDistDevice,
   bool standalone() const { return mStandalone; }
 
   TfSchedulerRpcClient& TfSchedRpcCli() { return mTfSchedulerRpcClient; }
-
-
-  bool guiEnabled() const noexcept { return mBuildHistograms; }
 
  protected:
   void PreRun() final;
@@ -174,11 +170,9 @@ class StfSenderDevice : public DataDistDevice,
   /// number of STFs in the process
   std::atomic_int64_t mNumStfs{ 0 };
 
-  /// Root GUI stuff
-  void GuiThread();
-  bool mBuildHistograms = true;
-  std::unique_ptr<RootGui> mGui;
-  std::thread mGuiThread;
+  /// Info thread
+  void InfoThread();
+  std::thread mInfoThread;
 };
 }
 } /* namespace o2::DataDistribution */
