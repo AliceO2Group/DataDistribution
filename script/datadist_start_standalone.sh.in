@@ -103,7 +103,6 @@ STF_BUILDER="StfBuilder"
 STF_BUILDER+=" --transport shmem"
 STF_BUILDER+=" --mq-config $chainConfig"
 STF_BUILDER+=" --detector TPC"
-STF_BUILDER+=" $GUI"
 STF_BUILDER+=" --io-threads $IO_THREADS"
 
 if [[ ! -z $STF_BUILDER_DPL_CHAN ]]; then

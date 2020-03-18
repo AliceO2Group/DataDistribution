@@ -48,11 +48,6 @@ void addCustomOptions(bpo::options_description& options)
       o2::DataDistribution::StfBuilderDevice::OptionKeyOutputChannelName,
       bpo::value<std::string>()->default_value("builder-stf-channel"),
       "Name of the output channel."
-    )
-    (
-      o2::DataDistribution::StfBuilderDevice::OptionKeyGui,
-      bpo::bool_switch()->default_value(false),
-      "Enable GUI."
     );
 
   bpo::options_description lStfBuilderDplOptions("StfBuilder DPL options", 120);

@@ -234,8 +234,7 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
 void TfSchedulerConnManager::StfSenderMonitoringThread()
 {
   DDLOG(fair::Severity::DEBUG) << "Starting StfSender RPC Monitoring thread...";
-  // wait for the device to go into RUNNING state
-  //
+
   std::vector<std::uint64_t> lDroppedStfs;
 
   while (mRunning) {

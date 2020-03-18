@@ -44,7 +44,10 @@ public:
   StfSenderRpcClient(const std::string &pEndpoint)
   :
   mStub(StfSenderRpc::NewStub(grpc::CreateChannel(pEndpoint, grpc::InsecureChannelCredentials())))
-  { }
+  {
+    // Check the connection...
+
+  }
 
   // rpc ConnectTfBuilderRequest(TfBuilderEndpoint) returns (ConnectTfBuilderResponse) { }
   grpc::Status ConnectTfBuilderRequest(const TfBuilderEndpoint &pParam, ConnectTfBuilderResponse &pRet /*out*/) {
