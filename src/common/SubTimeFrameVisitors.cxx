@@ -131,7 +131,14 @@ std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize(FairMQ
   }
 
   if (ret < 0) {
-   DDLOG(fair::Severity::WARNING) << "STF receive failed (err = " + std::to_string(ret) + "):" << std::string(strerror(errno));
+    { // rate-limited LOG: print stats once per second
+      static unsigned long floodgate = 0;
+      if (floodgate++ % 10 == 0) {
+        DDLOGF(fair::Severity::ERROR, "STF receive failed err={} errno={} error={}",
+          ret, errno, std::string(strerror(errno)));
+      }
+    }
+
     mMessages.clear();
     return nullptr;
   }

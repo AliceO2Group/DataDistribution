@@ -25,10 +25,10 @@ namespace DataDistribution
 
 using namespace std::chrono_literals;
 
-
-
-void StfSenderRpcImpl::start(const std::string pRpcSrvBindIp, int &lRealPort /*[out]*/)
+void StfSenderRpcImpl::start(StfSenderOutput *pOutput, const std::string pRpcSrvBindIp, int& lRealPort /*[out]*/)
 {
+  mOutput = pOutput;
+
   ServerBuilder lSrvBuilder;
   lSrvBuilder.AddListeningPort(pRpcSrvBindIp + ":0", grpc::InsecureServerCredentials(), &lRealPort);
   lSrvBuilder.RegisterService(this);
@@ -58,7 +58,7 @@ void StfSenderRpcImpl::stop()
   DDLOG(fair::Severity::INFO) << "Requested to connect to TfBuilder " << lTfSenderId << " at endpoint: " << lTfSenderEndpoint;
   response->set_status(OK);
 
-  const auto lStatus = mOutput.connectTfBuilder(lTfSenderId, lTfSenderEndpoint);
+  const auto lStatus = mOutput->connectTfBuilder(lTfSenderId, lTfSenderEndpoint);
   switch (lStatus) {
     case StfSenderOutput::ConnectStatus::eOK:
       response->set_status(OK);
@@ -86,7 +86,7 @@ void StfSenderRpcImpl::stop()
   DDLOG(fair::Severity::INFO) << "Requested to disconnect TfBuilder " << lTfSenderId << " at endpoint: " << lTfSenderEndpoint;
   response->set_status(0);
 
-  if (!mOutput.disconnectTfBuilder(lTfSenderId, lTfSenderEndpoint)) {
+  if (!mOutput->disconnectTfBuilder(lTfSenderId, lTfSenderEndpoint)) {
     response->set_status(-1);
   }
 
@@ -98,7 +98,7 @@ void StfSenderRpcImpl::stop()
                                 StfDataResponse* response)
 {
 
-  mOutput.sendStfToTfBuilder(request->stf_id(), request->tf_builder_id(), *response/*out*/);
+  mOutput->sendStfToTfBuilder(request->stf_id(), request->tf_builder_id(), *response/*out*/);
 
   return Status::OK;
 }
