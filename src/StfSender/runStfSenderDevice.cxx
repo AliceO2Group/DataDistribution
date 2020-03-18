@@ -30,10 +30,7 @@ void addCustomOptions(bpo::options_description& options)
     o2::DataDistribution::StfSenderDevice::OptionKeyMaxBufferedStfs,
     bpo::value<std::int64_t>()->default_value(-1),
     "Maximum number of buffered SubTimeFrames before starting to drop data. "
-    "Unlimited: -1.")(
-    o2::DataDistribution::StfSenderDevice::OptionKeyGui,
-    bpo::bool_switch()->default_value(false),
-    "Enable GUI.");
+    "Unlimited: -1.");
 
   // Add options for STF file sink
   options.add(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());
