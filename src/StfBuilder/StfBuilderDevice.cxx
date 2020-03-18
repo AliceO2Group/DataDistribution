@@ -20,8 +20,6 @@
 #include <SubTimeFrameDPL.h>
 #include <Utilities.h>
 
-#include <TH1.h>
-
 #include <options/FairMQProgOptions.h>
 
 #include <chrono>
@@ -46,7 +44,6 @@ StfBuilderDevice::StfBuilderDevice()
     mReadoutInterface(*this),
     mFileSink(*this, *this, eStfFileSinkIn, eStfFileSinkOut),
     mFileSource(*this, eStfFileSourceOut),
-    mGui(nullptr),
     mStfSizeSamples(),
     mStfDataTimeSamples()
 {
@@ -65,7 +62,6 @@ void StfBuilderDevice::InitTask()
   mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
-  mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
   mDataOrigin = getDataOriginFromOption(GetConfig()->GetValue<std::string>(OptionKeyStfDetector));
 
   // input data handling
@@ -194,12 +190,8 @@ void StfBuilderDevice::PreRun()
     mReadoutInterface.start(1, mDataOrigin);
   }
 
-  // gui thread
-  if (mBuildHistograms) {
-    mGui = std::make_unique<RootGui>("STFBuilder", "STF Builder", 1600, 400);
-    mGui->Canvas().Divide(4, 1);
-    mGuiThread = std::thread(&StfBuilderDevice::GuiThread, this);
-  }
+  // info thread
+  mInfoThread = std::thread(&StfBuilderDevice::InfoThread, this);
 
   DDLOG(fair::Severity::info) << "PreRun() done... ";
 }
@@ -225,9 +217,9 @@ void StfBuilderDevice::ResetTask()
     mOutputThread.join();
   }
 
-  // wait for the gui thread
-  if (mBuildHistograms && mGuiThread.joinable()) {
-    mGuiThread.join();
+  // wait for the info thread
+  if (mInfoThread.joinable()) {
+    mInfoThread.join();
   }
 
   DDLOG(fair::Severity::info) << "ResetTask() done... ";
@@ -267,67 +259,22 @@ void StfBuilderDevice::StfOutputThread()
     // decrement the stf counter
     mNumStfs--;
 
-    // Send the STF
-    const auto lSendStartTime = hres_clock::now();
-
-#ifdef STF_FILTER_EXAMPLE
-    // EXAMPLE:
-    // split one SubTimeFrame into per detector SubTimeFrames (this is unlikely situation for a STF
-    // but still... The TimeFrame structure should be similar)
-    DataIdentifier cTPCDataIdentifier;
-    cTPCDataIdentifier.dataDescription = gDataDescriptionAny;
-    cTPCDataIdentifier.dataOrigin = gDataOriginTPC;
-    DataIdentifier cITSDataIdentifier;
-    cITSDataIdentifier.dataDescription = gDataDescriptionAny;
-    cITSDataIdentifier.dataOrigin = gDataOriginITS;
-
-    DataIdentifierSplitter lStfDetectorSplitter;
-    auto lStfTPC = lStfDetectorSplitter.split(*lStf, cTPCDataIdentifier);
-    auto lStfITS = lStfDetectorSplitter.split(*lStf, cITSDataIdentifier);
-
-    if (mBuildHistograms) {
-      mStfSizeSamples.Fill(lStfTPC->getDataSize());
-      mStfSizeSamples.Fill(lStfITS->getDataSize());
-      mStfSizeSamples.Fill(lStf->getDataSize());
-    }
-
-    if (!mStandalone) {
-      // Send filtered data as two objects
-      try {
-        if (!dplEnabled()) {
-          assert (lStfSerializer);
-          lStfSerializer->serialize(std::move(lStfTPC)); // TPC data
-          lStfSerializer->serialize(std::move(lStfITS)); // ITS data
-          lStfSerializer->serialize(std::move(lStf));    // whatever is left
-        } else {
-          assert (lStfDplAdapter);
-          lStfDplAdapter->sendToDpl(std::move(lStfTPC));
-          lStfDplAdapter->sendToDpl(std::move(lStfITS));
-          lStfDplAdapter->sendToDpl(std::move(lStf));
-        }
-      } catch (std::exception& e) {
-        if (IsRunningState())
-          DDLOG(fair::Severity::ERROR) << "StfOutputThread: exception on send: " << e.what();
-        else
-          DDLOG(fair::Severity::info) << "StfOutputThread(NOT_RUNNING): exception on send: " << e.what();
-        break;
+    {
+      static thread_local unsigned long lThrottle = 0;
+      if (lThrottle++ % 88 == 0) {
+        DDLOG(fair::Severity::DEBUG) << "Sending STF::id:" << lStf->header().mId
+          << " to channel: " << lOutputChan.GetName()
+          << ", data size: " << lStf->getDataSize()
+          << ", unique equipments: " << lStf->getEquipmentIdentifiers().size();
       }
     }
-#else
 
-    static thread_local unsigned long lThrottle = 0;
-    if (lThrottle++ % 88 == 0) {
-      DDLOG(fair::Severity::DEBUG) << "Sending STF::id:" << lStf->header().mId
-        << " to channel: " << lOutputChan.GetName()
-        << ", data size: " << lStf->getDataSize()
-        << ", unique equipments: " << lStf->getEquipmentIdentifiers().size();
-    }
-
-    if (mBuildHistograms) {
-      mStfSizeSamples.Fill(lStf->getDataSize());
-    }
+    // get data size sample
+    mStfSizeSamples.Fill(lStf->getDataSize());
 
     if (!mStandalone) {
+      const auto lSendStartTime = hres_clock::now();
+
       try {
 
         if (!dplEnabled()) {
@@ -346,10 +293,8 @@ void StfBuilderDevice::StfOutputThread()
         }
         break;
       }
-    }
-#endif
 
-    if (!mStandalone && mBuildHistograms) {
+      // record time spent in sending
       double lTimeMs = std::chrono::duration<double, std::milli>(hres_clock::now() - lSendStartTime).count();
       mStfDataTimeSamples.Fill(lTimeMs);
     }
@@ -358,47 +303,19 @@ void StfBuilderDevice::StfOutputThread()
   DDLOG(fair::Severity::info) << "Exiting StfOutputThread...";
 }
 
-void StfBuilderDevice::GuiThread()
+void StfBuilderDevice::InfoThread()
 {
-  std::unique_ptr<TH1F> lStfSizeHist = std::make_unique<TH1F>("StfSizeH", "Readout data size per STF", 100, 0.0, 400e+6);
-  lStfSizeHist->GetXaxis()->SetTitle("Size [B]");
-
-  std::unique_ptr<TH1F> lStfFreqHist = std::make_unique<TH1F>("STFFreq", "SubTimeFrame frequency", 1000, 0.0, 200.0);
-  lStfFreqHist->GetXaxis()->SetTitle("Frequency [Hz]");
-
-  std::unique_ptr<TH1F> lStfDataTimeHist = std::make_unique<TH1F>("StfChanTimeH", "STF on-channel time", 100, 0.0, 20.0);
-  lStfDataTimeHist->GetXaxis()->SetTitle("Time [ms]");
-
-  std::unique_ptr<TH1S> lStfPipelinedCntHist = std::make_unique<TH1S>("StfQueuedH", "Queued STFs", 150, -0.5, 150.0 - 0.5);
-  lStfPipelinedCntHist->GetXaxis()->SetTitle("Number of queued STFs");
-
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
   while (IsRunningState()) {
 
-    mGui->Canvas().cd(1);
-    mGui->DrawHist(lStfSizeHist.get(), mStfSizeSamples);
+    DDLOGF(fair::Severity::info, "SubTimeFrame size_mean={} frequency_mean={} sending_time_ms={} queued_stf={}",
+      mStfSizeSamples.Mean(), mReadoutInterface.StfFreqSamples().Mean(), mStfDataTimeSamples.Mean(), mNumStfs);
 
-    mGui->Canvas().cd(2);
-    mGui->DrawHist(lStfFreqHist.get(), mReadoutInterface.StfFreqSamples());
-
-    mGui->Canvas().cd(3);
-    mGui->DrawHist(lStfDataTimeHist.get(), mStfDataTimeSamples);
-
-    mGui->Canvas().cd(4);
-    mGui->DrawHist(lStfPipelinedCntHist.get(), this->getPipelinedSizeSamples());
-
-    mGui->Canvas().Modified();
-    mGui->Canvas().Update();
-
-    DDLOG(fair::Severity::info) << "Readout data size per STF: " << mStfSizeSamples.Mean();
-    DDLOG(fair::Severity::info) << "SubTimeFrame frequency   : " << mReadoutInterface.StfFreqSamples().Mean();
-    DDLOG(fair::Severity::info) << "Queued STFs in StfBuilder: " << mNumStfs;
-
-    std::this_thread::sleep_for(5s);
+    std::this_thread::sleep_for(2s);
   }
-  DDLOG(fair::Severity::info) << "Exiting GUI thread...";
+  DDLOG(fair::Severity::trace) << "Exiting Info thread...";
 }
 
 bool StfBuilderDevice::ConditionalRun()
@@ -407,7 +324,6 @@ bool StfBuilderDevice::ConditionalRun()
   std::this_thread::sleep_for(1s);
   return true;
 }
-
 
 bpo::options_description StfBuilderDevice::getDetectorProgramOptions() {
   bpo::options_description lDetectorOptions("SubTimeFrameBuilder data source", 120);

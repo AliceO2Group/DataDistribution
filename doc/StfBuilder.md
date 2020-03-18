@@ -88,8 +88,6 @@ to files, before they are sent out.
 **--output-channel-name** name
 :   Name of the output channel for non-DPL deployments (**required**).
 
-**--gui**
-:   Enable basic GUI monitor (X forwarding required).
 
 ## StfBuilder DPL options
 

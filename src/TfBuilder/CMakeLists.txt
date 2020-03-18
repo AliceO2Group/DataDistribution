@@ -18,7 +18,7 @@ endif()
 
 target_link_libraries(TfBuilder
   PRIVATE
-    base common discovery
+    base common common_root discovery
 )
 
 install(TARGETS TfBuilder RUNTIME DESTINATION bin)

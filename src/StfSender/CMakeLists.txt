@@ -18,7 +18,7 @@ endif()
 
 target_link_libraries(StfSender
   PRIVATE
-    base common discovery
+    base common common_root discovery
 )
 
 install(TARGETS StfSender RUNTIME DESTINATION bin)

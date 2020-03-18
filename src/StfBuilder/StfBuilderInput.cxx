@@ -209,11 +209,9 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
           mDevice.queue(eStfBuilderOut, std::move(lStf));
 
           { // MON: data of a new STF received, get the freq and new start time
-            if (mDevice.guiEnabled()) {
-              const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
-              mStfFreqSamples.Fill(1.0f / lStfDur.count() * mNumBuilders);
-              lStfStartTime = hres_clock::now();
-            }
+            const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
+            mStfFreqSamples.Fill(1.0f / lStfDur.count() * mNumBuilders);
+            lStfStartTime = hres_clock::now();
           }
         }
 
@@ -308,11 +306,9 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
             mDevice.queue(eStfBuilderOut, std::move(lStf));
 
             { // MON: data of a new STF received, get the freq and new start time
-              if (mDevice.guiEnabled()) {
-                const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
-                mStfFreqSamples.Fill(1.0f / lStfDur.count() * mNumBuilders);
-                lStfStartTime = hres_clock::now();
-              }
+              const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
+              mStfFreqSamples.Fill(1.0f / lStfDur.count() * mNumBuilders);
+              lStfStartTime = hres_clock::now();
             }
           }
         }
