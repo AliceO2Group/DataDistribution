@@ -35,7 +35,7 @@ StfSenderDevice::StfSenderDevice()
     IFifoPipeline(ePipelineSize),
     mFileSink(*this, *this, eFileSinkIn, eFileSinkOut),
     mOutputHandler(*this),
-    mRpcServer(mOutputHandler)
+    mRpcServer()
 {
 }
 
@@ -52,17 +52,17 @@ void StfSenderDevice::InitTask()
   mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
   mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
 
-  // Discovery
-  mDiscoveryConfig = std::make_shared<ConsulStfSender>(ProcessType::StfSender, Config::getEndpointOption(*GetConfig()));
+  if (!mStandalone) {
+    // Discovery
+    mDiscoveryConfig = std::make_shared<ConsulStfSender>(ProcessType::StfSender, Config::getEndpointOption(*GetConfig()));
 
-  auto &lStatus = mDiscoveryConfig->status();
-  lStatus.mutable_info()->set_type(StfSender);
-  lStatus.mutable_info()->set_process_id(Config::getIdOption(*GetConfig()));
-  lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
-
-  lStatus.mutable_partition()->set_partition_id(Config::getPartitionOption(*GetConfig()));
-
-  mDiscoveryConfig->write();
+    auto& lStatus = mDiscoveryConfig->status();
+    lStatus.mutable_info()->set_type(StfSender);
+    lStatus.mutable_info()->set_process_id(Config::getIdOption(*GetConfig()));
+    lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
+    lStatus.mutable_partition()->set_partition_id(Config::getPartitionOption(*GetConfig()));
+    mDiscoveryConfig->write();
+  }
 
   // Buffering limitation
   if (mMaxStfsInPipeline > 0) {
@@ -99,26 +99,27 @@ void StfSenderDevice::InitTask()
 
 void StfSenderDevice::PreRun()
 {
-  while (!mTfSchedulerRpcClient.start(mDiscoveryConfig)) {
+  if (!mStandalone) {
+    while (!mTfSchedulerRpcClient.start(mDiscoveryConfig)) {
 
-    // try to reach the scheduler unless we should exit
-    if (IsRunningState() && NewStatePending()) {
-      return;
+      // try to reach the scheduler unless we should exit
+      if (IsRunningState() && NewStatePending()) {
+        return;
+      }
+
+      std::this_thread::sleep_for(250ms);
     }
 
-    std::this_thread::sleep_for(250ms);
+    // Start output handler
+    mOutputHandler.start(mDiscoveryConfig);
+
+    // start the RPC server after output
+    int lRpcRealPort = 0;
+    auto& lStatus = mDiscoveryConfig->status();
+    mRpcServer.start(&mOutputHandler, lStatus.info().ip_address(), lRpcRealPort);
+    lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
+    mDiscoveryConfig->write();
   }
-
-  // Start output handler
-  // NOTE: required even in standalone operation
-  mOutputHandler.start(mDiscoveryConfig);
-
-  // start the RPC server after output
-  int lRpcRealPort = 0;
-  auto &lStatus = mDiscoveryConfig->status();
-  mRpcServer.start(lStatus.info().ip_address(), lRpcRealPort);
-  lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
-  mDiscoveryConfig->write();
 
   // start file sink
   if (mFileSink.enabled()) {
@@ -143,21 +144,23 @@ void StfSenderDevice::ResetTask()
     mFileSink.stop();
   }
 
-  // start the RPC server after output
-  mRpcServer.stop();
+  if (!mStandalone) {
+    // start the RPC server after output
+    mRpcServer.stop();
 
-  // Stop output handler
-  mOutputHandler.stop();
+    // Stop output handler
+    mOutputHandler.stop();
 
-  // Stop the Scheduler RPC client
-  mTfSchedulerRpcClient.stop();
+    // Stop the Scheduler RPC client
+    mTfSchedulerRpcClient.stop();
+  }
 
   // wait for the gui thread
   if (mBuildHistograms && mGuiThread.joinable()) {
     mGuiThread.join();
   }
 
-  DDLOG(fair::Severity::INFO) << "ResetTask() done... ";
+  DDLOGF(fair::Severity::trace, "ResetTask() done... ");
 }
 
 void StfSenderDevice::StfReceiverThread()
@@ -172,9 +175,10 @@ void StfSenderDevice::StfReceiverThread()
 
   while (IsRunningState()) {
     lStf = lStfReceiver.deserialize(lInputChan);
+
     if (!lStf) {
-      std::this_thread::sleep_for(20ms);
-      continue; // timeout
+      std::this_thread::sleep_for(10ms);
+      continue; // timeout? try until the FMQFSM goes out of running
     }
 
     const TimeFrameIdType lStfId = lStf->header().mId;

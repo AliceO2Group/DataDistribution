@@ -39,10 +39,9 @@ class StfSenderOutput;
 class StfSenderRpcImpl final : public StfSenderRpc::Service
 {
  public:
-  StfSenderRpcImpl(StfSenderOutput &pOutput)
+  StfSenderRpcImpl()
   :
-  mServer(nullptr),
-  mOutput(pOutput)
+  mServer(nullptr)
   { }
 
 
@@ -63,13 +62,12 @@ class StfSenderRpcImpl final : public StfSenderRpc::Service
                                 const StfDataRequestMessage* request,
                                 StfDataResponse* response) override;
 
-  void start(const std::string pRpcSrvBindIp, int &lRealPort /*[out]*/);
+  void start(StfSenderOutput *pOutput, const std::string pRpcSrvBindIp, int& lRealPort /*[out]*/);
   void stop();
 
  private:
-  std::unique_ptr<Server> mServer;
-
-  StfSenderOutput &mOutput;
+  std::unique_ptr<Server> mServer = nullptr;
+  StfSenderOutput *mOutput = nullptr;
 
 };
 }
