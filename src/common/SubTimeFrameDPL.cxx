@@ -29,7 +29,7 @@ using namespace o2::header;
 /// StfDplAdapter
 ////////////////////////////////////////////////////////////////////////////////
 
-void StfDplAdapter::visit(SubTimeFrame& pStf)
+void StfToDplAdapter::visit(SubTimeFrame& pStf)
 {
   // Pack the Stf header
   o2::header::DataHeader lStfDistDataHeader(
@@ -90,7 +90,7 @@ void StfDplAdapter::visit(SubTimeFrame& pStf)
   }
 }
 
-void StfDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
+void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
 {
   mMessages.clear();
   pStf->accept(*this);
@@ -113,5 +113,135 @@ void StfDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
   mMessages.clear();
   pStf.reset();
 }
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// DplToStfAdapter
+////////////////////////////////////////////////////////////////////////////////
+
+static const o2::header::DataHeader gStfDistDataHeader(
+  gDataDescSubTimeFrame,
+  o2::header::gDataOriginFLP,
+  0, // TODO: subspecification? FLP ID? EPN ID?
+  sizeof(SubTimeFrame::Header));
+
+void DplToStfAdapter::visit(SubTimeFrame& pStf)
+{
+  if (mMessages.size() < 2) {
+    // stf meta messages must be present
+    DDLOGF(fair::Severity::ERROR, "DPL interface: expected at least 2 messages received={}", mMessages.size());
+    mMessages.clear();
+    pStf.clear();
+
+    throw std::runtime_error("SubTimeFrame::MessageNumber");
+  }
+
+  if (mMessages.size() % 2 != 0) {
+    // stf meta messages must be even
+    DDLOGF(fair::Severity::ERROR, "DPL interface: expected even number of messages received={}", mMessages.size());
+    mMessages.clear();
+    pStf.clear();
+
+    throw std::runtime_error("SubTimeFrame::MessageNumber");
+  }
+
+  // iterate over all incoming HBFrame data sources
+  for (size_t i = 0; i < mMessages.size(); i += 2) {
+
+    auto& lHdrMsg = mMessages[i + 0];
+    auto& lDataMsg = mMessages[i + 1];
+
+    const DataHeader* lStfDataHdr = o2::header::get<DataHeader*>(lHdrMsg->GetData(), lHdrMsg->GetSize());
+
+    if (!lStfDataHdr) {
+      DDLOGF(fair::Severity::ERROR, "DPL interface: cannot find DataHeader in header stack");
+      mMessages.clear();
+      pStf.clear();
+      throw std::runtime_error("SubTimeFrame::Header::DataHeader");
+    }
+
+    // check if StfHeader
+    if (gStfDistDataHeader == *lStfDataHdr) {
+
+      if (sizeof(SubTimeFrame::Header) != lDataMsg->GetSize()) {
+        DDLOGF(fair::Severity::ERROR, "DPL interface: Stf Header size does not match expected={} received={}",
+          sizeof(SubTimeFrame::Header), lDataMsg->GetSize());
+
+        mMessages.clear();
+        pStf.clear();
+        throw std::runtime_error("SubTimeFrame::Header::SizeError");
+      }
+
+      std::memcpy(&pStf.mHeader, lDataMsg->GetData(), sizeof(SubTimeFrame::Header));
+    } else {
+      // add the data to the STF
+
+      pStf.addStfData({ std::move(lHdrMsg), std::move(lDataMsg) });
+    }
+  }
+}
+
+std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize_impl()
+{
+  // NOTE: StfID will be updated from the stf header
+  std::unique_ptr<SubTimeFrame> lStf = std::make_unique<SubTimeFrame>(0);
+
+  try {
+    lStf->accept(*this);
+  } catch (std::runtime_error& e) {
+    DDLOGF(fair::Severity::ERROR, "SubTimeFrame deserialization failed. reason={}", e.what());
+    mMessages.clear();
+    return nullptr;
+  } catch (std::exception& e) {
+    DDLOGF(fair::Severity::ERROR, "SubTimeFrame deserialization failed. reason={}", e.what());
+    mMessages.clear();
+    return nullptr;
+  }
+
+  // make sure headers and chunk pointers don't linger
+  mMessages.clear();
+
+  // update STF data
+  lStf->updateStf();
+
+  return lStf;
+}
+
+std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQParts& pMsgs)
+{
+  swap(mMessages, pMsgs.fParts);
+  pMsgs.fParts.clear();
+
+  return deserialize_impl();
+}
+
+std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQChannel& pChan)
+{
+  mMessages.clear();
+  const std::int64_t ret = pChan.Receive(mMessages, 500 /* ms */);
+
+  // timeout ?
+  if (ret == -2) {
+    return nullptr;
+  }
+
+  if (ret < 0) {
+    { // rate-limited LOG: print stats once per second
+      static unsigned long floodgate = 0;
+      if (floodgate++ % 10 == 0) {
+        DDLOGF(fair::Severity::ERROR, "STF receive failed err={} errno={} error={}",
+               ret, errno, std::string(strerror(errno)));
+      }
+    }
+
+    mMessages.clear();
+    return nullptr;
+  }
+
+  return deserialize_impl();
+}
+
 }
 } /* o2::DataDistribution */

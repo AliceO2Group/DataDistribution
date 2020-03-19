@@ -231,7 +231,7 @@ void StfBuilderDevice::StfOutputThread()
   WaitForRunningState();
 
   std::unique_ptr<InterleavedHdrDataSerializer> lStfSerializer;
-  std::unique_ptr<StfDplAdapter> lStfDplAdapter;
+  std::unique_ptr<StfToDplAdapter> lStfDplAdapter;
 
   // cannot get the channels in standalone mode
   auto& lOutputChan = getOutputChannel();
@@ -244,7 +244,7 @@ void StfBuilderDevice::StfOutputThread()
       lStfSerializer = std::make_unique<InterleavedHdrDataSerializer>(lOutputChan);
     } else {
       // auto& lOutputChan = GetChannel(getDplChannelName(), 0);
-      lStfDplAdapter = std::make_unique<StfDplAdapter>(lOutputChan);
+      lStfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
     }
   }
 
