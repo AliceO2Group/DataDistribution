@@ -234,13 +234,13 @@ void TfBuilderDevice::TfForwardThread()
   std::unique_ptr<TimeFrameBuilder> lTfBuilder;
 
   /// Serializer for DPL channel
-  std::unique_ptr<StfDplAdapter> lTfDplAdapter;
+  std::unique_ptr<StfToDplAdapter> lTfDplAdapter;
 
   if (!mStandalone) {
     if (dplEnabled()) {
       auto& lOutputChan = GetChannel(getDplChannelName(), 0);
       lTfBuilder = std::make_unique<TimeFrameBuilder>(lOutputChan, dplEnabled());
-      lTfDplAdapter = std::make_unique<StfDplAdapter>(lOutputChan);
+      lTfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
     }
   }
 

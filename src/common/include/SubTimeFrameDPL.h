@@ -28,17 +28,17 @@ namespace DataDistribution
 /// StfDplAdapter
 ////////////////////////////////////////////////////////////////////////////////
 
-class StfDplAdapter : public ISubTimeFrameVisitor
+class StfToDplAdapter : public ISubTimeFrameVisitor
 {
  public:
-  StfDplAdapter() = delete;
-  StfDplAdapter(FairMQChannel& pDplBridgeChan)
+  StfToDplAdapter() = delete;
+  StfToDplAdapter(FairMQChannel& pDplBridgeChan)
     : mChan(pDplBridgeChan)
   {
     mMessages.reserve(1024);
   }
 
-  virtual ~StfDplAdapter() = default;
+  virtual ~StfToDplAdapter() = default;
 
   void sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf);
 
@@ -49,6 +49,28 @@ class StfDplAdapter : public ISubTimeFrameVisitor
   std::vector<FairMQMessagePtr> mMessages;
   FairMQChannel& mChan;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+/// DplToStfAdapter
+////////////////////////////////////////////////////////////////////////////////
+
+class DplToStfAdapter : public ISubTimeFrameVisitor
+{
+ public:
+  DplToStfAdapter() = default;
+  virtual ~DplToStfAdapter() = default;
+
+  std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan);
+  std::unique_ptr<SubTimeFrame> deserialize(FairMQParts& pMsgs);
+
+ protected:
+  std::unique_ptr<SubTimeFrame> deserialize_impl();
+  void visit(SubTimeFrame& pStf) override;
+
+ private:
+  std::vector<FairMQMessagePtr> mMessages;
+};
+
 }
 } /* o2::DataDistribution */
 

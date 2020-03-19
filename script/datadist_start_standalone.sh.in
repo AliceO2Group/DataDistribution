@@ -57,7 +57,7 @@ if [ ! $? -eq 0 ]; then
 fi
 
 echo "$ARGS"
-eval $ARGS
+eval "$ARGS"
 
 IO_THREADS=8
 
@@ -84,9 +84,6 @@ else
   fi
 
   echo "Using readout.exe in emulation mode. Configuration is read from $readoutConfig"
-  echo "Only 1 FLP chain can be emulated when using the readout source."
-  FLP_CNT=1
-
   READOUT="readout.exe"
 
 
@@ -141,8 +138,8 @@ fi
 
 if [[ -z $USE_TMUX ]]; then
   # (FLP) Start FLP processes
-  xterm -geometry 90x57+560+0 -hold -e $STF_BUILDER --id stf_builder-0 --session default &
-  xterm -geometry 90x57+0+0 -hold -e $READOUT $READOUT_PARAM &
+  xterm -geometry 90x57+560+0 -hold -e "$STF_BUILDER" --id stf_builder-0 --session default &
+  xterm -geometry 90x57+0+0 -hold -e "$READOUT $READOUT_PARAM" &
 else
   # poor man's tmux environment cloning; make sure you're running tmux in control center (-CC) mode
   ENV_VAR_FILE=$(mktemp)
@@ -156,5 +153,4 @@ else
     split-window \
     "source $ENV_VAR_FILE; $STF_BUILDER --id stf_builder-0 --session default; $PRESS; rm $ENV_VAR_FILE" \; \
     select-layout even-horizontal
-
 fi

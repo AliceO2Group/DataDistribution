@@ -211,7 +211,8 @@ struct HBFrameHeader : public o2hdr::BaseHeader {
   friend class DataIdentifierSplitter;         \
   friend class SubTimeFrameFileWriter;         \
   friend class SubTimeFrameFileReader;         \
-  friend class StfDplAdapter;
+  friend class StfToDplAdapter;                \
+  friend class DplToStfAdapter;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// SubTimeFrame
@@ -286,6 +287,8 @@ class SubTimeFrame : public IDataModelObject
 
   void updateStf() { updateStf(mData); }
 
+  void clear() { mData.clear(); mUpdated = false; }
+
  protected:
   void accept(ISubTimeFrameVisitor& v) override { updateStf(mData); v.visit(*this); }
   void accept(ISubTimeFrameConstVisitor& v) const override { updateStf(mData); v.visit(*this); }
@@ -357,11 +360,8 @@ class SubTimeFrame : public IDataModelObject
           lDataVector.front().getDataHeader().splitPayloadParts ==
           lDataVector.back().getDataHeader().splitPayloadParts
         );
-
       }
-
     }
-
     mUpdated = true;
   }
 

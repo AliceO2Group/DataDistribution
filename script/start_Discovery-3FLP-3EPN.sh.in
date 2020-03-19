@@ -72,7 +72,7 @@ if [ ! $? -eq 0 ]; then
 fi
 
 echo "$ARGS"
-eval $ARGS
+eval "$ARGS"
 
 # make sure consul is running
 docker start consul-datadist
@@ -80,14 +80,11 @@ docker start consul-datadist
 docker exec -it consul-datadist consul kv delete -recurse /epn/data-dist
 
 # start processes and then add a new partition request
-NET_INTERFACE="eth0"
-
 PARTITION="##=test_partition=##"
 
 # new request info
 FLP_ID_LIST=""
-REQ_ID=$(openssl rand -hex 4)
-
+# REQ_ID=$(openssl rand -hex 4)
 
 IO_THREADS=8
 
@@ -150,7 +147,6 @@ STF_SENDER+=" --discovery-partition=$PARTITION"
 STF_SENDER+=" --transport shmem"
 STF_SENDER+=" --shm-monitor true"
 STF_SENDER+=" --mq-config $chainConfig"
-STF_SENDER+=" $GUI"
 STF_SENDER+=" --io-threads $IO_THREADS"
 
 TF_BUILDER="TfBuilder"
@@ -182,42 +178,45 @@ fi
 TF_SCHEDULER="TfScheduler"
 TF_SCHEDULER+=" --discovery-net-if=$EPN_NETIF"
 
-echo $STF_BUILDER
+echo "$STF_BUILDER"
+echo "$STF_SENDER"
+echo "$TF_SCHEDULER"
+echo "$TF_BUILDER"
 
 if [[ -z $USE_TMUX ]]; then
 
   # start TF scheduler
-  xterm -geometry 120x60+2240+0 -hold -e $TF_SCHEDULER --discovery-id=sched0 --id tf_scheduler --session sched-session &
+  xterm -geometry 120x60+2240+0 -hold -e "$TF_SCHEDULER --discovery-id=sched0 --id tf_scheduler --session sched-session" &
 
   # (EPN) Start TimeFrameBuilders
   if [[ $EPN_CNT -gt 0 ]]; then
-    xterm -geometry 90x20+1680+0 -hold -e $TF_BUILDER --discovery-id=epn0 --id tf_builder-0 --session epn-s0 &
+    xterm -geometry 90x20+1680+0 -hold -e "$TF_BUILDER --discovery-id=epn0 --id tf_builder-0 --session epn-s0" &
   fi
   if [[ $EPN_CNT -gt 1 ]]; then
-    xterm -geometry 90x20+1680+300 -hold -e $TF_BUILDER --discovery-id=epn1 --id tf_builder-1 --session epn-s1 &
+    xterm -geometry 90x20+1680+300 -hold -e "$TF_BUILDER --discovery-id=epn1 --id tf_builder-1 --session epn-s1" &
   fi
   if [[ $EPN_CNT -gt 2 ]]; then
-    xterm -geometry 90x20+1680+600 -hold -e $TF_BUILDER --discovery-id=epn2 --id tf_builder-2 --session epn-s2 &
+    xterm -geometry 90x20+1680+600 -hold -e0 "$TF_BUILDER --discovery-id=epn2 --id tf_builder-2 --session epn-s2" &
   fi
 
   # (FLP) Start FLP processes
   if [[ $FLP_CNT -gt 0 ]]; then
-    xterm -geometry 90x57+1120+0 -hold -e $STF_SENDER --discovery-id=flp0 --id stf_sender-0  --session default &
+    xterm -geometry 90x57+1120+0 -hold -e "$STF_SENDER --discovery-id=flp0 --id stf_sender-0  --session default" &
     FLP_ID_LIST+="flp0"
-    xterm -geometry 90x57+560+0 -hold -e $STF_BUILDER --id stf_builder-0 --session default &
-    xterm -geometry 90x57+0+0 -hold -e $READOUT $READOUT_PARAM_0 &
+    xterm -geometry 90x57+560+0 -hold -e "$STF_BUILDER --id stf_builder-0 --session default" &
+    xterm -geometry 90x57+0+0 -hold -e "$READOUT $READOUT_PARAM_0" &
   fi
   if [[ $FLP_CNT -gt 1 ]]; then
-    xterm -geometry 90x57+1120+0 -hold -e $STF_SENDER --discovery-id=flp1 --id stf_sender-1  --session flp-s1 &
+    xterm -geometry 90x57+1120+0 -hold -e "$STF_SENDER --discovery-id=flp1 --id stf_sender-1  --session flp-s1" &
     FLP_ID_LIST+=";flp1"
-    xterm -geometry 90x57+560+0 -hold -e $STF_BUILDER --id stf_builder-1 --session flp-s1 &
-    xterm -geometry 90x57+0+0 -hold -e $READOUT $READOUT_PARAM_1 &
+    xterm -geometry 90x57+560+0 -hold -e "$STF_BUILDER --id stf_builder-1 --session flp-s1" &
+    xterm -geometry 90x57+0+0 -hold -e "$READOUT $READOUT_PARAM_1" &
   fi
   if [[ $FLP_CNT -gt 2 ]]; then
-    xterm -geometry 90x57+1120+0 -hold -e $STF_SENDER --discovery-id=flp2 --id stf_sender-2  --session flp-s2 &
+    xterm -geometry 90x57+1120+0 -hold -e "$STF_SENDER --discovery-id=flp2 --id stf_sender-2  --session flp-s2" &
     FLP_ID_LIST+=";flp2"
-    xterm -geometry 90x57+560+0 -hold -e $STF_BUILDER --id stf_builder-2 --session flp-s2 &
-    xterm -geometry 90x57+0+0 -hold -e $READOUT $READOUT_PARAM_2 &
+    xterm -geometry 90x57+560+0 -hold -e "$STF_BUILDER --id stf_builder-2 --session flp-s2" &
+    xterm -geometry 90x57+0+0 -hold -e "$READOUT $READOUT_PARAM_2" &
   fi
 
 
@@ -244,7 +243,7 @@ else
       select-layout even-horizontal
 
     sleep 2
-    rm $ENV_VAR_FILE
+    rm "$ENV_VAR_FILE"
   fi
 fi
 

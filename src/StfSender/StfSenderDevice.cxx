@@ -17,6 +17,7 @@
 
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameVisitors.h>
+#include <SubTimeFrameDPL.h>
 
 #include <options/FairMQProgOptions.h>
 
@@ -162,7 +163,8 @@ void StfSenderDevice::StfReceiverThread()
 {
   auto& lInputChan = GetChannel(mInputChannelName, 0);
 
-  InterleavedHdrDataDeserializer lStfReceiver;
+  // InterleavedHdrDataDeserializer lStfReceiver;
+  DplToStfAdapter  lStfReceiver;
   std::unique_ptr<SubTimeFrame> lStf;
 
   // wait for the device to go into RUNNING state
