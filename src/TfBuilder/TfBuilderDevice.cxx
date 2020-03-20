@@ -19,10 +19,6 @@
 #include <ConfigConsul.h>
 #include <SubTimeFrameDPL.h>
 
-#include <options/FairMQProgOptions.h>
-
-#include <TH1.h>
-
 #include <chrono>
 #include <thread>
 
@@ -56,7 +52,6 @@ void TfBuilderDevice::InitTask()
     mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
     mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
     mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
-    mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
 
     mDiscoveryConfig = std::make_shared<ConsulTfBuilder>(ProcessType::TfBuilder,
       Config::getEndpointOption(*GetConfig()));
@@ -126,12 +121,8 @@ void TfBuilderDevice::InitTask()
       mStandaloneChannel->Validate();
     }
 
-    // start the gui thread
-    if (mBuildHistograms) {
-      mGui = std::make_unique<RootGui>("TFBuilder", "TF Builder", 1200, 400);
-      mGui->Canvas().Divide(3, 1);
-      mGuiThread = std::thread(&TfBuilderDevice::GuiThread, this);
-    }
+    // start the info thread
+    mInfoThread = std::thread(&TfBuilderDevice::InfoThread, this);
   }
 }
 
@@ -197,9 +188,9 @@ void TfBuilderDevice::stop()
     mTfFwdThread.join();
   }
 
-  //wait for the gui thread
-  if (mBuildHistograms && mGuiThread.joinable()) {
-    mGuiThread.join();
+  //wait for the info thread
+  if (mInfoThread.joinable()) {
+    mInfoThread.join();
   }
 
   // stop the RPCs
@@ -255,7 +246,7 @@ void TfBuilderDevice::TfForwardThread()
     const auto lTfId = lTf->header().mId;
 
     // MON: record frequency and size of TFs
-    if (mBuildHistograms) {
+    {
       mTfFreqSamples.Fill(
         1.0 / std::chrono::duration<double>(
                 std::chrono::high_resolution_clock::now() - lFreqStartTime)
@@ -263,7 +254,7 @@ void TfBuilderDevice::TfForwardThread()
 
       lFreqStartTime = std::chrono::high_resolution_clock::now();
 
-      // size histogram
+      // size samples
       mTfSizeSamples.Fill(lTf->getDataSize());
     }
 
@@ -309,43 +300,22 @@ void TfBuilderDevice::TfForwardThread()
   DDLOG(fair::Severity::INFO) << "Exiting TF forwarding thread... ";
 }
 
-void TfBuilderDevice::GuiThread()
+void TfBuilderDevice::InfoThread()
 {
-  std::unique_ptr<TH1F> lTfSizeHist = std::make_unique<TH1F>("TfSizeH", "Size of TF", 100, 0.0, float(1UL << 30));
-  lTfSizeHist->GetXaxis()->SetTitle("Size [B]");
-
-  std::unique_ptr<TH1F> lTfFreqHist = std::make_unique<TH1F>("TfFreq", "TimeFrame frequency", 200, 0.0, 100.0);
-  lTfFreqHist->GetXaxis()->SetTitle("Frequency [Hz]");
-
-  std::unique_ptr<TH1S> lStfPipelinedCntHist = std::make_unique<TH1S>("StfQueuedH", "Queued STFs", 150, -0.5, 150.0 - 0.5);
-  lStfPipelinedCntHist->GetXaxis()->SetTitle("Number of queued Stf");
-
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
   while (IsRunningState()) {
-    DDLOG(fair::Severity::INFO) << "Updating histograms...";
-
-    mGui->Canvas().cd(1);
-    mGui->DrawHist(lTfSizeHist.get(), mTfSizeSamples);
-
-    mGui->Canvas().cd(2);
-    mGui->DrawHist(lTfFreqHist.get(), mTfFreqSamples);
-
-    mGui->Canvas().cd(3);
-    mGui->DrawHist(lStfPipelinedCntHist.get(), this->getPipelinedSizeSamples());
-
-    mGui->Canvas().Modified();
-    mGui->Canvas().Update();
 
     DDLOG(fair::Severity::INFO) << "Mean size of TimeFrames : " << mTfSizeSamples.Mean();
     DDLOG(fair::Severity::INFO) << "Mean TimeFrame frequency: " << mTfFreqSamples.Mean();
     DDLOG(fair::Severity::INFO) << "Number of queued TFs    : " << getPipelineSize(); // current value
 
-    std::this_thread::sleep_for(5s);
+    std::this_thread::sleep_for(2s);
   }
 
-  DDLOG(fair::Severity::INFO) << "Exiting GUI thread...";
+  DDLOGF(fair::Severity::trace, "Exiting info thread...");
 }
+
 }
 } /* namespace o2::DataDistribution */

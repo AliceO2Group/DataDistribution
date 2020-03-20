@@ -24,11 +24,6 @@
 #include <SubTimeFrameFileSource.h>
 #include <ConcurrentQueue.h>
 #include <Utilities.h>
-#include <RootGui.h>
-
-#include <TApplication.h>
-#include <TCanvas.h>
-#include <TH1.h>
 
 #include <deque>
 #include <mutex>
@@ -62,7 +57,6 @@ class TfBuilderDevice : public DataDistDevice,
  public:
   static constexpr const char* OptionKeyStandalone = "stand-alone";
   static constexpr const char* OptionKeyTfMemorySize = "tf-memory-size";
-  static constexpr const char* OptionKeyGui = "gui";
 
   static constexpr const char* OptionKeyDplChannelName = "dpl-channel-name";
 
@@ -144,11 +138,9 @@ class TfBuilderDevice : public DataDistDevice,
   /// TF forwarding thread
   std::thread mTfFwdThread;
 
-  /// Root stuff
-  void GuiThread();
-  bool mBuildHistograms = true;
-  std::unique_ptr<RootGui> mGui;
-  std::thread mGuiThread;
+  /// Info thread
+  void InfoThread();
+  std::thread mInfoThread;
 
   RunningSamples<uint64_t> mTfSizeSamples;
   RunningSamples<float> mTfFreqSamples;
