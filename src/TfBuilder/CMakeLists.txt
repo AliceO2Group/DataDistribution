@@ -1,4 +1,4 @@
-# @author Gvozden Neskovic
+# @author Gvozden Nešković
 # @brief  cmake for TfBuilder
 
 set(EXE_TFB_SOURCES
@@ -18,7 +18,7 @@ endif()
 
 target_link_libraries(TfBuilder
   PRIVATE
-    base common common_root discovery
+    base common discovery
 )
 
 install(TARGETS TfBuilder RUNTIME DESTINATION bin)
