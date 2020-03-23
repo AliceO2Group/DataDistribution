@@ -37,14 +37,16 @@ namespace bpo = boost::program_options;
 
 void SubTimeFrameFileSink::start()
 {
-  if (enabled())
+  if (enabled()) {
     mSinkThread = std::thread(&SubTimeFrameFileSink::DataHandlerThread, this, 0);
+  }
 }
 
 void SubTimeFrameFileSink::stop()
 {
-  if (mSinkThread.joinable())
+  if (mSinkThread.joinable()) {
     mSinkThread.join();
+  }
 }
 
 bpo::options_description SubTimeFrameFileSink::getProgramOptions()
@@ -160,6 +162,8 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 
   std::string lCurrentFileName;
 
+  bool lForwardOnly = false; // set if we encounter error while writing to file
+
   while (mDeviceI.IsRunningState()) {
     // Get the next STF
     std::unique_ptr<SubTimeFrame> lStf = mPipelineI.dequeue(mPipelineStageIn);
@@ -168,13 +172,13 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       break;
     }
 
+    if (lForwardOnly) {
+      mPipelineI.queue(mPipelineStageOut, std::move(lStf));
+      continue;
+    }
+
     // make sure Stf is updated before writing
     lStf->updateStf();
-
-    if (!enabled()) {
-      DDLOGF(fair::Severity::FATAL, "Pipeline error, disabled file sink receiving STFs");
-      break;
-    }
 
     // check if we need a writer
     if (!mStfWriter) {
@@ -193,8 +197,8 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       lCurrentFileSize = mStfWriter->size();
     } else {
       mStfWriter.reset();
-      mEnabled = false;
-      DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: error while writing to file {:d}", lCurrentFileName);
+      lForwardOnly = false;
+      DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: error while writing to file {:s}", lCurrentFileName);
       DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: disabling file sink");
     }
 
@@ -202,12 +206,13 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
     if (((mStfsPerFile > 0) && (lCurrentFileStfs >= mStfsPerFile)) || (lCurrentFileSize >= mFileSize)) {
       lCurrentFileStfs = 0;
       lCurrentFileSize = 0;
-      mStfWriter.reset(nullptr);
+      mStfWriter.reset();
     }
 
     mPipelineI.queue(mPipelineStageOut, std::move(lStf));
   }
-  DDLOG(fair::Severity::INFO) << "Exiting file sink thread[" << pIdx << "]...";
+  DDLOGF(fair::Severity::trace, "Exiting file sink thread [{}]", pIdx);
 }
+
 }
 } /* o2::DataDistribution */
