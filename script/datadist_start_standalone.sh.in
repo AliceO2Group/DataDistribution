@@ -15,14 +15,14 @@ parser.add_argument('--readout', dest='readout', required=False, action='store_t
 parser.add_argument('--readout_cfg',required=False, default='', action='store', help='Optional configuration file for readout.exe')
 
 parser.add_argument('--tmux', required=False, action='store_true', help='Run in tmux CC mode')
-parser.add_argument('--no-gui', dest='nogui', required=False, action='store_true', help='Show GUI')
 
 parser.add_argument('-n', '--equip', required=False, default=2, action='store', type=int, help='Number data producer equipment per FLP chain')
 parser.add_argument('-r', '--rate', required=False, default=2.0, action='store', type=float, help='Data rate of each equipment instance (in Gb/s)')
 parser.add_argument('-s', '--rsize', required=False, default=4, action='store', type=int, help='Size of the readout memory segment (in GiB)')
 parser.add_argument('-p', '--spsize', required=False, default=2, action='store', type=int, help='Size of the readout super-pages (in MiB)')
 
-parser.add_argument('--dpl-channel', required=False, default='', action='store', help='Name of the DPL input channel on FLP for STFs.')
+parser.add_argument('--dpl-passthrough', required=False, action='store_true', help='Send SubTimeFrames through DPL.')
+
 parser.add_argument('--data-source-dir', required=False, default='', action='store', help='Directory where to find recorded STF data')
 
 parser.add_argument('--data-sink-dir', required=False, default='', action='store', help='Directory where to store STFs from SubTimeFrameBuilder')
@@ -38,11 +38,10 @@ print("EQUIPMENT_CNT=%s" % args.equip)
 print("EQUIPMENT_RATE=%s" % int(args.rate * 1e+9))
 print("DATA_REGION_SIZE=%s" % int(args.rsize * (1<<30)))
 print("SUPERPAGE_SIZE=%s" % int(args.spsize * (1<<20)))
-print("STF_BUILDER_DPL_CHAN='%s'" % args.dpl_channel)
 print("STF_BUILDER_SOURCE_DIR='%s'" % args.data_source_dir)
 print("STF_BUILDER_SINK_DIR='%s'" % args.data_sink_dir)
 
-print("GUI=%s" % ("" if args.nogui else "--gui"))
+print("DPL_PASS=%s" % ("1" if args.dpl_passthrough else ""))
 
 print("USE_TMUX=%s" % ("1" if args.tmux else ""))
 EOF
@@ -72,10 +71,10 @@ if [[ "$EMU" == "emu" ]]; then
   READOUT+=" --cru-superpage-size $SUPERPAGE_SIZE"
   READOUT+=" --cru-link-count $EQUIPMENT_CNT"
   READOUT+=" --cru-link-bits-per-s $EQUIPMENT_RATE"
-  READOUT+=" $GUI"
+  READOUT+=" --gui"
   READOUT+=" --io-threads $IO_THREADS"
 
-  READOUT_PARAM="--link-id-offset 0    --id readout-0 --session default"
+  READOUT_PARAM="--link-id-offset 0  --id readout-0 --session default"
 
 else
   if ! [ -x "$(command -v readout.exe)" ]; then
@@ -101,11 +100,10 @@ STF_BUILDER+=" --transport shmem"
 STF_BUILDER+=" --mq-config $chainConfig"
 STF_BUILDER+=" --detector TPC"
 STF_BUILDER+=" --io-threads $IO_THREADS"
+STF_BUILDER+=" --max-buffered-stfs 2"
 
-if [[ ! -z $STF_BUILDER_DPL_CHAN ]]; then
-  STF_BUILDER+=" --dpl-channel-name=$STF_BUILDER_DPL_CHAN"
-else
-  STF_BUILDER+=" --stand-alone"
+if [[ ! -z $DPL_PASS ]]; then
+  STF_BUILDER+=" --dpl-channel-name=dpl-channel"
 fi
 
 if [[ ! -z $STF_BUILDER_SINK_DIR ]]; then
@@ -136,8 +134,26 @@ if [[ ! -z $STF_BUILDER_SOURCE_DIR ]]; then
   READOUT_PARAM=""
 fi
 
+
+STF_SENDER="StfSender"
+STF_SENDER+=" --transport shmem"
+STF_SENDER+=" --mq-config $chainConfig"
+STF_SENDER+=" --io-threads $IO_THREADS"
+STF_SENDER+=" --input-channel-name=input-stf-channel" ## same for DPL and StfBuilder (see the json file)
+STF_SENDER+=" --stand-alone"
+STF_SENDER+=" --id stf_sender-0 --session default"
+
+
+if [[ -z $DPL_PASS ]]; then
+  STF_SENDER="" # disable sender
+  STF_BUILDER+=" --stand-alone"
+fi
+
+
+
 if [[ -z $USE_TMUX ]]; then
   # (FLP) Start FLP processes
+  xterm -geometry 90x57+1120+0 -hold -e "$STF_SENDER" --id stf_sender-0 --session default &
   xterm -geometry 90x57+560+0 -hold -e "$STF_BUILDER" --id stf_builder-0 --session default &
   xterm -geometry 90x57+0+0 -hold -e "$READOUT $READOUT_PARAM" &
 else
@@ -152,5 +168,7 @@ else
     "source $ENV_VAR_FILE; $READOUT $READOUT_PARAM; $PRESS" \; \
     split-window \
     "source $ENV_VAR_FILE; $STF_BUILDER --id stf_builder-0 --session default; $PRESS; rm $ENV_VAR_FILE" \; \
+    split-window \
+    "source $ENV_VAR_FILE; $STF_SENDER; $PRESS; rm $ENV_VAR_FILE" \; \
     select-layout even-horizontal
 fi

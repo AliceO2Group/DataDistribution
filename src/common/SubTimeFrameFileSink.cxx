@@ -164,6 +164,9 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 
   bool lForwardOnly = false; // set if we encounter error while writing to file
 
+  // wait for running
+  mDeviceI.WaitForRunningState();
+
   while (mDeviceI.IsRunningState()) {
     // Get the next STF
     std::unique_ptr<SubTimeFrame> lStf = mPipelineI.dequeue(mPipelineStageIn);

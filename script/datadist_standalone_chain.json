@@ -37,21 +37,21 @@
                         "transport": "shmem",
                         "sockets": [
                             {
-                                "type": "pair",
+                                "type": "push",
                                 "method": "bind",
-                                "address": "ipc:///tmp/stf-builder-pipe-0",
+                                "address": "ipc:///tmp/stf-pipe-0",
                                 "rateLogging": "1"
                             }
                         ]
                     },
                     {
-                        "name": "dpl-stf-channel",
+                        "name": "dpl-channel",
                         "transport": "shmem",
                         "sockets": [
                             {
                                 "type": "push",
                                 "method": "bind",
-                                "address": "ipc:///tmp/stf-builder-dpl-pipe-0",
+                                "address": "ipc:///tmp/stf-dpl-pipe-0",
                                 "rateLogging": "1"
                             }
                         ]
@@ -62,18 +62,20 @@
                 "id": "stf_sender-0",
                 "channels": [
                     {
-                        "name": "builder-stf-channel",
+                        "name": "input-stf-channel",
                         "transport": "shmem",
                         "sockets": [
                             {
-                                "type": "pair",
+                                "type": "pull",
                                 "method": "connect",
-                                "address": "ipc:///tmp/stf-builder-pipe-0"
+                                "address": "ipc:///tmp/stf-pipe-0",
+                                "rateLogging": "1"
                             }
                         ]
                     }
                 ]
             },
+
 
             {
                 "id": "readout-1",
@@ -110,20 +112,22 @@
                         "transport": "shmem",
                         "sockets": [
                             {
-                                "type": "pair",
+                                "type": "push",
                                 "method": "bind",
-                                "address": "ipc:///tmp/stf-builder-pipe-1"
+                                "address": "ipc:///tmp/stf-pipe-1",
+                                "rateLogging": "1"
                             }
                         ]
                     },
                     {
-                        "name": "dpl-stf-channel",
+                        "name": "dpl-channel",
                         "transport": "shmem",
                         "sockets": [
                             {
                                 "type": "push",
                                 "method": "bind",
-                                "address": "ipc:///tmp/stf-builder-dpl-pipe-1"
+                                "address": "ipc:///tmp/stf-dpl-pipe-1",
+                                "rateLogging": "1"
                             }
                         ]
                     }
@@ -133,18 +137,20 @@
                 "id": "stf_sender-1",
                 "channels": [
                     {
-                        "name": "builder-stf-channel",
+                        "name": "input-stf-channel",
                         "transport": "shmem",
                         "sockets": [
                             {
-                                "type": "pair",
+                                "type": "pull",
                                 "method": "connect",
-                                "address": "ipc:///tmp/stf-builder-pipe-1"
+                                "address": "ipc:///tmp/stf-pipe-1",
+                                "rateLogging": "1"
                             }
                         ]
                     }
                 ]
             },
+
 
             {
                 "id": "readout-2",
@@ -181,20 +187,22 @@
                         "transport": "shmem",
                         "sockets": [
                             {
-                                "type": "pair",
+                                "type": "push",
                                 "method": "bind",
-                                "address": "ipc:///tmp/stf-builder-pipe-2"
+                                "address": "ipc:///tmp/stf-pipe-2",
+                                "rateLogging": "1"
                             }
                         ]
                     },
                     {
-                        "name": "dpl-stf-channel",
+                        "name": "dpl-channel",
                         "transport": "shmem",
                         "sockets": [
                             {
                                 "type": "push",
                                 "method": "bind",
-                                "address": "ipc:///tmp/stf-builder-dpl-pipe-2"
+                                "address": "ipc:///tmp/stf-dpl-pipe-2",
+                                "rateLogging": "1"
                             }
                         ]
                     }
@@ -204,100 +212,32 @@
                 "id": "stf_sender-2",
                 "channels": [
                     {
-                        "name": "builder-stf-channel",
+                        "name": "input-stf-channel",
                         "transport": "shmem",
                         "sockets": [
                             {
-                                "type": "pair",
+                                "type": "pull",
                                 "method": "connect",
-                                "address": "ipc:///tmp/stf-builder-pipe-2"
+                                "address": "ipc:///tmp/stf-pipe-2",
+                                "rateLogging": "1"
                             }
                         ]
                     }
                 ]
             },
-
 
 
             {
                 "id": "tf_builder-0",
-                "channels": [
-                    {
-                        "name": "sender-stf-channel",
-                        "transport": "zeromq",
-                        "sockets": [
-                            {
-                                "type": "pair",
-                                "method": "connect",
-                                "address": "tcp://localhost:23000"
-                            },
-                            {
-                                "type": "pair",
-                                "method": "connect",
-                                "address": "tcp://localhost:24000"
-                            },
-                            {
-                                "type": "pair",
-                                "method": "connect",
-                                "address": "tcp://localhost:25000"
-                            }
-
-                        ]
-                    }
-                ]
+                "channels": [ ]
             },
             {
                 "id": "tf_builder-1",
-                "channels": [
-                    {
-                        "name": "sender-stf-channel",
-                        "transport": "zeromq",
-                        "sockets": [
-                            {
-                                "type": "pair",
-                                "method": "connect",
-                                "address": "tcp://localhost:23001"
-                            },
-                            {
-                                "type": "pair",
-                                "method": "connect",
-                                "address": "tcp://localhost:24001"
-                            },
-                            {
-                                "type": "pair",
-                                "method": "connect",
-                                "address": "tcp://localhost:25001"
-                            }
-                        ]
-                    }
-                ]
+                "channels": [ ]
             },
             {
                 "id": "tf_builder-2",
-                "channels": [
-                    {
-                        "name": "sender-stf-channel",
-                        "transport": "zeromq",
-                        "sockets": [
-                            {
-                                "type": "pair",
-                                "method": "connect",
-                                "address": "tcp://localhost:23002"
-                            },
-                            {
-                                "type": "pair",
-                                "method": "connect",
-                                "address": "tcp://localhost:24002"
-                            },
-                            {
-                                "type": "pair",
-                                "method": "connect",
-                                "address": "tcp://localhost:25002"
-                            }
-
-                        ]
-                    }
-                ]
+                "channels": [ ]
             }
         ]
     }
