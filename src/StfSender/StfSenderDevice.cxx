@@ -161,6 +161,8 @@ void StfSenderDevice::ResetTask()
 
 void StfSenderDevice::StfReceiverThread()
 {
+  using hres_clock = std::chrono::high_resolution_clock;
+
   auto& lInputChan = GetChannel(mInputChannelName, 0);
 
   // InterleavedHdrDataDeserializer lStfReceiver;
@@ -170,6 +172,8 @@ void StfSenderDevice::StfReceiverThread()
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
+  auto lStfStartTime = hres_clock::now();
+
   while (IsRunningState()) {
     lStf = lStfReceiver.deserialize(lInputChan);
 
@@ -178,19 +182,28 @@ void StfSenderDevice::StfReceiverThread()
       continue; // timeout? try until the FMQFSM goes out of running
     }
 
-    const TimeFrameIdType lStfId = lStf->header().mId;
+    { // Input STF frequency
+      const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
+      mStfFreqSamples.Fill(1.0f / lStfDur.count());
+      lStfStartTime = hres_clock::now();
+    }
+
+    // get data size
+    mStfSizeSamples.Fill(lStf->getDataSize());
 
     { // rate-limited LOG: print stats every 100 TFs
       static unsigned long floodgate = 0;
       if (floodgate++ % 100 == 0) {
-        DDLOG(fair::Severity::DEBUG) << "TF[" << lStfId << "] size: " << lStf->getDataSize();
+        const TimeFrameIdType lStfId = lStf->header().mId;
+        DDLOGF(fair::Severity::INFO, "SubTimeFrame stf_id={} size={} unique_equip={}",
+          lStfId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
       }
     }
 
     queue(eReceiverOut, std::move(lStf));
   }
 
-  DDLOG(fair::Severity::INFO) << "Exiting StfOutputThread...";
+  DDLOGF(fair::Severity::trace, "Exiting StfReceiverThread...");
 }
 
 void StfSenderDevice::InfoThread()
@@ -199,7 +212,11 @@ void StfSenderDevice::InfoThread()
   WaitForRunningState();
 
   while (IsRunningState()) {
-    DDLOGF(fair::Severity::INFO, "StfSender queued_stfs={}", this->getPipelineSize());
+
+    // DDLOGF(fair::Severity::INFO, "StfSender queued_stfs={}", this->getPipelineSize());
+
+    DDLOGF(fair::Severity::info, "SubTimeFrame size_mean={} in_frequency_mean={} queued_stf={}",
+      mStfSizeSamples.Mean(), mStfFreqSamples.Mean(), mNumStfs);
 
     std::this_thread::sleep_for(2s);
   }

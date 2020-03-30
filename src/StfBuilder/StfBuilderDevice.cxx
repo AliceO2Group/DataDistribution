@@ -310,7 +310,7 @@ void StfBuilderDevice::InfoThread()
 
   while (IsRunningState()) {
 
-    DDLOGF(fair::Severity::info, "SubTimeFrame size_mean={} frequency_mean={} sending_time_ms={} queued_stf={}",
+    DDLOGF(fair::Severity::info, "SubTimeFrame size_mean={} frequency_mean={} sending_time_ms_mean={} queued_stf={}",
       mStfSizeSamples.Mean(), mReadoutInterface.StfFreqSamples().Mean(), mStfDataTimeSamples.Mean(), mNumStfs);
 
     std::this_thread::sleep_for(2s);
