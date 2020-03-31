@@ -38,7 +38,6 @@ target_link_libraries(common
     base
     FairMQ::FairMQ
     AliceO2::Headers
-    AliceO2::Framework
 )
 
 
