@@ -126,10 +126,10 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
               "readout.exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
               "Total occurrences: " << sNumContIncProblems;
 
-          if (sNumContIncProblems++ % 20 == 0) {
-            DDLOG(fair::Severity::ERROR) << lErrMsg.str();
+          if (sNumContIncProblems++ % 10 == 0) {
+            DDLOGF(fair::Severity::ERROR, lErrMsg.str());
           } else {
-            DDLOG(fair::Severity::DEBUG) << lErrMsg.str();
+            DDLOGF(fair::Severity::DEBUG, lErrMsg.str());
           }
 
           // TODO: accout for lost data
@@ -145,9 +145,9 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
             "Total occurrences: " << sNumContDecProblems;
 
           if (sNumContDecProblems++ % 10 == 0) {
-            DDLOG(fair::Severity::ERROR) << lErrMsg.str();
+            DDLOGF(fair::Severity::ERROR, lErrMsg.str());
           } else {
-            DDLOG(fair::Severity::DEBUG) << lErrMsg.str();
+            DDLOGF(fair::Severity::DEBUG, lErrMsg.str());
           }
         }
       }
@@ -158,12 +158,11 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       mBuilderInputQueues[lReadoutHdr.mTimeFrameId % mNumBuilders].push(std::move(lReadoutMsgs));
     }
   } catch (std::runtime_error& e) {
-    DDLOG(fair::Severity::ERROR) << "Receive failed. Stopping input thread[" << pInputChannelIdx << "]...";
+    DDLOGF(fair::Severity::ERROR, "Input channel receive failed. Stopping input thread...");
     return;
   }
 
-
-  DDLOG(fair::Severity::INFO) << "Exiting input thread[" << pInputChannelIdx << "]...";
+  DDLOGF(fair::Severity::trace, "Exiting the input thread...");
 }
 
 /// StfBuilding thread
@@ -204,7 +203,8 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         std::unique_ptr<SubTimeFrame> lStf = lStfBuilder.getStf();
 
         if (lStf) {
-         DDLOG(fair::Severity::WARNING) << "StfBuilderThread " << pIdx << ": finishing STF on timeout, id[" << lStf->header().mId<< "]::size= " << lStf->getDataSize();
+         DDLOGF(fair::Severity::WARNING, "READOUT INTERFACE: finishing STF on a timeout. stf_id={} size={}",
+          lStf->header().mId, lStf->getDataSize());
 
           mDevice.queue(eStfBuilderOut, std::move(lStf));
 
@@ -223,12 +223,12 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       }
 
       if (lReadoutMsgs.empty()) {
-        DDLOG(fair::Severity::ERROR) << "READOUT INTERFACE: empty readout multipart.";
+        DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: empty readout multipart.");
         continue;
       }
 
       if (lReadoutMsgs.size() < 2) {
-        DDLOG(fair::Severity::ERROR) << "READOUT INTERFACE [" << pIdx << "]: no data sent, only header.";
+        DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: no data sent, only header.");
         continue;
       }
 
@@ -243,8 +243,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         static thread_local std::uint64_t sStfSeen = 0;
         if (lReadoutHdr.mTimeFrameId != sStfSeen) {
           sStfSeen = lReadoutHdr.mTimeFrameId;
-          DDLOG(fair::Severity::DEBUG) << "READOUT INTERFACE [" << pIdx << "]: "
-            "Received an update for STF ID: " << lReadoutHdr.mTimeFrameId;
+          DDLOGF(fair::Severity::DEBUG, "READOUT INTERFACE: Received an ReadoutMsg. stf_id={}", lReadoutHdr.mTimeFrameId);
         }
       }
 
@@ -253,10 +252,9 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         if (lReadoutHdr.mNumberHbf != lReadoutMsgs.size() - 1) {
           static thread_local std::uint64_t sNumMessages = 0;
           if (sNumMessages++ % 8192 == 0) {
-            DDLOG(fair::Severity::ERROR) << "READOUT INTERFACE [" << pIdx << "]: "
-              "indicated number of HBFrames in the header does not match the number of sent blocks: "
-                       << lReadoutHdr.mNumberHbf << " != " << (lReadoutMsgs.size() - 1)
-                       << ". Total occurrences: " << sNumMessages;
+            DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: wrong number of HBFrames in the header."
+              "header_cnt={} msg_length={} total_occurrences={}",
+              lReadoutHdr.mNumberHbf, (lReadoutMsgs.size() - 1), sNumMessages);
           }
 
           lReadoutHdr.mNumberHbf = lReadoutMsgs.size() - 1;
@@ -273,15 +271,14 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
           (void) lEndPoint; /* unused */
 
           if (lLinkId != lReadoutHdr.mLinkId) {
-            DDLOG(fair::Severity::ERROR) << "READOUT INTERFACE [" << pIdx << "]: "
-                          "indicated link ID does not match RDH in data block "
-                       << (unsigned)lReadoutHdr.mLinkId << " != " << lLinkId;
+            DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: update link ID does not match RDH in the data block."
+              " hdr_link_id={} rdh_link_id={}", lReadoutHdr.mLinkId, lLinkId);
           }
         }
       }
 
       if (lReadoutMsgs.size() <= 1) {
-        DDLOG(fair::Severity::ERROR) << "READOUT INTERFACE [" << pIdx << "]: no data sent, invalid blocks removed.";
+        DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: no data sent, invalid blocks removed.");
         continue;
       }
 
@@ -344,11 +341,9 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
 
         if (lNewSubSpec != lSubSpecification) {
 
-          DDLOG(fair::Severity::ERROR) << "READOUT INTERFACE [" << pIdx << "]: update with mismatched subspecification. "
-            "block[0]: " << std::hex << "0x" << lSubSpecification
-            << ", block[" << std::dec << (lEndHbf - (lReadoutMsgs.begin() + 1)) << "]: "
-            << std::hex << "0x"  << lNewSubSpec;
-
+          DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE [{}]: update with mismatched subspecification."
+            " block[0]: {:#06X}, block[{}]: {:#06X}",
+            pIdx, lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
           // insert
           lStfBuilder.addHbFrames(mDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
           lAdded += (lEndHbf - lStartHbf);
@@ -360,13 +355,13 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       }
 
       if (lAdded != lReadoutMsgs.size() - 1 ) {
-        DDLOG(fair::Severity::ERROR) << "BUG: Not all received HBFRames added to the STF...";
+        DDLOGF(fair::Severity::ERROR, "BUG: Not all received HBFrames added to the STF...");
       }
 
       lReadoutMsgs.clear();
     }
 
-  DDLOG(fair::Severity::INFO) << "Exiting StfBuilder thread[" << pIdx << "]...";
+  DDLOGF(fair::Severity::trace, "Exiting StfBuilder thread...");
 }
 
 }
