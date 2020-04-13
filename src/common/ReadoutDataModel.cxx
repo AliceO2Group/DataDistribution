@@ -26,6 +26,7 @@ namespace o2
 namespace DataDistribution
 {
 
+ReadoutDataUtils::SubSpecMode ReadoutDataUtils::sRawDataSubspectype = eCruLinkId;
 ReadoutDataUtils::SanityCheckMode ReadoutDataUtils::sRdhSanityCheckMode = eNoSanityCheck;
 
 /// static
@@ -88,16 +89,21 @@ o2::header::DataHeader::SubSpecificationType
 ReadoutDataUtils::getSubSpecification(const char* pRdhData, const std::size_t len)
 {
   static_assert( sizeof(o2::header::DataHeader::SubSpecificationType) == 4);
-
-  o2::header::DataHeader::SubSpecificationType lSubSpec = 0;
+  o2::header::DataHeader::SubSpecificationType lSubSpec = ~0;
   if (len < 64) { // size of one RDH
-    return ~lSubSpec;
+    return lSubSpec;
   }
 
-  const auto [lCruId, lEndPoint, lLinkId] = getSubSpecificationComponents(pRdhData, len);
+  if (ReadoutDataUtils::sRawDataSubspectype == eCruLinkId) {
+    const auto [lCruId, lEndPoint, lLinkId] = getSubSpecificationComponents(pRdhData, len);
 
-  /* add 1 to linkID because they start with 0 */
-  lSubSpec = (lCruId << 16) | ((lLinkId + 1) << (lEndPoint == 0 ? 0 : 8));
+    /* add 1 to linkID because they start with 0 */
+    lSubSpec = (lCruId << 16) | ((lLinkId + 1) << (lEndPoint == 0 ? 0 : 8));
+  } else if (ReadoutDataUtils::sRawDataSubspectype == eFeeId) {
+    lSubSpec = getFeeId(pRdhData, len);
+  } else {
+    DDLOGF(fair::Severity::FATAL, "Invalid SubSpecification method={}", ReadoutDataUtils::sRawDataSubspectype);
+  }
 
   return lSubSpec;
 }
@@ -363,6 +369,20 @@ std::istream& operator>>(std::istream& in, ReadoutDataUtils::SanityCheckMode& pR
   return in;
 }
 
+std::istream& operator>>(std::istream& in, ReadoutDataUtils::SubSpecMode& pRetVal)
+{
+  std::string token;
+  in >> token;
+
+  if (token == "cru_linkid") {
+    pRetVal = ReadoutDataUtils::eCruLinkId;
+  } else if (token == "feeid") {
+    pRetVal = ReadoutDataUtils::eFeeId;
+  } else {
+    in.setstate(std::ios_base::failbit);
+  }
+  return in;
+}
 
 }
 } /* o2::DataDistribution */

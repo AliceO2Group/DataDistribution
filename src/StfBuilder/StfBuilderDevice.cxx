@@ -65,6 +65,9 @@ void StfBuilderDevice::InitTask()
   mDataOrigin = getDataOriginFromOption(GetConfig()->GetValue<std::string>(OptionKeyStfDetector));
 
   // input data handling
+  ReadoutDataUtils::sRawDataSubspectype =
+    GetConfig()->GetValue<ReadoutDataUtils::SubSpecMode>(OptionKeySubSpec);
+
   ReadoutDataUtils::setRdhSanityCheckMode(
     GetConfig()->GetValue<ReadoutDataUtils::SanityCheckMode>(OptionKeyRdhSanityCheck)
   );
@@ -333,6 +336,11 @@ bpo::options_description StfBuilderDevice::getDetectorProgramOptions() {
     bpo::value<std::string>()->default_value(""),
     "Specifies the detector string for SubTimeFrame building. Allowed are: "
     "ACO, CPV, CTP, EMC, FT0, FV0, FDD, HMP, ITS, MCH, MFT, MID, PHS, TOF, TPC, TRD, ZDC."
+  )(
+    OptionKeySubSpec,
+    bpo::value<ReadoutDataUtils::SubSpecMode>()->default_value(ReadoutDataUtils::SubSpecMode::eCruLinkId, "cru_linkid"),
+    "Specifies the which RDH fields are used for O2 Subspecification field: Allowed are:"
+    "'cru_linkid' or 'feeid'."
   );
 
   return lDetectorOptions;
