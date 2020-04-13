@@ -42,6 +42,11 @@ struct ReadoutSubTimeframeHeader {
 
 class ReadoutDataUtils {
 public:
+  enum SubSpecMode {
+    eCruLinkId,
+    eFeeId
+  };
+  static SubSpecMode sRawDataSubspectype;
 
   static thread_local std::uint64_t sFirstSeenHBOrbitCnt;
 
@@ -73,6 +78,7 @@ public:
 };
 
 std::istream& operator>>(std::istream& in, ReadoutDataUtils::SanityCheckMode& pRetVal);
+std::istream& operator>>(std::istream& in, ReadoutDataUtils::SubSpecMode& pRetVal);
 
 }
 } /* o2::DataDistribution */
