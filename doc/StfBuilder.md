@@ -102,11 +102,20 @@ to files, before they are sent out.
 :   Specifies the detector string for SubTimeFrame building. Allowed are: ACO, CPV,
     CTP, EMC, FT0, FV0, FDD, HMP, ITS, MCH, MFT, MID, PHS, TOF, TPC, TRD, ZDC.
 
+**--detector-rdh** ver
+:   Specifies the version of RDH. Supported versions of the RDH are: 3, 4, 5, 6.
+
+**--detector-subspec** method
+:   Specifies the which RDH fields are used for O2 SubSpecification field: Allowed methods
+    are: 'cru_linkid' or 'feeid'.
+
 ## Options controlling SubTimeFrame building
 
 **--rdh-data-check** arg (=off)
 :   Enable extensive RDH verification. Permitted values: off, print, drop.
 
+**--rdh-filter-empty-trigger**
+:   Filter out empty HBFrames sent in triggered mode.
 
 ## (Sub)TimeFrame file sink options
 

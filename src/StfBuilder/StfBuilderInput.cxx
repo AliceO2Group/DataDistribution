@@ -59,6 +59,7 @@ void StfInputInterface::start(const std::size_t pNumBuilders, const o2::header::
 void StfInputInterface::stop()
 {
   mRunning = false;
+
   if (mInputThread.joinable()) {
     mInputThread.join();
   }
@@ -76,6 +77,8 @@ void StfInputInterface::stop()
   mStfBuilders.clear();
   mBuilderThreads.clear();
   mBuilderInputQueues.clear();
+
+  DDLOGF(fair::Severity::trace, "INPUT INTERFACE: Stopped.");
 }
 
 /// Receiving thread
@@ -99,8 +102,9 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       // receive readout messages
       const auto lRet = lInputChan.Receive(lReadoutMsgs);
       if (lRet < 0 && mRunning) {
-        //DDLOG(fair::Severity::WARNING) << "StfHeader receive failed (err = " + std::to_string(lRet) + ")";
-        // std::this_thread::yield();
+        // DDLOG(fair::Severity::WARNING) << "StfHeader receive failed (err = " + std::to_string(lRet) + ")";
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(500ms);
         continue;
       } else if (lRet < 0) {
         break; // should exit?
@@ -181,7 +185,6 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
 
   // Stf builder
   SubTimeFrameReadoutBuilder &lStfBuilder = mStfBuilders[pIdx];
-  lStfBuilder.setRdh4FilterTrigger(mRdh4FilterTrigger);
 
   const std::chrono::microseconds cMinWaitTime = 2s;
   const std::chrono::microseconds cDesiredWaitTime = 2s * mNumBuilders / 3;
@@ -237,7 +240,6 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       assert(lReadoutMsgs[0]->GetSize() == sizeof(ReadoutSubTimeframeHeader));
       std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
 
-
       // log only
       if (lReadoutHdr.mTimeFrameId % (100 + pIdx) == 0) {
         static thread_local std::uint64_t sStfSeen = 0;
@@ -261,18 +263,18 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         }
 
         if (lReadoutMsgs.size() > 1) {
+          try {
+            const auto R = RDHReader(lReadoutMsgs[1]);
+            const auto lLinkId = R.getLinkID();
 
-          const auto [lCruId, lEndPoint, lLinkId] = ReadoutDataUtils::getSubSpecificationComponents(
-            static_cast<const char*>(lReadoutMsgs[1]->GetData()),
-            lReadoutMsgs[1]->GetSize()
-          );
-
-          (void) lCruId; /* unused */
-          (void) lEndPoint; /* unused */
-
-          if (lLinkId != lReadoutHdr.mLinkId) {
-            DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: update link ID does not match RDH in the data block."
-              " hdr_link_id={} rdh_link_id={}", lReadoutHdr.mLinkId, lLinkId);
+            if (lLinkId != lReadoutHdr.mLinkId) {
+              DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: update link ID does not match RDH in the data block."
+                " hdr_link_id={} rdh_link_id={}", lReadoutHdr.mLinkId, lLinkId);
+            }
+          } catch (RDHReaderException &e) {
+            DDLOGF(fair::Severity::ERROR, e.what());
+            // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
+            continue;
           }
         }
       }
@@ -315,16 +317,22 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       }
 
       // check subspecifications of all messages
-      auto lSubSpecification = ReadoutDataUtils::getSubSpecification(
-        static_cast<const char*>(lReadoutMsgs[1]->GetData()),
-        lReadoutMsgs[1]->GetSize()
-      );
+      header::DataHeader::SubSpecificationType lSubSpecification = ~header::DataHeader::SubSpecificationType(0);
+      try {
+        const auto R1 = RDHReader(lReadoutMsgs[1]);
+        lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
+      } catch (RDHReaderException &e) {
+        DDLOGF(fair::Severity::ERROR, e.what());
+        // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
+        continue;
+      }
 
       assert (lReadoutMsgs.size() > 1);
       auto lStartHbf = lReadoutMsgs.begin() + 1; // skip the meta message
       auto lEndHbf = lStartHbf + 1;
 
       std::size_t lAdded = 0;
+      bool lErrorWhileAdding = false;
 
       while (1) {
         if (lEndHbf == lReadoutMsgs.end()) {
@@ -334,16 +342,21 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
           break;
         }
 
-        const auto lNewSubSpec = ReadoutDataUtils::getSubSpecification(
-          reinterpret_cast<const char*>((*lEndHbf)->GetData()),
-          (*lEndHbf)->GetSize()
-        );
+        header::DataHeader::SubSpecificationType lNewSubSpec = ~header::DataHeader::SubSpecificationType(0);
+        try {
+          const auto Rend = RDHReader(*lEndHbf);
+          lNewSubSpec = ReadoutDataUtils::getSubSpecification(Rend);
+        } catch (RDHReaderException &e) {
+            DDLOGF(fair::Severity::ERROR, e.what());
+            // TODO: portion of the ReadoutMsg is discarded. Account and report the data size.
+            lErrorWhileAdding = true;
+            break;
+          }
 
         if (lNewSubSpec != lSubSpecification) {
-
-          DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE [{}]: update with mismatched subspecification."
-            " block[0]: {:#06X}, block[{}]: {:#06X}",
-            pIdx, lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
+          DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: update with mismatched subspecification."
+            " block[0]: {:#06x}, block[{}]: {:#06x}",
+            lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
           // insert
           lStfBuilder.addHbFrames(mDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
           lAdded += (lEndHbf - lStartHbf);
@@ -354,11 +367,9 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         lEndHbf = lEndHbf + 1;
       }
 
-      if (lAdded != lReadoutMsgs.size() - 1 ) {
+      if (!lErrorWhileAdding && (lAdded != lReadoutMsgs.size() - 1) ) {
         DDLOGF(fair::Severity::ERROR, "BUG: Not all received HBFrames added to the STF...");
       }
-
-      lReadoutMsgs.clear();
     }
 
   DDLOGF(fair::Severity::trace, "Exiting StfBuilder thread...");

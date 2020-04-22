@@ -36,8 +36,7 @@ class StfInputInterface
   StfInputInterface() = delete;
   StfInputInterface(StfBuilderDevice& pStfBuilderDev)
     : mDevice(pStfBuilderDev),
-      mStfFreqSamples(),
-      mStfNumFilteredMessages()
+      mStfFreqSamples()
   {
   }
 
@@ -48,9 +47,6 @@ class StfInputInterface
   void StfBuilderThread(const std::size_t pIdx);
 
   const RunningSamples<float>& StfFreqSamples() const { return mStfFreqSamples; }
-
-  void setRdh4FilterTrigger(bool pVal) { mRdh4FilterTrigger = pVal; }
-
  private:
   /// Main SubTimeBuilder O2 device
   StfBuilderDevice& mDevice;
@@ -60,11 +56,6 @@ class StfInputInterface
   std::thread mInputThread;
 
   RunningSamples<float> mStfFreqSamples;
-
-  /// Readout flags
-  bool mRdh4FilterTrigger = false;  // filter out empty HBFs in triggered mode with RDHv4
-
-  RunningSamples<float> mStfNumFilteredMessages;
 
   o2::header::DataOrigin mDataOrigin;
 

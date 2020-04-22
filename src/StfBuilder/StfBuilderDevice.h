@@ -67,10 +67,11 @@ class StfBuilderDevice : public DataDistDevice,
   static constexpr const char* OptionKeyMaxBufferedStfs = "max-buffered-stfs";
 
   static constexpr const char* OptionKeyStfDetector = "detector";
+  static constexpr const char* OptionKeyRhdVer = "detector-rdh";
   static constexpr const char* OptionKeySubSpec = "detector-subspec";
 
   static constexpr const char* OptionKeyRdhSanityCheck = "rdh-data-check";
-  static constexpr const char* OptionKeyFilterTriggerRdh4 = "rdh-filter-empty-trigger-v4";
+  static constexpr const char* OptionKeyFilterEmptyTriggerData = "rdh-filter-empty-trigger";
 
   static bpo::options_description getDetectorProgramOptions();
   static bpo::options_description getStfBuildingProgramOptions();
@@ -81,9 +82,6 @@ class StfBuilderDevice : public DataDistDevice,
 
   /// Default destructor
   ~StfBuilderDevice() override;
-
-  void InitTask() final;
-  void ResetTask() final;
 
   bool dplEnabled() const noexcept { return mDplEnabled; }
   bool isSandalone() const noexcept { return mStandalone; }
@@ -104,9 +102,10 @@ class StfBuilderDevice : public DataDistDevice,
   }
 
  protected:
-  void PreRun() final;
-  void PostRun() final { };
-  bool ConditionalRun() final;
+  virtual void PreRun() override final;
+  virtual void InitTask() override final;
+  virtual bool ConditionalRun() override final;
+  virtual void ResetTask() override final;
 
   bool tryPopOldestStfs()
   {
@@ -181,8 +180,6 @@ class StfBuilderDevice : public DataDistDevice,
   std::string mOutputChannelName;
   std::string mDplChannelName;
   o2::header::DataOrigin mDataOrigin;
-  bool mRdhSanityCheck = false;
-  bool mRdh4FilterTrigger = false;
   bool mStandalone;
   bool mDplEnabled;
   std::int64_t mMaxStfsInPipeline;
