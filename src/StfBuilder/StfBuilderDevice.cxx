@@ -62,16 +62,22 @@ void StfBuilderDevice::InitTask()
   mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
-  mDataOrigin = getDataOriginFromOption(GetConfig()->GetValue<std::string>(OptionKeyStfDetector));
 
   // input data handling
+  mDataOrigin = getDataOriginFromOption(
+    GetConfig()->GetValue<std::string>(OptionKeyStfDetector));
+
+  ReadoutDataUtils::sRdhVersion =
+    GetConfig()->GetValue<ReadoutDataUtils::RdhVersion>(OptionKeyRhdVer);
+
   ReadoutDataUtils::sRawDataSubspectype =
     GetConfig()->GetValue<ReadoutDataUtils::SubSpecMode>(OptionKeySubSpec);
 
-  ReadoutDataUtils::setRdhSanityCheckMode(
-    GetConfig()->GetValue<ReadoutDataUtils::SanityCheckMode>(OptionKeyRdhSanityCheck)
-  );
-  mRdh4FilterTrigger = GetConfig()->GetValue<bool>(OptionKeyFilterTriggerRdh4);
+  ReadoutDataUtils::sRdhSanityCheckMode =
+    GetConfig()->GetValue<ReadoutDataUtils::SanityCheckMode>(OptionKeyRdhSanityCheck);
+
+  ReadoutDataUtils::sEmptyTriggerHBFrameFilterring =
+    GetConfig()->GetValue<bool>(OptionKeyFilterEmptyTriggerData);
 
   // Buffering limitation
   if (mMaxStfsInPipeline > 0) {
@@ -101,16 +107,29 @@ void StfBuilderDevice::InitTask()
   // make sure we have detector if not using files
   if (!mFileSource.enabled()) {
     if (mDataOrigin == gDataOriginInvalid) {
-      DDLOG(fair::Severity::ERROR) << "Detector string parameter not specified (required when not using file source).";
+      DDLOG(fair::Severity::ERROR) << "Detector string parameter must be specified when receiving the data from the readout.";
       exit(-1);
+    } else {
+      DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured detector: {}", mDataOrigin.str);
     }
 
-    if (ReadoutDataUtils::getRdhSanityCheckMode()) {
-      DDLOG(fair::Severity::info) << "Extensive RDH checks enabled. Data that does not meet the criteria will be dropped.";
+    if (ReadoutDataUtils::sRdhVersion == ReadoutDataUtils::RdhVersion::eRdhInvalid) {
+      DDLOGF(fair::Severity::FATAL, "RDH version must be specified when receiving the data from the readout.");
+      exit(-1);
+    } else {
+      DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured RDHv{}", ReadoutDataUtils::sRdhVersion);
+      RDHReader::Initialize(unsigned(ReadoutDataUtils::sRdhVersion));
     }
 
-    if (mRdh4FilterTrigger) {
-      DDLOG(fair::Severity::info) << "Filtering of empty HBFrames in triggered mode enabled for RDHv4.";
+    DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured O2 SubSpec mode: {}", to_string(ReadoutDataUtils::sRawDataSubspectype));
+
+    if (ReadoutDataUtils::sRdhSanityCheckMode) {
+      DDLOGF(fair::Severity::info, "Extensive RDH checks enabled. Data that does not meet the criteria will be {}.",
+        (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckDrop ? "dropped" : "kept"));
+    }
+
+    if (ReadoutDataUtils::sEmptyTriggerHBFrameFilterring) {
+      DDLOG(fair::Severity::info) << "Filtering of empty HBFrames in triggered mode enabled.";
     }
   }
 
@@ -189,7 +208,6 @@ void StfBuilderDevice::PreRun()
 
   // start a thread for readout process
   if (!mFileSource.enabled()) {
-    mReadoutInterface.setRdh4FilterTrigger(mRdh4FilterTrigger);
     mReadoutInterface.start(1, mDataOrigin);
   }
 
@@ -225,7 +243,7 @@ void StfBuilderDevice::ResetTask()
     mInfoThread.join();
   }
 
-  DDLOG(fair::Severity::info) << "ResetTask() done... ";
+  DDLOGF(fair::Severity::trace, "ResetTask() done... ");
 }
 
 void StfBuilderDevice::StfOutputThread()
@@ -324,7 +342,7 @@ void StfBuilderDevice::InfoThread()
 bool StfBuilderDevice::ConditionalRun()
 {
   // nothing to do here sleep for awhile
-  std::this_thread::sleep_for(1s);
+  std::this_thread::sleep_for(500ms);
   return true;
 }
 
@@ -336,6 +354,10 @@ bpo::options_description StfBuilderDevice::getDetectorProgramOptions() {
     bpo::value<std::string>()->default_value(""),
     "Specifies the detector string for SubTimeFrame building. Allowed are: "
     "ACO, CPV, CTP, EMC, FT0, FV0, FDD, HMP, ITS, MCH, MFT, MID, PHS, TOF, TPC, TRD, ZDC."
+  )(
+    OptionKeyRhdVer,
+    bpo::value<ReadoutDataUtils::RdhVersion>()->default_value(ReadoutDataUtils::RdhVersion::eRdhInvalid, ""),
+    "Specifies the version of RDH. Supported versions of the RDH are: 3, 4, 5, 6."
   )(
     OptionKeySubSpec,
     bpo::value<ReadoutDataUtils::SubSpecMode>()->default_value(ReadoutDataUtils::SubSpecMode::eCruLinkId, "cru_linkid"),
@@ -353,7 +375,7 @@ bpo::options_description StfBuilderDevice::getStfBuildingProgramOptions() {
     OptionKeyRdhSanityCheck,
     bpo::value<ReadoutDataUtils::SanityCheckMode>()->default_value(ReadoutDataUtils::SanityCheckMode::eNoSanityCheck, "off"),
     "Enable extensive RDH verification. Permitted values: off, print, drop (caution, any data not meeting criteria will be dropped)")(
-    OptionKeyFilterTriggerRdh4,
+    OptionKeyFilterEmptyTriggerData,
     bpo::bool_switch()->default_value(false),
     "Filter out empty HBFrames with RDHv4 sent in triggered mode.");
 

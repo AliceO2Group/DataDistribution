@@ -275,18 +275,14 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
         const auto l10DataOff = lDataOffset;
         lDataOffset += lStfData->mData->GetSize();
         const auto l11DataSize = lStfData->mData->GetSize();
-        const auto [l12MemSize, l13StopBit] = ReadoutDataUtils::getRdhMemorySize(
-          reinterpret_cast<const char*>(lStfData->mData->GetData()),
-          lStfData->mData->GetSize());
 
-        const auto l14FeeId = ReadoutDataUtils::getFeeId(
-          reinterpret_cast<const char*>(lStfData->mData->GetData()),
-          lStfData->mData->GetSize());
+        const auto [l12MemSize, l13StopBit] = ReadoutDataUtils::getHBFrameMemorySize(lStfData->mData);
 
-        const auto [l15Orbit, l16Bc, l17Trig] = ReadoutDataUtils::getOrbitBcTrg(
-          reinterpret_cast<const char*>(lStfData->mData->GetData()),
-          lStfData->mData->GetSize()
-        );
+        const auto R = RDHReader(lStfData->mData);
+        const auto l14FeeId = R.getFeeID();
+        const auto l15Orbit = R.getOrbit();
+        const auto l16Bc = R.getBC();
+        const auto l17Trig = R.getTriggerType();
 
         impl::sInfoVal(lValRow, impl::TF_ID, l1StfId);
         impl::sInfoVal(lValRow, impl::TF_OFFSET, l2StfFileOff);
@@ -300,7 +296,7 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
         impl::sInfoVal(lValRow, impl::DATA_OFF, l10DataOff);
         impl::sInfoVal(lValRow, impl::DATA_SIZE, l11DataSize);
         impl::sInfoVal(lValRow, impl::RDH_MEM_SIZE, l12MemSize);
-        impl::sInfoVal(lValRow, impl::RDH_STOP_BIT, l13StopBit);
+        impl::sInfoVal(lValRow, impl::RDH_STOP_BIT, l13StopBit ? 1 : 0);
         impl::sInfoVal(lValRow, impl::RDH_FEE_ID, l14FeeId);
         impl::sInfoVal(lValRow, impl::RDH_ORBIT, l15Orbit);
         impl::sInfoVal(lValRow, impl::RDH_BC, l16Bc);

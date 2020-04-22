@@ -25,3 +25,17 @@ target_link_libraries(test_FilePathUtils
 
 add_test(NAME FilePathUtils_test COMMAND test_FilePathUtils)
 
+
+set(TEST_FMT_PATTERNS_SOURCES
+  test_FmtPatterns
+)
+add_executable(test_FmtPatterns ${TEST_FMT_PATTERNS_SOURCES})
+target_compile_definitions(test_FmtPatterns PRIVATE "BOOST_TEST_DYN_LINK=1")
+target_link_libraries(test_FmtPatterns
+  PUBLIC
+  PRIVATE
+    base
+    Boost::unit_test_framework
+    Boost::filesystem
+)
+add_test(NAME FmtPatterns_test COMMAND test_FmtPatterns)

@@ -139,11 +139,28 @@ Allowed are: ACO, CPV, CTP, EMC, FT0, FV0, FDD, HMP, ITS, MCH, MFT, MID,
 PHS, TOF, TPC, TRD, ZDC.
 .RS
 .RE
+.TP
+.B \f[B]\-\-detector\-rdh\f[] ver
+Specifies the version of RDH.
+Supported versions of the RDH are: 3, 4, 5, 6.
+.RS
+.RE
+.TP
+.B \f[B]\-\-detector\-subspec\f[] method
+Specifies the which RDH fields are used for O2 SubSpecification field:
+Allowed methods are: \[aq]cru_linkid\[aq] or \[aq]feeid\[aq].
+.RS
+.RE
 .SS Options controlling SubTimeFrame building
 .TP
 .B \f[B]\-\-rdh\-data\-check\f[] arg (=off)
 Enable extensive RDH verification.
 Permitted values: off, print, drop.
+.RS
+.RE
+.TP
+.B \f[B]\-\-rdh\-filter\-empty\-trigger\f[]
+Filter out empty HBFrames sent in triggered mode.
 .RS
 .RE
 .SS (Sub)TimeFrame file sink options

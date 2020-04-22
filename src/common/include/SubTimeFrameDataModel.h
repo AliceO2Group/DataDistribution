@@ -260,6 +260,15 @@ class SubTimeFrame : public IDataModelObject
     }
   };
 
+  // we SHOULD be able to get away with this
+  // make sure the vector has sufficient initial capacity
+  struct StfDataVectorT : public std::vector<StfData> {
+    StfDataVectorT() : std::vector<StfData>() { reserve(512); }
+
+    StfDataVectorT(const StfDataVectorT&) = delete;
+    StfDataVectorT(StfDataVectorT&&) = default;
+  };
+
  public:
   SubTimeFrame(TimeFrameIdType pStfId);
   //SubTimeFrame() = default;
@@ -294,7 +303,8 @@ class SubTimeFrame : public IDataModelObject
   void accept(ISubTimeFrameConstVisitor& v) const override { updateStf(mData); v.visit(*this); }
 
  private:
-  using StfDataVector = std::vector<StfData>;
+
+  using StfDataVector = StfDataVectorT; // vector with more capacity on creation
   using StfSubSpecMap = std::unordered_map<o2hdr::DataHeader::SubSpecificationType, StfDataVector>;
   using StfDataIdentMap = std::unordered_map<o2hdr::DataIdentifier, StfSubSpecMap>;
 
@@ -315,7 +325,6 @@ class SubTimeFrame : public IDataModelObject
   inline void addStfData(const o2hdr::DataHeader& pDataHeader, StfData&& pStfData)
   {
     const o2hdr::DataIdentifier lDataId = impl::getDataIdentifier(pDataHeader);
-
     auto& lDataVector = mData[lDataId][pDataHeader.subSpecification];
 
     lDataVector.emplace_back(std::move(pStfData));

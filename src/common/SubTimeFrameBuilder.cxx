@@ -60,49 +60,16 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 
   // filter empty trigger RDHv4
   {
-    if (mRdh4FilterTrigger) {
-      // filter 2 empty 8kiB pages
-      if (pHBFrameLen == 2 && lKeepBlocks[0] == true && lKeepBlocks[1] == true) {
-        if (pHbFramesBegin[0]->GetSize() == 8192 && pHbFramesBegin[1]->GetSize() == 8192) {
-
-          bool lRem1 = false, lRem2 = false;
-          {
-            const auto [lMemSize, lOffsetNext, lStopBit] = ReadoutDataUtils::getRdhNavigationVals(
-              reinterpret_cast<const char*>(pHbFramesBegin[0]->GetData()));
-
-            (void) lOffsetNext; /*unused*/
-
-            if (lStopBit && lMemSize == 64) {
-              lRem1 = true;
-            }
-          }
-
-          {
-            const auto [lMemSize, lOffsetNext, lStopBit] = ReadoutDataUtils::getRdhNavigationVals(
-              reinterpret_cast<const char*>(pHbFramesBegin[1]->GetData()));
-
-            (void) lOffsetNext; /*unused*/
-
-            if (lStopBit && lMemSize == 64) {
-              lRem2 = true;
-            }
-          }
-          if (lRem1 && lRem2) {
-            lKeepBlocks[0] = false;
-            lKeepBlocks[1] = false;
-          }
-        }
-      }
-
-      // filter empty 16kiB start stop pages
+    if (ReadoutDataUtils::sEmptyTriggerHBFrameFilterring) {
+      // filter empty trigger start stop pages
       for (std::size_t i = 0; i < pHBFrameLen; i++) {
         if (lKeepBlocks[i] == false) {
           continue; // already discarded
         }
 
-        if (!ReadoutDataUtils::filterTriggerEmpyBlocksV4(
-                                  reinterpret_cast<const char*>(pHbFramesBegin[i]->GetData()),
-                                  pHbFramesBegin[i]->GetSize()) ) {
+        if (!ReadoutDataUtils::filterEmptyTriggerBlocks(
+              reinterpret_cast<const char*>(pHbFramesBegin[i]->GetData()),
+              pHbFramesBegin[i]->GetSize()) ) {
           lKeepBlocks[i] = true;
         } else {
           lKeepBlocks[i] = false;
@@ -111,11 +78,9 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     }
   }
 
-
   // sanity check
   {
-    if (RdhSanityCheck() != ReadoutDataUtils::eNoSanityCheck) {
-
+    if (ReadoutDataUtils::sEmptyTriggerHBFrameFilterring != ReadoutDataUtils::eNoSanityCheck) {
       // check blocks individually
       for (std::size_t i = 0; i < pHBFrameLen; i++) {
 
@@ -127,12 +92,12 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
           reinterpret_cast<const char*>(pHbFramesBegin[i]->GetData()),
           pHbFramesBegin[i]->GetSize());
 
-        if (!lOk && RdhSanityCheck() == ReadoutDataUtils::eSanityCheckDrop) {
+        if (!lOk && (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckDrop)) {
           DDLOG(fair::Severity::WARNING) << "RDH SANITY CHECK: Removing data block";
 
           lKeepBlocks[i] = false;
 
-        } else if (!lOk && RdhSanityCheck() == ReadoutDataUtils::eSanityCheckPrint) {
+        } else if (!lOk && (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckPrint)) {
 
           DDLOG(fair::Severity::INFO) << "Printing data blocks of update with TF ID: " << pHdr.mTimeFrameId
                     << ", Link ID: " << unsigned(pHdr.mLinkId);
@@ -140,8 +105,12 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
           // dump the data block, skipping data
           std::size_t lCurrentDataIdx = 0;
 
-          while (lCurrentDataIdx < pHbFramesBegin[i]->GetSize()) {
+          const auto Ri = RDHReader(pHbFramesBegin[i]);
+          const auto lCru = Ri.getCruID();
+          const auto lEp = Ri.getEndPointID();
+          const auto lLink = Ri.getLinkID();
 
+          while (lCurrentDataIdx < pHbFramesBegin[i]->GetSize()) {
             const auto lDataSizeLeft = std::size_t(pHbFramesBegin[i]->GetSize()) - lCurrentDataIdx;
 
             std::string lInfoStr = "RDH block (64 bytes in total) of [";
@@ -151,19 +120,13 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
               reinterpret_cast<char*>(pHbFramesBegin[i]->GetData()) + lCurrentDataIdx,
               std::size_t(std::min(std::size_t(64), lDataSizeLeft)));
 
-            auto [lCru, lEp, lLink] = ReadoutDataUtils::getSubSpecificationComponents(
-              reinterpret_cast<char*>(pHbFramesBegin[i]->GetData()) + lCurrentDataIdx,
-              std::size_t(std::min(std::size_t(64), lDataSizeLeft))
-            );
             DDLOG(fair::Severity::INFO) << "RDH info CRU: " << lCru << " Endpoint: " << lEp << " Link: " << lLink;
 
-            const auto [lMemSize, lOffsetNext, lStopBit] = ReadoutDataUtils::getRdhNavigationVals(
-              reinterpret_cast<const char*>(pHbFramesBegin[i]->GetData()) + lCurrentDataIdx);
-
-            (void) lMemSize; /*unused*/
-            (void) lStopBit; /*unused*/
-
-            lCurrentDataIdx += std::min(std::size_t(lOffsetNext), lDataSizeLeft);
+            const auto R = RDHReader(
+              reinterpret_cast<const char*>(pHbFramesBegin[i]->GetData()) + lCurrentDataIdx,
+              lDataSizeLeft
+            );
+            lCurrentDataIdx += std::min(std::size_t(R.getOffsetToNext()), lDataSizeLeft);
           }
         }
       }
@@ -233,7 +196,7 @@ SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(FairMQChannel& pChan, bool pDpl
   : mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
-    pChan, 32ULL << 20 /* make configurable */,
+    pChan, 128ULL << 20 /* make configurable */,
     mDplEnabled ?
       sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
       sizeof(DataHeader)
