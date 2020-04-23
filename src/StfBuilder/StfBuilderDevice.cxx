@@ -123,7 +123,7 @@ void StfBuilderDevice::InitTask()
 
     DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured O2 SubSpec mode: {}", to_string(ReadoutDataUtils::sRawDataSubspectype));
 
-    if (ReadoutDataUtils::sRdhSanityCheckMode) {
+    if (ReadoutDataUtils::sRdhSanityCheckMode != ReadoutDataUtils::SanityCheckMode::eNoSanityCheck) {
       DDLOGF(fair::Severity::info, "Extensive RDH checks enabled. Data that does not meet the criteria will be {}.",
         (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckDrop ? "dropped" : "kept"));
     }
