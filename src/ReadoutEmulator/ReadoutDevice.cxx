@@ -57,10 +57,10 @@ void ReadoutDevice::InitTask()
 
   mDataRegion.reset();
 
-  // Open SHM regions (segments)
+  // Open SHM regions (segments). Increase size to make sure we can start on the mSuperpageSize boundary
   mDataRegion = NewUnmanagedRegionFor(
     mOutChannelName, 0,
-    mDataRegionSize,
+    mDataRegionSize + mSuperpageSize,
     [this](void* data, size_t size, void* /* hint */) { // callback to be called when message buffers no longer needed by transport
       mCruMemoryHandler->put_data_buffer(static_cast<char*>(data), size);
     });
