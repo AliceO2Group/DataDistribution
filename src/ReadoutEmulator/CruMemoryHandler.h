@@ -76,7 +76,7 @@ class CruMemoryHandler
 
   // get number of superpages from the free list (perf)
   template <class OutputIt>
-  unsigned long getSuperpages(unsigned long n, OutputIt spDst)
+  std::size_t getSuperpages(unsigned long n, OutputIt spDst)
   {
     return mSuperpages.try_pop_n(n, spDst);
   }
@@ -96,7 +96,9 @@ class CruMemoryHandler
 
   char* getDataRegionPtr() const
   {
-    return static_cast<char*>(mDataRegion->GetData());
+    return reinterpret_cast<char*>(
+      (reinterpret_cast<uintptr_t>(mDataRegion->GetData()) + mSuperpageSize - 1)  & ~(mSuperpageSize - 1)
+    );
   }
 
   auto getDataRegionSize() const

@@ -57,13 +57,21 @@ void CruMemoryHandler::init(FairMQUnmanagedRegion* pDataRegion, std::size_t pSup
   }
 
   for (size_t i = 0; i < lCntSuperpages; i++) {
-    const CRUSuperpage sp{ getDataRegionPtr() + (i * mSuperpageSize), nullptr };
+    const CRUSuperpage sp{ getDataRegionPtr() + (i * mSuperpageSize), reinterpret_cast<char*>(~0x0) };
     // stack of free superpages to feed the CRU
+    if (!sp.mDataVirtualAddress) {
+      DDLOGF(fair::Severity::FATAL, "init_superpage: Data region pointer null region_ptr={:p}", getDataRegionPtr());
+    }
     mSuperpages.push(sp);
 
     // Virtual address to superpage mapping to help with returning of the used pages
+    if (!sp.mDataVirtualAddress) {
+      DDLOGF(fair::Severity::FATAL, "init_superpage: Data region pointer null region_ptr={:p}", getDataRegionPtr());
+    }
+
     auto& lBucket = getBufferBucket(sp.mDataVirtualAddress);
     std::lock_guard<std::mutex> lock(lBucket.mLock);
+
     lBucket.mVirtToSuperpage[sp.mDataVirtualAddress] = sp;
   }
 
@@ -80,7 +88,11 @@ void CruMemoryHandler::put_superpage(const char* spVirtAddr)
   auto& lBucket = getBufferBucket(spVirtAddr);
 
   std::lock_guard<std::mutex> lock(lBucket.mLock); // needed for the mVirtToSuperpage[] lookup
-  mSuperpages.push(lBucket.mVirtToSuperpage[spVirtAddr]);
+  const auto lSp = lBucket.mVirtToSuperpage[spVirtAddr];
+  if (!lSp.mDataVirtualAddress) {
+    DDLOGF(fair::Severity::FATAL, "put_superpage: Data region pointer null region_ptr={:p} num_spaages={}", getDataRegionPtr(), lBucket.mVirtToSuperpage.size());
+  }
+  mSuperpages.push(lSp);
 }
 
 size_t CruMemoryHandler::free_superpages()
@@ -146,7 +158,13 @@ void CruMemoryHandler::put_data_buffer(const char* dataBufferAddr, const std::si
     lSpBuffMap.erase(lDataBufferAddr);
   } else if (lSpBuffMap.size() == 1) {
     lBucket.mUsedSuperPages.erase(lSpStartAddr);
-    mSuperpages.push(lBucket.mVirtToSuperpage[lSpStartAddr]);
+
+    const auto lSp = lBucket.mVirtToSuperpage[lSpStartAddr];
+    if (!lSp.mDataVirtualAddress) {
+      DDLOGF(fair::Severity::FATAL, "put_data_buffer: Data region pointer null region_ptr={:p} sp_addr={:p} num_spaages={}", getDataRegionPtr(), lSpStartAddr, lBucket.mVirtToSuperpage.size());
+    }
+
+    mSuperpages.push(lSp);
   } else {
     DDLOGF(fair::Severity::ERROR, "Superpage chunk lost.");
   }

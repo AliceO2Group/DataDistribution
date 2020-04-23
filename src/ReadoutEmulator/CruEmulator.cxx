@@ -48,7 +48,7 @@ void CruLinkEmulator::linkReadoutThread()
   using hres_clock = std::chrono::high_resolution_clock;
   const auto lOpStart = hres_clock::now();
 
-  std::deque<CRUSuperpage> lSuperpages;
+  std::vector<CRUSuperpage> lSuperpages;
 
   while (mRunning) {
 
@@ -68,16 +68,19 @@ void CruLinkEmulator::linkReadoutThread()
 
     // request enough superpages (can be less!)
     std::int64_t lPagesAvail = lSuperpages.size();
-    if (lPagesAvail < lPagesToSend)
-      lPagesAvail = mMemHandler->getSuperpages(std::max(lPagesToSend, std::int64_t(32)), std::back_inserter(lSuperpages));
+    if (lPagesAvail < lPagesToSend) {
+      lPagesAvail += mMemHandler->getSuperpages(std::max(lPagesToSend, std::int64_t(32)), std::back_inserter(lSuperpages));
+      assert(lPagesAvail == lSuperpages.size());
+    }
+    lPagesAvail = lSuperpages.size();
 
     for (int64_t stf = 0; stf < lStfToSend; stf++, lSentStf++) {
       auto lHbfToSend = 256;
 
       while (lHbfToSend > 0) {
         if (!lSuperpages.empty()) {
-          CRUSuperpage sp{ std::move(lSuperpages.front()) };
-          lSuperpages.pop_front();
+          CRUSuperpage sp = lSuperpages.back();
+          lSuperpages.pop_back();
 
           // Enumerate valid data and create work-item for STFBuilder
           // Each channel is reported separately to the O2

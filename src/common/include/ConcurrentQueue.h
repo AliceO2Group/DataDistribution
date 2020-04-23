@@ -117,7 +117,7 @@ class ConcurrentContainerImpl
 
 
   template <class OutputIt>
-  unsigned long pop_n(const unsigned long pCnt, OutputIt pDstIter)
+  std::size_t pop_n(const unsigned long pCnt, OutputIt pDstIter)
   {
     std::unique_lock<std::mutex> lLock(mImpl->mLock);
     while (mImpl->mContainer.empty() && mImpl->mRunning) {
@@ -125,12 +125,12 @@ class ConcurrentContainerImpl
     }
 
     if (!mImpl->mRunning && mImpl->mContainer.empty())
-      return false; // should stop
+      return 0; // should stop
 
     assert(!mImpl->mContainer.empty());
 
-    unsigned long ret = std::min(mImpl->mContainer.size(), pCnt);
-    std::move(std::begin(mImpl->mContainer), std::begin(mImpl->mContainer) + ret, pDstIter);
+    std::size_t ret = std::min(mImpl->mContainer.size(), pCnt);
+    std::copy_n(std::make_move_iterator(mImpl->mContainer.begin()), ret, pDstIter);
     mImpl->mContainer.erase(std::begin(mImpl->mContainer), std::begin(mImpl->mContainer) + ret);
     return ret;
   }
@@ -148,15 +148,15 @@ class ConcurrentContainerImpl
   }
 
   template <class OutputIt>
-  unsigned long try_pop_n(const unsigned long pCnt, OutputIt pDstIter)
+  std::size_t try_pop_n(const std::size_t pCnt, OutputIt pDstIter)
   {
     std::unique_lock<std::mutex> lLock(mImpl->mLock);
     if (mImpl->mContainer.empty()) {
       return 0;
     }
 
-    unsigned long ret = std::min(mImpl->mContainer.size(), pCnt);
-    std::move(std::begin(mImpl->mContainer), std::begin(mImpl->mContainer) + ret, pDstIter);
+    const std::size_t ret = std::min(mImpl->mContainer.size(), pCnt);
+    std::copy_n(std::make_move_iterator(mImpl->mContainer.begin()), ret, pDstIter);
     mImpl->mContainer.erase(std::begin(mImpl->mContainer), std::begin(mImpl->mContainer) + ret);
     return ret;
   }
