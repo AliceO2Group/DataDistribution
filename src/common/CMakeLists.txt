@@ -39,27 +39,3 @@ target_link_libraries(common
     FairMQ::FairMQ
     AliceO2::Headers
 )
-
-
-set (LIB_COMMON_ROOT_SOURCES
-  RootGui
-)
-
-add_library(common_root OBJECT ${LIB_COMMON_ROOT_SOURCES})
-
-include(CheckIPOSupported)
-check_ipo_supported(RESULT result)
-if(result)
-  set_target_properties(common_root PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-endif()
-
-target_include_directories(common_root
-  PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-target_link_libraries(common_root
-  PUBLIC
-    ROOT::Gui
-)
-
