@@ -15,7 +15,6 @@
 
 #include <ReadoutDataModel.h>
 #include <Utilities.h>
-#include <RootGui.h>
 
 #include <memory>
 #include <deque>
@@ -40,8 +39,6 @@ class ReadoutDevice : public DataDistDevice
   static constexpr const char* OptionKeyCruLinkCount = "cru-link-count";
   static constexpr const char* OptionKeyCruLinkBitsPerS = "cru-link-bits-per-s";
 
-  static constexpr const char* OptionKeyGui = "gui";
-
   /// Default constructor
   ReadoutDevice();
 
@@ -57,7 +54,7 @@ class ReadoutDevice : public DataDistDevice
   void PostRun() final { };
 
 
-  void GuiThread();
+  void InfoThread();
   void SendingThread();
 
   // data and Descriptor regions
@@ -83,9 +80,7 @@ class ReadoutDevice : public DataDistDevice
   std::thread mSendingThread;
 
   /// Observables
-  bool mBuildHistograms = true;
-  std::unique_ptr<RootGui> mGui;
-  std::thread mGuiThread;
+  std::thread mInfoThread;
 
   RunningSamples<uint64_t, 8192> mFreeSuperpagesSamples;
 };

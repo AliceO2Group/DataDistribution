@@ -117,7 +117,6 @@ find_package(ppconsul REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(AliceO2 REQUIRED)
-find_package(ROOT REQUIRED)
 
 message(STATUS "Boost version : ${Boost_VERSION}")
 message(STATUS "Boost include path : ${Boost_INCLUDE_DIRS}")

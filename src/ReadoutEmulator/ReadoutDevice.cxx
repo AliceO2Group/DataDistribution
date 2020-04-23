@@ -15,8 +15,6 @@
 
 #include <options/FairMQProgOptions.h>
 
-#include <TH1.h>
-
 #include <chrono>
 #include <thread>
 
@@ -48,8 +46,6 @@ void ReadoutDevice::InitTask()
 
   mCruLinkCount = GetConfig()->GetValue<std::size_t>(OptionKeyCruLinkCount);
   mCruLinkBitsPerS = GetConfig()->GetValue<double>(OptionKeyCruLinkBitsPerS);
-
-  mBuildHistograms = GetConfig()->GetValue<bool>(OptionKeyGui);
 
   if (mSuperpageSize < (1ULL << 19)) {
     DDLOG(fair::Severity::WARN) << "Superpage size too low (" << mSuperpageSize << " Setting to 512kiB...";
@@ -84,12 +80,10 @@ void ReadoutDevice::PreRun()
   for (auto& e : mCruLinks)
     e->start();
 
-  // gui thread
-  if (mBuildHistograms) {
-    mGui = std::make_unique<RootGui>("Emulator", "Readout Emulator", 500, 500);
-    mGuiThread = std::thread(&ReadoutDevice::GuiThread, this);
-  }
+  // info thread
+  mInfoThread = std::thread(&ReadoutDevice::InfoThread, this);
 
+  // output thread
   mSendingThread = std::thread(&ReadoutDevice::SendingThread, this);
 }
 
@@ -100,8 +94,9 @@ void ReadoutDevice::ResetTask()
     e->stop();
   // unblock waiters
   mCruMemoryHandler->teardown();
-  if (mBuildHistograms && mGuiThread.joinable()) {
-    mGuiThread.join();
+
+  if (mInfoThread.joinable()) {
+    mInfoThread.join();
   }
 
   if (mSendingThread.joinable()) {
@@ -145,9 +140,7 @@ void ReadoutDevice::SendingThread()
       return;
     }
 
-    if (mBuildHistograms) {
-      mFreeSuperpagesSamples.Fill(mCruMemoryHandler->free_superpages());
-    }
+    mFreeSuperpagesSamples.Fill(mCruMemoryHandler->free_superpages());
 
     // check no data signal
     if (lCruLinkData.mLinkDataHeader.subSpecification ==
@@ -181,31 +174,19 @@ void ReadoutDevice::SendingThread()
   }
 }
 
-
-
-void ReadoutDevice::GuiThread()
+void ReadoutDevice::InfoThread()
 {
-  auto lHistTitle = "[Readout-" + std::to_string(mLinkIdOffset) + "] Number of free superpages";
-
-  std::unique_ptr<TH1F> lFreeSuperpagesHist = std::make_unique<TH1F>("SPCountH", lHistTitle.c_str(),
-                                                                     128, 0, mDataRegionSize / mSuperpageSize);
-  lFreeSuperpagesHist->GetXaxis()->SetTitle("Count");
-
   WaitForRunningState();
 
   while (IsRunningState()) {
-    DDLOG(fair::Severity::INFO) << "Updating histograms...";
-
-    mGui->Canvas().cd();
-    mGui->DrawHist(lFreeSuperpagesHist.get(), mFreeSuperpagesSamples);
-
-    mGui->Canvas().Modified();
-    mGui->Canvas().Update();
+    DDLOGF(fair::Severity::info, "Free superpages count_mean={}", mFreeSuperpagesSamples.Mean());
 
     using namespace std::chrono_literals;
-    std::this_thread::sleep_for(5s);
+    std::this_thread::sleep_for(2s);
   }
-  DDLOG(fair::Severity::INFO) << "Exiting GUI thread...";
+
+  DDLOGF(fair::Severity::trace, "Exiting Info thread...");
 }
+
 }
 } /* namespace o2::DataDistribution */

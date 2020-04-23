@@ -18,7 +18,7 @@ endif()
 
 target_link_libraries(ReadoutEmulator
   PRIVATE
-    base common common_root
+    base common
 )
 
 install(TARGETS ReadoutEmulator RUNTIME DESTINATION bin)

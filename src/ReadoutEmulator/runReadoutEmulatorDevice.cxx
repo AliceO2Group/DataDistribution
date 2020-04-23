@@ -36,10 +36,7 @@ void addCustomOptions(bpo::options_description& options)
     "Number of CRU equipments to emulate (links, user logics, ...).")(
     o2::DataDistribution::ReadoutDevice::OptionKeyCruLinkBitsPerS,
     bpo::value<double>()->default_value(1000000000),
-    "Input throughput per link (bits per second),")(
-    o2::DataDistribution::ReadoutDevice::OptionKeyGui,
-    bpo::bool_switch()->default_value(true),
-    "Enable GUI");
+    "Input throughput per link (bits per second).");
 }
 
 FairMQDevicePtr getDevice(const FairMQProgOptions& /*config*/)
