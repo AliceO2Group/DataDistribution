@@ -80,7 +80,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 
   // sanity check
   {
-    if (ReadoutDataUtils::sEmptyTriggerHBFrameFilterring != ReadoutDataUtils::eNoSanityCheck) {
+    if (ReadoutDataUtils::sRdhSanityCheckMode != ReadoutDataUtils::eNoSanityCheck) {
       // check blocks individually
       for (std::size_t i = 0; i < pHBFrameLen; i++) {
 
