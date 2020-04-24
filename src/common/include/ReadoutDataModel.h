@@ -51,7 +51,7 @@ public:
   virtual ~RDHReaderIf() = default;
 
   // We walidate the data and the size on creation of the reader. No need to pass the size again
-  virtual void CheckRdhData(const char* data, const std::size_t size) const = 0;
+  virtual std::size_t CheckRdhData(const char* data, const std::size_t size) const = 0;
 
   // equipment
   virtual std::uint64_t getFeeID(const char* data) const = 0;
@@ -80,7 +80,7 @@ public:
   virtual ~RDHReaderImpl() {};
 
   virtual inline
-  void CheckRdhData(const char* data, const std::size_t size) const override final {
+  std::size_t CheckRdhData(const char* data, const std::size_t size) const override final {
     if (!data) {
       throw RDHReaderException(data, size, "Received NULL pointer instead of an RDH.");
     }
@@ -88,6 +88,7 @@ public:
     if (sizeof(RDH) > size) {
       throw RDHReaderException(data, size, "RDH size is too small. size=" + std::to_string(size));
     }
+    return sizeof(RDH);
   }
 
   // RDH field for SubSpecification
@@ -172,8 +173,19 @@ class RDHReader {
   inline static const RDHReaderIf& I() { return *sRDHReader; }
 
   // store the RDH pointer for later use
-  const char *mData;
-  const std::size_t mSize;
+  char *mData;
+  std::size_t mSize;
+  std::size_t mRDHSize;
+
+  RDHReader()
+  : mData(nullptr),
+    mSize(0),
+    mRDHSize(0) {}
+
+  RDHReader(const char* data, const std::size_t size, const std::size_t rsize)
+  : mData(const_cast<char*>(data)),
+    mSize(size),
+    mRDHSize(rsize) {}
 public:
 
   static void Initialize(const unsigned pVer) {
@@ -198,16 +210,58 @@ public:
     }
   }
 
-  RDHReader() = delete;
   RDHReader(const char* data, const std::size_t size)
-  : mData(data), mSize(size) {
+  : mData(const_cast<char*>(data)),
+    mSize(size),
+    mRDHSize(sRDHReader->CheckRdhData(mData, mSize)) {
     // NOTE: keep this as low overhead as possible
     assert(!!sRDHReader);
-    sRDHReader->CheckRdhData(mData, mSize);
   }
 
   explicit RDHReader(const FairMQMessagePtr &msg)
   : RDHReader(reinterpret_cast<const char*>(msg->GetData()), msg->GetSize()) { }
+
+  RDHReader(const RDHReader &b) = default;
+  RDHReader(RDHReader &&b) = default;
+
+  constexpr RDHReader& operator=(const RDHReader &b) {
+    mData = b.mData;
+    mSize = b.mSize;
+    mRDHSize = b.mRDHSize;
+    return *this;
+  }
+
+  RDHReader next() const {
+    if (getStopBit()) {
+      return RDHReader();
+    }
+
+    const char *p = mData + this->getOffsetToNext();
+
+    if (((mData + mSize) - mRDHSize) < p) {
+      return RDHReader(); // the rest of original buffer is too short
+    }
+
+    return RDHReader(p, mData + mSize - p, mRDHSize);
+  }
+
+  RDHReader end() const { return RDHReader(); }
+
+  inline
+  bool operator==(const RDHReader& b) {
+    if (mData == b.mData && mSize == b.mSize) {
+      return true;
+    }
+    return false;
+  }
+
+  inline
+  bool operator!=(const RDHReader &b) {
+    return !(*this == b);
+  }
+
+  inline
+  std::size_t getRDHSize() const { return mRDHSize; };
 
   // RDH equipment
   inline

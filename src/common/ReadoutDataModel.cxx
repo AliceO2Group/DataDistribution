@@ -57,31 +57,22 @@ ReadoutDataUtils::getSubSpecification(const RDHReader &R)
 std::tuple<std::size_t, bool>
 ReadoutDataUtils::getHBFrameMemorySize(const FairMQMessagePtr &pMsg)
 {
-  const char *data = reinterpret_cast<const char*>(pMsg->GetData());
-  const std::size_t len = pMsg->GetSize();
-
   std::size_t lMemRet = 0;
   bool lStopRet = false;
 
-  const char *p = data;
+  try {
+    auto R = RDHReader(pMsg);
+    while (R != R.end()) {
+      lMemRet += R.getMemorySize();
+      lStopRet = R.getStopBit();
 
-  while (p < data + len) {
-    const auto R = RDHReader(p, data + len - p);
-    const auto lMemSize = R.getMemorySize();
-    const auto lOffsetNext = R.getOffsetToNext();
-    const auto lStopBit = R.getStopBit();
-
-    lMemRet += lMemSize;
-    lStopRet = lStopBit;
-
-    if (lStopBit) {
-      break;
+      R = R.next();
     }
-
-    p += std::max(lOffsetNext, uint32_t(64));
+  } catch (RDHReaderException &e) {
+    DDLOGF(fair::Severity::ERROR, e.what());
   }
 
-  if (p > data + len) {
+  if (lMemRet > pMsg->GetSize()) {
     DDLOGF(fair::Severity::ERROR, "BLOCK CHECK: StopBit lookup failed: advanced beyond end of the buffer.");
     lStopRet = false;
   }
@@ -93,7 +84,7 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
 {
   const auto R = RDHReader(pData, pLen);
 
-  if (pLen < 64) { // size of one RDH
+  if (pLen < R.getRDHSize()) { // size of one RDH
     DDLOGF(fair::Severity::ERROR, "Data block is shorter than RDH: {}", pLen);
     o2::header::hexDump("Short readout block", pData, pLen);
     return false;
@@ -178,64 +169,74 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
 
 bool ReadoutDataUtils::filterEmptyTriggerBlocks(const char* pData, const std::size_t pLen)
 {
-  static thread_local std::size_t sNumFiltered128Blocks = 0;
-  static thread_local std::size_t sNumFiltered16kBlocks = 0;
+  static std::size_t sNumFiltered64Blocks = 0;
+  static std::size_t sNumFiltered128Blocks = 0;
+  static std::size_t sNumFiltered16kBlocks = 0;
 
   std::uint32_t lMemSize1, lOffsetNext1, lStopBit1;
   std::uint32_t lMemSize2, lStopBit2;
 
-  if (pLen == 128 || pLen == 16384) { /* usual case */
-    if (pData[0] != 4) {
-      return false; // not RDH4
-    }
-
-    const auto R1 = RDHReader(pData, pLen);
-    lMemSize1 = R1.getMemorySize();
-    lOffsetNext1 = R1.getOffsetToNext();
-    lStopBit1 = R1.getStopBit();
-
-    if (lStopBit1) {
-      return false;
-    }
-
-    if (lOffsetNext1 > pLen) {
-      DDLOGF(fair::Severity::ERROR, "BLOCK CHECK: Invalid offset (beyond end of the buffer). offset={}", lOffsetNext1);
-    } if (lOffsetNext1 < 64) {
-      DDLOGF(fair::Severity::ERROR, "BLOCK CHECK: Invalid offset (less than the RDH size). offset={}", lOffsetNext1);
-    }
-
-    const char *lRDH1 = pData;
-    const char *lRDH2 = lRDH1 + lOffsetNext1;
-    const std::size_t lRDH2Size = std::min(std::size_t(pLen-lOffsetNext1), std::size_t(8192));
-
-    const auto R2 = RDHReader(lRDH2, lRDH2Size);
-    lMemSize2 = R2.getMemorySize();
-    lStopBit2 = R2.getStopBit();
-
-    if (getSubSpecification(R1) != getSubSpecification(R2)) {
-      return false;
-    }
-
-    if (lMemSize1 != lMemSize2 || lMemSize1 != 64) {
-      return false;
-    }
-
-    if ((lStopBit1 != 0) || (lStopBit2 != 1)) {
-      return false;
-    }
-
-    if (pLen == 128) {
-      sNumFiltered128Blocks++;
-      if (sNumFiltered128Blocks % 250000 == 0) {
-        DDLOGF(fair::Severity::INFO, "Filtered {} of 128 B blocks in trigger mode.", sNumFiltered128Blocks);
+  if (pLen == 64 || pLen == 128 || pLen == 16384) { /* usual case */
+    try{
+      const auto R1 = RDHReader(pData, pLen);
+      lStopBit1 = R1.getStopBit();
+      lMemSize1 = R1.getMemorySize();
+      // check the 64B case
+      if (lStopBit1 && pLen == R1.getRDHSize() && lMemSize1 == R1.getRDHSize()) {
+        sNumFiltered64Blocks++;
+        if (sNumFiltered128Blocks % 250000 == 0) {
+          DDLOGF(fair::Severity::INFO, "Filtered {} of 64 B blocks in trigger mode.", sNumFiltered128Blocks);
+        }
+        return true;
+      } else if (lStopBit1) {
+        return false;
       }
-    } else if (pLen == 16384) {
-      sNumFiltered16kBlocks++;
-      if (sNumFiltered16kBlocks % 250000 == 0) {
-        DDLOGF(fair::Severity::INFO, "Filtered {} of 16 kiB blocks in trigger mode.", sNumFiltered16kBlocks);
-      }
-    }
 
+      lOffsetNext1 = R1.getOffsetToNext();
+
+      if (lOffsetNext1 > pLen) {
+        DDLOGF(fair::Severity::ERROR, "BLOCK CHECK: Invalid offset (beyond end of the buffer). offset={}", lOffsetNext1);
+      } if (lOffsetNext1 < R1.getRDHSize() ) {
+        DDLOGF(fair::Severity::ERROR, "BLOCK CHECK: Invalid offset (less than the RDH size). offset={}", lOffsetNext1);
+      }
+
+      const char *lRDH1 = pData;
+      const char *lRDH2 = lRDH1 + lOffsetNext1;
+      const std::size_t lRDH2Size = std::min(std::size_t(pLen - lOffsetNext1), std::size_t(8192));
+
+      const auto R2 = RDHReader(lRDH2, lRDH2Size);
+
+      // check the subspecification
+      if (getSubSpecification(R1) != getSubSpecification(R2)) {
+        return false;
+      }
+
+      lMemSize2 = R2.getMemorySize();
+      lStopBit2 = R2.getStopBit();
+
+      if (lMemSize1 != lMemSize2 || lMemSize1 != R1.getRDHSize()) {
+        return false;
+      }
+
+      if ((lStopBit1 != 0) || (lStopBit2 != 1)) {
+        return false ;
+      }
+
+      if (pLen == 128) {
+        sNumFiltered128Blocks++;
+        if (sNumFiltered128Blocks % 250000 == 0) {
+          DDLOGF(fair::Severity::INFO, "Filtered {} of 128 B blocks in trigger mode.", sNumFiltered128Blocks);
+        }
+      } else if (pLen == 16384) {
+        sNumFiltered16kBlocks++;
+        if (sNumFiltered16kBlocks % 250000 == 0) {
+          DDLOGF(fair::Severity::INFO, "Filtered {} of 16 kiB blocks in trigger mode.", sNumFiltered16kBlocks);
+        }
+      }
+    } catch (RDHReaderException &e) {
+      DDLOGF(fair::Severity::ERROR, e.what());
+      return false;
+    }
   } else {
     return false; // size does not match
   }
