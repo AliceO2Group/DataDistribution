@@ -48,6 +48,9 @@ class SubTimeFrameReadoutBuilder
 
   std::unique_ptr<SubTimeFrame> mStf;
 
+  // filtering: keep info if the first HBFrame is already kept back
+  std::unordered_map<o2::header::DataHeader::SubSpecificationType, bool> mFirstFiltered;
+
   bool mDplEnabled;
 
   std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;

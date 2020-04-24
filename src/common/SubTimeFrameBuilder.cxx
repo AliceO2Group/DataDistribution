@@ -39,7 +39,7 @@ SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(FairMQChannel& pChan, boo
     mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
-    pChan, 64ULL << 20 /* make configurable */,
+    pChan, 128ULL << 20 /* make configurable */,
     mDplEnabled ?
       sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
       sizeof(DataHeader)
@@ -54,6 +54,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 {
   if (!mStf) {
     mStf = std::make_unique<SubTimeFrame>(pHdr.mTimeFrameId);
+    mFirstFiltered.clear();
   }
 
   std::vector<bool> lKeepBlocks(pHBFrameLen, true);
@@ -65,6 +66,18 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
       for (std::size_t i = 0; i < pHBFrameLen; i++) {
         if (lKeepBlocks[i] == false) {
           continue; // already discarded
+        }
+
+        if (i == 0) {
+          // NOTE: this can be implemented by checking trigger flags in the RDH for the TF bit
+          //       Perhaps switch to that method later, when the RHD is more stable
+          //       Fow now, we simply keep the first HBFrame of each equipment in the STF
+          const auto R = RDHReader(pHbFramesBegin[0]);
+          const auto lSubSpec = ReadoutDataUtils::getSubSpecification(R);
+          if (!mFirstFiltered[lSubSpec]) {
+            mFirstFiltered[lSubSpec] = true;
+            continue; // we keep the first HBFrame for each subspec (equipment)
+          }
         }
 
         if (!ReadoutDataUtils::filterEmptyTriggerBlocks(
@@ -184,6 +197,8 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameReadoutBuilder::getStf()
 {
   std::unique_ptr<SubTimeFrame> lStf = std::move(mStf);
   mStf = nullptr;
+  mFirstFiltered.clear();
+
   return lStf;
 }
 
@@ -261,7 +276,7 @@ TimeFrameBuilder::TimeFrameBuilder(FairMQChannel& pChan, bool pDplEnabled)
   : mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
-    pChan, 64ULL << 20 /* make configurable */,
+    pChan, 128ULL << 20 /* make configurable */,
     mDplEnabled ?
       sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
       sizeof(DataHeader)
