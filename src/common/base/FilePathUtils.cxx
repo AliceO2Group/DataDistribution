@@ -36,7 +36,7 @@ std::string getDateTimeStr()
   using namespace std::chrono;
   std::ostringstream ss;
   const auto lTimet = std::chrono::system_clock::to_time_t(system_clock::now());
-  ss << std::put_time(gmtime(&lTimet), "%FT%TZ");
+  ss << std::put_time(localtime(&lTimet), "%FT%TZ");
   return boost::replace_all_copy(ss.str(), ":", "_");
 }
 
