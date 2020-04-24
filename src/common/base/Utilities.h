@@ -20,7 +20,7 @@
 #include <memory>
 #include <thread>
 
-#include <vector>
+#include <array>
 #include <numeric>
 
 namespace o2
@@ -52,16 +52,18 @@ class RunningSamples
 {
  public:
   RunningSamples()
-    : mSamples(N, T(0)),
+    : mSamples(),
       mIndex(0),
       mCount(0)
   {
+    mSamples.fill(T(0));
   }
   RunningSamples(const T& pInitVal)
-    : mSamples(N, pInitVal),
+    : mSamples(),
       mIndex(0),
       mCount(0)
   {
+    mSamples.fill(pInitVal);
   }
 
   void Fill(const T& pNewVal)
@@ -100,7 +102,7 @@ class RunningSamples
   }
 
  private:
-  std::vector<T> mSamples;
+  std::array<T, N> mSamples;
   std::size_t mIndex = 0;
   std::size_t mCount = 0;
 };
