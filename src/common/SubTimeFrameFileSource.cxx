@@ -47,7 +47,11 @@ void SubTimeFrameFileSource::start(FairMQChannel& pDstChan, const bool pDplEnabl
     mDplEnabled = pDplEnabled;
 
     if (!mFileBuilder) {
-      mFileBuilder = std::make_unique<SubTimeFrameFileBuilder>(pDstChan, mDplEnabled);
+      mFileBuilder = std::make_unique<SubTimeFrameFileBuilder>(
+        pDstChan,
+        mRegionSizeMB << 20,
+        mDplEnabled
+      );
     }
 
     mRunning = true;
@@ -93,7 +97,11 @@ bpo::options_description SubTimeFrameFileSource::getProgramOptions()
     "Rate of injecting new (Sub)TimeFrames (approximate). 0 to inject as fast as possible.")(
     OptionKeyStfSourceRepeat,
     bpo::bool_switch()->default_value(false),
-    "If enabled, repeatedly inject (Sub)TimeFrames into the chain.");
+    "If enabled, repeatedly inject (Sub)TimeFrames into the chain.")(
+    OptionKeyStfSourceRegionSize,
+    bpo::value<std::uint64_t>()->default_value(1024),
+    "Size of the memory region for (Sub)TimeFrames data in MiB. "
+    "Note: make sure the region can fit several (Sub)TimeFrames to avoid deadlocks.");
 
   return lSinkDesc;
 }
@@ -105,8 +113,10 @@ std::vector<std::string> SubTimeFrameFileSource::getDataFileList() const
   // Remove side-car files
   auto lRemIt = std::remove_if(lFilesVector.begin(), lFilesVector.end(),
     [](const std::string &lElem) {
-      DDLOG(fair::Severity::DEBUG) << "Checking if should remove file: " << lElem << " ? " << (boost::ends_with(lElem, ".info")? "yes" : "no");
-      return boost::ends_with(lElem, ".info");
+      bool lToRemove =  boost::ends_with(lElem, ".info") || boost::ends_with(lElem, ".sh") || boost::starts_with(lElem, ".");
+
+      DDLOGF(fair::Severity::DEBUG, "Checking if should remove file: {} ? {}", lElem, (lToRemove ? "yes" : "no"));
+      return lToRemove;
     }
   );
 
@@ -140,19 +150,26 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
 
   mRepeat = pFMQProgOpt.GetValue<bool>(OptionKeyStfSourceRepeat);
   mLoadRate = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfLoadRate);
+  mRegionSizeMB = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSourceRegionSize);
 
   const auto lFilesVector = getDataFileList();
   if (lFilesVector.empty()) {
-    DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame directory contains no data files.";
+    DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame directory contains no data files.");
+    return false;
+  }
+
+  if (mRegionSizeMB <= 0) {
+    DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame region size must be a positive value");
     return false;
   }
 
   // print options
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame source :: enabled         = " << (mEnabled ? "yes" : "no");
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame source :: directory       = " << mDir;
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame source :: (s)tf load rate = " << mLoadRate;
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame source :: repeat data     = " << mRepeat;
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame source :: num files       = " << lFilesVector.size();
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: enabled         = {}", (mEnabled ? "yes" : "no"));
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: directory       = {}", mDir);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: (s)tf load rate = {}", mLoadRate);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: repeat data     = {}", mRepeat);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: num files       = {}", lFilesVector.size());
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: region size(MiB)= {}", mRegionSizeMB);
 
   return true;
 }
@@ -164,8 +181,6 @@ void SubTimeFrameFileSource::DataInjectThread()
 
   DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Source: Injecting new STF every " << lIntervalUs.count() << " us";
 
-  auto lRatePrevTime = std::chrono::high_resolution_clock::now();
-
   while (mRunning) {
     // Get the next STF
     std::unique_ptr<SubTimeFrame> lStf;
@@ -173,12 +188,12 @@ void SubTimeFrameFileSource::DataInjectThread()
       break;
     }
 
-    do {
-      std::this_thread::sleep_for(5ms);
-    } while(std::chrono::high_resolution_clock::now() - lRatePrevTime  < lIntervalUs);
-
     mPipelineI.queue(mPipelineStageOut, std::move(lStf));
-    lRatePrevTime = std::chrono::high_resolution_clock::now();
+    auto lRatePrevTime = std::chrono::high_resolution_clock::now();
+
+    while(std::chrono::high_resolution_clock::now() - lRatePrevTime  < lIntervalUs) {
+      std::this_thread::sleep_for(1ms);
+    }
   }
 
   DDLOG(fair::Severity::INFO) << "Exiting file source inject thread...";
@@ -188,7 +203,7 @@ void SubTimeFrameFileSource::DataInjectThread()
 void SubTimeFrameFileSource::DataHandlerThread()
 {
   // inject rate
-  const std::chrono::microseconds lIntervalUs(mLoadRate > 0 ? 1000000 / mLoadRate : 0);
+  const std::chrono::microseconds lIntervalUs(mLoadRate > 0 ? (1000000 / mLoadRate) : 100);
   // Load the sorted list of StfFiles
   auto lFilesVector = getDataFileList();
   if (lFilesVector.empty()) {
@@ -206,7 +221,7 @@ void SubTimeFrameFileSource::DataHandlerThread()
       auto lFileNameAbs = bfs::path(mDir) / bfs::path(lFileName);
       SubTimeFrameFileReader lStfReader(lFileNameAbs);
 
-      DDLOG(fair::Severity::DEBUG) << "FileSource: opened new file " << lFileNameAbs.string();
+      // DDLOG(fair::Severity::DEBUG) << "FileSource: opened new file " << lFileNameAbs.string();
 
       while (mRunning) {
         // prevent large read-ahead
@@ -215,13 +230,14 @@ void SubTimeFrameFileSource::DataHandlerThread()
         }
 
         // read STF from file
-        auto lStfPtr = lStfReader.read(*mDstChan);
+        auto lStfPtr = lStfReader.read(*mFileBuilder);
 
         if (mRunning && lStfPtr) {
           // adapt Stf headers for different output channels, native or DPL
           mFileBuilder->adaptHeaders(lStfPtr.get());
           mReadStfQueue.push(std::move(lStfPtr));
         } else {
+          // bad file?
           break; // EOF or !running
         }
       }

@@ -26,6 +26,8 @@ namespace o2
 namespace DataDistribution
 {
 
+class SubTimeFrameFileBuilder;
+
 ////////////////////////////////////////////////////////////////////////////////
 /// SubTimeFrameFileReader
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,7 +42,7 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
   ///
   /// Read a single TF from the file
   ///
-  std::unique_ptr<SubTimeFrame> read(FairMQChannel& pDstChan);
+  std::unique_ptr<SubTimeFrame> read(SubTimeFrameFileBuilder &pFileBuilder);
 
   ///
   /// Tell the current position of the file

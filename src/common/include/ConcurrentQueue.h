@@ -220,6 +220,13 @@ class IFifoPipeline
     }
   }
 
+  void clearPipeline()
+  {
+    for (auto& lQueue : mPipelineQueues) {
+      lQueue.flush();
+    }
+  }
+
   template <typename... Args>
   bool queue(unsigned pStage, Args&&... args)
   {

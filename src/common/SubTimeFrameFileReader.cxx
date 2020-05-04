@@ -13,6 +13,7 @@
 
 #include "SubTimeFrameFile.h"
 #include "SubTimeFrameFileReader.h"
+#include "SubTimeFrameBuilder.h"
 
 #include "DataDistLogger.h"
 
@@ -108,7 +109,7 @@ std::int64_t SubTimeFrameFileReader::getHeaderStackSize() // throws ios_base::fa
 #endif
 }
 
-std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstChan)
+std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuilder &pFileBuilder)
 {
   // TODO: add id to files metadata
   static std::uint64_t sStfId = 0;
@@ -151,7 +152,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
 
   // verify we're actually reading the correct data in
   if (!(SubTimeFrameFileMeta::getDataHeader().dataDescription == lStfMetaDataHdr.dataDescription)) {
-   DDLOG(fair::Severity::WARNING) << "Reading bad data: SubTimeFrame META header";
+    DDLOG(fair::Severity::WARNING) << "Reading bad data: SubTimeFrame META header";
     mFile.close();
     return nullptr;
   }
@@ -189,7 +190,6 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
   // read all data blocks and headers
   assert(mStfData.empty());
   try {
-
     std::int64_t lLeftToRead = lStfDataSize;
 
     // read <hdrStack + data> pairs
@@ -204,21 +204,20 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
         return nullptr;
       }
       // allocate and read the Headers
-      auto lHdrStackMsg = pDstChan.NewMessage(lHdrSize);
+      DataHeader lDataHeader;
+      buffered_read(&lDataHeader, sizeof(DataHeader));
+
+      auto lHdrStackMsg = pFileBuilder.getHeaderMessage(lDataHeader, lStf->id());
       if (!lHdrStackMsg) {
        DDLOG(fair::Severity::WARNING) << "Out of memory: header message, allocation size: " << lHdrSize;
         mFile.close();
         return nullptr;
       }
 
-      buffered_read(lHdrStackMsg->GetData(), lHdrSize);
-
       // read the data
-      DataHeader lDataHeader;
-      std::memcpy(&lDataHeader, lHdrStackMsg->GetData(), sizeof(DataHeader));
       const std::uint64_t lDataSize = lDataHeader.payloadSize;
 
-      auto lDataMsg = pDstChan.NewMessage(lDataSize);
+      auto lDataMsg = pFileBuilder.getDataMessage(lDataSize);
       if (!lDataMsg) {
        DDLOG(fair::Severity::WARNING) << "Out of memory: data message, allocation size: " << lDataSize;
         mFile.close();
@@ -247,10 +246,6 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(FairMQChannel& pDstCh
 
   // build the SubtimeFrame
   lStf->accept(*this);
-
-  DDLOG(fair::Severity::DEBUG) << "FileReader: read TF size: " << lStfFileMeta.mStfSizeInFile
-            << ", created on " << lStfFileMeta.getTimeString()
-            << " (timestamp: " << lStfFileMeta.mWriteTimeMs << ")";
 
   return lStf;
 }

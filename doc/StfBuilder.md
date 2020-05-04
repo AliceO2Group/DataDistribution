@@ -36,9 +36,6 @@ to files, before they are sent out.
 **--color** arg
 :   Log color (true/false). The default value of this parameter is '*1*'.
 
-**--log-to-file** filename
-:   Log output to a file.
-
 **--print-options** [arg]
 :   Print options.  The default value of this parameter is '*1*'.
 
@@ -128,10 +125,10 @@ to files, before they are sent out.
 
 **--data-sink-file-name** pattern
 :   Specifies file name pattern: %n - file index, %D - date, %T - time.
-    The default value of this parameter is '*%n*'.
+    The default value of this parameter is '*%i.tf*'.
 
 **--data-sink-max-stfs-per-file** num
-:   Limit the number of (Sub)TimeFrames per file.
+:   Limit the number of (Sub)TimeFrames per file.s
     The default value of this parameter is '*1*'.
 
 **--data-sink-max-file-size** arg (=4294967296)
@@ -158,6 +155,9 @@ to files, before they are sent out.
 **--data-source-repeat**
 :   If enabled, repeatedly inject (Sub)TimeFrames into the chain.
 
+**--data-source-regionsize**
+:   Size of the memory region for (Sub)TimeFrames data in MiB. Note: make sure the
+    region can fit several (Sub)TimeFrames to avoid deadlocks.
 
 # NOTES
 

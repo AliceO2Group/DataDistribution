@@ -39,7 +39,9 @@ SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(FairMQChannel& pChan, boo
     mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
-    pChan, 128ULL << 20 /* make configurable */,
+    "O2HeadersRegion",
+    pChan,
+    std::size_t(256) << 20, /* make configurable */
     mDplEnabled ?
       sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
       sizeof(DataHeader)
@@ -59,7 +61,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 
   std::vector<bool> lKeepBlocks(pHBFrameLen, true);
 
-  // filter empty trigger RDHv4
+  // filter empty trigger
   {
     if (ReadoutDataUtils::sEmptyTriggerHBFrameFilterring) {
       // filter empty trigger start stop pages
@@ -207,14 +209,23 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameReadoutBuilder::getStf()
 /// SubTimeFrameFileBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(FairMQChannel& pChan, bool pDplEnabled)
+SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize, bool pDplEnabled)
   : mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
-    pChan, 128ULL << 20 /* make configurable */,
+    "O2HeadersRegion_FileSource",
+    pChan,
+    std::size_t(256) << 20, /* make configurable */
     mDplEnabled ?
       sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
       sizeof(DataHeader)
+  );
+
+  mDataMemRes = std::make_unique<RegionAllocatorResource>(
+    "O2DataRegion_FileSource",
+    pChan,
+    pDataSegSize,
+    0 // TODO: GPU flags
   );
 }
 
@@ -276,7 +287,9 @@ TimeFrameBuilder::TimeFrameBuilder(FairMQChannel& pChan, bool pDplEnabled)
   : mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
-    pChan, 128ULL << 20 /* make configurable */,
+    "O2HeadersRegion",
+    pChan,
+    std::size_t(256) << 20, /* make configurable */
     mDplEnabled ?
       sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
       sizeof(DataHeader)
