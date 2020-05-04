@@ -44,11 +44,6 @@ The default value of this parameter is \[aq]\f[I]1\f[]\[aq].
 .RS
 .RE
 .TP
-.B \f[B]\-\-log\-to\-file\f[] filename
-Log output to a file.
-.RS
-.RE
-.TP
 .B \f[B]\-\-print\-options\f[] [arg]
 Print options.
 The default value of this parameter is \[aq]\f[I]1\f[]\[aq].
@@ -179,13 +174,13 @@ run.
 .TP
 .B \f[B]\-\-data\-sink\-file\-name\f[] pattern
 Specifies file name pattern: %n \- file index, %D \- date, %T \- time.
-The default value of this parameter is \[aq]\f[I]%n\f[]\[aq].
+The default value of this parameter is \[aq]\f[I]%i.tf\f[]\[aq].
 .RS
 .RE
 .TP
 .B \f[B]\-\-data\-sink\-max\-stfs\-per\-file\f[] num
-Limit the number of (Sub)TimeFrames per file.
-The default value of this parameter is \[aq]\f[I]1\f[]\[aq].
+Limit the number of (Sub)TimeFrames per file.s The default value of this
+parameter is \[aq]\f[I]1\f[]\[aq].
 .RS
 .RE
 .TP
@@ -225,6 +220,13 @@ Rate of injecting new (Sub)TimeFrames (approximate).
 .TP
 .B \f[B]\-\-data\-source\-repeat\f[]
 If enabled, repeatedly inject (Sub)TimeFrames into the chain.
+.RS
+.RE
+.TP
+.B \f[B]\-\-data\-source\-regionsize\f[]
+Size of the memory region for (Sub)TimeFrames data in MiB.
+Note: make sure the region can fit several (Sub)TimeFrames to avoid
+deadlocks.
 .RS
 .RE
 .SH NOTES

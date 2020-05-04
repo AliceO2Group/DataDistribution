@@ -83,29 +83,31 @@ class StfBuilderDevice : public DataDistDevice,
   /// Default destructor
   ~StfBuilderDevice() override;
 
-  bool dplEnabled() const noexcept { return mDplEnabled; }
-  bool isSandalone() const noexcept { return mStandalone; }
+  bool dplEnabled() const noexcept { return I().mDplEnabled; }
+  bool isSandalone() const noexcept { return I().mStandalone; }
 
-  const std::string& getInputChannelName() const { return mInputChannelName; }
-  const std::string& getDplChannelName() const { return mDplChannelName; }
+  const std::string& getInputChannelName() const { return I().mInputChannelName; }
+  const std::string& getDplChannelName() const { return I().mDplChannelName; }
 
   auto& getOutputChannel() {
     if (isSandalone()) {
-      return *mStandaloneChannel;
+      return *I().mStandaloneChannel;
     }
 
     if (dplEnabled()) {
-      return this->GetChannel(mDplChannelName);
+      return this->GetChannel(I().mDplChannelName);
     }
 
-    return this->GetChannel(mOutputChannelName);
+    return this->GetChannel(I().mOutputChannelName);
   }
 
  protected:
-  virtual void PreRun() override final;
+  virtual void Init() override final;
+  virtual void Reset() override final;
   virtual void InitTask() override final;
-  virtual bool ConditionalRun() override final;
   virtual void ResetTask() override final;
+  virtual bool ConditionalRun() override final;
+
 
   bool tryPopOldestStfs()
   {
@@ -129,25 +131,24 @@ class StfBuilderDevice : public DataDistDevice,
       case eStfBuilderOut:
       /* case eStfFileSourceOut: */
       {
-        mNumStfs++;
+        I().mNumStfs++;
 
-        if (mPipelineLimit && (mNumStfs >= mMaxStfsInPipeline)) {
+        if (I().mPipelineLimit && (I().mNumStfs >= I().mMaxStfsInPipeline)) {
 
           // DROP policy in StfBuilder is to keep most current STFs. This will ensure that all
           // StfBuilders have the same set of STFs ready for distribution
 
-          DDLOG(fair::Severity::WARNING) << "Dropping oldest STF due to reaching the maximum number of buffered "
-                          "STFs in the process ("
-                       << mMaxStfsInPipeline
-                       << "). Consider increasing the limit, or reducing the input data rate.";
+          DDLOGF(fair::Severity::WARNING, "Dropping oldest STF due to reaching the maximum number of buffered "
+            "STFs in the process ({}). Consider increasing the limit, or reducing the input data rate.",
+            I().mMaxStfsInPipeline);
 
           if (tryPopOldestStfs()) {
-            mNumStfs--;
+            I().mNumStfs--;
           }
         }
 
-        if (mFileSink.enabled()) {
-          mNumStfs--;
+        if (I().mFileSink->enabled()) {
+          I().mNumStfs--;
           lNextStage = eStfFileSinkIn;
         } else {
           lNextStage = eStfSendIn;
@@ -156,7 +157,7 @@ class StfBuilderDevice : public DataDistDevice,
       }
       case eStfFileSinkOut:
       {
-        mNumStfs++;
+        I().mNumStfs++;
         lNextStage = eStfSendIn;
         break;
       }
@@ -174,36 +175,43 @@ class StfBuilderDevice : public DataDistDevice,
   }
 
   void StfOutputThread();
-
-  /// config
-  std::string mInputChannelName;
-  std::string mOutputChannelName;
-  std::string mDplChannelName;
-  o2::header::DataOrigin mDataOrigin;
-  bool mStandalone;
-  bool mDplEnabled;
-  std::int64_t mMaxStfsInPipeline;
-  bool mPipelineLimit;
-
-  /// Input Interface handler
-  StfInputInterface mReadoutInterface;
-  std::atomic_int64_t mNumStfs{ 0 };
-
-  /// Internal threads
-  std::thread mOutputThread;
-
-  /// File sink
-  SubTimeFrameFileSink mFileSink;
-
-  /// File source
-  std::unique_ptr<FairMQChannel> mStandaloneChannel;
-  SubTimeFrameFileSource mFileSource;
-
-  /// Info thread
   void InfoThread();
-  std::thread mInfoThread;
-  RunningSamples<uint64_t> mStfSizeSamples;
-  RunningSamples<float> mStfDataTimeSamples;
+
+  struct StfBuilderInstance {
+    /// config
+    std::string mInputChannelName;
+    std::string mOutputChannelName;
+    std::string mDplChannelName;
+    o2::header::DataOrigin mDataOrigin;
+    bool mStandalone;
+    bool mDplEnabled;
+    std::int64_t mMaxStfsInPipeline;
+    bool mPipelineLimit;
+
+    /// Input Interface handler
+    std::unique_ptr<StfInputInterface> mReadoutInterface;
+    std::atomic_int64_t mNumStfs{ 0 };
+
+    /// Internal threads
+    std::thread mOutputThread;
+
+    /// File sink
+    std::unique_ptr<SubTimeFrameFileSink> mFileSink;
+
+    /// File source
+    std::unique_ptr<FairMQChannel> mStandaloneChannel;
+    std::unique_ptr<SubTimeFrameFileSource> mFileSource;
+
+    /// Info thread
+    std::thread mInfoThread;
+    RunningSamples<uint64_t> mStfSizeSamples;
+    RunningSamples<float> mStfDataTimeSamples;
+  };
+
+  std::unique_ptr<StfBuilderInstance> mI;
+
+  StfBuilderInstance& I() { return *mI; }
+  const StfBuilderInstance& I() const { return *mI; }
 };
 
 }

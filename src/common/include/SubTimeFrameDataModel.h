@@ -230,15 +230,9 @@ class SubTimeFrame : public IDataModelObject
     std::unique_ptr<FairMQMessage> mHeader;
     std::unique_ptr<FairMQMessage> mData;
 
-    inline o2hdr::DataHeader getDataHeader() const
+    inline const o2hdr::DataHeader& getDataHeader() const
     {
-      o2hdr::DataHeader lDataHdr;
-      // DataHeader must be first in the stack
-      std::memcpy(&lDataHdr, mHeader->GetData(), sizeof(o2hdr::DataHeader));
-      // make sure it's standalone
-      lDataHdr.flagsNextHeader = 0;
-
-      return lDataHdr;
+      return *reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
     }
 
     inline void setPayloadIndex(o2hdr::DataHeader::SplitPayloadIndexType pIdx,
@@ -333,7 +327,7 @@ class SubTimeFrame : public IDataModelObject
 
   inline void addStfData(StfData&& pStfData)
   {
-    const o2hdr::DataHeader lDataHeader = pStfData.getDataHeader();
+    const o2hdr::DataHeader &lDataHeader = pStfData.getDataHeader();
     addStfData(lDataHeader, std::move(pStfData));
   }
 

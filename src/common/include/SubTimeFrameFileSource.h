@@ -46,6 +46,8 @@ class SubTimeFrameFileSource
   static constexpr const char* OptionKeyStfSourceDir = "data-source-dir";
   static constexpr const char* OptionKeyStfLoadRate = "data-source-rate";
   static constexpr const char* OptionKeyStfSourceRepeat = "data-source-repeat";
+  static constexpr const char* OptionKeyStfSourceRegionSize = "data-source-regionsize";
+
 
   static bpo::options_description getProgramOptions();
 
@@ -60,8 +62,14 @@ class SubTimeFrameFileSource
 
   ~SubTimeFrameFileSource()
   {
+    mRunning = false;
+
     if (mSourceThread.joinable()) {
       mSourceThread.join();
+    }
+
+    if (mInjectThread.joinable()) {
+      mInjectThread.join();
     }
     DDLOG(fair::Severity::TRACE) << "(Sub)TimeFrame Source terminated...";
   }
@@ -91,13 +99,13 @@ class SubTimeFrameFileSource
   std::string mDir;
   bool mRepeat = false;
   std::uint64_t mLoadRate = 44;
+  std::size_t mRegionSizeMB = size_t(1) << 10; /* 1GB in MiB */
 
   /// Thread for file writing
   std::atomic_bool mRunning = false;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mReadStfQueue;
   std::thread mSourceThread;
   std::thread mInjectThread;
-
 };
 }
 } /* o2::DataDistribution */

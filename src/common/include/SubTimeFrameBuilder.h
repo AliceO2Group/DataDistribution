@@ -17,6 +17,10 @@
 #include "SubTimeFrameDataModel.h"
 #include "MemoryUtils.h"
 
+#include <Headers/DataHeader.h>
+#include <Headers/Stack.h>
+#include <Framework/DataProcessingHeader.h>
+
 #include <vector>
 #include <mutex>
 
@@ -65,15 +69,39 @@ class SubTimeFrameFileBuilder
 {
  public:
   SubTimeFrameFileBuilder() = delete;
-  SubTimeFrameFileBuilder(FairMQChannel& pChan, bool pDplEnabled);
+  SubTimeFrameFileBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize, bool pDplEnabled);
 
   void adaptHeaders(SubTimeFrame *pStf);
+
+  FairMQMessagePtr getDataMessage(const std::size_t pSize) {
+    return mDataMemRes->NewFairMQMessage(pSize);
+  }
+
+  // allocate appropriate message for the header
+  FairMQMessagePtr getHeaderMessage(const o2::header::DataHeader &pDh, const std::uint64_t pTfId) {
+    std::unique_ptr<FairMQMessage> lMsg;
+
+    if (mDplEnabled) {
+      auto lStack = o2::header::Stack(mHeaderMemRes->allocator(),
+        pDh,
+        o2::framework::DataProcessingHeader{pTfId}
+      );
+
+      lMsg = mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data());
+    } else {
+      auto lHdrMsgStack = o2::header::Stack(mHeaderMemRes->allocator(), pDh);
+      lMsg = mHeaderMemRes->NewFairMQMessageFromPtr(lHdrMsgStack.data());
+    }
+
+    return lMsg;
+  }
 
  private:
 
   bool mDplEnabled;
 
   std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
+  std::unique_ptr<RegionAllocatorResource> mDataMemRes;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
