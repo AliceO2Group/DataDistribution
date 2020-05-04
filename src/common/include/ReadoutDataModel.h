@@ -212,10 +212,18 @@ public:
 
   RDHReader(const char* data, const std::size_t size)
   : mData(const_cast<char*>(data)),
-    mSize(size),
-    mRDHSize(sRDHReader->CheckRdhData(mData, mSize)) {
-    // NOTE: keep this as low overhead as possible
+    mSize(size)
+  {
+    if (!sRDHReader) {
+      DDLOGF(fair::Severity::WARNING, "RDH version not initialized manually! Using the value from the first data packet.");
+      if (size > 0) {
+        Initialize(data[0]);
+      } else {
+        throw RDHReaderException(data, size, "RDH has zero size. Cannot determine RDH version.");
+      }
+    }
     assert(!!sRDHReader);
+    mRDHSize = sRDHReader->CheckRdhData(mData, mSize);
   }
 
   explicit RDHReader(const FairMQMessagePtr &msg)

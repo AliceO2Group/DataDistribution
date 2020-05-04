@@ -62,11 +62,11 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
     "Specifies a destination directory where (Sub)TimeFrames are to be written. "
     "Note: A new directory will be created here for all output files.")(
     OptionKeyStfSinkFileName,
-    bpo::value<std::string>()->default_value("%i"),
+    bpo::value<std::string>()->default_value("%i.tf"),
     "Specifies file name pattern: %n - file index, %i - starting (S)TF id, %D - date, %T - time.")(
     OptionKeyStfSinkStfsPerFile,
-    bpo::value<std::uint64_t>()->default_value(0),
-    "Specifies number of (Sub)TimeFrames per file. Default: 0 (unlimited)")(
+    bpo::value<std::uint64_t>()->default_value(1),
+    "Specifies number of (Sub)TimeFrames per file. Default: 1")(
     OptionKeyStfSinkFileSize,
     bpo::value<std::uint64_t>()->default_value(std::uint64_t(4) << 10), /* 4GiB */
     "Specifies target size for (Sub)TimeFrame files in MiB.")(
