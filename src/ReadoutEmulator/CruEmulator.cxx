@@ -70,7 +70,7 @@ void CruLinkEmulator::linkReadoutThread()
     std::int64_t lPagesAvail = lSuperpages.size();
     if (lPagesAvail < lPagesToSend) {
       lPagesAvail += mMemHandler->getSuperpages(std::max(lPagesToSend, std::int64_t(32)), std::back_inserter(lSuperpages));
-      assert(lPagesAvail == lSuperpages.size());
+      assert(std::size_t(lPagesAvail) == lSuperpages.size());
     }
     lPagesAvail = lSuperpages.size();
 
