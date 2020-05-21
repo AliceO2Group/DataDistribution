@@ -69,51 +69,111 @@ void SubTimeFrameFileReader::visit(SubTimeFrame& pStf)
   }
 }
 
-std::int64_t SubTimeFrameFileReader::getHeaderStackSize() // throws ios_base::failure
+std::size_t SubTimeFrameFileReader::getHeaderStackSize() // throws ios_base::failure
 {
-  return sizeof(DataHeader); // TODO: allow arbitrary header stacks
+  // Expect valid Stack in the file.
+  // First Header must be DataHeader. The size is unknown since there are multiple versions.
+  // Each header in the stack extends BaseHeader
 
-#if 0
-  std::int64_t lHdrStackSize = 0;
+  // Read first the base header then the rest of the extended header. Keep going until the next flag is set.
+  // reset the file pointer to the original incoming position, so the complete Stack can be read in
 
-  const auto lStartPos = mFile.tellg();
+  bool readNextHeader = true;
+  std::size_t lStackSize = 0;
+  DataHeader lBaseHdr; // Use DataHeader  since the BaseHeader has no default contructor.
 
-  DataHeader lBaseHdr;
+  const auto lFilePosStart = position();
 
-  do {
-    buffered_read(&lBaseHdr, sizeof(BaseHeader));
-    if (nullptr == BaseHeader::get(reinterpret_cast<o2::byte*>(&lBaseHdr))) {
-      // error: expected a header here
-      return -1;
-    } else {
-      lHdrStackSize += lBaseHdr.headerSize;
-    }
+  const auto cMaxHeaders = 8; /* make sure we don't loop forever */
+  auto lNumHeaders = 0;
+  while (readNextHeader && (++lNumHeaders <= cMaxHeaders)) {
+    buffered_read(&lBaseHdr, sizeof(BaseHeader)); // read BaseHeader only!
 
-    // skip the rest of the current header
-    if (lBaseHdr.headerSize > sizeof(BaseHeader)) {
-      mFile.ignore(lBaseHdr.headerSize - sizeof(BaseHeader));
-    } else {
-      // error: invalid header size value
-      return -1;
-    }
-  } while (lBaseHdr.next() != nullptr);
+    mFile.ignore(lBaseHdr.size());
 
-  // we should not eof here,
-  if (mFile.eof())
-    return -1;
+    lStackSize += lBaseHdr.size();
+    readNextHeader = (lBaseHdr.next() != nullptr);
+  }
+  // reset the file pointer
+  mFile.seekg(lFilePosStart);
 
-  // rewind the file to the start of Header stack
-  mFile.seekg(lStartPos);
+  if (lNumHeaders >= cMaxHeaders) {
+    DDLOGF(fair::Severity::ERROR, "FileRead: Reached max number of headers allowed: {}.", cMaxHeaders);
+    return 0;
+  }
 
-  return lHdrStackSize;
-#endif
+  return lStackSize;
 }
+
+Stack SubTimeFrameFileReader::getHeaderStack(std::size_t *pOrigsize) // throws ios_base::failure
+{
+  const auto lStackSize = getHeaderStackSize();
+  if (lStackSize < sizeof(BaseHeader)) {
+    // error in the stream
+    return Stack{};
+  }
+
+  if (pOrigsize) {
+    *pOrigsize = lStackSize;
+  }
+
+  // std::unique_ptr<o2::byte[]> lStackMem = std::make_unique<o2::byte[]>(lStackSize);
+  auto lStackMem = std::make_unique<o2::byte[]>(lStackSize);
+
+  // This must handle different versions of DataHeader
+  buffered_read(lStackMem.get(), lStackSize);
+
+  // check if DataHeader needs an upgrade by looking at the version number
+  const BaseHeader *lBaseOfDH = BaseHeader::get(lStackMem.get());
+  if (!lBaseOfDH) {
+    return Stack{};
+  }
+
+  if (lBaseOfDH->headerVersion < DataHeader::sVersion) {
+    DataHeader lNewDh;
+
+    // Write over the new DataHeader. We need to update some of the BaseHeader values.
+    std::memcpy(&lNewDh, lBaseOfDH->data(), lBaseOfDH->size());
+    // make sure to bump the version in the BaseHeader.
+    // TODO: Is there a better way?
+    lNewDh.headerSize = sizeof(DataHeader);
+    lNewDh.headerVersion = DataHeader::sVersion;
+
+    if (lBaseOfDH->headerVersion == 1) {
+      mDHUpdateFirstOrbit = true;
+    } else {
+      DDLOGF(fair::Severity::ERROR, "DataHeader version {} read from file is not upgraded to the current version {}",
+        lBaseOfDH->headerVersion, DataHeader::sVersion);
+      DDLOGF(fair::Severity::ERROR, "Try newer version of DataDistribution or file a BUG");
+    }
+
+    assert (sizeof (DataHeader) > lBaseOfDH->size() ); // current DataHeader must be larger
+
+    if (lBaseOfDH->size() == lStackSize) {
+      return Stack(lNewDh);
+    } else {
+      assert(lBaseOfDH->size() < lStackSize);
+
+      return Stack(
+        lNewDh,
+        Stack(lStackMem.get() + lBaseOfDH->size())
+      );
+    }
+  }
+
+  return Stack(lStackMem.get());
+}
+
+Stack SubTimeFrameFileReader::getHeaderStack(SubTimeFrameFileBuilder &pFileBuilder) // throws ios_base::failure
+{
+  // copy the memory to the SHM allocaton
+  return Stack(pFileBuilder.getHeaderMemRes().allocator(), getHeaderStack());
+}
+
+std::uint64_t SubTimeFrameFileReader::sStfId = 0; // TODO: add id to files metadata
 
 std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuilder &pFileBuilder)
 {
-  // TODO: add id to files metadata
-  static std::uint64_t sStfId = 0;
-
   // make sure headers and chunk pointers don't linger
   mStfData.clear();
 
@@ -137,22 +197,31 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
   // NOTE: StfID will be updated from the stf header
   std::unique_ptr<SubTimeFrame> lStf = std::make_unique<SubTimeFrame>(sStfId++);
 
-  DataHeader lStfMetaDataHdr;
+  std::unique_ptr<Stack> lMetaHdrStack;
+  std::size_t lMetaHdrStackSize = 0;
+  const DataHeader *lStfMetaDataHdr = nullptr;
   SubTimeFrameFileMeta lStfFileMeta;
 
   try {
     // Read DataHeader + SubTimeFrameFileMeta
-    buffered_read(&lStfMetaDataHdr, sizeof(DataHeader));
-    buffered_read(&lStfFileMeta, sizeof(SubTimeFrameFileMeta));
+    lMetaHdrStack = std::make_unique<Stack>(getHeaderStack(&lMetaHdrStackSize));
+    lStfMetaDataHdr = o2::header::DataHeader::Get(lMetaHdrStack->first());
+    if (!lStfMetaDataHdr) {
+      DDLOGF(fair::Severity::ERROR, "Failed to read the TF file header. The file might be corrupted.");
+      mFile.close();
+      return nullptr;
+    }
 
+    buffered_read(&lStfFileMeta, sizeof(SubTimeFrameFileMeta));
   } catch (const std::ios_base::failure& eFailExc) {
-    DDLOG(fair::Severity::ERROR) << "Reading from file failed. Error: " << eFailExc.what();
+    DDLOGF(fair::Severity::ERROR, "Reading from file failed. Error: {}", eFailExc.what());
+    mFile.close();
     return nullptr;
   }
 
   // verify we're actually reading the correct data in
-  if (!(SubTimeFrameFileMeta::getDataHeader().dataDescription == lStfMetaDataHdr.dataDescription)) {
-    DDLOG(fair::Severity::WARNING) << "Reading bad data: SubTimeFrame META header";
+  if (!(SubTimeFrameFileMeta::getDataHeader().dataDescription == lStfMetaDataHdr->dataDescription)) {
+    DDLOGF(fair::Severity::WARNING, "Reading bad data: SubTimeFrame META header");
     mFile.close();
     return nullptr;
   }
@@ -160,32 +229,43 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
   // prepare to read the TF data
   const auto lStfSizeInFile = lStfFileMeta.mStfSizeInFile;
   if (lStfSizeInFile == (sizeof(DataHeader) + sizeof(SubTimeFrameFileMeta))) {
-   DDLOG(fair::Severity::WARNING) << "Reading an empty TF from file. Only meta information present";
+    DDLOGF(fair::Severity::WARNING, "Reading an empty TF from file. Only meta information present");
+    mFile.close();
     return nullptr;
   }
 
   // check there's enough data in the file
   if ((lTfStartPosition + lStfSizeInFile) > this->size()) {
-   DDLOG(fair::Severity::WARNING) << "Not enough data in file for this TF. Required: " << lStfSizeInFile
-                 << ", available: " << (this->size() - lTfStartPosition);
+    DDLOGF(fair::Severity::WARNING, "Not enough data in file for this TF. Required: {}, available: {}",
+      lStfSizeInFile, (this->size() - lTfStartPosition));
     mFile.close();
     return nullptr;
   }
 
   // Index
   // TODO: skip the index for now, check in future all data is there
-  DataHeader lStfIndexHdr;
+  std::unique_ptr<Stack> lStfIndexHdrStack;
+  std::size_t lStfIndexHdrStackSize = 0;
+  const DataHeader *lStfIndexHdr = nullptr;
   try {
     // Read DataHeader + SubTimeFrameFileMeta
-    buffered_read(&lStfIndexHdr, sizeof(DataHeader));
-    mFile.seekg(lStfIndexHdr.payloadSize, std::ios_base::cur);
+    lStfIndexHdrStack = std::make_unique<Stack>(getHeaderStack(&lStfIndexHdrStackSize));
+    lStfIndexHdr = o2::header::DataHeader::Get(lStfIndexHdrStack->first());
+    if (!lStfIndexHdr) {
+      DDLOGF(fair::Severity::ERROR, "Failed to read the TF index structure. The file might be corrupted.");
+      return nullptr;
+    }
+
+    mFile.ignore(lStfIndexHdr->payloadSize);
   } catch (const std::ios_base::failure& eFailExc) {
-    DDLOG(fair::Severity::ERROR) << "Reading from file failed. Error: " << eFailExc.what();
+    DDLOG(fair::Severity::ERROR) << "Reading TF index from file failed. Error: " << eFailExc.what();
     return nullptr;
   }
 
-  const auto lStfDataSize = lStfSizeInFile - (sizeof(DataHeader) + sizeof(SubTimeFrameFileMeta))
-    - (sizeof (lStfIndexHdr) + lStfIndexHdr.payloadSize);
+  // Remaining data size of the TF:
+  // total size in file - meta (hdr+struct) - index (hdr + payload)
+  const auto lStfDataSize = lStfSizeInFile - (lMetaHdrStackSize + sizeof(SubTimeFrameFileMeta))
+    - (lStfIndexHdrStackSize + lStfIndexHdr->payloadSize);
 
   // read all data blocks and headers
   assert(mStfData.empty());
@@ -195,31 +275,31 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
     // read <hdrStack + data> pairs
     while (lLeftToRead > 0) {
 
-      // read the header stack
-      const std::int64_t lHdrSize = getHeaderStackSize();
-      if (lHdrSize < std::int64_t(sizeof(DataHeader))) {
-        // error while checking headers
-       DDLOG(fair::Severity::WARNING) << "Reading bad data: Header stack cannot be parsed";
-        mFile.close();
+      // allocate and read the Headers
+      std::size_t lDataHeaderStackSize = 0;
+      Stack lDataHeaderStack = getHeaderStack(&lDataHeaderStackSize);
+      const DataHeader *lDataHeader = o2::header::DataHeader::Get(lDataHeaderStack.first());
+      if (!lDataHeader) {
+        DDLOGF(fair::Severity::ERROR, "Failed to read the TF HBF DataHeader structure. The file might be corrupted.");
         return nullptr;
       }
-      // allocate and read the Headers
-      DataHeader lDataHeader;
-      buffered_read(&lDataHeader, sizeof(DataHeader));
 
-      auto lHdrStackMsg = pFileBuilder.getHeaderMessage(lDataHeader, lStf->id());
+      // TODO: fix fake first orbit
+      reinterpret_cast<DataHeader*>(lDataHeaderStack.data())->firstTForbit = sStfId * 256;
+
+      auto lHdrStackMsg = pFileBuilder.getHeaderMessage(lDataHeaderStack, lStf->id());
       if (!lHdrStackMsg) {
-       DDLOG(fair::Severity::WARNING) << "Out of memory: header message, allocation size: " << lHdrSize;
+        DDLOGF(fair::Severity::WARNING, "Out of memory: header message, allocation size: {}", lDataHeaderStackSize);
         mFile.close();
         return nullptr;
       }
 
       // read the data
-      const std::uint64_t lDataSize = lDataHeader.payloadSize;
+      const std::uint64_t lDataSize = lDataHeader->payloadSize;
 
       auto lDataMsg = pFileBuilder.getDataMessage(lDataSize);
       if (!lDataMsg) {
-       DDLOG(fair::Severity::WARNING) << "Out of memory: data message, allocation size: " << lDataSize;
+        DDLOGF(fair::Severity::WARNING, "Out of memory: data message, allocation size: {}", lDataSize);
         mFile.close();
         return nullptr;
       }
@@ -228,10 +308,11 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
       mStfData.emplace_back(
         SubTimeFrame::StfData{
           std::move(lHdrStackMsg),
-          std::move(lDataMsg) });
+          std::move(lDataMsg) }
+      );
 
       // update the counter
-      lLeftToRead -= (lHdrSize + lDataSize);
+      lLeftToRead -= (lDataHeaderStackSize + lDataSize);
     }
 
     if (lLeftToRead < 0) {

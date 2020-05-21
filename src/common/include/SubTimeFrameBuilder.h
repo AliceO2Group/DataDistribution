@@ -78,23 +78,25 @@ class SubTimeFrameFileBuilder
   }
 
   // allocate appropriate message for the header
-  FairMQMessagePtr getHeaderMessage(const o2::header::DataHeader &pDh, const std::uint64_t pTfId) {
+  FairMQMessagePtr getHeaderMessage(const o2::header::Stack &pIncomingStack, const std::uint64_t pTfId) {
     std::unique_ptr<FairMQMessage> lMsg;
 
     if (mDplEnabled) {
       auto lStack = o2::header::Stack(mHeaderMemRes->allocator(),
-        pDh,
+        pIncomingStack,
         o2::framework::DataProcessingHeader{pTfId}
       );
 
       lMsg = mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data());
     } else {
-      auto lHdrMsgStack = o2::header::Stack(mHeaderMemRes->allocator(), pDh);
+      auto lHdrMsgStack = o2::header::Stack(mHeaderMemRes->allocator(), pIncomingStack);
       lMsg = mHeaderMemRes->NewFairMQMessageFromPtr(lHdrMsgStack.data());
     }
 
     return lMsg;
   }
+
+  auto& getHeaderMemRes() const { return *mHeaderMemRes; }
 
  private:
 

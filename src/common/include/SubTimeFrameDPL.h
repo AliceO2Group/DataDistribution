@@ -56,6 +56,8 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
 
 class DplToStfAdapter : public ISubTimeFrameVisitor
 {
+  constexpr static std::uint64_t sCurrentTfId = 0;
+
  public:
   DplToStfAdapter() = default;
   virtual ~DplToStfAdapter() = default;
