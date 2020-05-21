@@ -16,6 +16,7 @@
 
 #include "SubTimeFrameDataModel.h"
 #include <Headers/DataHeader.h>
+#include <Headers/Stack.h>
 
 #include <boost/filesystem.hpp>
 #include <fstream>
@@ -68,10 +69,18 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
     return mFile.read(reinterpret_cast<char*>(pPtr), pLen);
   }
 
-  std::int64_t getHeaderStackSize();
+  std::size_t getHeaderStackSize();
+  o2::header::Stack getHeaderStack(std::size_t *pOrigsize = nullptr);
+  o2::header::Stack getHeaderStack(SubTimeFrameFileBuilder &pFileBuilder);
 
   // vector of <hdr, fmqMsg> elements of a tf read from the file
   std::vector<SubTimeFrame::StfData> mStfData;
+
+
+  // flags for upgrading DataHeader versions
+  bool mDHUpdateFirstOrbit = false; // Set first orbit of in the new DataHeader
+  static std::uint64_t sStfId; // TODO: add id to files metadata
+
 };
 }
 } /* o2::DataDistribution */

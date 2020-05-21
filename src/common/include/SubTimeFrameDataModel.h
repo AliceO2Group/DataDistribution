@@ -232,6 +232,7 @@ class SubTimeFrame : public IDataModelObject
 
     inline const o2hdr::DataHeader& getDataHeader() const
     {
+      // this is fine since we created the DataHeader there
       return *reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
     }
 
