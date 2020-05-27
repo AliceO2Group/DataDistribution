@@ -21,8 +21,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra")
-set(CMAKE_CXX_FLAGS_DEBUG "-fno-inline -fno-omit-frame-pointer -fmax-errors=10")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb3 -O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -fno-inline -fno-omit-frame-pointer -fmax-errors=10")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
 if(NOT APPLE)
@@ -51,6 +51,13 @@ endif()
 check_cxx_compiler_flag("-frecord-gcc-switches" CXX_GOOD_FLAGS)
 if(${CXX_GOOD_FLAGS})
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -frecord-gcc-switches")
+endif()
+
+check_cxx_compiler_flag("-fvar-tracking-assignments" CXX_GOOD_FLAGS)
+if(${CXX_GOOD_FLAGS})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvar-tracking-assignments -gdwarf-4")
+else()
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb3")
 endif()
 
 #
