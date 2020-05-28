@@ -97,9 +97,13 @@ public:
     mRegion = pChan.Transport()->CreateUnmanagedRegion(
       pSize,
       pRegionFlags,
-      [this](void* pRelData, size_t pRelSize, void* /* hint */) {
+      [this](const std::vector<FairMQRegionBlock>& pBlkVect) {
         // callback to be called when message buffers no longer needed by transport
-        reclaimSHMMessage(pRelData, pRelSize);
+        std::scoped_lock lock(mReclaimLock);
+
+        for (const auto &lBlk : pBlkVect) {
+          reclaimSHMMessage(lBlk.ptr, lBlk.size);
+        }
       },
       lSegmentRoot.c_str(),
       lMapFlags
@@ -217,8 +221,6 @@ private:
   {
     (void) pSize;
     assert (pSize == mObjectSize);
-
-    std::scoped_lock lock(mReclaimLock);
     mReclaimedObjects.push_back(pData);
   }
 
@@ -290,9 +292,13 @@ public:
     mRegion = pChan.Transport()->CreateUnmanagedRegion(
       pSize,
       pRegionFlags,
-      [this](void* pRelData, size_t pRelSize, void* /* hint */) {
-        // callback to be called when message buffers no longer needed by transport
-        reclaimSHMMessage(pRelData, pRelSize);
+      [this](const std::vector<FairMQRegionBlock>& pBlkVect) {
+        // callback to be called when message buffers no longer needed by transports
+        std::scoped_lock lock(mReclaimLock);
+
+        for (const auto &lBlk : pBlkVect) {
+          reclaimSHMMessage(lBlk.ptr, lBlk.size);
+        }
       },
       lSegmentRoot.c_str(),
       lMapFlags
@@ -336,7 +342,7 @@ protected:
 
   virtual void* do_allocate(std::size_t pSize, std::size_t /* pAlign */) override final
   {
-    unsigned long lAllocAttempt= 0;
+    unsigned long lAllocAttempt = 0;
 
     // align up
     pSize = align_size_up(pSize);
@@ -369,6 +375,7 @@ protected:
   virtual void do_deallocate(void *pAddr, std::size_t pSize, std::size_t) override final
   {
     // Objects are only freed through SHM message reclaim callback.
+    std::scoped_lock lock(mReclaimLock);
     reclaimSHMMessage(pAddr, pSize);
   }
 
@@ -394,15 +401,16 @@ private:
 
   bool try_reclaim(const std::size_t pSize) {
     // First declare any leftover memory as free
+    std::scoped_lock lock(mReclaimLock);
+
     if (mLength > 0) {
       assert(mStart != nullptr);
+      // NOTE: caller must hold mReclaimLock lock
       reclaimSHMMessage(mStart, mLength);
       // invalidate the working extent
       mLength = 0;
       mStart = nullptr;
     }
-
-    std::scoped_lock lock(mReclaimLock);
 
     if (mFrees.empty()) {
       return false;
@@ -431,8 +439,6 @@ private:
     pSize = align_size_up(pSize);
 
     const char *lData = reinterpret_cast<const char*>(pData);
-
-    std::scoped_lock lock(mReclaimLock);
 
     // push object to the free map. Try to merge nodes
     const auto lIter = mFrees.lower_bound(lData);

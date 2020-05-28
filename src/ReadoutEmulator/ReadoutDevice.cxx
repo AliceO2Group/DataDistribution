@@ -61,8 +61,10 @@ void ReadoutDevice::InitTask()
   mDataRegion = NewUnmanagedRegionFor(
     mOutChannelName, 0,
     mDataRegionSize + mSuperpageSize,
-    [this](void* data, size_t size, void* /* hint */) { // callback to be called when message buffers no longer needed by transport
-      mCruMemoryHandler->put_data_buffer(static_cast<char*>(data), size);
+    [this](const std::vector<FairMQRegionBlock>& pBlkVect) { // callback to be called when message buffers no longer needed by transport
+      for (const auto &lBlk : pBlkVect) {
+          mCruMemoryHandler->put_data_buffer(static_cast<char*>(lBlk.ptr), lBlk.size);
+      }
     });
 
   DDLOG(fair::Severity::INFO) << "Memory regions created";
