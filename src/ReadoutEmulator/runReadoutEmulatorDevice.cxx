@@ -15,6 +15,7 @@
 #include "runFairMQDevice.h"
 
 namespace bpo = boost::program_options;
+template class std::basic_string<char, std::char_traits<char>, std::allocator<char> >; // Workaround for bug in CC7 devtoolset7
 
 void addCustomOptions(bpo::options_description& options)
 {
