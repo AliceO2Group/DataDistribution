@@ -236,8 +236,8 @@ class SubTimeFrame : public IDataModelObject
       return *reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
     }
 
-    inline void setPayloadIndex(o2hdr::DataHeader::SplitPayloadIndexType pIdx,
-      o2hdr::DataHeader::SplitPayloadPartsType pTotal)
+    inline void setPayloadIndexAndOrbit(const o2hdr::DataHeader::SplitPayloadIndexType pIdx,
+      const o2hdr::DataHeader::SplitPayloadPartsType pTotal, const std::uint32_t pFirstOrbit)
     {
       assert(mHeader && mHeader->GetData() != nullptr);
       assert(pIdx < pTotal);
@@ -251,6 +251,7 @@ class SubTimeFrame : public IDataModelObject
       std::memcpy(&lDataHdr, mHeader->GetData(), sizeof(o2hdr::DataHeader));
       lDataHdr.splitPayloadIndex = pIdx;
       lDataHdr.splitPayloadParts = pTotal;
+      lDataHdr.firstTForbit = pFirstOrbit;
       std::memcpy(mHeader->GetData(), &lDataHdr, sizeof(o2hdr::DataHeader));
     }
   };
@@ -313,7 +314,12 @@ class SubTimeFrame : public IDataModelObject
   /// internal
   ///
   mutable bool mUpdated = false;
+  /// keep the lowest orbit of the tf and set in all DH on update
+  std::uint32_t mFirstOrbit = std::numeric_limits<std::uint32_t>::max();
+public:
+  void updateFirstOrbit(const std::uint32_t o) { mFirstOrbit = std::min(mFirstOrbit, o); }
 
+private:
   ///
   /// helper methods
   ///
@@ -348,7 +354,7 @@ class SubTimeFrame : public IDataModelObject
 
         const auto lTotalCount = lDataVector.size();
         for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
-          lDataVector[i].setPayloadIndex(i, lTotalCount);
+          lDataVector[i].setPayloadIndexAndOrbit(i, lTotalCount, mFirstOrbit);
         }
 
         assert(lDataVector.empty() ? true :
