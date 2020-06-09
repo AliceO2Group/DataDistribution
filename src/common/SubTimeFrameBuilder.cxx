@@ -59,6 +59,15 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     mFirstFiltered.clear();
   }
 
+  // TODO: remove when the readout supplies the value
+  try {
+    const auto R = RDHReader(pHbFramesBegin[0]);
+    mStf->updateFirstOrbit(R.getOrbit());
+  } catch (...) {
+    DDLOGF(fair::Severity::ERROR, "Error getting RDHReader instace. Not using {} HBFs", pHBFrameLen);
+    return;
+  }
+
   std::vector<bool> lKeepBlocks(pHBFrameLen, true);
 
   // filter empty trigger

@@ -69,7 +69,7 @@ public:
 };
 
 template<typename RDH>
-class RDHReaderImpl : public RDHReaderIf {
+class RDHReaderImpl final : public RDHReaderIf {
 
   inline static
   const RDH& getHdrRef(const char* data) {
@@ -219,7 +219,7 @@ public:
       if (size > 0) {
         Initialize(data[0]);
       } else {
-        throw RDHReaderException(data, size, "RDH has zero size. Cannot determine RDH version.");
+        throw RDHReaderException(data, size, "Cannot determine RDH version. Requested=" + std::to_string(data[0]));
       }
     }
     assert(!!sRDHReader);
