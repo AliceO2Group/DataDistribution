@@ -54,8 +54,8 @@ public:
                                       std::uint64_t pRegionFlags = 0)
   : mSegmentName(pSegmentName),
     mChan(pChan),
-    mObjectSize(pObjSize),
-    mAlignedSize((pObjSize + sizeof(max_align_t) - 1) / sizeof(max_align_t) * sizeof(max_align_t))
+    mObjectSize(pObjSize)//,
+    // mAlignedSize((pObjSize + sizeof(max_align_t) - 1) / sizeof(max_align_t) * sizeof(max_align_t))
   {
     int lMapFlags = 0;
     std::string lSegmentRoot = "";
@@ -119,10 +119,10 @@ public:
     unsigned char* lObj = static_cast<unsigned char*>(mRegion->GetData());
     memset(lObj, 0xAA, mRegion->GetSize());
 
-    const std::size_t lObjectCnt = mRegion->GetSize() / mAlignedSize;
+    const std::size_t lObjectCnt = mRegion->GetSize() / mObjectSize;
 
     for (std::size_t i = 0; i < lObjectCnt; i++) {
-      mAvailableObjects.push_back(lObj + i * mAlignedSize);
+      mAvailableObjects.push_back(lObj + i * mObjectSize);
     }
   }
 
@@ -157,7 +157,8 @@ public:
 protected:
   virtual void* do_allocate(std::size_t , std::size_t) override final
   {
-    unsigned long lAllocAttempt= 0;
+    unsigned long lAllocAttempt = 0;
+
     auto lRet = try_alloc();
     // we cannot fail! report problem if failing to allocate block often
     while (!lRet) {
@@ -178,6 +179,9 @@ protected:
         }
       }
     }
+
+    assert (lRet);
+    std::memset(lRet, 0, mObjectSize);
 
     return lRet;
   }
@@ -231,7 +235,6 @@ private:
 
   std::unique_ptr<FairMQUnmanagedRegion> mRegion;
   std::size_t mObjectSize;
-  std::size_t mAlignedSize;
 
   std::vector<void*> mAvailableObjects;
   std::mutex mReclaimLock;
