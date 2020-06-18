@@ -78,8 +78,35 @@ message(STATUS "CMAKE_CXX_STANDARD = ${CMAKE_CXX_STANDARD}")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
+find_package(Threads REQUIRED)
+find_package(FairMQ 1.4 REQUIRED)
+find_package(FairLogger ${FairMQ_FairLogger_VERSION} REQUIRED)
+message(STATUS "Looking for FairLogger dependencies: ${FairLogger_PACKAGE_DEPENDENCIES}" )
+foreach(dep IN LISTS FairLogger_PACKAGE_DEPENDENCIES)
+  find_package(${dep} ${FairLogger_${dep}_VERSION})
+endforeach()
+
+# Boost
+# Inherit FairMQ Boost deps and add ours
+set(Boost_COMPONENTS ${FairMQ_Boost_COMPONENTS})
+list(INSERT Boost_COMPONENTS
+  range
+  filesystem
+  unit_test_framework
+)
+list(REMOVE_DUPLICATES Boost_COMPONENTS)
+find_package(Boost ${FairMQ_Boost_VERSION} REQUIRED COMPONENTS ${Boost_COMPONENTS})
+
+find_package(ppconsul REQUIRED)
+find_package(Protobuf REQUIRED)
+find_package(gRPC CONFIG REQUIRED)
+
+find_package(AliceO2 REQUIRED)
+find_package(Monitoring 3 REQUIRED) # AliceO2::Monitoring
 
 # see if our 3rd parties are Installed
+# note: spdlog builds against external fmt because FairLogger does the same
+
 find_package(spdlog
   HINTS "${CMAKE_BINARY_DIR}/spdlog"
 )
@@ -104,26 +131,6 @@ if (NOT spdlog_FOUND)
   )
 endif()
 
-
-find_package(Threads REQUIRED)
-find_package(FairMQ 1.4 REQUIRED)
-find_package(FairLogger ${FairMQ_FairLogger_VERSION} REQUIRED)
-
-# Boost
-# Inherit FairMQ Boost deps and add ours
-set(Boost_COMPONENTS ${FairMQ_Boost_COMPONENTS})
-list(INSERT Boost_COMPONENTS
-  range
-  filesystem
-  unit_test_framework
-)
-list(REMOVE_DUPLICATES Boost_COMPONENTS)
-find_package(Boost ${FairMQ_Boost_VERSION} REQUIRED COMPONENTS ${Boost_COMPONENTS})
-
-find_package(ppconsul REQUIRED)
-find_package(Protobuf REQUIRED)
-find_package(gRPC CONFIG REQUIRED)
-find_package(AliceO2 REQUIRED)
 
 message(STATUS "Boost version : ${Boost_VERSION}")
 message(STATUS "Boost include path : ${Boost_INCLUDE_DIRS}")
