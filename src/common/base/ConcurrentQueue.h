@@ -73,10 +73,12 @@ class ConcurrentContainerImpl
   {
     std::unique_lock<std::mutex> lLock(mImpl->mLock);
 
-    if (type == eFIFO) {
+    if constexpr (type == eFIFO) {
       mImpl->mContainer.emplace_back(std::forward<Args>(args)...);
-    } else if (type == eLIFO) {
+    } else if constexpr (type == eLIFO) {
       mImpl->mContainer.emplace_front(std::forward<Args>(args)...);
+    } else {
+      static_assert("Unknown queuing strategy.");
     }
 
     lLock.unlock(); // reduce contention
@@ -190,9 +192,15 @@ class ConcurrentContainerImpl
 template <class T>
 using ConcurrentFifo = impl::ConcurrentContainerImpl<T, impl::eFIFO>;
 
+template <class T>
+using ConcurrentQueue = ConcurrentFifo<T>;
+
 // concurrent Stack (LIFO)
 template <class T>
 using ConcurrentLifo = impl::ConcurrentContainerImpl<T, impl::eLIFO>;
+
+template <class T>
+using ConcurrentStack = ConcurrentLifo<T>;
 
 ///
 ///  Pipeline handler with input and output ConcurrentContainer queue/stack
@@ -249,7 +257,7 @@ class IFifoPipeline
     T t;
     mPipelineQueues[pStage].pop(t);
     mPipelinedSize--;
-    return std::move(t);
+    return t;
   }
 
   bool try_pop(unsigned pStage)
