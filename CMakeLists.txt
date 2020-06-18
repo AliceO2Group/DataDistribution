@@ -108,6 +108,9 @@ endif()
 find_package(Threads REQUIRED)
 find_package(FairMQ 1.4 REQUIRED)
 find_package(FairLogger ${FairMQ_FairLogger_VERSION} REQUIRED)
+foreach(dep IN LISTS FairLogger_PACKAGE_DEPENDENCIES)
+find_package(${dep} ${FairLogger_${dep}_VERSION})
+endforeach()
 
 # Boost
 # Inherit FairMQ Boost deps and add ours
