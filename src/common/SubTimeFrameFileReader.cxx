@@ -284,9 +284,6 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
         return nullptr;
       }
 
-      // TODO: fix fake first orbit
-      reinterpret_cast<DataHeader*>(lDataHeaderStack.data())->firstTForbit = sStfId * 256;
-
       auto lHdrStackMsg = pFileBuilder.getHeaderMessage(lDataHeaderStack, lStf->id());
       if (!lHdrStackMsg) {
         DDLOGF(fair::Severity::WARNING, "Out of memory: header message, allocation size: {}", lDataHeaderStackSize);
@@ -304,6 +301,18 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
         return nullptr;
       }
       buffered_read(lDataMsg->GetData(), lDataSize);
+
+      // Try to figure out the first orbit
+      try {
+        const auto lHdr = reinterpret_cast<DataHeader*>(lDataHeaderStack.data());
+
+        if (lHdr && lHdr->firstTForbit == 0 && lHdr->dataDescription == o2::header::gDataDescriptionRawData) {
+          const auto R = RDHReader(lDataMsg);
+          lStf->updateFirstOrbit(R.getOrbit());
+        }
+      } catch (...) {
+        DDLOGF(fair::Severity::ERROR, "Error getting RDHReader instace. Not setting firstOrbit for file data");
+      }
 
       mStfData.emplace_back(
         SubTimeFrame::StfData{

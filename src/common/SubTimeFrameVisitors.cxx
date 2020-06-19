@@ -49,6 +49,8 @@ void InterleavedHdrDataSerializer::visit(SubTimeFrame& pStf)
     throw std::bad_alloc();
   }
   std::memcpy(lDataHeaderMsg->GetData(), &gStfDistDataHeader, sizeof(DataHeader));
+  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->firstTForbit = pStf.mFirstOrbit;
+  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->payloadSerializationMethod = gSerializationMethodNone;
 
   auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
   if (!lDataMsg) {
