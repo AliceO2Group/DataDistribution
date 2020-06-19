@@ -97,6 +97,7 @@ class SubTimeFrameFileSource
   bool mEnabled = false;
   bool mDplEnabled = false;
   std::string mDir;
+  std::vector<std::string> mFilesVector;
   bool mRepeat = false;
   std::uint64_t mLoadRate = 44;
   std::size_t mRegionSizeMB = size_t(1) << 10; /* 1GB in MiB */
@@ -107,6 +108,7 @@ class SubTimeFrameFileSource
   std::thread mSourceThread;
   std::thread mInjectThread;
 };
+
 }
 } /* o2::DataDistribution */
 

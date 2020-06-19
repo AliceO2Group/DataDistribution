@@ -152,8 +152,8 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
   mLoadRate = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfLoadRate);
   mRegionSizeMB = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSourceRegionSize);
 
-  const auto lFilesVector = getDataFileList();
-  if (lFilesVector.empty()) {
+  mFilesVector = getDataFileList();
+  if (mFilesVector.empty()) {
     DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame directory contains no data files.");
     return false;
   }
@@ -168,7 +168,7 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
   DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: directory       = {}", mDir);
   DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: (s)tf load rate = {}", mLoadRate);
   DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: repeat data     = {}", mRepeat);
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: num files       = {}", lFilesVector.size());
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: num files       = {}", mFilesVector.size());
   DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: region size(MiB)= {}", mRegionSizeMB);
 
   return true;
@@ -204,16 +204,19 @@ void SubTimeFrameFileSource::DataHandlerThread()
 {
   // inject rate
   const std::chrono::microseconds lIntervalUs(mLoadRate > 0 ? (1000000 / mLoadRate) : 100);
-  // Load the sorted list of StfFiles
-  auto lFilesVector = getDataFileList();
-  if (lFilesVector.empty()) {
+  // Load the sorted list of StfFiles if empty
+  if (mFilesVector.empty()) {
+    mFilesVector = getDataFileList();
+  }
+
+  if (mFilesVector.empty()) {
     DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame directory contains no data files.";
     return;
   }
 
   while (mRunning) {
 
-    for (const auto &lFileName : lFilesVector) {
+    for (const auto &lFileName : mFilesVector) {
       if (!mRunning) {
         break; // stop looping over files
       }
