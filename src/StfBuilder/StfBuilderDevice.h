@@ -182,7 +182,6 @@ class StfBuilderDevice : public DataDistDevice,
     std::string mInputChannelName;
     std::string mOutputChannelName;
     std::string mDplChannelName;
-    o2::header::DataOrigin mDataOrigin;
     bool mStandalone;
     bool mDplEnabled;
     std::int64_t mMaxStfsInPipeline;

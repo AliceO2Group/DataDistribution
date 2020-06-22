@@ -236,23 +236,29 @@ class SubTimeFrame : public IDataModelObject
       return *reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
     }
 
-    inline void setPayloadIndexAndOrbit(const o2hdr::DataHeader::SplitPayloadIndexType pIdx,
-      const o2hdr::DataHeader::SplitPayloadPartsType pTotal, const std::uint32_t pFirstOrbit)
+    inline void setPayloadIndex(const o2hdr::DataHeader::SplitPayloadIndexType pIdx,
+      const o2hdr::DataHeader::SplitPayloadPartsType pTotal)
     {
       assert(mHeader && mHeader->GetData() != nullptr);
       assert(pIdx < pTotal);
-
-      // TODO: get returns const ptr
-      // DataHeader must be first in the stack
-      // DataHeader *lHdr = o2hdr::get<o2hdr::DataHeader*>(static_cast<o2::byte*>(mHeader->GetData()), mHeader->GetSize());
 
       o2hdr::DataHeader lDataHdr;
       // DataHeader must be first in the stack
       std::memcpy(&lDataHdr, mHeader->GetData(), sizeof(o2hdr::DataHeader));
       lDataHdr.splitPayloadIndex = pIdx;
       lDataHdr.splitPayloadParts = pTotal;
-      lDataHdr.firstTForbit = pFirstOrbit;
       std::memcpy(mHeader->GetData(), &lDataHdr, sizeof(o2hdr::DataHeader));
+    }
+
+    inline void setFirstOrbit(const std::uint32_t pFirstOrbit)
+    {
+      assert(mHeader && mHeader->GetData() != nullptr);
+      assert(pIdx < pTotal);
+
+      // TODO: get returns const ptr
+      // DataHeader must be first in the stack
+      o2hdr::DataHeader *lHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
+      lHdr->firstTForbit = pFirstOrbit;
     }
   };
 
@@ -354,7 +360,14 @@ private:
 
         const auto lTotalCount = lDataVector.size();
         for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
-          lDataVector[i].setPayloadIndexAndOrbit(i, lTotalCount, mFirstOrbit);
+          lDataVector[i].setPayloadIndex(i, lTotalCount);
+        }
+
+        // update first orbit if not present in the data (old tf files)
+        if (mFirstOrbit != std::numeric_limits<std::uint32_t>::max()) {
+          for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
+            lDataVector[i].setFirstOrbit(mFirstOrbit);
+          }
         }
 
         assert(lDataVector.empty() ? true :
