@@ -76,7 +76,7 @@ void StfBuilderDevice::InitTask()
   I().mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
 
   // input data handling
-  I().mDataOrigin = getDataOriginFromOption(
+  ReadoutDataUtils::sSpecifiedDataOrigin = getDataOriginFromOption(
     GetConfig()->GetValue<std::string>(OptionKeyStfDetector));
 
   ReadoutDataUtils::sRdhVersion =
@@ -119,11 +119,14 @@ void StfBuilderDevice::InitTask()
 
   // make sure we have detector if not using files
   if (!I().mFileSource->enabled()) {
-    if (I().mDataOrigin == gDataOriginInvalid) {
-      DDLOGF(fair::Severity::ERROR, "Detector string parameter must be specified when receiving the data from the readout.");
+    if ((ReadoutDataUtils::sRdhVersion < ReadoutDataUtils::RdhVersion::eRdhVer6) &&
+      (ReadoutDataUtils::sSpecifiedDataOrigin == gDataOriginInvalid)) {
+      DDLOGF(fair::Severity::ERROR, "Detector string parameter must be specified when receiving the data from the "
+        "readout and not using RDHv6 or greater.");
       exit(-1);
     } else {
-      DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured detector: {}", I().mDataOrigin.str);
+      DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured detector: {}",
+        ReadoutDataUtils::sSpecifiedDataOrigin.str);
     }
 
     if (ReadoutDataUtils::sRdhVersion == ReadoutDataUtils::RdhVersion::eRdhInvalid) {
@@ -218,7 +221,7 @@ void StfBuilderDevice::InitTask()
 
   // start a thread for readout process
   if (!I().mFileSource->enabled()) {
-    I().mReadoutInterface->start(1, I().mDataOrigin);
+    I().mReadoutInterface->start(1);
   }
 
   // info thread

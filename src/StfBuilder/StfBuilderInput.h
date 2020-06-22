@@ -40,7 +40,7 @@ class StfInputInterface
   {
   }
 
-  void start(const std::size_t pNumBuilders, const o2::header::DataOrigin &);
+  void start(const std::size_t pNumBuilders);
   void stop();
 
   void DataHandlerThread(const unsigned pInputChannelIdx);
@@ -57,7 +57,6 @@ class StfInputInterface
 
   RunningSamples<float> mStfFreqSamples;
 
-  o2::header::DataOrigin mDataOrigin;
 
   /// StfBuilding threads
   /// Start a thread per building slot: updates are distributed with % numBuildingThreads

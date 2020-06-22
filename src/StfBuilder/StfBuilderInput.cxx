@@ -31,10 +31,9 @@ namespace o2
 namespace DataDistribution
 {
 
-void StfInputInterface::start(const std::size_t pNumBuilders, const o2::header::DataOrigin &pDataOrig)
+void StfInputInterface::start(const std::size_t pNumBuilders)
 {
   mNumBuilders = pNumBuilders;
-  mDataOrigin = pDataOrig;
   mRunning = true;
 
   mBuilderInputQueues.clear();
@@ -318,8 +317,10 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
 
       // check subspecifications of all messages
       header::DataHeader::SubSpecificationType lSubSpecification = ~header::DataHeader::SubSpecificationType(0);
+      header::DataOrigin lDataOrigin;
       try {
         const auto R1 = RDHReader(lReadoutMsgs[1]);
+        lDataOrigin = ReadoutDataUtils::getDataOrigin(R1);
         lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
       } catch (RDHReaderException &e) {
         DDLOGF(fair::Severity::ERROR, e.what());
@@ -337,7 +338,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       while (1) {
         if (lEndHbf == lReadoutMsgs.end()) {
           //insert
-          lStfBuilder.addHbFrames(mDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
+          lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
           lAdded += (lEndHbf - lStartHbf);
           break;
         }
@@ -358,7 +359,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
             " block[0]: {:#06x}, block[{}]: {:#06x}",
             lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
           // insert
-          lStfBuilder.addHbFrames(mDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
+          lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
           lAdded += (lEndHbf - lStartHbf);
           lStartHbf = lEndHbf;
 

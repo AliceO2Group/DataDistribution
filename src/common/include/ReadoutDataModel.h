@@ -18,6 +18,7 @@
 
 #include <Headers/DataHeader.h>
 #include <Headers/RAWDataHeader.h>
+#include <Headers/DAQID.h>
 
 #include <fairmq/FairMQMessage.h>
 
@@ -54,6 +55,7 @@ public:
   virtual std::size_t CheckRdhData(const char* data, const std::size_t size) const = 0;
 
   // equipment
+  virtual std::uint8_t getSystemID(const char* data) const = 0;
   virtual std::uint64_t getFeeID(const char* data) const = 0;
   virtual std::uint16_t getLinkID(const char* data)  const = 0;
   virtual std::uint8_t getEndPointID(const char* data)  const = 0;
@@ -92,6 +94,16 @@ public:
   }
 
   // RDH field for SubSpecification
+  virtual inline
+  std::uint8_t getSystemID(const char* data) const override final {
+    if constexpr (std::is_same_v<RDH, o2::header::RAWDataHeaderV6>) {
+      const RDH &lRdh = getHdrRef(data);
+      return lRdh.sourceID; /* systemID */
+    }
+    (void) data;
+    return o2::header::DAQID::INVALID;
+  }
+
   virtual inline
   std::uint64_t getFeeID(const char* data) const override final {
     const RDH &lRdh = getHdrRef(data);
@@ -273,6 +285,9 @@ public:
 
   // RDH equipment
   inline
+  std::uint8_t getSystemID() const { return I().getSystemID(mData); }
+
+  inline
   std::uint64_t getFeeID() const { return I().getFeeID(mData); }
 
   inline
@@ -342,14 +357,16 @@ public:
     eRdhVer5 = 5,
     eRdhVer6 = 6,
   };
+
+  static o2::header::DataOrigin sSpecifiedDataOrigin; // to be initialized if not RDH6
   static RdhVersion sRdhVersion;
 
   static bool sEmptyTriggerHBFrameFilterring;
 
   static thread_local std::uint64_t sFirstSeenHBOrbitCnt;
 
-  static o2::header::DataHeader::SubSpecificationType
-  getSubSpecification(const RDHReader &R);
+  static o2::header::DataOrigin getDataOrigin(const RDHReader &R);
+  static o2::header::DataHeader::SubSpecificationType getSubSpecification(const RDHReader &R);
 
   static std::tuple<std::size_t, bool> getHBFrameMemorySize(const FairMQMessagePtr &pMsg);
 

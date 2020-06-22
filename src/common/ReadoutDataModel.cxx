@@ -15,10 +15,11 @@
 #include "ReadoutDataModel.h"
 #include "DataDistLogger.h"
 
-
 #include <fairmq/FairMQDevice.h>
 
 #include <Headers/DataHeader.h>
+#include <Headers/DAQID.h>
+
 #include <tuple>
 
 namespace o2
@@ -26,6 +27,7 @@ namespace o2
 namespace DataDistribution
 {
 
+o2::header::DataOrigin ReadoutDataUtils::sSpecifiedDataOrigin = o2::header::gDataOriginInvalid; // to be initialized if not RDH6
 ReadoutDataUtils::SubSpecMode ReadoutDataUtils::sRawDataSubspectype = eCruLinkId;
 ReadoutDataUtils::SanityCheckMode ReadoutDataUtils::sRdhSanityCheckMode = eNoSanityCheck;
 ReadoutDataUtils::RdhVersion ReadoutDataUtils::sRdhVersion = eRdhInvalid;
@@ -35,6 +37,16 @@ std::unique_ptr<RDHReaderIf> RDHReader::sRDHReader = nullptr;
 
 /// static
 thread_local std::uint64_t ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
+
+o2::header::DataOrigin
+ReadoutDataUtils::getDataOrigin(const RDHReader &R)
+{
+  if (sRdhVersion == eRdhVer6) {
+    return o2::header::DAQID::DAQtoO2(R.getSystemID());
+  }
+
+  return sSpecifiedDataOrigin;
+}
 
 o2::header::DataHeader::SubSpecificationType
 ReadoutDataUtils::getSubSpecification(const RDHReader &R)
@@ -297,7 +309,14 @@ std::istream& operator>>(std::istream& in, ReadoutDataUtils::RdhVersion& pRetVal
   return in;
 }
 
-std::string to_string (ReadoutDataUtils::SubSpecMode pSubSpec)
+std::ostream& operator<<(std::ostream& out, const ReadoutDataUtils::RdhVersion& pRetVal)
+{
+  std::string token;
+  out << (int) pRetVal;
+  return out;
+}
+
+std::string to_string(ReadoutDataUtils::SubSpecMode pSubSpec)
 {
   switch (pSubSpec)
   {
