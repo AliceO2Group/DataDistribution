@@ -230,7 +230,7 @@ void TfBuilderDevice::TfForwardThread()
   if (!mStandalone) {
     if (dplEnabled()) {
       auto& lOutputChan = GetChannel(getDplChannelName(), 0);
-      lTfBuilder = std::make_unique<TimeFrameBuilder>(lOutputChan, dplEnabled());
+      lTfBuilder = std::make_unique<TimeFrameBuilder>(lOutputChan, mTfBufferSize, dplEnabled());
       lTfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
     }
   }
@@ -262,11 +262,12 @@ void TfBuilderDevice::TfForwardThread()
       try {
         static std::uint64_t sTfOutCnt = 0;
         if (++sTfOutCnt % 256 == 0) {
-          DDLOGF(fair::Severity::TRACE, "Forwarding new TF to DPL. tf_id={:d} total={:d}",
+          DDLOGF(fair::Severity::TRACE, "Forwarding new TF to DPL. tf_id={} total={}",
             lTf->header().mId, sTfOutCnt);
         }
 
         if (dplEnabled()) {
+
           // adapt headers to include DPL processing header on the stack
           lTfBuilder->adaptHeaders(lTf.get());
 

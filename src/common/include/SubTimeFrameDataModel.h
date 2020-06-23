@@ -253,7 +253,6 @@ class SubTimeFrame : public IDataModelObject
     inline void setFirstOrbit(const std::uint32_t pFirstOrbit)
     {
       assert(mHeader && mHeader->GetData() != nullptr);
-      assert(pIdx < pTotal);
 
       // TODO: get returns const ptr
       // DataHeader must be first in the stack

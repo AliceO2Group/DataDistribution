@@ -82,15 +82,17 @@ class SubTimeFrameFileBuilder
     std::unique_ptr<FairMQMessage> lMsg;
 
     if (mDplEnabled) {
-      auto lStack = o2::header::Stack(mHeaderMemRes->allocator(),
+      auto lStack = o2::header::Stack(
         pIncomingStack,
         o2::framework::DataProcessingHeader{pTfId}
       );
 
-      lMsg = mHeaderMemRes->NewFairMQMessageFromPtr(lStack.data());
+      lMsg = mHeaderMemRes->NewFairMQMessage(lStack.size());
+      std::memcpy(lMsg->GetData(), lStack.data(), lStack.size());
+
     } else {
-      auto lHdrMsgStack = o2::header::Stack(mHeaderMemRes->allocator(), pIncomingStack);
-      lMsg = mHeaderMemRes->NewFairMQMessageFromPtr(lHdrMsgStack.data());
+      lMsg = mHeaderMemRes->NewFairMQMessage(pIncomingStack.size());
+      std::memcpy(lMsg->GetData(), pIncomingStack.data(), pIncomingStack.size());
     }
 
     return lMsg;
@@ -102,8 +104,8 @@ class SubTimeFrameFileBuilder
 
   bool mDplEnabled;
 
-  std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
-  std::unique_ptr<RegionAllocatorResource> mDataMemRes;
+  std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
+  std::unique_ptr<RegionAllocatorResource<>> mDataMemRes;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -114,15 +116,25 @@ class TimeFrameBuilder
 {
  public:
   TimeFrameBuilder() = delete;
-  TimeFrameBuilder(FairMQChannel& pChan, bool pDplEnabled);
+  TimeFrameBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize, bool pDplEnabled);
 
   void adaptHeaders(SubTimeFrame *pStf);
+
+  FairMQMessagePtr getNewHeaderMessage(const std::size_t pSize) {
+    return mHeaderMemRes->NewFairMQMessage(pSize);
+  }
+
+  FairMQMessagePtr getNewDataMessage(const std::size_t pSize) {
+    return mDataMemRes->NewFairMQMessage(pSize);
+  }
 
  private:
 
   bool mDplEnabled;
+  FairMQChannel &mOutputChan;
 
-  std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
+  std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
+  std::unique_ptr<RegionAllocatorResource<>> mDataMemRes;
 };
 
 }
