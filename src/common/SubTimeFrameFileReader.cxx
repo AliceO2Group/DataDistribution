@@ -164,12 +164,6 @@ Stack SubTimeFrameFileReader::getHeaderStack(std::size_t *pOrigsize) // throws i
   return Stack(lStackMem.get());
 }
 
-Stack SubTimeFrameFileReader::getHeaderStack(SubTimeFrameFileBuilder &pFileBuilder) // throws ios_base::failure
-{
-  // copy the memory to the SHM allocaton
-  return Stack(pFileBuilder.getHeaderMemRes().allocator(), getHeaderStack());
-}
-
 std::uint64_t SubTimeFrameFileReader::sStfId = 0; // TODO: add id to files metadata
 
 std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuilder &pFileBuilder)

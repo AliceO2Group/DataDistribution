@@ -43,7 +43,7 @@ namespace DataDistribution
 
 static constexpr const char *ENV_SHM_PATH = "DATADIST_SHM_PATH";
 
-class FMQUnsynchronizedPoolMemoryResource : public boost::container::pmr::memory_resource
+class FMQUnsynchronizedPoolMemoryResource
 {
 
 public:
@@ -126,9 +126,9 @@ public:
     }
   }
 
-  std::unique_ptr<FairMQMessage> NewFairMQMessage() {
+  std::unique_ptr<FairMQMessage> NewFairMQMessage(const std::size_t pSize=0) {
 
-    const auto lMem = allocate(0); // boost -> do_allocate(0) .. always return fixed object size (mObjectSize)
+    const auto lMem = do_allocate(pSize, 0); // boost -> do_allocate(0) .. always return fixed object size (mObjectSize)
 
     if (lMem != nullptr) {
       return mChan.NewMessage(mRegion, lMem, mObjectSize);
@@ -152,10 +152,8 @@ public:
 
   std::size_t objectSize() const { return mObjectSize; }
 
-  inline auto allocator() { return boost::container::pmr::polymorphic_allocator<o2::byte>(this); }
-
 protected:
-  virtual void* do_allocate(std::size_t , std::size_t) override final
+  void* do_allocate(std::size_t , std::size_t)
   {
     unsigned long lAllocAttempt = 0;
 
@@ -186,14 +184,12 @@ protected:
     return lRet;
   }
 
-  virtual void do_deallocate(void *, std::size_t, std::size_t) override final
+  void do_deallocate(void *, std::size_t, std::size_t)
   {
     // Objects are only freed through SHM message reclaim callback.
     // This is intentionally noop
     // NOTE: handled in reclaimSHMMessage()
   }
-
-  virtual bool do_is_equal(const memory_resource &) const noexcept override { return false; }
 
 private:
 
@@ -244,18 +240,22 @@ private:
 };
 
 
-
-class RegionAllocatorResource : public boost::container::pmr::memory_resource
+template<size_t ALIGN = 64>
+class RegionAllocatorResource
 {
 
 public:
   RegionAllocatorResource() = delete;
 
   RegionAllocatorResource(std::string pSegmentName, FairMQChannel &pChan,
-                            const std::size_t pSize, std::uint64_t pRegionFlags = 0)
+                          std::size_t pSize, std::uint64_t pRegionFlags = 0)
   : mSegmentName(pSegmentName),
     mChan(pChan)
   {
+    static_assert(ALIGN && !(ALIGN & (ALIGN - 1)), "Alignment must be power of 2");
+
+    pSize = align_size_up(pSize);
+
     int lMapFlags = 0;
     std::string lSegmentRoot = "";
 
@@ -321,7 +321,7 @@ public:
 
   inline
   std::unique_ptr<FairMQMessage> NewFairMQMessage(std::size_t pSize) {
-    auto* lMem = do_allocate(pSize, alignof(std::max_align_t));
+    auto* lMem = do_allocate(pSize, ALIGN);
     return mChan.NewMessage(mRegion, lMem, pSize);
   }
 
@@ -329,23 +329,33 @@ public:
   std::unique_ptr<FairMQMessage> NewFairMQMessageFromPtr(void *pPtr, const std::size_t pSize) {
     assert(pPtr >= static_cast<char*>(mRegion->GetData()));
     assert(static_cast<char*>(pPtr)+pSize <= static_cast<char*>(mRegion->GetData()) + mRegion->GetSize());
+
+    if (pSize == 0) {
+       DDLOGF(fair::Severity::WARNING, "NewFairMQMessageFromPtr: Zero message allocation name={}: {}",
+        mSegmentName, __LINE__);
+    }
+
+    assert(pSize > 0);
+
     return mChan.NewMessage(mRegion, pPtr, pSize);
   }
-
-  inline
-  auto allocator() { return boost::container::pmr::polymorphic_allocator<o2::byte>(this); }
 
 protected:
   // NOTE: we align sizes of returned messages, but keep the exact size for allocation
   //       otherwise the shm messages would be larger than requested
   static constexpr inline
   std::size_t align_size_up(const std::size_t pSize) {
-    return (pSize + sAlignment - 1) / sAlignment * sAlignment;
+    return (pSize + ALIGN - 1) / ALIGN * ALIGN;
   }
 
-  virtual void* do_allocate(std::size_t pSize, std::size_t /* pAlign */) override final
+  void* do_allocate(std::size_t pSize, std::size_t /* pAlign */)
   {
     unsigned long lAllocAttempt = 0;
+
+    if (pSize == 0) {
+       DDLOGF(fair::Severity::WARNING, "Zero message allocation name={}: {}",
+        mSegmentName, __LINE__);
+    }
 
     // align up
     pSize = align_size_up(pSize);
@@ -375,14 +385,17 @@ protected:
     return lRet;
   }
 
-  virtual void do_deallocate(void *pAddr, std::size_t pSize, std::size_t) override final
+  void do_deallocate(void *, std::size_t pSize, std::size_t)
   {
-    // Objects are only freed through SHM message reclaim callback.
-    std::scoped_lock lock(mReclaimLock);
-    reclaimSHMMessage(pAddr, pSize);
+    // we are called only if allocation was made through the polymorphic_allocator
+    // but with only a pointer, size == 0!
+    if (pSize != 0) {
+       DDLOGF(fair::Severity::WARNING, "do_deallocate: non-Zero message dealloc name={} size={}",
+        mSegmentName, pSize);
+    } else {
+      return; // dealloc goes through shmem queue
+    }
   }
-
-  virtual bool do_is_equal(const memory_resource &) const noexcept override { return false; }
 
 private:
   void* try_alloc(const std::size_t pSize) {
@@ -401,6 +414,7 @@ private:
 
     return nullptr;
   }
+
 
   bool try_reclaim(const std::size_t pSize) {
     // First declare any leftover memory as free
@@ -447,7 +461,21 @@ private:
     const auto lIter = mFrees.lower_bound(lData);
     bool lInserted = false;
 
-    assert(lIter== mFrees.end() || lIter->first != lData);
+#if !defined(NDEBUG)
+    if (lIter != mFrees.end()) {
+      if (lIter->first <= lData) {
+        DDLOGF(fair::Severity::ERROR, "iter={:p}, data={:p}, Free map:", lIter->first, lData);
+
+        for (const auto &lit : mFrees) {
+          DDLOGF(fair::Severity::ERROR, " iter={:p}, size={}", lit.first, lit.second);
+        }
+      }
+
+      using namespace std::chrono_literals;
+      std::this_thread::sleep_for(1s);
+      assert(lIter->first > lData); // we cannot have this exact value in the free list
+    }
+#endif
 
     // check if we can merge with the previous
     if (!mFrees.empty() && lIter != mFrees.begin()) {
@@ -493,7 +521,6 @@ private:
   FairMQChannel& mChan;
   std::unique_ptr<FairMQUnmanagedRegion> mRegion;
 
-  static const constexpr std::size_t sAlignment = alignof(std::max_align_t);
   char *mStart = nullptr;
   std::size_t mLength = 0;
 

@@ -71,7 +71,6 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
 
   std::size_t getHeaderStackSize();
   o2::header::Stack getHeaderStack(std::size_t *pOrigsize = nullptr);
-  o2::header::Stack getHeaderStack(SubTimeFrameFileBuilder &pFileBuilder);
 
   // vector of <hdr, fmqMsg> elements of a tf read from the file
   std::vector<SubTimeFrame::StfData> mStfData;
