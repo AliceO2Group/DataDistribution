@@ -149,8 +149,8 @@ to files, before they are sent out.
 :   Specifies the source directory where (Sub)TimeFrame files are located. NOTE:
     Only (Sub)TimeFrame data files are allowed in this directory.
 
-**--data-source-rate** arg (=44)
-:   Rate of injecting new (Sub)TimeFrames (approximate). 0 to inject as fast as possible.
+**--data-source-rate** arg (=1.0)
+:   Rate of injecting new (Sub)TimeFrames (approximate). Use -1 to inject as fast as possible. (float)
 
 **--data-source-repeat**
 :   If enabled, repeatedly inject (Sub)TimeFrames into the chain.
