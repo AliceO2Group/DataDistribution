@@ -93,8 +93,8 @@ bpo::options_description SubTimeFrameFileSource::getProgramOptions()
     "Specifies the source directory where (Sub)TimeFrame files are located. "
     "Note: Only (Sub)TimeFrame data files are allowed in this directory.")(
     OptionKeyStfLoadRate,
-    bpo::value<std::uint64_t>()->default_value(44),
-    "Rate of injecting new (Sub)TimeFrames (approximate). 0 to inject as fast as possible.")(
+    bpo::value<float>()->default_value(1),
+    "Rate of injecting new (Sub)TimeFrames (approximate). -1 to inject as fast as possible.")(
     OptionKeyStfSourceRepeat,
     bpo::bool_switch()->default_value(false),
     "If enabled, repeatedly inject (Sub)TimeFrames into the chain.")(
@@ -149,7 +149,7 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
   }
 
   mRepeat = pFMQProgOpt.GetValue<bool>(OptionKeyStfSourceRepeat);
-  mLoadRate = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfLoadRate);
+  mLoadRate = pFMQProgOpt.GetValue<float>(OptionKeyStfLoadRate);
   mRegionSizeMB = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSourceRegionSize);
 
   mFilesVector = getDataFileList();
@@ -177,7 +177,7 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
 /// STF injecting thread
 void SubTimeFrameFileSource::DataInjectThread()
 {
-  const std::chrono::microseconds lIntervalUs(mLoadRate > 0 ? 1000000 / mLoadRate : 0);
+  const std::chrono::microseconds lIntervalUs(mLoadRate > 0.f ? unsigned(1000000.f / mLoadRate) : 0);
 
   DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Source: Injecting new STF every " << lIntervalUs.count() << " us";
 
@@ -191,8 +191,13 @@ void SubTimeFrameFileSource::DataInjectThread()
     mPipelineI.queue(mPipelineStageOut, std::move(lStf));
     auto lRatePrevTime = std::chrono::high_resolution_clock::now();
 
-    while(std::chrono::high_resolution_clock::now() - lRatePrevTime  < lIntervalUs) {
-      std::this_thread::sleep_for(1ms);
+    while(mRunning && std::chrono::high_resolution_clock::now() - lRatePrevTime  < lIntervalUs) {
+
+      auto lSleepFor = lIntervalUs - (std::chrono::high_resolution_clock::now() - lRatePrevTime);
+      lSleepFor /= 2;
+      lSleepFor = std::clamp(lSleepFor, 0ns, std::chrono::nanoseconds(500ms));
+
+      std::this_thread::sleep_for(lSleepFor);
     }
   }
 
@@ -203,7 +208,7 @@ void SubTimeFrameFileSource::DataInjectThread()
 void SubTimeFrameFileSource::DataHandlerThread()
 {
   // inject rate
-  const std::chrono::microseconds lIntervalUs(mLoadRate > 0 ? (1000000 / mLoadRate) : 100);
+  const std::chrono::microseconds lIntervalUs(mLoadRate > 0.f ? unsigned(1000000.f / mLoadRate) : 0);
   // Load the sorted list of StfFiles if empty
   if (mFilesVector.empty()) {
     mFilesVector = getDataFileList();

@@ -99,7 +99,7 @@ class SubTimeFrameFileSource
   std::string mDir;
   std::vector<std::string> mFilesVector;
   bool mRepeat = false;
-  std::uint64_t mLoadRate = 44;
+  float mLoadRate = 1.f;
   std::size_t mRegionSizeMB = size_t(1) << 10; /* 1GB in MiB */
 
   /// Thread for file writing
