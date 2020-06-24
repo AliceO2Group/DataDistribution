@@ -92,6 +92,10 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
 
 void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
 {
+  if (!mRunning) {
+    return;
+  }
+
   mMessages.clear();
   pStf->accept(*this);
 

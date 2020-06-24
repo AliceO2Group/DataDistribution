@@ -52,6 +52,7 @@ void TfBuilderDevice::InitTask()
     mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
     mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
     mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
+    mTfBufferSize <<= 20; /* input parameter is in MiB */
 
     mDiscoveryConfig = std::make_shared<ConsulTfBuilder>(ProcessType::TfBuilder,
       Config::getEndpointOption(*GetConfig()));
@@ -134,7 +135,7 @@ void TfBuilderDevice::PreRun()
 bool TfBuilderDevice::start()
 {
   // start all gRPC clients
-  while (!mRpc->start(mTfBufferSize << 20 /* MiB */)) {
+  while (!mRpc->start(mTfBufferSize)) {
     // try to reach the scheduler unless we should exit
     if (IsRunningState() && NewStatePending()) {
       mShouldExit = true;
@@ -146,6 +147,12 @@ bool TfBuilderDevice::start()
 
   // we reached the scheduler instance, initialize everything else
   mRunning = true;
+
+  if (!mStandalone && dplEnabled()) {
+    auto& lOutputChan = GetChannel(getDplChannelName(), 0);
+    mTfBuilder = std::make_unique<TimeFrameBuilder>(lOutputChan, mTfBufferSize, dplEnabled());
+    mTfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
+  }
 
   // start TF forwarding thread
   mTfFwdThread = std::thread(&TfBuilderDevice::TfForwardThread, this);
@@ -173,6 +180,14 @@ bool TfBuilderDevice::start()
 void TfBuilderDevice::stop()
 {
   mRpc->stopAcceptingTfs();
+
+  if (mTfDplAdapter) {
+    mTfDplAdapter->stop();
+  }
+
+  if (mTfBuilder) {
+    mTfBuilder->stop();
+  }
 
   mRunning = false;
 
@@ -221,20 +236,6 @@ bool TfBuilderDevice::ConditionalRun()
 
 void TfBuilderDevice::TfForwardThread()
 {
-  /// prepare TF for output (standard or DPL)
-  std::unique_ptr<TimeFrameBuilder> lTfBuilder;
-
-  /// Serializer for DPL channel
-  std::unique_ptr<StfToDplAdapter> lTfDplAdapter;
-
-  if (!mStandalone) {
-    if (dplEnabled()) {
-      auto& lOutputChan = GetChannel(getDplChannelName(), 0);
-      lTfBuilder = std::make_unique<TimeFrameBuilder>(lOutputChan, mTfBufferSize, dplEnabled());
-      lTfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
-    }
-  }
-
   auto lFreqStartTime = std::chrono::high_resolution_clock::now();
   while (mRunning) {
     std::unique_ptr<SubTimeFrame> lTf = dequeue(eTfFwdIn);
@@ -267,9 +268,9 @@ void TfBuilderDevice::TfForwardThread()
         }
 
         if (dplEnabled()) {
-
           // adapt headers to include DPL processing header on the stack
-          lTfBuilder->adaptHeaders(lTf.get());
+          assert(mTfBuilder);
+          mTfBuilder->adaptHeaders(lTf.get());
 
           // DPL Channel
           static thread_local unsigned long lThrottle = 0;
@@ -279,8 +280,8 @@ void TfBuilderDevice::TfForwardThread()
           }
 
           // Send to DPL bridge
-          assert (lTfDplAdapter);
-          lTfDplAdapter->sendToDpl(std::move(lTf));
+          assert (mTfDplAdapter);
+          mTfDplAdapter->sendToDpl(std::move(lTf));
         }
       } catch (std::exception& e) {
         if (IsRunningState()) {

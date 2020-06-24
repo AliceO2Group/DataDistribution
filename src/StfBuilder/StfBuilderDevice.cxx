@@ -233,7 +233,9 @@ void StfBuilderDevice::InitTask()
 void StfBuilderDevice::ResetTask()
 {
   // signal and wait for the output thread
-  I().mFileSource->stop();
+  if (I().mFileSource->enabled()) {
+    I().mFileSource->stop();
+  }
 
   // Stop the pipeline
   stopPipeline();

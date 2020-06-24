@@ -54,6 +54,11 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
   ReadoutSubTimeframeHeader& pHdr,
   std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen)
 {
+  if (!mRunning) {
+    DDLOGF(fair::Severity::WARNING, "Adding HBFrames while STFBuilder is not running!");
+    return;
+  }
+
   if (!mStf) {
     mStf = std::make_unique<SubTimeFrame>(pHdr.mTimeFrameId);
     mFirstFiltered.clear();
@@ -187,12 +192,16 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
       );
 
       lHdrMsg = mHeaderMemRes->NewFairMQMessage(lStack.size());
-      std::memcpy(lHdrMsg->GetData(), lStack.data(), lStack.size());
+      if (lHdrMsg) {
+        std::memcpy(lHdrMsg->GetData(), lStack.data(), lStack.size());
+      }
     } else {
       auto lHdrMsgStack = Stack(lDataHdr);
 
       lHdrMsg = mHeaderMemRes->NewFairMQMessage(lHdrMsgStack.size());
-      std::memcpy(lHdrMsg->GetData(), lHdrMsgStack.data(), lHdrMsgStack.size());
+      if (lHdrMsg) {
+        std::memcpy(lHdrMsg->GetData(), lHdrMsgStack.data(), lHdrMsgStack.size());
+      }
     }
 
     if (!lHdrMsg) {
@@ -281,9 +290,10 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
             );
 
             lStfDataIter.mHeader = mHeaderMemRes->NewFairMQMessage(lStack.size());
-            std::memcpy(lStfDataIter.mHeader->GetData(), lStack.data(), lStack.size());
-
-            assert(lStfDataIter.mHeader->GetSize() > sizeof (DataHeader));
+            if (lStfDataIter.mHeader) {
+              assert(lStfDataIter.mHeader->GetSize() > sizeof (DataHeader));
+              std::memcpy(lStfDataIter.mHeader->GetData(), lStack.data(), lStack.size());
+            }
           }
         }
       }
@@ -371,9 +381,10 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
               lStfDataIter.mHeader = mOutputChan.NewMessage(lStack.size());
             }
 
-            std::memcpy(lStfDataIter.mHeader->GetData(),lStack.data(), lStack.size());
-
-            assert(lStfDataIter.mHeader->GetSize() >= sizeof (DataHeader));
+            if (lStfDataIter.mHeader) {
+              assert(lStfDataIter.mHeader->GetSize() >= sizeof (DataHeader));
+              std::memcpy(lStfDataIter.mHeader->GetData(),lStack.data(), lStack.size());
+            }
           }
         }
       }
@@ -393,7 +404,9 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
             const auto &lHeaderMsg = lStfDataIter.mHeader;
             if (lHeaderMsg->GetType() != fair::mq::Transport::SHM) {
               auto lNewHdr = getNewHeaderMessage(lHeaderMsg->GetSize());
-              std::memcpy(lNewHdr->GetData(), lHeaderMsg->GetData(), lHeaderMsg->GetSize());
+              if (lNewHdr) {
+                std::memcpy(lNewHdr->GetData(), lHeaderMsg->GetData(), lHeaderMsg->GetSize());
+              }
               lStfDataIter.mHeader.swap(lNewHdr);
             }
           }
@@ -403,7 +416,9 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
             const auto &lDataMsg = lStfDataIter.mData;
             if (lDataMsg->GetType() != fair::mq::Transport::SHM) {
               auto lNewDataMsg = getNewDataMessage(lDataMsg->GetSize());
-              std::memcpy(lNewDataMsg->GetData(), lDataMsg->GetData(), lDataMsg->GetSize());
+              if (lNewDataMsg) {
+                std::memcpy(lNewDataMsg->GetData(), lDataMsg->GetData(), lDataMsg->GetSize());
+              }
               lStfDataIter.mData.swap(lNewDataMsg);
             }
           }

@@ -36,6 +36,7 @@ namespace DataDistribution
 {
 
 class ConsulConfig;
+class StfToDplAdapter;
 
 enum TfBuilderPipeline {
   eTfBuilderOut = 0,
@@ -127,6 +128,10 @@ class TfBuilderDevice : public DataDistDevice,
 
   /// Input Interface handler
   std::unique_ptr<TfBuilderInput> mFlpInputHandler;
+  /// prepare TF for output (standard or DPL)
+  std::unique_ptr<TimeFrameBuilder> mTfBuilder;
+  /// Serializer for DPL channel
+  std::unique_ptr<StfToDplAdapter> mTfDplAdapter;
 
   /// File sink
   SubTimeFrameFileSink mFileSink;

@@ -101,6 +101,10 @@ public:
         // callback to be called when message buffers no longer needed by transport
         std::scoped_lock lock(mReclaimLock);
 
+        if (!mRunning) {
+          return;
+        }
+
         for (const auto &lBlk : pBlkVect) {
           reclaimSHMMessage(lBlk.ptr, lBlk.size);
         }
@@ -130,6 +134,10 @@ public:
 
     const auto lMem = do_allocate(pSize, 0); // boost -> do_allocate(0) .. always return fixed object size (mObjectSize)
 
+    if (!lMem && !mRunning) {
+      return nullptr;
+    }
+
     if (lMem != nullptr) {
       return mChan.NewMessage(mRegion, lMem, mObjectSize);
     } else {
@@ -152,14 +160,23 @@ public:
 
   std::size_t objectSize() const { return mObjectSize; }
 
+  inline void stop() {
+    std::scoped_lock lock(mReclaimLock);
+    mRunning = false;
+  }
+
 protected:
   void* do_allocate(std::size_t , std::size_t)
   {
+    if (!mRunning) {
+      return nullptr;
+    }
+
     unsigned long lAllocAttempt = 0;
 
     auto lRet = try_alloc();
     // we cannot fail! report problem if failing to allocate block often
-    while (!lRet) {
+    while (!lRet && mRunning) {
       // try to reclaim if possible
       try_reclaim();
       // try again
@@ -226,6 +243,7 @@ private:
 
   /// fields
   std::string mSegmentName;
+  std::atomic_bool mRunning = true;
 
   FairMQChannel& mChan;
 
@@ -298,6 +316,9 @@ public:
       [this](const std::vector<FairMQRegionBlock>& pBlkVect) {
         // callback to be called when message buffers no longer needed by transports
         std::scoped_lock lock(mReclaimLock);
+        if (!mRunning) {
+          return;
+        }
 
         for (const auto &lBlk : pBlkVect) {
           reclaimSHMMessage(lBlk.ptr, lBlk.size);
@@ -317,12 +338,19 @@ public:
     mLength = mRegion->GetSize();
 
     memset(mStart, 0xAA, mLength);
+
+    // start the allocations
+    mRunning = true;
   }
 
   inline
   std::unique_ptr<FairMQMessage> NewFairMQMessage(std::size_t pSize) {
     auto* lMem = do_allocate(pSize, ALIGN);
-    return mChan.NewMessage(mRegion, lMem, pSize);
+    if (lMem) {
+      return mChan.NewMessage(mRegion, lMem, pSize);
+    } else {
+      return nullptr;
+    }
   }
 
   inline
@@ -340,6 +368,11 @@ public:
     return mChan.NewMessage(mRegion, pPtr, pSize);
   }
 
+  inline void stop() {
+    std::scoped_lock lock(mReclaimLock);
+    mRunning = false;
+  }
+
 protected:
   // NOTE: we align sizes of returned messages, but keep the exact size for allocation
   //       otherwise the shm messages would be larger than requested
@@ -350,6 +383,10 @@ protected:
 
   void* do_allocate(std::size_t pSize, std::size_t /* pAlign */)
   {
+    if (!mRunning) {
+      return nullptr;
+    }
+
     unsigned long lAllocAttempt = 0;
 
     if (pSize == 0) {
@@ -362,7 +399,7 @@ protected:
 
     auto lRet = try_alloc(pSize);
     // we cannot fail! report problem if failing to allocate block often
-    while (!lRet) {
+    while (!lRet && mRunning) {
       // try to reclaim if possible
       if (try_reclaim(pSize)) {
         // try again
@@ -470,9 +507,6 @@ private:
           DDLOGF(fair::Severity::ERROR, " iter={:p}, size={}", lit.first, lit.second);
         }
       }
-
-      using namespace std::chrono_literals;
-      std::this_thread::sleep_for(1s);
       assert(lIter->first > lData); // we cannot have this exact value in the free list
     }
 #endif
@@ -517,6 +551,7 @@ private:
 
   /// fields
   std::string mSegmentName;
+  std::atomic_bool mRunning = true;
 
   FairMQChannel& mChan;
   std::unique_ptr<FairMQUnmanagedRegion> mRegion;

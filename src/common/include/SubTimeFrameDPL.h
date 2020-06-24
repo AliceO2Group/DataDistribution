@@ -42,10 +42,13 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
 
   void sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf);
 
+  inline void stop() { mRunning = false; }
+
  protected:
   void visit(SubTimeFrame& pStf) override;
 
  private:
+  std::atomic_bool mRunning = true;
   std::vector<FairMQMessagePtr> mMessages;
   FairMQChannel& mChan;
 };
