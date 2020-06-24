@@ -59,6 +59,10 @@ void StfInputInterface::stop()
 {
   mRunning = false;
 
+  for (auto &lBuilder : mStfBuilders) {
+    lBuilder.stop();
+  }
+
   if (mInputThread.joinable()) {
     mInputThread.join();
   }
@@ -73,7 +77,7 @@ void StfInputInterface::stop()
     }
   }
 
-  mStfBuilders.clear();
+  // mStfBuilders.clear(); // TODO: deal with shm region cleanup
   mBuilderThreads.clear();
   mBuilderInputQueues.clear();
 

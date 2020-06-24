@@ -64,6 +64,10 @@ void SubTimeFrameFileSource::stop()
 {
   mRunning = false;
 
+  if (mFileBuilder) {
+    mFileBuilder->stop();
+  }
+
   mReadStfQueue.stop();
 
   if (mSourceThread.joinable()) {

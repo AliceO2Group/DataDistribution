@@ -48,7 +48,16 @@ class SubTimeFrameReadoutBuilder
     std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen);
   std::unique_ptr<SubTimeFrame> getStf();
 
+  inline void stop() {
+    mRunning = false;
+
+    if (mHeaderMemRes) {
+      mHeaderMemRes->stop();
+    }
+  }
+
  private:
+  bool mRunning = true;
 
   std::unique_ptr<SubTimeFrame> mStf;
 
@@ -98,6 +107,16 @@ class SubTimeFrameFileBuilder
     return lMsg;
   }
 
+  inline void stop() {
+    if (mHeaderMemRes) {
+      mHeaderMemRes->stop();
+    }
+
+    if (mDataMemRes) {
+      mDataMemRes->stop();
+    }
+  }
+
   auto& getHeaderMemRes() const { return *mHeaderMemRes; }
 
  private:
@@ -126,6 +145,16 @@ class TimeFrameBuilder
 
   FairMQMessagePtr getNewDataMessage(const std::size_t pSize) {
     return mDataMemRes->NewFairMQMessage(pSize);
+  }
+
+  inline void stop() {
+    if (mHeaderMemRes) {
+      mHeaderMemRes->stop();
+    }
+
+    if (mDataMemRes) {
+      mDataMemRes->stop();
+    }
   }
 
  private:
