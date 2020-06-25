@@ -223,6 +223,8 @@ void SubTimeFrameFileSource::DataHandlerThread()
     return;
   }
 
+  std::uint32_t lCurrentOrbit = 0;
+
   while (mRunning) {
 
     for (const auto &lFileName : mFilesVector) {
@@ -247,6 +249,14 @@ void SubTimeFrameFileSource::DataHandlerThread()
         if (mRunning && lStfPtr) {
           // adapt Stf headers for different output channels, native or DPL
           mFileBuilder->adaptHeaders(lStfPtr.get());
+
+          // TODO: timeframe id
+          if (lStfPtr && mRepeat) {
+            lStfPtr->setFirstOrbit(lCurrentOrbit);
+            lStfPtr->updateStf();
+            lCurrentOrbit += 256;
+          }
+
           mReadStfQueue.push(std::move(lStfPtr));
         } else {
           // bad file?
