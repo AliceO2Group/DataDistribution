@@ -19,9 +19,10 @@ namespace o2
 namespace DataDistribution
 {
 
+// per thread log name
 thread_local char* DataDistLogger::sThisThreadName = nullptr;
 
-
+// this is a static object that will interpose early into FairLogger
 impl::DataDistLoggerCtx sLoggerCtx;
 
 }
