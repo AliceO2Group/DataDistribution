@@ -17,13 +17,13 @@
 #include <type_traits> // enable_if, conjuction
 
 #include <fmt/format.h>
+#include <fmt/core.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/async.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
 #include <fairlogger/Logger.h>
-
 
 namespace o2
 {
@@ -34,9 +34,8 @@ class DataDistLogger {
 
   static thread_local char* sThisThreadName;
 
-  auto static I() {
+  spdlog::logger static I() {
     static std::shared_ptr<spdlog::logger> sTheLogger = nullptr;
-    static auto sThreadPool = std::make_shared<spdlog::details::thread_pool>(32768, 1);
 
     if (!sTheLogger) {
       spdlog::init_thread_pool(32768, 1);
@@ -50,24 +49,53 @@ class DataDistLogger {
     return *(sTheLogger.get());
   }
 
+  inline void do_vformat(fmt::string_view format, fmt::format_args args) {
+    fmt::vformat_to(mLogMessage, format, args);
+  }
+
 public:
+  struct log_fmt {}; // tag for fmt logging
 
   static void SetThreadName(const std::string& sThrName) {
     sThisThreadName = strdup(sThrName.c_str());
   }
 
+  template<typename... Args>
+  DataDistLogger(const fair::Severity pSeverity, const log_fmt&, const char* format, const Args&... pArgs)
+  : mSeverity(pSeverity) {
+    fair::Logger::SetConsoleSeverity(fair::Severity::nolog);
+
+    if (log_enabled()) {
+      if (mSeverity <= fair::Severity::debug && sThisThreadName) {
+        fmt::format_to(mLogMessage, "<{:s}> ", sThisThreadName);
+      }
+
+      do_vformat(format, fmt::make_format_args(pArgs...));
+    }
+  }
+
+  template<typename... Args>
+  DataDistLogger(const fair::Severity pSeverity, const log_fmt&, const std::string &format, const Args&... pArgs)
+  : DataDistLogger(pSeverity, log_fmt{}, format.c_str(), pArgs...)
+  {}
+
   template<class... Args>
-  DataDistLogger(const fair::Severity pSeverity, Args&&... pArgs)
+  DataDistLogger(const fair::Severity pSeverity, const Args&... pArgs)
   : mSeverity(pSeverity) {
 
     fair::Logger::SetConsoleSeverity(fair::Severity::nolog);
 
     if (log_enabled()) {
-      if (mSeverity >= fair::Severity::debug && sThisThreadName) {
+      if (mSeverity <= fair::Severity::debug && sThisThreadName) {
         fmt::format_to(std::back_inserter(mLogMessage), "[{:s}] ", sThisThreadName);
       }
 
-      (fmt::format_to(std::back_inserter(mLogMessage), "{}", pArgs), ...);
+      if constexpr (sizeof...(Args) > 0) {
+        static_assert(!std::is_same_v<typename std::tuple_element<0, std::tuple<Args...>>::type, log_fmt>,
+          "First parameter to DDLOGF must be format string (const char*).");
+
+        (fmt::format_to(mLogMessage, "{}", pArgs), ...);
+      }
     }
   }
 
@@ -104,7 +132,7 @@ public:
   template<typename T>
   DataDistLogger& operator<<(const T& pTObj) {
     if (log_enabled()) {
-      fmt::format_to(std::back_inserter(mLogMessage), "{}", pTObj);
+      fmt::format_to(mLogMessage, "{}", pTObj);
     }
     return *this;
   }
@@ -112,7 +140,7 @@ public:
   DataDistLogger& operator<<(const char* cstr) {
     if (cstr != NULL) {
       if (log_enabled()) {
-        fmt::format_to(std::back_inserter(mLogMessage), "{}", cstr);
+        fmt::format_to(mLogMessage, cstr);
       }
     }
     return *this;
@@ -135,7 +163,8 @@ private:
 
 // Log with fmt
 #define DDLOGF(severity, ...) \
-  if (true) DataDistLogger(severity, fmt::format(__VA_ARGS__))
+  if (true) DataDistLogger(severity, DataDistLogger::log_fmt{}, __VA_ARGS__)
+
 
 // Log with streams
 #define DDLOG(severity) \
