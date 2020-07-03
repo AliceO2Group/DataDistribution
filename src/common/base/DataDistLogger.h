@@ -22,6 +22,7 @@
 #include <spdlog/async.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
+#define FAIR_MIN_SEVERITY trace
 #include <fairlogger/Logger.h>
 
 
