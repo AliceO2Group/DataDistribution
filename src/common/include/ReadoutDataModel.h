@@ -251,12 +251,18 @@ public:
     return *this;
   }
 
+  inline
   RDHReader next() const {
     if (getStopBit()) {
       return RDHReader();
     }
 
-    const char *p = mData + this->getOffsetToNext();
+    const auto lOffNext = this->getOffsetToNext();
+    if (lOffNext < 64 || lOffNext > 8192) {
+      return RDHReader(); // error
+    }
+
+    const char *p = mData + lOffNext;
 
     if (((mData + mSize) - mRDHSize) < p) {
       return RDHReader(); // the rest of original buffer is too short
@@ -265,6 +271,7 @@ public:
     return RDHReader(p, mData + mSize - p, mRDHSize);
   }
 
+  inline
   RDHReader end() const { return RDHReader(); }
 
   inline
