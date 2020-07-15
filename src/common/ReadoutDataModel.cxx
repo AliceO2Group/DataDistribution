@@ -42,7 +42,16 @@ o2::header::DataOrigin
 ReadoutDataUtils::getDataOrigin(const RDHReader &R)
 {
   if (sRdhVersion == eRdhVer6) {
-    return o2::header::DAQID::DAQtoO2(R.getSystemID());
+    const auto lOrig =  o2::header::DAQID::DAQtoO2(R.getSystemID());
+    if (lOrig != o2::header::DAQID::DAQtoO2(o2::header::DAQID::INVALID)) {
+      return lOrig;
+    } else {
+      static unsigned long sRateLimit = 0;
+      if (sRateLimit++ % 8192 == 0) {
+        DDLOGF(fair::Severity::WARNING, "Data origin in RDH is invalid. Please configure the correct SYSTEM_ID in the hardware."
+          " Using the configuration value {}.", std::string(sSpecifiedDataOrigin.str));
+      }
+    }
   }
 
   return sSpecifiedDataOrigin;
