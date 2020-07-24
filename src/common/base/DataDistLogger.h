@@ -171,6 +171,23 @@ private:
   if(true) DataDistLogger(severity)
 
 
+// Log with fmt using ratelimiting
+#define DDLOGF_RL(intervalMs, severity, ...)                                                                          \
+do {                                                                                                                  \
+  static thread_local auto sRateLimit__NoShadow = std::chrono::steady_clock::time_point::min();                       \
+  static thread_local unsigned sRateLimitCnt__NoShadow = 0;                                                           \
+  std::chrono::steady_clock::time_point lNowLoggerTime__NoShadow;                                                     \
+  if ((sRateLimit__NoShadow + std::chrono::milliseconds(intervalMs)) <                                                \
+      (lNowLoggerTime__NoShadow = std::chrono::steady_clock::now())) {                                                \
+    o2::DataDistribution::DataDistLogger(severity, o2::DataDistribution::DataDistLogger::log_fmt{}, __VA_ARGS__) <<   \
+      ((sRateLimitCnt__NoShadow > 0) ? fmt::format(" <msgs_suppressed={}>", sRateLimitCnt__NoShadow) : "");           \
+    sRateLimit__NoShadow = lNowLoggerTime__NoShadow;                                                                  \
+    sRateLimitCnt__NoShadow = 0;                                                                                      \
+  } else {                                                                                                            \
+    sRateLimitCnt__NoShadow++;                                                                                        \
+  }                                                                                                                   \
+} while(0)
+
 namespace impl {
   struct DataDistLoggerCtx {
     DataDistLoggerCtx() {
