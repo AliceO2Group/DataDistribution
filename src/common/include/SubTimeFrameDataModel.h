@@ -320,9 +320,6 @@ class SubTimeFrame : public IDataModelObject
 
   void clear() { mData.clear(); mUpdated = false; }
 
-  // TODO: remove timeframe id
-  void setFirstOrbit(const std::uint32_t pFirstOrbit) { mHeader.mFirstOrbit = pFirstOrbit;  mUpdated = false; }
-
  protected:
   void accept(ISubTimeFrameVisitor& v) override { updateStf(mData); v.visit(*this); }
   void accept(ISubTimeFrameConstVisitor& v) const override { updateStf(mData); v.visit(*this); }
