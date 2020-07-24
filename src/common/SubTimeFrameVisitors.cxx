@@ -49,7 +49,7 @@ void InterleavedHdrDataSerializer::visit(SubTimeFrame& pStf)
     throw std::bad_alloc();
   }
   std::memcpy(lDataHeaderMsg->GetData(), &gStfDistDataHeader, sizeof(DataHeader));
-  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->firstTForbit = pStf.mFirstOrbit;
+  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->firstTForbit = pStf.header().mFirstOrbit;
   reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->payloadSerializationMethod = gSerializationMethodNone;
 
   auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
@@ -133,13 +133,8 @@ std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize(FairMQ
   }
 
   if (ret < 0) {
-    { // rate-limited LOG: print stats once per second
-      static unsigned long floodgate = 0;
-      if (floodgate++ % 10 == 0) {
-        DDLOGF(fair::Severity::ERROR, "STF receive failed err={} errno={} error={}",
-          ret, errno, std::string(strerror(errno)));
-      }
-    }
+    DDLOGF_RL(1000, fair::Severity::ERROR, "STF receive failed err={} errno={} error={}", ret, errno,
+      std::string(strerror(errno)));
 
     mMessages.clear();
     return nullptr;

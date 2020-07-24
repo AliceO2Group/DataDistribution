@@ -259,6 +259,24 @@ class SubTimeFrame : public IDataModelObject
       o2hdr::DataHeader *lHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
       lHdr->firstTForbit = pFirstOrbit;
     }
+
+    inline void setTfCounter(const std::uint32_t pTfCounter)
+    {
+      assert(mHeader && mHeader->GetData() != nullptr);
+
+      // DataHeader must be first in the stack
+      o2hdr::DataHeader *lHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
+      lHdr->tfCounter = pTfCounter;
+    }
+
+    inline void setRunNumber(const std::uint32_t pRunNumber)
+    {
+      assert(mHeader && mHeader->GetData() != nullptr);
+
+      // DataHeader must be first in the stack
+      o2hdr::DataHeader *lHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
+      lHdr->runNumber = pRunNumber;
+    }
   };
 
   // we SHOULD be able to get away with this
@@ -284,12 +302,15 @@ class SubTimeFrame : public IDataModelObject
   // adopt all data from a
   void mergeStf(std::unique_ptr<SubTimeFrame> pStf);
 
+  // get data size (excluding o2 headers)
   std::uint64_t getDataSize() const;
 
   std::vector<EquipmentIdentifier> getEquipmentIdentifiers() const;
 
   struct Header {
     TimeFrameIdType mId = sInvalidTimeFrameId;
+    std::uint32_t mFirstOrbit = std::numeric_limits<std::uint32_t>::max();
+    std::uint32_t mRunNumber = 0;
   };
 
   const Header& header() const { return mHeader; }
@@ -300,7 +321,7 @@ class SubTimeFrame : public IDataModelObject
   void clear() { mData.clear(); mUpdated = false; }
 
   // TODO: remove timeframe id
-  void setFirstOrbit(const std::uint32_t pFirstOrbit) { mFirstOrbit = pFirstOrbit;  mUpdated = true; }
+  void setFirstOrbit(const std::uint32_t pFirstOrbit) { mHeader.mFirstOrbit = pFirstOrbit;  mUpdated = false; }
 
  protected:
   void accept(ISubTimeFrameVisitor& v) override { updateStf(mData); v.visit(*this); }
@@ -322,10 +343,9 @@ class SubTimeFrame : public IDataModelObject
   /// internal
   ///
   mutable bool mUpdated = false;
-  /// keep the lowest orbit of the tf and set in all DH on update
-  std::uint32_t mFirstOrbit = std::numeric_limits<std::uint32_t>::max();
+
 public:
-  void updateFirstOrbit(const std::uint32_t o) { mFirstOrbit = std::min(mFirstOrbit, o); }
+  void updateFirstOrbit(const std::uint32_t o) { mHeader.mFirstOrbit = std::min(mHeader.mFirstOrbit, o); }
 
 private:
   ///
@@ -366,9 +386,13 @@ private:
         }
 
         // update first orbit if not present in the data (old tf files)
-        if (mFirstOrbit != std::numeric_limits<std::uint32_t>::max()) {
+        // update tfCounter: TODO: incrementing always for looping of the same data
+        // update runNumber: TODO: zero for now.
+        if (mHeader.mFirstOrbit != std::numeric_limits<std::uint32_t>::max()) {
           for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
-            lDataVector[i].setFirstOrbit(mFirstOrbit);
+            lDataVector[i].setFirstOrbit(mHeader.mFirstOrbit);
+            lDataVector[i].setTfCounter(mHeader.mId);
+            lDataVector[i].setRunNumber(0);
           }
         }
 

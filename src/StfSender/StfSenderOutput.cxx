@@ -88,7 +88,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
     std::scoped_lock lLock(mOutputMapLock);
 
     if (mOutputMap.count(pTfBuilderId) > 0) {
-      DDLOG(fair::Severity::WARN) << "StfSenderOutput::connectTfBuilder: TfBuilder is already connected: " << pTfBuilderId;
+      DDLOGF(fair::Severity::WARN, "StfSenderOutput::connectTfBuilder: TfBuilder is already connected. tfb_id={}", pTfBuilderId);
       return eEXISTS; // TODO: ERRORCODE
     }
   }
@@ -108,12 +108,12 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
   lNewChannel->UpdateRateLogging(1); // log each second
 
   if (!lNewChannel->Validate()) {
-    DDLOG(fair::Severity::ERROR) << "Channel validation failed when connecting to " << pTfBuilderId << "endpoint: " << pEndpoint;
+    DDLOGF(fair::Severity::ERROR, "Channel validation failed when connecting. tfb_id={} ep={}", pTfBuilderId, pEndpoint);
     return eCONNERR;
   }
 
   if (!lNewChannel->ConnectEndpoint(pEndpoint)) {
-    DDLOG(fair::Severity::ERROR) << "Cannot connect a new channel to address: " << pEndpoint;
+    DDLOGF(fair::Severity::ERROR, "Cannot connect a new cannel. ep={}", pEndpoint);
     return eCONNERR;
   }
 

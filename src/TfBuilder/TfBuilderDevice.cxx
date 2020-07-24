@@ -237,10 +237,12 @@ bool TfBuilderDevice::ConditionalRun()
 void TfBuilderDevice::TfForwardThread()
 {
   auto lFreqStartTime = std::chrono::high_resolution_clock::now();
+  std::uint64_t lTfOutCnt = 0;
+
   while (mRunning) {
     std::unique_ptr<SubTimeFrame> lTf = dequeue(eTfFwdIn);
     if (!lTf) {
-      DDLOG(fair::Severity::WARNING) << "TfForwardThread(): Exiting... ";
+      DDLOGF(fair::Severity::INFO, "TfForwardThread(): Queue closed. Exiting... ");
       break;
     }
 
@@ -261,25 +263,17 @@ void TfBuilderDevice::TfForwardThread()
 
     if (!mStandalone) {
       try {
-        static std::uint64_t sTfOutCnt = 0;
-        if (++sTfOutCnt % 256 == 0) {
-          DDLOGF(fair::Severity::TRACE, "Forwarding new TF to DPL. tf_id={} total={}",
-            lTf->header().mId, sTfOutCnt);
-        }
+        lTfOutCnt++;
+        DDLOGF_RL(1000, fair::Severity::INFO,
+          "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={}",
+          lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), lTfOutCnt);
 
         if (dplEnabled()) {
           // adapt headers to include DPL processing header on the stack
           assert(mTfBuilder);
           mTfBuilder->adaptHeaders(lTf.get());
 
-          // DPL Channel
-          static thread_local unsigned long lThrottle = 0;
-          if (++lThrottle % 100 == 0) {
-            DDLOGF(fair::Severity::TRACE, "Sending STF to DPL. stf_id={:d} stf_size={:d} unique_equipments={:d}",
-              lTf->header().mId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size());
-          }
-
-          // Send to DPL bridge
+          // Send to DPL
           assert (mTfDplAdapter);
           mTfDplAdapter->sendToDpl(std::move(lTf));
         }
@@ -294,9 +288,9 @@ void TfBuilderDevice::TfForwardThread()
     }
 
     // decrement the size used by the TF
-    // TODO: move this close to the output channel send
+    // TODO: move this close to the output channel send to have more precise accounting of free memory
+    //       or, get the memory status directly from shm region
     mRpc->recordTfForwarded(lTfId);
-
   }
 
   DDLOG(fair::Severity::INFO) << "Exiting TF forwarding thread... ";
@@ -309,9 +303,9 @@ void TfBuilderDevice::InfoThread()
 
   while (IsRunningState()) {
 
-    DDLOG(fair::Severity::INFO) << "Mean size of TimeFrames : " << mTfSizeSamples.Mean();
-    DDLOG(fair::Severity::INFO) << "Mean TimeFrame frequency: " << mTfFreqSamples.Mean();
-    DDLOG(fair::Severity::INFO) << "Number of queued TFs    : " << getPipelineSize(); // current value
+    DDLOGF(fair::Severity::INFO, "Mean size of TimeFrames : {}", mTfSizeSamples.Mean());
+    DDLOGF(fair::Severity::INFO, "Mean TimeFrame frequency: {}", mTfFreqSamples.Mean());
+    DDLOGF(fair::Severity::INFO, "Number of queued TFs    : {}", getPipelineSize()); // current value
 
     std::this_thread::sleep_for(2s);
   }

@@ -122,14 +122,14 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
           pHbFramesBegin[i]->GetSize());
 
         if (!lOk && (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckDrop)) {
-          DDLOG(fair::Severity::WARNING) << "RDH SANITY CHECK: Removing data block";
+          DDLOGF(fair::Severity::WARNING, "RDH SANITY CHECK: Removing data block");
 
           lKeepBlocks[i] = false;
 
         } else if (!lOk && (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckPrint)) {
 
-          DDLOG(fair::Severity::INFO) << "Printing data blocks of update with TF ID: " << pHdr.mTimeFrameId
-                    << ", Link ID: " << unsigned(pHdr.mLinkId);
+          DDLOGF(fair::Severity::INFO, "Printing data blocks of update with TF ID={} Lik ID={}",
+            pHdr.mTimeFrameId, unsigned(pHdr.mLinkId));
 
           // dump the data block, skipping data
           std::size_t lCurrentDataIdx = 0;
@@ -142,14 +142,13 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
           while (lCurrentDataIdx < pHbFramesBegin[i]->GetSize()) {
             const auto lDataSizeLeft = std::size_t(pHbFramesBegin[i]->GetSize()) - lCurrentDataIdx;
 
-            std::string lInfoStr = "RDH block (64 bytes in total) of [";
-            lInfoStr += std::to_string(i) + "] 8 kiB page";
+            std::string lInfoStr = "RDH block (64 bytes in total) of [" + std::to_string(i) + "] 8 kiB page";
 
             o2::header::hexDump(lInfoStr.c_str(),
               reinterpret_cast<char*>(pHbFramesBegin[i]->GetData()) + lCurrentDataIdx,
               std::size_t(std::min(std::size_t(64), lDataSizeLeft)));
 
-            DDLOG(fair::Severity::INFO) << "RDH info CRU: " << lCru << " Endpoint: " << lEp << " Link: " << lLink;
+            DDLOGF(fair::Severity::INFO, "RDH info CRU={} Endpoint={} Link={}", lCru, lEp, lLink);
 
             const auto R = RDHReader(
               reinterpret_cast<const char*>(pHbFramesBegin[i]->GetData()) + lCurrentDataIdx,
@@ -205,7 +204,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     }
 
     if (!lHdrMsg) {
-      DDLOG(fair::Severity::ERROR) << "Allocation error: HbFrame::DataHeader: " << sizeof(DataHeader);
+      DDLOGF(fair::Severity::ERROR, "Allocation error: HbFrame::DataHeader={}", sizeof(DataHeader));
       throw std::bad_alloc();
     }
 
@@ -262,7 +261,7 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
         const auto &lHeader = lStfDataIter.mHeader;
 
         if (!lHeader || lHeader->GetSize() < sizeof(DataHeader)) {
-          DDLOG(fair::Severity::ERROR) << "File data invalid. Missing DataHeader.";
+          DDLOGF(fair::Severity::ERROR, "File data invalid. Missing DataHeader.");
           return;
         }
 
@@ -279,7 +278,7 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
           // get the DataHeader
           auto lDHdr = o2::header::get<o2::header::DataHeader*>(lHeader->GetData(), lHeader->GetSize());
           if (lDHdr == nullptr) {
-            DDLOG(fair::Severity::ERROR) << "File data invalid. DataHeader not found in the header stack.";
+            DDLOGF(fair::Severity::ERROR, "File data invalid. DataHeader not found in the header stack.");
             return;
           }
 
@@ -341,7 +340,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
         const auto &lHeader = lStfDataIter.mHeader;
 
         if (!lHeader || lHeader->GetSize() < sizeof(DataHeader)) {
-          DDLOG(fair::Severity::ERROR) << "Adapting TF headers: Missing DataHeader.";
+          DDLOGF(fair::Severity::ERROR, "Adapting TF headers: Missing DataHeader.");
           continue;
         }
 
@@ -365,7 +364,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
           );
 
           if (lDHdr == nullptr) {
-            DDLOG(fair::Severity::ERROR) << "TimeFrame invalid. DataHeader not found in the header stack.";
+            DDLOGF(fair::Severity::ERROR, "TimeFrame invalid. DataHeader not found in the header stack.");
             continue;
           }
 
@@ -376,14 +375,14 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
             );
 
             if (lOutChannelType == fair::mq::Transport::SHM) {
-              lStfDataIter.mHeader = mHeaderMemRes->NewFairMQMessage(lStack.size());
+              lStfDataIter.mHeader = getNewHeaderMessage(lStack.size());
             } else {
               lStfDataIter.mHeader = mOutputChan.NewMessage(lStack.size());
             }
 
             if (lStfDataIter.mHeader) {
               assert(lStfDataIter.mHeader->GetSize() >= sizeof (DataHeader));
-              std::memcpy(lStfDataIter.mHeader->GetData(),lStack.data(), lStack.size());
+              std::memcpy(lStfDataIter.mHeader->GetData(), lStack.data(), lStack.size());
             }
           }
         }
