@@ -31,6 +31,8 @@ using namespace o2::header;
 
 void StfToDplAdapter::visit(SubTimeFrame& pStf)
 {
+#if 0 // TODO: enable when the session is settled
+
   // Pack the Stf header
   o2::header::DataHeader lStfDistDataHeader(
     gDataDescSubTimeFrame,
@@ -63,6 +65,7 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
     mMessages.emplace_back(std::move(lDataHeaderMsg));
     mMessages.emplace_back(std::move(lDataMsg));
   }
+#endif
 
   for (auto& lDataIdentMapIter : pStf.mData) {
 
@@ -109,6 +112,70 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
     o2::header::hexDump("o2 payload", (*lM)->GetData(), std::clamp((*lM)->GetSize(), std::size_t(0), std::size_t(256)) );
     lM++;
   }
+#endif
+
+#if !defined(NDEBUG)
+  // check validity of the TF message sequence
+
+  const auto cMsgSize = mMessages.size() / 2;
+
+  for (size_t lIdx = 0; lIdx < cMsgSize; ) {
+    const DataHeader *lDh = reinterpret_cast<DataHeader*>(mMessages[lIdx*2]->GetData());
+
+    const auto& [ lOrigin, lType, lSubSpec ] = std::tie( lDh->dataOrigin, lDh->dataDescription, lDh->subSpecification );
+
+    if (lDh->splitPayloadParts == 1) {
+      // TODO: this combination of origin cannot appear again!
+      lIdx++;
+      continue;
+    }
+
+    // check we have enough messsages
+    if (lDh->splitPayloadParts > cMsgSize - lIdx ) {
+      DDLOGF(fair::Severity::ERROR, "DPL output: the multi-part is too short for the split-payload message. "
+        "splitpayload_size={} tf_available={} tf_total={}", lDh->splitPayloadParts, (cMsgSize - lIdx), cMsgSize);
+      break;
+    }
+
+    // check the first message
+    if (lDh->splitPayloadIndex != 0) {
+      DDLOGF(fair::Severity::ERROR, "DPL output: index of the first split-payload message is invalid. index={}",
+        lDh->splitPayloadIndex);
+      break;
+    }
+
+    // check all split parts
+    for (size_t lSplitI = 1; lSplitI < lDh->splitPayloadParts; lSplitI++) {
+      const DataHeader *lSplitDh = reinterpret_cast<DataHeader*>(mMessages[(lIdx+lSplitI)*2]->GetData());
+
+      // check origin
+      if (lOrigin != lSplitDh->dataOrigin || lType != lSplitDh->dataDescription || lSubSpec != lSplitDh->subSpecification) {
+        DDLOGF(fair::Severity::ERROR, "DPL output: origin of the split-payload message is invalid. "
+          "[0]=<{}{}{}> [{}]=<{}{}{}>", lOrigin.str, lType.str, lSubSpec,
+          lSplitI, lSplitDh->dataOrigin.str, lSplitDh->dataDescription.str, lSplitDh->subSpecification);
+        break;
+      }
+
+      // check the count value
+      if (lDh->splitPayloadParts != lSplitDh->splitPayloadParts) {
+        DDLOGF(fair::Severity::ERROR, "DPL output: number of payload parts in split-payload message invalid. "
+          "split_pos={} number={} original_number={}", lSplitI, lSplitDh->splitPayloadParts, lDh->splitPayloadParts);
+        break;
+      }
+
+      // check the index value
+      if (lDh->splitPayloadIndex != lSplitI) {
+        DDLOGF(fair::Severity::ERROR, "DPL output: index of the split-payload message is invalid. "
+          "split_pos={} index={} original_index={}", lSplitI, lSplitDh->splitPayloadIndex, lDh->splitPayloadIndex);
+        break;
+      }
+    }
+
+    // advance to the next o2 message
+    // TODO: record the origin
+    lIdx += lDh->splitPayloadParts;
+  }
+
 #endif
 
   mChan.Send(mMessages);
@@ -232,13 +299,8 @@ std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQChannel& pChan)
   }
 
   if (ret < 0) {
-    { // rate-limited LOG: print stats once per second
-      static unsigned long floodgate = 0;
-      if (floodgate++ % 10 == 0) {
-        DDLOGF(fair::Severity::ERROR, "STF receive failed err={} errno={} error={}",
-               ret, errno, std::string(strerror(errno)));
-      }
-    }
+    DDLOGF_RL(1000, fair::Severity::ERROR, "STF receive failed err={} errno={} error={}", ret, errno,
+      std::string(strerror(errno)));
 
     mMessages.clear();
     return nullptr;

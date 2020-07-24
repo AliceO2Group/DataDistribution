@@ -64,6 +64,10 @@ public:
 #if defined(MAP_NORESERVE) && defined(MAP_LOCKED)
     lMapFlags = MAP_NORESERVE | MAP_LOCKED;
 #endif
+    // populate the mapping
+#if defined(MAP_POPULATE)
+    lMapFlags |= MAP_POPULATE;
+#endif
 
     // try to use different file mapping (hugetlbfs)
     const auto lHugetlbfsPath = std::getenv(ENV_SHM_PATH);
@@ -142,11 +146,7 @@ public:
       return mChan.NewMessage(mRegion, lMem, mObjectSize);
     } else {
       // Log warning to increase the pool size
-      static thread_local unsigned throttle = 0;
-      if (++throttle > (1U << 18)) {
-       DDLOG(fair::Severity::WARNING) << "Header pool exhausted. Allocating from the global SHM pool.";
-        throttle = 0;
-      }
+      DDLOGF_RL(1000, fair::Severity::WARNING, "O2Header pool exhausted. Allocating from the global SHM pool.");
 
       return mChan.NewMessage(mObjectSize);
     }
@@ -281,6 +281,11 @@ public:
 #if defined(MAP_NORESERVE) && defined(MAP_LOCKED)
     lMapFlags = MAP_NORESERVE | MAP_LOCKED;
 #endif
+    // populate the mapping
+#if defined(MAP_POPULATE)
+    lMapFlags |= MAP_POPULATE;
+#endif
+
 
     // try to use different file mapping (hugetlbfs)
     const auto lHugetlbfsPath = std::getenv(ENV_SHM_PATH);

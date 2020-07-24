@@ -229,8 +229,9 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
 /// Receiving thread
 void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
 {
-  DataDistLogger::SetThreadName(fmt::format("Receiver[{}]", pFlpIndex));
+  std::uint64_t lNumStfs = 0;
 
+  DataDistLogger::SetThreadName(fmt::format("Receiver[{}]", pFlpIndex));
   DDLOGF(fair::Severity::TRACE, "Starting receiver thread for StfSender[{}]", pFlpIndex);
 
   // Reference to the input channel
@@ -246,16 +247,12 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
      // timeout
      continue;
     }
+    lNumStfs++;
 
     const TimeFrameIdType lTfId = lStf->header().mId;
 
-    {
-      static thread_local std::uint64_t sNumStfs = 0;
-      if (++sNumStfs % 100 == 0) {
-        DDLOGF(fair::Severity::DEBUG, "Received STF. flp_id={} stf_id={} total={}",
-          pFlpIndex, lTfId, sNumStfs);
-      }
-    }
+    DDLOGF_RL(5000, fair::Severity::DEBUG, "Received STF. flp_idx={} stf_id={} total={}",
+      pFlpIndex, lTfId, lNumStfs);
 
     {
       // Push the STF into the merger queue
@@ -278,6 +275,8 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
 void TfBuilderInput::StfMergerThread()
 {
   using namespace std::chrono_literals;
+
+  std::uint64_t lNumBuiltTfs = 0;
 
   while (mState == RUNNING) {
 
@@ -319,13 +318,9 @@ void TfBuilderInput::StfMergerThread()
           lTf->mergeStf(std::move(lStfIter->mStf));
       }
 
-      {
-        static std::uint64_t sNumBuiltTfs = 0;
-        if (++sNumBuiltTfs % 10 == 0) {
-          DDLOGF(fair::Severity::DEBUG, "Building of TF completed. tf_id={:d} duration_ms={} total_tf={:d}",
-            lStfId, lBuildDurationMs.count(), sNumBuiltTfs);
-        }
-      }
+      lNumBuiltTfs++;
+      DDLOGF_RL(500, fair::Severity::DEBUG, "Building of TF completed. tf_id={:d} duration_ms={} total_tf={:d}",
+        lStfId, lBuildDurationMs.count(), lNumBuiltTfs);
 
       // remove consumed STFs from the merge queue
       mStfMergeMap.erase(lStfId);

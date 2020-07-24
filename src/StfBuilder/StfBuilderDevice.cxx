@@ -277,10 +277,8 @@ void StfBuilderDevice::StfOutputThread()
 
   if (!isSandalone()) {
     if (!dplEnabled()) {
-      // auto& lOutputChan = GetChannel(getOutputChannelName(), 0);
       lStfSerializer = std::make_unique<InterleavedHdrDataSerializer>(lOutputChan);
     } else {
-      // auto& lOutputChan = GetChannel(getDplChannelName(), 0);
       lStfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
     }
   }
@@ -296,13 +294,8 @@ void StfBuilderDevice::StfOutputThread()
     // decrement the stf counter
     I().mNumStfs--;
 
-    {
-      static thread_local unsigned long lThrottle = 0;
-      if (lThrottle++ % 88 == 0) {
-        DDLOGF(fair::Severity::INFO, "Sending STF out. stf_id={} channel={} stf_size={} unique_equipments={}",
-          lStf->header().mId, lOutputChan.GetName(), lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
-      }
-    }
+    DDLOGF_RL(2000, fair::Severity::DEBUG, "Sending an STF out. stf_id={} channel={} stf_size={} unique_equipments={}",
+      lStf->header().mId, lOutputChan.GetName(), lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
     // get data size sample
     I().mStfSizeSamples.Fill(lStf->getDataSize());
