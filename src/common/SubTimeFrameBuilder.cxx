@@ -229,13 +229,14 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameReadoutBuilder::getStf()
 /// SubTimeFrameFileBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize, bool pDplEnabled)
+SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize,
+  const std::size_t pHdrSegSize, bool pDplEnabled)
   : mDplEnabled(pDplEnabled)
 {
   mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
     "O2HeadersRegion_FileSource",
     pChan,
-    std::size_t(256) << 20, /* make configurable */
+    pHdrSegSize,
     0
   );
 

@@ -78,7 +78,8 @@ class SubTimeFrameFileBuilder
 {
  public:
   SubTimeFrameFileBuilder() = delete;
-  SubTimeFrameFileBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize, bool pDplEnabled);
+  SubTimeFrameFileBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize,
+    const std::size_t pHdrSegSize, bool pDplEnabled);
 
   void adaptHeaders(SubTimeFrame *pStf);
 
