@@ -50,6 +50,7 @@ void SubTimeFrameFileSource::start(FairMQChannel& pDstChan, const bool pDplEnabl
       mFileBuilder = std::make_unique<SubTimeFrameFileBuilder>(
         pDstChan,
         mRegionSizeMB << 20,
+        mHdrRegionSizeMB << 20,
         mDplEnabled
       );
     }
@@ -105,6 +106,10 @@ bpo::options_description SubTimeFrameFileSource::getProgramOptions()
     OptionKeyStfSourceRegionSize,
     bpo::value<std::uint64_t>()->default_value(1024),
     "Size of the memory region for (Sub)TimeFrames data in MiB. "
+    "Note: make sure the region can fit several (Sub)TimeFrames to avoid deadlocks.")(
+    OptionKeyStfHeadersRegionSize,
+    bpo::value<std::uint64_t>()->default_value(256),
+    "Size of the memory region for (Sub)TimeFrames O2 headers in MiB. "
     "Note: make sure the region can fit several (Sub)TimeFrames to avoid deadlocks.");
 
   return lSinkDesc;
@@ -155,6 +160,7 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
   mRepeat = pFMQProgOpt.GetValue<bool>(OptionKeyStfSourceRepeat);
   mLoadRate = pFMQProgOpt.GetValue<float>(OptionKeyStfLoadRate);
   mRegionSizeMB = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSourceRegionSize);
+  mHdrRegionSizeMB = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfHeadersRegionSize);
 
   mFilesVector = getDataFileList();
   if (mFilesVector.empty()) {
@@ -162,18 +168,19 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
     return false;
   }
 
-  if (mRegionSizeMB <= 0) {
-    DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame region size must be a positive value");
+  if (mRegionSizeMB <= 0 || mHdrRegionSizeMB <= 0) {
+    DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame region sizes must not be zero.");
     return false;
   }
 
   // print options
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: enabled         = {}", (mEnabled ? "yes" : "no"));
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: directory       = {}", mDir);
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: (s)tf load rate = {}", mLoadRate);
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: repeat data     = {}", mRepeat);
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: num files       = {}", mFilesVector.size());
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: region size(MiB)= {}", mRegionSizeMB);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: enabled                 = {}", (mEnabled ? "yes" : "no"));
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: directory               = {}", mDir);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: (s)tf load rate         = {}", mLoadRate);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: repeat data             = {}", mRepeat);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: num files               = {}", mFilesVector.size());
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: data region size(MiB)   = {}", mRegionSizeMB);
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame source :: header region size(MiB) = {}", mHdrRegionSizeMB);
 
   return true;
 }

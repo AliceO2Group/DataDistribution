@@ -47,6 +47,7 @@ class SubTimeFrameFileSource
   static constexpr const char* OptionKeyStfLoadRate = "data-source-rate";
   static constexpr const char* OptionKeyStfSourceRepeat = "data-source-repeat";
   static constexpr const char* OptionKeyStfSourceRegionSize = "data-source-regionsize";
+  static constexpr const char* OptionKeyStfHeadersRegionSize = "data-source-headersize";
 
 
   static bpo::options_description getProgramOptions();
@@ -57,7 +58,7 @@ class SubTimeFrameFileSource
     : mPipelineI(pPipeline),
       mPipelineStageOut(pPipelineStageOut)
   {
-    DDLOG(fair::Severity::TRACE) << "(Sub)TimeFrame Source started...";
+    DDLOGF(fair::Severity::TRACE, "(Sub)TimeFrame Source started...");
   }
 
   ~SubTimeFrameFileSource()
@@ -71,7 +72,7 @@ class SubTimeFrameFileSource
     if (mInjectThread.joinable()) {
       mInjectThread.join();
     }
-    DDLOG(fair::Severity::TRACE) << "(Sub)TimeFrame Source terminated...";
+    DDLOGF(fair::Severity::TRACE, "(Sub)TimeFrame Source terminated...");
   }
 
   bool loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt);
@@ -100,7 +101,8 @@ class SubTimeFrameFileSource
   std::vector<std::string> mFilesVector;
   bool mRepeat = false;
   float mLoadRate = 1.f;
-  std::size_t mRegionSizeMB = size_t(1) << 10; /* 1GB in MiB */
+  std::size_t mRegionSizeMB = 1024; /* 1GB in MiB */
+  std::size_t mHdrRegionSizeMB = 256;
 
   /// Thread for file writing
   std::atomic_bool mRunning = false;
