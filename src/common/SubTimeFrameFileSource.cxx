@@ -192,6 +192,8 @@ void SubTimeFrameFileSource::DataInjectThread()
 
   DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame Source: Injecting new STF every " << lIntervalUs.count() << " us";
 
+  static float sNumSentStfs = 1;
+
   while (mRunning) {
     // Get the next STF
     std::unique_ptr<SubTimeFrame> lStf;
@@ -200,16 +202,22 @@ void SubTimeFrameFileSource::DataInjectThread()
     }
 
     mPipelineI.queue(mPipelineStageOut, std::move(lStf));
-    auto lRatePrevTime = std::chrono::high_resolution_clock::now();
+    static const auto sRateStartTime = std::chrono::high_resolution_clock::now();
+    sNumSentStfs++;
 
-    while(mRunning && std::chrono::high_resolution_clock::now() - lRatePrevTime  < lIntervalUs) {
+    //rate limiting
+    while(mRunning) {
+      const auto lNow = std::chrono::high_resolution_clock::now();
+      const float lSecSinceStart = std::max(1e-6f, std::chrono::duration<float>(lNow - sRateStartTime).count());
+      const float lRate = sNumSentStfs / lSecSinceStart;
 
-      auto lSleepFor = lIntervalUs - (std::chrono::high_resolution_clock::now() - lRatePrevTime);
-      lSleepFor /= 2;
-      lSleepFor = std::clamp(lSleepFor, 0ns, std::chrono::nanoseconds(500ms));
+      if (lRate <= mLoadRate) {
+        break;
+      }
 
-      std::this_thread::sleep_for(lSleepFor);
+      std::this_thread::sleep_for(5ms);
     }
+    DDLOGF_RL(2000, fair::Severity::DEBUG, "SubTimeFrameFileSource prepared_tfs={}", mReadStfQueue.size());
   }
 
   DDLOG(fair::Severity::INFO) << "Exiting file source inject thread...";
