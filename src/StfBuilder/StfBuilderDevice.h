@@ -205,6 +205,8 @@ class StfBuilderDevice : public DataDistDevice,
     std::thread mInfoThread;
     RunningSamples<uint64_t> mStfSizeSamples;
     RunningSamples<float> mStfDataTimeSamples;
+    std::uint64_t mSentOutStfs = 0;
+    double mSentOutRate = 0.;
   };
 
   std::unique_ptr<StfBuilderInstance> mI;
