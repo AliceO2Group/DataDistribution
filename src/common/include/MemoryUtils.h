@@ -325,9 +325,13 @@ public:
           return;
         }
 
+        std::size_t lReclaimed = 0;
         for (const auto &lBlk : pBlkVect) {
+          lReclaimed += lBlk.size;
           reclaimSHMMessage(lBlk.ptr, lBlk.size);
         }
+        mAllocated -= lReclaimed;
+        mFree += lReclaimed;
       },
       lSegmentRoot.c_str(),
       lMapFlags
@@ -343,6 +347,9 @@ public:
     mLength = mRegion->GetSize();
 
     memset(mStart, 0xAA, mLength);
+
+    mFree = mLength;
+    mAllocated = 0;
 
     // start the allocations
     mRunning = true;
@@ -423,6 +430,12 @@ protected:
         }
       }
     }
+
+    mAllocated += pSize;
+    mFree -= pSize;
+
+    DDLOGF_RL(2000, fair::Severity::DEBUG, "DataRegionResource {} memory free={} allocated={}",
+      mSegmentName, mFree, mAllocated);
 
     return lRet;
   }
@@ -567,6 +580,10 @@ private:
   // two step reclaim to avoid lock contention in the allocation path
   std::mutex mReclaimLock;
   std::map<const char*, std::size_t> mFrees; // keep all returned blocks
+
+  // free space accounting
+  std::atomic_uint64_t mFree;
+  std::atomic_uint64_t mAllocated;
 };
 
 }
