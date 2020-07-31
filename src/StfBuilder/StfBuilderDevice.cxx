@@ -323,7 +323,11 @@ void StfBuilderDevice::StfOutputThread()
       }
 
       // record time spent in sending
-      double lTimeMs = std::chrono::duration<double, std::milli>(hres_clock::now() - lSendStartTime).count();
+      static const auto sStartOfStfSending = hres_clock::now();
+      I().mSentOutStfs++;
+      const auto lNow = hres_clock::now();
+      const double lTimeMs = std::max(1e-6, std::chrono::duration<double, std::milli>(lNow - lSendStartTime).count());
+      I().mSentOutRate = double(I().mSentOutStfs) / std::chrono::duration<double>(lNow - sStartOfStfSending).count();
       I().mStfDataTimeSamples.Fill(lTimeMs);
     } else {
       // DDLOGF(fair::Severity::ERROR, "Dropping stf size={}", lStf->getDataSize());
@@ -343,6 +347,7 @@ void StfBuilderDevice::InfoThread()
     DDLOGF(fair::Severity::info, "SubTimeFrame size_mean={} frequency_mean={} sending_time_ms_mean={} queued_stf={}",
       I().mStfSizeSamples.Mean(), I().mReadoutInterface->StfFreqSamples().Mean(), I().mStfDataTimeSamples.Mean(),
       I().mNumStfs);
+    DDLOGF(fair::Severity::info, "SubTimeFrame sent_total={} rate_total={:.3}", I().mSentOutStfs, I().mSentOutRate);
 
     std::this_thread::sleep_for(2s);
   }
