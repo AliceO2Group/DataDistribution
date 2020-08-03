@@ -45,6 +45,7 @@ class SubTimeFrameFileSource
   static constexpr const char* OptionKeyStfSourceEnable = "data-source-enable";
   static constexpr const char* OptionKeyStfSourceDir = "data-source-dir";
   static constexpr const char* OptionKeyStfLoadRate = "data-source-rate";
+  static constexpr const char* OptionKeyStfLoadPreRead = "data-source-preread";
   static constexpr const char* OptionKeyStfSourceRepeat = "data-source-repeat";
   static constexpr const char* OptionKeyStfSourceRegionSize = "data-source-regionsize";
   static constexpr const char* OptionKeyStfHeadersRegionSize = "data-source-headersize";
@@ -100,7 +101,8 @@ class SubTimeFrameFileSource
   std::string mDir;
   std::vector<std::string> mFilesVector;
   bool mRepeat = false;
-  float mLoadRate = 1.f;
+  double mLoadRate = 1.f;
+  std::uint32_t mPreReadStfs = 1;
   std::size_t mRegionSizeMB = 1024; /* 1GB in MiB */
   std::size_t mHdrRegionSizeMB = 256;
 
