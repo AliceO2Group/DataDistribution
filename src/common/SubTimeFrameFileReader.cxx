@@ -98,7 +98,7 @@ std::size_t SubTimeFrameFileReader::getHeaderStackSize() // throws ios_base::fai
   mFile.seekg(lFilePosStart);
 
   if (lNumHeaders >= cMaxHeaders) {
-    DDLOGF(fair::Severity::ERROR, "FileRead: Reached max number of headers allowed: {}.", cMaxHeaders);
+    DDLOGF(fair::Severity::ERROR, "FileReader: Reached max number of headers allowed: {}.", cMaxHeaders);
     return 0;
   }
 
@@ -133,21 +133,22 @@ Stack SubTimeFrameFileReader::getHeaderStack(std::size_t *pOrigsize) // throws i
     DataHeader lNewDh;
 
     // Write over the new DataHeader. We need to update some of the BaseHeader values.
+    assert (sizeof (DataHeader) > lBaseOfDH->size() ); // current DataHeader must be larger
     std::memcpy(&lNewDh, lBaseOfDH->data(), lBaseOfDH->size());
+
     // make sure to bump the version in the BaseHeader.
     // TODO: Is there a better way?
     lNewDh.headerSize = sizeof(DataHeader);
     lNewDh.headerVersion = DataHeader::sVersion;
 
-    if (lBaseOfDH->headerVersion == 1) {
-      mDHUpdateFirstOrbit = true;
-    } else {
-      DDLOGF(fair::Severity::ERROR, "DataHeader version {} read from file is not upgraded to the current version {}",
+    if (lBaseOfDH->headerVersion == 1 || lBaseOfDH->headerVersion == 2) {
+      DDLOGF_RL(5000, fair::Severity::DEBUG, "FileReader: DataHeader v{} from file upgraded to v{}",
         lBaseOfDH->headerVersion, DataHeader::sVersion);
-      DDLOGF(fair::Severity::ERROR, "Try newer version of DataDistribution or file a BUG");
+    } else {
+      DDLOGF_RL(1000, fair::Severity::ERROR, "FileReader: DataHeader v{} read from file is not upgraded to "
+        "the current version {}", lBaseOfDH->headerVersion, DataHeader::sVersion);
+      DDLOGF_RL(1000, fair::Severity::ERROR, "Try using a newer version of DataDistribution or file a BUG");
     }
-
-    assert (sizeof (DataHeader) > lBaseOfDH->size() ); // current DataHeader must be larger
 
     if (lBaseOfDH->size() == lStackSize) {
       return Stack(lNewDh);
