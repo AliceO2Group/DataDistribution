@@ -77,7 +77,6 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
 
 
   // flags for upgrading DataHeader versions
-  bool mDHUpdateFirstOrbit = false; // Set first orbit of in the new DataHeader
   static std::uint64_t sStfId; // TODO: add id to files metadata
 
 };
