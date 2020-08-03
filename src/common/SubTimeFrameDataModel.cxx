@@ -31,7 +31,7 @@ using namespace o2::header;
 /// SubTimeFrame
 ////////////////////////////////////////////////////////////////////////////////
 SubTimeFrame::SubTimeFrame(uint64_t pStfId)
-  : mHeader{ pStfId }
+  : mHeader(pStfId)
 {
 }
 

@@ -311,6 +311,10 @@ class SubTimeFrame : public IDataModelObject
     TimeFrameIdType mId = sInvalidTimeFrameId;
     std::uint32_t mFirstOrbit = std::numeric_limits<std::uint32_t>::max();
     std::uint32_t mRunNumber = 0;
+
+    Header() = default;
+    explicit Header(TimeFrameIdType pId)
+    : mId(pId) { }
   };
 
   const Header& header() const { return mHeader; }
@@ -342,7 +346,12 @@ class SubTimeFrame : public IDataModelObject
   mutable bool mUpdated = false;
 
 public:
-  void updateFirstOrbit(const std::uint32_t o) { mHeader.mFirstOrbit = std::min(mHeader.mFirstOrbit, o); }
+  void updateFirstOrbit(const std::uint32_t pOrbit) {
+    if (pOrbit < mHeader.mFirstOrbit) {
+      mHeader.mFirstOrbit = pOrbit;
+      mUpdated = false;
+    }
+  }
 
 private:
   ///
@@ -385,12 +394,13 @@ private:
         // update first orbit if not present in the data (old tf files)
         // update tfCounter: TODO: incrementing always for looping of the same data
         // update runNumber: TODO: zero for now.
-        if (mHeader.mFirstOrbit != std::numeric_limits<std::uint32_t>::max()) {
-          for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
+        for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
+          if (mHeader.mFirstOrbit != std::numeric_limits<std::uint32_t>::max()) {
             lDataVector[i].setFirstOrbit(mHeader.mFirstOrbit);
-            lDataVector[i].setTfCounter(mHeader.mId);
-            lDataVector[i].setRunNumber(0);
           }
+
+          lDataVector[i].setTfCounter(mHeader.mId);
+          lDataVector[i].setRunNumber(0);
         }
 
         assert(lDataVector.empty() ? true :

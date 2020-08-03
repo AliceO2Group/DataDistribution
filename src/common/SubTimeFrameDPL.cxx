@@ -31,8 +31,6 @@ using namespace o2::header;
 
 void StfToDplAdapter::visit(SubTimeFrame& pStf)
 {
-#if 0 // TODO: enable when the session is settled
-
   // Pack the Stf header
   o2::header::DataHeader lStfDistDataHeader(
     gDataDescSubTimeFrame,
@@ -65,7 +63,6 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
     mMessages.emplace_back(std::move(lDataHeaderMsg));
     mMessages.emplace_back(std::move(lDataMsg));
   }
-#endif
 
   for (auto& lDataIdentMapIter : pStf.mData) {
 
