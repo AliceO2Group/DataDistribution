@@ -160,12 +160,12 @@ void StfBuilderDevice::InitTask()
   }
 
   // check if output enabled
-  if (isSandalone() && !I().mFileSink->enabled()) {
+  if (isStandalone() && !I().mFileSink->enabled()) {
     DDLOGF(fair::Severity::WARNING, "Running in standalone mode and with STF file sink disabled. Data will be lost.");
   }
 
     // channel for FileSource: stf or dpl, or generic one in case of standalone
-  if (isSandalone()) {
+  if (isStandalone()) {
     // create default FMQ shm channel
     auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("shmem", "", GetConfig());
     if (!lTransportFactory) {
@@ -201,7 +201,7 @@ void StfBuilderDevice::InitTask()
     }
 
     try {
-      if (!isSandalone()) {
+      if (!isStandalone()) {
         GetChannel(I().mDplEnabled ? I().mDplChannelName : I().mOutputChannelName);
       }
     } catch(std::exception &) {
@@ -275,7 +275,7 @@ void StfBuilderDevice::StfOutputThread()
 
   DDLOGF(fair::Severity::info, "StfOutputThread: sending data to channel: {}", lOutputChan.GetName());
 
-  if (!isSandalone()) {
+  if (!isStandalone()) {
     if (!dplEnabled()) {
       lStfSerializer = std::make_unique<InterleavedHdrDataSerializer>(lOutputChan);
     } else {
@@ -283,7 +283,7 @@ void StfBuilderDevice::StfOutputThread()
     }
   }
 
-  while (IsRunningState()) {
+  while (IsReadyOrRunningState()) {
     using hres_clock = std::chrono::high_resolution_clock;
 
     // Get a STF ready for sending
@@ -300,7 +300,7 @@ void StfBuilderDevice::StfOutputThread()
     // get data size sample
     I().mStfSizeSamples.Fill(lStf->getDataSize());
 
-    if (!isSandalone()) {
+    if (!isStandalone()) {
       const auto lSendStartTime = hres_clock::now();
 
       try {
@@ -314,7 +314,7 @@ void StfBuilderDevice::StfOutputThread()
           lStfDplAdapter->sendToDpl(std::move(lStf));
         }
       } catch (std::exception& e) {
-        if (IsRunningState()) {
+        if (IsReadyOrRunningState()) {
           DDLOGF(fair::Severity::ERROR, "StfOutputThread: exception on send: what={}", e.what());
         } else {
           DDLOGF(fair::Severity::info, "StfOutputThread(NOT_RUNNING): shutting down: what={}", e.what());
@@ -323,8 +323,16 @@ void StfBuilderDevice::StfOutputThread()
       }
 
       // record time spent in sending
-      static const auto sStartOfStfSending = hres_clock::now();
+      static auto sStartOfStfSending = hres_clock::now();
+      if (I().mRestartRateCounter) {
+        sStartOfStfSending = hres_clock::now();
+        I().mSentOutStfs = 0;
+        I().mRestartRateCounter = false;
+      }
+
       I().mSentOutStfs++;
+      I().mSentOutStfsTotal++;
+
       const auto lNow = hres_clock::now();
       const double lTimeMs = std::max(1e-6, std::chrono::duration<double, std::milli>(lNow - lSendStartTime).count());
       I().mSentOutRate = double(I().mSentOutStfs) / std::chrono::duration<double>(lNow - sStartOfStfSending).count();
@@ -342,14 +350,18 @@ void StfBuilderDevice::InfoThread()
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
-  while (IsRunningState()) {
+  while (IsReadyOrRunningState()) {
+
+    std::this_thread::sleep_for(2s);
+
+    if (I().mPaused) {
+      continue;
+    }
 
     DDLOGF(fair::Severity::info, "SubTimeFrame size_mean={} frequency_mean={} sending_time_ms_mean={} queued_stf={}",
       I().mStfSizeSamples.Mean(), I().mReadoutInterface->StfFreqSamples().Mean(), I().mStfDataTimeSamples.Mean(),
       I().mNumStfs);
-    DDLOGF(fair::Severity::info, "SubTimeFrame sent_total={} rate_total={:.3}", I().mSentOutStfs, I().mSentOutRate);
-
-    std::this_thread::sleep_for(2s);
+    DDLOGF(fair::Severity::info, "SubTimeFrame sent_total={} rate={:.4}", I().mSentOutStfsTotal, I().mSentOutRate);
   }
   DDLOGF(fair::Severity::trace, "Exiting Info thread...");
 }
