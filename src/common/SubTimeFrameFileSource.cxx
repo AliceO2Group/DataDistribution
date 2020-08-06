@@ -205,14 +205,23 @@ void SubTimeFrameFileSource::DataInjectThread()
   static double sNumSentStfs = 1;
 
   while (mRunning) {
+
     // Get the next STF
     std::unique_ptr<SubTimeFrame> lStf;
     if (!mReadStfQueue.pop(lStf)) {
       break;
     }
 
+    static auto sRateStartTime = std::chrono::high_resolution_clock::now();
+
+    while (mRunning && mPaused) {
+      std::this_thread::sleep_for(200ms);
+      // reset the rate stats
+      sRateStartTime = std::chrono::high_resolution_clock::now();
+      sNumSentStfs = 1;
+    }
+
     mPipelineI.queue(mPipelineStageOut, std::move(lStf));
-    static const auto sRateStartTime = std::chrono::high_resolution_clock::now();
     sNumSentStfs++;
 
     auto getElapsedTime = []() {
@@ -231,9 +240,9 @@ void SubTimeFrameFileSource::DataInjectThread()
         break;
       }
 
-      std::this_thread::sleep_for(std::chrono::duration<double>( (lSecNext - lSecSinceStart)/4 ));
+      std::this_thread::sleep_for(std::chrono::duration<double>( (lSecNext - lSecSinceStart) * 3. / 5. ));
     }
-    DDLOGF_RL(2000, fair::Severity::DEBUG, "SubTimeFrameFileSource prepared_tfs={} inject_rate={:.3f}",
+    DDLOGF_RL(2000, fair::Severity::DEBUG, "SubTimeFrameFileSource prepared_tfs={} inject_rate={:.4f}",
       mReadStfQueue.size(), sNumSentStfs / getElapsedTime());
   }
 
@@ -280,7 +289,7 @@ void SubTimeFrameFileSource::DataHandlerThread()
 
         // Limit read-ahead
         while (mRunning && (mReadStfQueue.size() >= mPreReadStfs)) {
-          std::this_thread::sleep_for(lIntervalUs / 10);
+          std::this_thread::sleep_for(mPaused ? lIntervalUs : (lIntervalUs / 10));
         }
       }
     }

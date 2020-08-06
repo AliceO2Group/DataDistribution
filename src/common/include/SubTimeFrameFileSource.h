@@ -82,6 +82,8 @@ class SubTimeFrameFileSource
   bool enabled() const { return mEnabled; }
 
   void start(FairMQChannel& pDstChan, const bool pDplEnabled);
+  void pause() { mPaused = true; }
+  void resume() { mPaused = false; }
   void stop();
 
   void DataHandlerThread();
@@ -108,6 +110,7 @@ class SubTimeFrameFileSource
 
   /// Thread for file writing
   std::atomic_bool mRunning = false;
+  std::atomic_bool mPaused = false;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mReadStfQueue;
   std::thread mSourceThread;
   std::thread mInjectThread;
