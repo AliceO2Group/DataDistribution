@@ -108,6 +108,19 @@ class StfBuilderDevice : public DataDistDevice,
   virtual void ResetTask() override final;
   virtual bool ConditionalRun() override final;
 
+  // stop/restart file source
+  virtual void PreRun() override final {
+    if (I().mFileSource) {
+      I().mFileSource->resume();
+      DDLOGF(fair::Severity::INFO, "Restarting file source.");
+    }
+  }
+  virtual void PostRun() override final {
+    if (I().mFileSource) {
+      I().mFileSource->pause();
+      DDLOGF(fair::Severity::INFO, "Pausing file source.");
+    }
+  }
 
   bool tryPopOldestStfs()
   {
