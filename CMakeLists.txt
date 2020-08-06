@@ -92,6 +92,7 @@ set(Boost_COMPONENTS ${FairMQ_Boost_COMPONENTS})
 list(INSERT Boost_COMPONENTS
   range
   filesystem
+  iostreams
   unit_test_framework
 )
 list(REMOVE_DUPLICATES Boost_COMPONENTS)

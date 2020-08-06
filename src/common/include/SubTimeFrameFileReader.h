@@ -19,6 +19,7 @@
 #include <Headers/Stack.h>
 
 #include <boost/filesystem.hpp>
+#include <boost/iostreams/device/mapped_file.hpp>
 #include <fstream>
 #include <vector>
 
@@ -48,33 +49,88 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
   ///
   /// Tell the current position of the file
   ///
-  std::uint64_t position() { return std::uint64_t(mFile.tellg()); }
+  inline
+  std::uint64_t position() const { return mFileMapOffset; }
+
+  ///
+  /// Set the current position of the file
+  ///
+  inline
+  void set_position(std::uint64_t pPos)
+  {
+    const std::uint64_t lPos = std::min(pPos, mFileSize);
+    assert(pPos == lPos);
+
+    mFileMapOffset = lPos;
+  }
+
+  ///
+  /// Is the stream position at EOF
+  ///
+  inline
+  bool eof() const { return mFileMapOffset == mFileSize; }
 
   ///
   /// Tell the size of the file
   ///
+  inline
   std::uint64_t size() const { return mFileSize; }
 
  private:
   void visit(SubTimeFrame& pStf) override;
 
-  std::ifstream mFile;
-  std::uint64_t mFileSize;
+  std::string mFileName;
+  boost::iostreams::mapped_file_source mFileMap;
+  std::uint64_t mFileMapOffset = 0;
+  std::uint64_t mFileSize = 0;
 
   // helper to make sure written chunks are buffered, only allow pointers
   template <typename pointer,
             typename = std::enable_if_t<std::is_pointer<pointer>::value>>
-  std::istream& buffered_read(pointer pPtr, std::streamsize pLen)
+  bool read_advance(pointer pPtr, std::uint64_t pLen)
   {
-    return mFile.read(reinterpret_cast<char*>(pPtr), pLen);
+    if (!mFileMap.is_open()) {
+      return false;
+    }
+
+    assert(mFileMapOffset <= mFileSize);
+    const std::uint64_t lToRead = std::min(pLen, mFileSize - mFileMapOffset);
+
+    if (lToRead != pLen) {
+      DDLOGF(fair::Severity::ERROR, "FileReader: request to read beyond the file end. pos={} size={} len={}",
+        mFileMapOffset, mFileSize, pLen);
+      DDLOGF(fair::Severity::ERROR, "Closing the file {}. The read data is invalid.", mFileName);
+      mFileMap.close(); mFileMapOffset = 0; mFileSize = 0;
+      return false;
+    }
+
+    std::memcpy(reinterpret_cast<char*>(pPtr), mFileMap.data() + mFileMapOffset, lToRead);
+    mFileMapOffset += lToRead;
+    return true;
+  }
+
+  inline
+  bool ignore_nbytes(const std::size_t pLen)
+  {
+    const std::size_t lToIgnore = std::min(pLen, mFileSize - mFileMapOffset);
+    if (pLen != lToIgnore) {
+      DDLOGF(fair::Severity::ERROR, "FileReader: request to ignore bytes beyond the file end. pos={} size={} len={}",
+        mFileMapOffset, mFileSize, pLen);
+      DDLOGF(fair::Severity::ERROR, "Closing the file {}. The read data is invalid.", mFileName);
+      mFileMap.close(); mFileMapOffset = 0; mFileSize = 0;
+      return false;
+    }
+
+    mFileMapOffset += lToIgnore;
+    assert(mFileMapOffset <= mFileSize);
+    return true;
   }
 
   std::size_t getHeaderStackSize();
-  o2::header::Stack getHeaderStack(std::size_t *pOrigsize = nullptr);
+  o2::header::Stack getHeaderStack(std::size_t &pOrigsize);
 
   // vector of <hdr, fmqMsg> elements of a tf read from the file
   std::vector<SubTimeFrame::StfData> mStfData;
-
 
   // flags for upgrading DataHeader versions
   static std::uint64_t sStfId; // TODO: add id to files metadata
