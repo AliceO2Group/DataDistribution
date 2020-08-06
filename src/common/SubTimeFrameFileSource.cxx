@@ -215,11 +215,15 @@ void SubTimeFrameFileSource::DataInjectThread()
     static const auto sRateStartTime = std::chrono::high_resolution_clock::now();
     sNumSentStfs++;
 
+    auto getElapsedTime = []() {
+      return std::max(1e-6, std::chrono::duration<double>(std::chrono::high_resolution_clock::now() -
+        sRateStartTime).count());
+    };
+
     // rate limiting
     // calculate absolute times from the start to avoid skewing the rate over time
     while(mRunning) {
-      const auto lNow = std::chrono::high_resolution_clock::now();
-      const double lSecSinceStart = std::max(1e-6, std::chrono::duration<double>(lNow - sRateStartTime).count());
+      const double lSecSinceStart = getElapsedTime();
       const double lSecNext = sNumSentStfs / mLoadRate;
 
       // check if we're done waiting
@@ -229,7 +233,8 @@ void SubTimeFrameFileSource::DataInjectThread()
 
       std::this_thread::sleep_for(std::chrono::duration<double>( (lSecNext - lSecSinceStart)/4 ));
     }
-    DDLOGF_RL(2000, fair::Severity::DEBUG, "SubTimeFrameFileSource prepared_tfs={}", mReadStfQueue.size());
+    DDLOGF_RL(2000, fair::Severity::DEBUG, "SubTimeFrameFileSource prepared_tfs={} inject_rate={:.3f}",
+      mReadStfQueue.size(), sNumSentStfs / getElapsedTime());
   }
 
   DDLOGF(fair::Severity::INFO, "Exiting file source inject thread...");
