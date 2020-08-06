@@ -42,6 +42,10 @@ public:
   bool IsRunningState() const {
     return (GetCurrentState() == fair::mq::State::Running);
   }
+
+  bool IsReadyOrRunningState() const {
+    return ((GetCurrentState() == fair::mq::State::Running) || (GetCurrentState() == fair::mq::State::Ready));
+  }
 };
 
 template <

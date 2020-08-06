@@ -84,13 +84,13 @@ class StfBuilderDevice : public DataDistDevice,
   ~StfBuilderDevice() override;
 
   bool dplEnabled() const noexcept { return I().mDplEnabled; }
-  bool isSandalone() const noexcept { return I().mStandalone; }
+  bool isStandalone() const noexcept { return I().mStandalone; }
 
   const std::string& getInputChannelName() const { return I().mInputChannelName; }
   const std::string& getDplChannelName() const { return I().mDplChannelName; }
 
   auto& getOutputChannel() {
-    if (isSandalone()) {
+    if (isStandalone()) {
       return *I().mStandaloneChannel;
     }
 
@@ -110,12 +110,15 @@ class StfBuilderDevice : public DataDistDevice,
 
   // stop/restart file source
   virtual void PreRun() override final {
+    I().mPaused = false;
     if (I().mFileSource) {
       I().mFileSource->resume();
       DDLOGF(fair::Severity::INFO, "Restarting file source.");
     }
+    I().mRestartRateCounter = true;
   }
   virtual void PostRun() override final {
+    I().mPaused = true;
     if (I().mFileSource) {
       I().mFileSource->pause();
       DDLOGF(fair::Severity::INFO, "Pausing file source.");
@@ -206,6 +209,7 @@ class StfBuilderDevice : public DataDistDevice,
 
     /// Internal threads
     std::thread mOutputThread;
+    std::atomic_bool mPaused = false;
 
     /// File sink
     std::unique_ptr<SubTimeFrameFileSink> mFileSink;
@@ -218,8 +222,10 @@ class StfBuilderDevice : public DataDistDevice,
     std::thread mInfoThread;
     RunningSamples<uint64_t> mStfSizeSamples;
     RunningSamples<float> mStfDataTimeSamples;
-    std::uint64_t mSentOutStfs = 0;
+    std::uint64_t mSentOutStfsTotal = 0;
+    std::uint64_t mSentOutStfs = 0; // used to calculate the rate (pause/resume)
     double mSentOutRate = 0.;
+    bool mRestartRateCounter = true;
   };
 
   std::unique_ptr<StfBuilderInstance> mI;
