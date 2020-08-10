@@ -66,7 +66,7 @@ class SubTimeFrameReadoutBuilder
 
   bool mDplEnabled;
 
-  std::unique_ptr<FMQUnsynchronizedPoolMemoryResource> mHeaderMemRes;
+  std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
 };
 
 
