@@ -38,7 +38,7 @@ SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(FairMQChannel& pChan, boo
   : mStf(nullptr),
     mDplEnabled(pDplEnabled)
 {
-  mHeaderMemRes = std::make_unique<FMQUnsynchronizedPoolMemoryResource>(
+  mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
     "O2HeadersRegion",
     pChan,
     std::size_t(256) << 20, /* make configurable */
