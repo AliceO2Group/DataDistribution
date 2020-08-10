@@ -105,19 +105,56 @@ public:
       pSize,
       pRegionFlags,
       [this](const std::vector<FairMQRegionBlock>& pBlkVect) {
+
+        static thread_local std::vector<FairMQRegionBlock> lSortedBlks;
+        static thread_local double sMergeRatio = 0.5;
+
+        lSortedBlks = pBlkVect;
+
+        // sort and try to merge regions later
+        std::sort(lSortedBlks.begin(), lSortedBlks.end(), [](FairMQRegionBlock &a, FairMQRegionBlock &b) {
+          return a.ptr < b.ptr;
+        });
+
+        // merge the blocks
+        std::uint64_t lMergedBlocks = 0;
+        for (std::size_t i = 0; i < lSortedBlks.size() - 1; i++ ) {
+          for (std::size_t j = i+1; j < lSortedBlks.size(); j++ ) {
+            if (reinterpret_cast<char*>(lSortedBlks[i].ptr) + align_size_up(lSortedBlks[i].size) == lSortedBlks[j].ptr) {
+              lSortedBlks[i].size = align_size_up(lSortedBlks[i].size) + align_size_up(lSortedBlks[j].size);
+              lSortedBlks[j].ptr = nullptr;
+              lMergedBlocks++;
+            } else {
+              i = j;
+              break;
+            }
+          }
+        }
+
         // callback to be called when message buffers no longer needed by transports
         std::scoped_lock lock(mReclaimLock);
         if (!mRunning) {
           return;
         }
 
-        std::size_t lReclaimed = 0;
-        for (const auto &lBlk : pBlkVect) {
-          lReclaimed += lBlk.size;
+        std::int64_t lReclaimed = 0;
+        for (const auto &lBlk : lSortedBlks) {
+
+          if (!lBlk.ptr) { // merged
+              continue;
+          }
+
+          // we can merge with alignied sizes
+          lReclaimed += align_size_up(lBlk.size);
           reclaimSHMMessage(lBlk.ptr, lBlk.size);
         }
-        mAllocated -= lReclaimed;
-        mFree += lReclaimed;
+
+        mFree.fetch_add(lReclaimed, std::memory_order_relaxed);
+
+        // weighted average merge ratio
+        sMergeRatio = sMergeRatio * 0.75 + double(lMergedBlocks) / double(pBlkVect.size()) * 0.25;
+        DDLOGF_RL(5000, fair::Severity::DEBUG, "Memory segment '{}'::block merging ratio average={:.4}",
+          mSegmentName, sMergeRatio);
       },
       lSegmentRoot.c_str(),
       lMapFlags
@@ -130,12 +167,12 @@ public:
     }
 
     mStart = static_cast<char*>(mRegion->GetData());
+    mSegmentSize = mRegion->GetSize();
     mLength = mRegion->GetSize();
 
     memset(mStart, 0xAA, mLength);
 
-    mFree = mLength;
-    mAllocated = 0;
+    mFree = mSegmentSize;
 
     // start the allocations
     mRunning = true;
@@ -156,13 +193,6 @@ public:
     assert(pPtr >= static_cast<char*>(mRegion->GetData()));
     assert(static_cast<char*>(pPtr)+pSize <= static_cast<char*>(mRegion->GetData()) + mRegion->GetSize());
 
-    if (pSize == 0) {
-       DDLOGF(fair::Severity::WARNING, "NewFairMQMessageFromPtr: Zero message allocation name={}: {}",
-        mSegmentName, __LINE__);
-    }
-
-    assert(pSize > 0);
-
     return mChan.NewMessage(mRegion, pPtr, pSize);
   }
 
@@ -181,15 +211,21 @@ protected:
 
   void* do_allocate(std::size_t pSize, std::size_t /* pAlign */)
   {
+#if !defined(NDEBUG)
+    static const std::thread::id d_sThisId = std::this_thread::get_id();
+    if (d_sThisId != std::this_thread::get_id()) {
+      DDLOGF_RL(1000, fair::Severity::ERROR, "Allocation from RegionAllocatorResource {} is not thread safe",
+        mSegmentName);
+    }
+#endif
+
     if (!mRunning) {
       return nullptr;
     }
 
-    unsigned long lAllocAttempt = 0;
-
     if (pSize == 0) {
-       DDLOGF(fair::Severity::WARNING, "Zero message allocation name={}: {}",
-        mSegmentName, __LINE__);
+      // return last address of the segment
+      return reinterpret_cast<char*>(mRegion->GetData()) + mRegion->GetSize();
     }
 
     // align up
@@ -206,22 +242,32 @@ protected:
 
       if (!lRet) {
         using namespace std::chrono_literals;
-        std::this_thread::sleep_for(1ms);
 
-        if (++lAllocAttempt % 512 == 0) {
-          DDLOGF(fair::Severity::WARNING,
-            "RegionAllocatorResource: failing to allocate free block of {} B, total region size: {} B",
-            pSize, mRegion->GetSize());
-          DDLOGF(fair::Severity::WARNING, "Memory segment '{}' too small or large back-pressure.", mSegmentName);
-        }
+        DDLOGF_RL(1000, fair::Severity::WARNING,
+          "RegionAllocatorResource: waiting to allocate a message. region={} alloc={} region_size={} free={} ",
+          mSegmentName, pSize, mRegion->GetSize(), mFree.load(std::memory_order_acquire));
+        DDLOGF_RL(1000, fair::Severity::WARNING, "Memory region '{}' is too small, or there is a large backpressure.",
+          mSegmentName);
+
+        std::this_thread::sleep_for(5ms);
       }
     }
 
-    mAllocated += pSize;
-    mFree -= pSize;
+    // check the running again
+    if (!mRunning && !lRet) {
+      DDLOGF(fair::Severity::WARNING, "Memory segment '{}' is stopped. No allocations are possible.", mSegmentName);
+      return nullptr;
+    }
 
-    DDLOGF_RL(2000, fair::Severity::DEBUG, "DataRegionResource {} memory free={} allocated={}",
-      mSegmentName, mFree, mAllocated);
+    mFree.fetch_sub(pSize, std::memory_order_relaxed);
+
+    // Todo: find a better place for this reporting
+    static std::size_t sLogRateLimit = 0;
+    if (sLogRateLimit++ % 1024 == 0) {
+      const auto lFree = mFree.load(std::memory_order_acquire);
+      DDLOGF_RL(2000, fair::Severity::DEBUG, "DataRegionResource {} memory free={} allocated={}",
+        mSegmentName, lFree, (mSegmentSize - lFree));
+    }
 
     return lRet;
   }
@@ -255,7 +301,6 @@ private:
 
     return nullptr;
   }
-
 
   bool try_reclaim(const std::size_t pSize) {
     // First declare any leftover memory as free
@@ -355,6 +400,7 @@ private:
 
   /// fields
   std::string mSegmentName;
+  std::size_t mSegmentSize;
   std::atomic_bool mRunning = true;
 
   FairMQChannel& mChan;
@@ -368,8 +414,7 @@ private:
   std::map<const char*, std::size_t> mFrees; // keep all returned blocks
 
   // free space accounting
-  std::atomic_uint64_t mFree;
-  std::atomic_uint64_t mAllocated;
+  std::atomic_int64_t mFree = 0;
 };
 
 }
