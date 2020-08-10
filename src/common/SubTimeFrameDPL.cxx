@@ -161,9 +161,9 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
       }
 
       // check the index value
-      if (lDh->splitPayloadIndex != lSplitI) {
+      if (lSplitDh->splitPayloadIndex != lSplitI) {
         DDLOGF(fair::Severity::ERROR, "DPL output: index of the split-payload message is invalid. "
-          "split_pos={} index={} original_index={}", lSplitI, lSplitDh->splitPayloadIndex, lDh->splitPayloadIndex);
+          "split_pos={} != index={} parts_count={}", lSplitI, lSplitDh->splitPayloadIndex, lDh->splitPayloadParts);
         break;
       }
     }
