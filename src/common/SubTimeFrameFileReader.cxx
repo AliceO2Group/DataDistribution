@@ -118,17 +118,16 @@ Stack SubTimeFrameFileReader::getHeaderStack(std::size_t &pOrigsize)
     return Stack{};
   }
 
-  auto lStackMem = std::make_unique<o2::byte[]>(lStackSize);
-
-  // This must handle different versions of DataHeader
-  if (!read_advance(lStackMem.get(), lStackSize) ) {
+  o2::byte* lStackMem = peek();
+  if (!ignore_nbytes(lStackSize) ) {
     // error in the stream
     pOrigsize = 0;
     return Stack{};
   }
 
+  // This must handle different versions of DataHeader
   // check if DataHeader needs an upgrade by looking at the version number
-  const BaseHeader *lBaseOfDH = BaseHeader::get(lStackMem.get());
+  const BaseHeader *lBaseOfDH = BaseHeader::get(lStackMem);
   if (!lBaseOfDH) {
     return Stack{};
   }
@@ -160,12 +159,12 @@ Stack SubTimeFrameFileReader::getHeaderStack(std::size_t &pOrigsize)
 
       return Stack(
         lNewDh,
-        Stack(lStackMem.get() + lBaseOfDH->size())
+        Stack(lStackMem + lBaseOfDH->size())
       );
     }
   }
 
-  return Stack(lStackMem.get());
+  return Stack(lStackMem);
 }
 
 std::uint64_t SubTimeFrameFileReader::sStfId = 0; // TODO: add id to files metadata
