@@ -175,6 +175,12 @@ public:
     mRunning = true;
   }
 
+
+  ~RegionAllocatorResource() {
+    // Ensure the region is destructed before anything else in this object
+    mRegion.reset();
+  }
+
   inline
   std::unique_ptr<FairMQMessage> NewFairMQMessage(std::size_t pSize) {
     auto* lMem = do_allocate(pSize, ALIGN);
@@ -318,6 +324,21 @@ private:
     mStart = const_cast<char*>(lMaxIter->first);
     mLength = lMaxIter->second;
     mFrees.erase(lMaxIter);
+
+    {
+      // estimated fragmentation
+      static thread_local double sFree = 0.0;
+      static thread_local double sNumFragments = 0.0;
+      static thread_local double sFragmentation = 0.0;
+
+      const auto lFree = mFree.load(std::memory_order_acquire);
+      sFree = sFree * 0.75 + double(lFree) * 0.25;
+      sFragmentation = sFragmentation * 0.75 + double(lFree - mLength)/double(lFree) * 0.25;
+      sNumFragments = sNumFragments *0.75 + double(mFrees.size() + 1) * 0.25;
+
+      DDLOGF_RL(5000, fair::Severity::DEBUG, "DataRegionResource {} estimated: free={:.4} num_fragments={:.4} "
+        "fragmentation={:.4}", mSegmentName, sFree, sNumFragments, sFragmentation);
+    }
 
     return true;
   }
