@@ -109,6 +109,12 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
     return true;
   }
 
+  // return the pointer
+  unsigned char* peek() const
+  {
+    return const_cast<unsigned char*>(reinterpret_cast<const unsigned char*>(mFileMap.data() + mFileMapOffset));
+  }
+
   inline
   bool ignore_nbytes(const std::size_t pLen)
   {
