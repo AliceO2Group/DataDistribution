@@ -69,9 +69,12 @@ class ConcurrentContainerImpl
   }
 
   template <typename... Args>
-  void push(Args&&... args)
+  bool push(Args&&... args)
   {
     std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    if (!mImpl->mRunning) {
+      return false;
+    }
 
     if constexpr (type == eFIFO) {
       mImpl->mContainer.emplace_back(std::forward<Args>(args)...);
@@ -83,6 +86,7 @@ class ConcurrentContainerImpl
 
     lLock.unlock(); // reduce contention
     mImpl->mCond.notify_one();
+    return true;
   }
 
   bool pop(T& d)
@@ -244,6 +248,10 @@ class IFifoPipeline
 
     // NOTE: (lNextStage == mPipelineQueues.size()) is the drop queue
     if (lNextStage < mPipelineQueues.size()) {
+      if (!mPipelineQueues[lNextStage].is_running()) {
+        return false;
+      }
+
       const auto lSize = ++mPipelinedSize;
       mPipelineQueues[lNextStage].push(std::forward<Args>(args)...);
       mPipelinedSizeSamples.Fill(lSize);

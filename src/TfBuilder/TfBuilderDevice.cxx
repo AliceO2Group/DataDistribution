@@ -44,6 +44,16 @@ TfBuilderDevice::~TfBuilderDevice()
   DDLOG(fair::Severity::TRACE) << "TfBuilderDevice::~TfBuilderDevice()";
 }
 
+void TfBuilderDevice::Init()
+{
+  mMemI = std::make_unique<MemoryResources>();
+}
+
+void TfBuilderDevice::Reset()
+{
+  mMemI.reset();
+}
+
 void TfBuilderDevice::InitTask()
 {
   DataDistLogger::SetThreadName("tfb-main");
@@ -169,9 +179,9 @@ bool TfBuilderDevice::start()
 
   // start file source
   if (mStandalone) {
-    mFileSource.start(*mStandaloneChannel, false);
+    mFileSource.start(*mStandaloneChannel, MemI(), false);
   } else {
-    mFileSource.start(GetChannel(mDplChannelName), mDplEnabled);
+    mFileSource.start(GetChannel(mDplChannelName), MemI(), mDplEnabled);
   }
 
   return true;

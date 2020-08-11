@@ -64,15 +64,7 @@ class SubTimeFrameFileSource
 
   ~SubTimeFrameFileSource()
   {
-    mRunning = false;
-
-    if (mSourceThread.joinable()) {
-      mSourceThread.join();
-    }
-
-    if (mInjectThread.joinable()) {
-      mInjectThread.join();
-    }
+    stop();
     DDLOGF(fair::Severity::TRACE, "(Sub)TimeFrame Source terminated...");
   }
 
@@ -81,7 +73,7 @@ class SubTimeFrameFileSource
 
   bool enabled() const { return mEnabled; }
 
-  void start(FairMQChannel& pDstChan, const bool pDplEnabled);
+  void start(FairMQChannel& pDstChan, MemoryResources &pMemRes, const bool pDplEnabled);
   void pause() { mPaused = true; }
   void resume() { mPaused = false; }
   void stop();

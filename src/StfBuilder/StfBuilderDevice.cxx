@@ -44,13 +44,28 @@ StfBuilderDevice::StfBuilderDevice()
 {
 }
 
+static bool sResetDeviceCalled = false;
+
 StfBuilderDevice::~StfBuilderDevice()
 {
+  DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::~StfBuilderDevice()");
+
+  if (!sResetDeviceCalled) {
+    DDLOGF(fair::Severity::ERROR, "StfBuilderDevice::Reset() was not called. Performing cleanup");
+    // clear all Stfs from the pipeline before the transport is deleted
+    stopPipeline();
+    clearPipeline();
+
+    mI.reset();
+    mMemI.reset();
+  }
 }
 
 void StfBuilderDevice::Init()
 {
+  DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::Init()");
   mI = std::make_unique<StfBuilderInstance>();
+  mMemI = std::make_unique<MemoryResources>();
 
   I().mFileSource = std::make_unique<SubTimeFrameFileSource>(*this, eStfFileSourceOut);
   I().mReadoutInterface = std::make_unique<StfInputInterface>(*this);
@@ -59,10 +74,15 @@ void StfBuilderDevice::Init()
 
 void StfBuilderDevice::Reset()
 {
+  DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::Reset()");
   // clear all Stfs from the pipeline before the transport is deleted
+  stopPipeline();
   clearPipeline();
 
   mI.reset();
+  mMemI.reset();
+
+  sResetDeviceCalled = true;
 }
 
 void StfBuilderDevice::InitTask()
@@ -217,7 +237,7 @@ void StfBuilderDevice::InitTask()
 
   // start file source
   // channel for FileSource: stf or dpl, or generic one in case of standalone
-  I().mFileSource->start(getOutputChannel(), I().mDplEnabled);
+  I().mFileSource->start(getOutputChannel(), MemI(), I().mDplEnabled);
 
   // start a thread for readout process
   if (!I().mFileSource->enabled()) {
@@ -232,23 +252,30 @@ void StfBuilderDevice::InitTask()
 
 void StfBuilderDevice::ResetTask()
 {
-  // signal and wait for the output thread
-  if (I().mFileSource->enabled()) {
-    I().mFileSource->stop();
-  }
+  DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::ResetTask()");
+
+  // stop the memory resources
+  MemI().stop();
 
   // Stop the pipeline
   stopPipeline();
+  clearPipeline();
 
-  // wait for readout interface threads
-  if (!I().mFileSource->enabled()) {
+  // NOTE: everything with threads goes below
+
+  // signal and wait for the output thread
+  if (I().mFileSource->enabled()) {
+    I().mFileSource->stop();
+  } else {
     I().mReadoutInterface->stop();
   }
 
-  // signal and wait for the output thread
-  I().mFileSink->stop();
+  // stop the file sink
+  if (I().mFileSink) {
+    I().mFileSink->stop();
+  }
 
-  // stop the output
+  // signal and wait for the output thread
   if (I().mOutputThread.joinable()) {
     I().mOutputThread.join();
   }
@@ -258,7 +285,7 @@ void StfBuilderDevice::ResetTask()
     I().mInfoThread.join();
   }
 
-  DDLOGF(fair::Severity::trace, "ResetTask() done... ");
+  DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::ResetTask() done... ");
 }
 
 

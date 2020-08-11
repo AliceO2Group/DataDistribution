@@ -229,8 +229,10 @@ class StfBuilderDevice : public DataDistDevice,
   };
 
   std::unique_ptr<StfBuilderInstance> mI;
+  std::unique_ptr<MemoryResources> mMemI;
 
   StfBuilderInstance& I() { return *mI; }
+  MemoryResources& MemI() { return *mMemI; }
   const StfBuilderInstance& I() const { return *mI; }
 };
 
