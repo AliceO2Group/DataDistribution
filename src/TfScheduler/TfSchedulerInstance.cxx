@@ -60,7 +60,8 @@ TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
 void TfSchedulerInstanceHandler::start()
 {
   // create scheduler thread
-  mSchedulerInstanceThread = std::thread(&TfSchedulerInstanceHandler::TfSchedulerInstanceThread, this);
+  mSchedulerInstanceThread = create_thread_member("sched_instance",
+    &TfSchedulerInstanceHandler::TfSchedulerInstanceThread, this);
 
   // start rpc processing
   mRpcServer.start();

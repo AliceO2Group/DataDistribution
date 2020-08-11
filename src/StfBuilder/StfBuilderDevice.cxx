@@ -211,7 +211,7 @@ void StfBuilderDevice::InitTask()
   }
 
   // start output thread
-  I().mOutputThread = std::thread(&StfBuilderDevice::StfOutputThread, this);
+  I().mOutputThread = create_thread_member("stfb_out", &StfBuilderDevice::StfOutputThread, this);
   // start file sink
   I().mFileSink->start();
 
@@ -225,7 +225,7 @@ void StfBuilderDevice::InitTask()
   }
 
   // info thread
-  I().mInfoThread = std::thread(&StfBuilderDevice::InfoThread, this);
+  I().mInfoThread = create_thread_member("stfb_info", &StfBuilderDevice::InfoThread, this);
 
   DDLOGF(fair::Severity::info, "PreRun() done... ");
 }

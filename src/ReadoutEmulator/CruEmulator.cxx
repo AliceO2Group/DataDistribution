@@ -145,7 +145,7 @@ void CruLinkEmulator::linkReadoutThread()
 void CruLinkEmulator::start()
 {
   mRunning = true;
-  mCRULinkThread = std::thread(&CruLinkEmulator::linkReadoutThread, this);
+  mCRULinkThread = create_thread_member("cru_link", &CruLinkEmulator::linkReadoutThread, this);
 }
 
 /// Stop "data taking" thread

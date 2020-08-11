@@ -83,10 +83,10 @@ void ReadoutDevice::PreRun()
     e->start();
 
   // info thread
-  mInfoThread = std::thread(&ReadoutDevice::InfoThread, this);
+  mInfoThread = create_thread_member("readout_info", &ReadoutDevice::InfoThread, this);
 
   // output thread
-  mSendingThread = std::thread(&ReadoutDevice::SendingThread, this);
+  mSendingThread = create_thread_member("readout_out", &ReadoutDevice::SendingThread, this);
 }
 
 void ReadoutDevice::ResetTask()

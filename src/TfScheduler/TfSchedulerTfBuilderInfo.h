@@ -76,7 +76,7 @@ class TfSchedulerTfBuilderInfo
 
     mRunning = true;
     // start gRPC client monitoring thread
-    mHousekeepingThread = std::thread(&TfSchedulerTfBuilderInfo::HousekeepingThread, this);
+    mHousekeepingThread = create_thread_member("sched_tfb_mon", &TfSchedulerTfBuilderInfo::HousekeepingThread, this);
   }
 
   void stop() {

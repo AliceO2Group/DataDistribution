@@ -143,14 +143,20 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
     mStfCount = 0;
 
     // start the merger thread
-    mStfMergerThread = std::thread(&TfBuilderInput::StfMergerThread, this);
+    mStfMergerThread = create_thread_member("tfb_merge", &TfBuilderInput::StfMergerThread, this);
   }
 
   // start all input threads
   assert(mInputThreads.size() == 0);
 
   for (auto &[lSocketIdx, lStfSenderId] : lConnResult.connection_map()) {
-    mInputThreads.try_emplace(lStfSenderId, std::thread(&TfBuilderInput::DataHandlerThread, this, lSocketIdx));
+    char tname[128];
+    fmt::format_to(tname, "tfb_input_{}", lSocketIdx);
+
+    mInputThreads.try_emplace(
+      lStfSenderId,
+      create_thread_member(tname, &TfBuilderInput::DataHandlerThread, this, lSocketIdx)
+    );
   }
 
   // finally start accepting TimeFrames

@@ -38,7 +38,7 @@ namespace bpo = boost::program_options;
 void SubTimeFrameFileSink::start()
 {
   if (enabled()) {
-    mSinkThread = std::thread(&SubTimeFrameFileSink::DataHandlerThread, this, 0);
+    mSinkThread = create_thread_member("stf_sink", &SubTimeFrameFileSink::DataHandlerThread, this, 0);
   }
 }
 

@@ -19,6 +19,7 @@
 #include <type_traits>
 #include <memory>
 #include <thread>
+#include <functional>
 
 #include <array>
 #include <numeric>
@@ -27,6 +28,17 @@ namespace o2
 {
 namespace DataDistribution
 {
+
+template <class F, class ... Args>
+std::thread create_thread_member(const char* name, F&& f, Args&&... args) {
+  return std::thread([=]{
+#if defined(__linux__)
+    pthread_setname_np(pthread_self(), name);
+#endif
+    auto fun = std::mem_fn(f);
+    fun(args...);
+  });
+}
 
 class DataDistDevice : public FairMQDevice {
 

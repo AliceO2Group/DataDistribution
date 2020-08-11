@@ -90,7 +90,7 @@ void StfSenderDevice::InitTask()
   }
 
   // Info thread
-  mInfoThread = std::thread(&StfSenderDevice::InfoThread, this);
+  mInfoThread = create_thread_member("stfs_info", &StfSenderDevice::InfoThread, this);
 }
 
 void StfSenderDevice::PreRun()
@@ -122,7 +122,7 @@ void StfSenderDevice::PreRun()
     mFileSink.start();
   }
   // start the receiver thread
-  mReceiverThread = std::thread(&StfSenderDevice::StfReceiverThread, this);
+  mReceiverThread = create_thread_member("stfs_recv", &StfSenderDevice::StfReceiverThread, this);
 }
 
 void StfSenderDevice::ResetTask()
