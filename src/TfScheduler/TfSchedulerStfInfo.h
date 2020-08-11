@@ -78,7 +78,7 @@ public:
 
     mRunning = true;
     // Start the scheduling thread
-    mSchedulingThread = std::thread(&TfSchedulerStfInfo::SchedulingThread, this);
+    mSchedulingThread = create_thread_member("sched_sched", &TfSchedulerStfInfo::SchedulingThread, this);
   }
 
   void stop() {

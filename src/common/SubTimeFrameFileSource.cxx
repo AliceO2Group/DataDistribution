@@ -56,8 +56,9 @@ void SubTimeFrameFileSource::start(FairMQChannel& pDstChan, const bool pDplEnabl
     }
 
     mRunning = true;
-    mInjectThread = std::thread(&SubTimeFrameFileSource::DataInjectThread, this);
-    mSourceThread = std::thread(&SubTimeFrameFileSource::DataHandlerThread, this);
+
+    mInjectThread = create_thread_member("stf_file_inject", &SubTimeFrameFileSource::DataInjectThread, this);
+    mSourceThread = create_thread_member("stf_file_read", &SubTimeFrameFileSource::DataHandlerThread, this);
   }
 }
 

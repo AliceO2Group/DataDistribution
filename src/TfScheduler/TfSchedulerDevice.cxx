@@ -55,7 +55,7 @@ void TfSchedulerDevice::InitTask()
   mDiscoveryConfig->write();
 
   // start the service thread
-  mServiceThread = std::thread(&TfSchedulerDevice::TfSchedulerServiceThread, this);
+  mServiceThread = create_thread_member("sched_service", &TfSchedulerDevice::TfSchedulerServiceThread, this);
 }
 
 void TfSchedulerDevice::PreRun()

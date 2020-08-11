@@ -56,10 +56,10 @@ bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize)
 
   // start the update sending thread
   mRunning = true;
-  mUpdateThread = std::thread(&TfBuilderRpcImpl::UpdateSendingThread, this);
+  mUpdateThread = create_thread_member("tfb_sched_upd", &TfBuilderRpcImpl::UpdateSendingThread, this);
 
   // start the stf requester thread
-  mStfRequestThread = std::thread(&TfBuilderRpcImpl::StfRequestThread, this);
+  mStfRequestThread = create_thread_member("tfb_sched_req", &TfBuilderRpcImpl::StfRequestThread, this);
 
   return true;
 }

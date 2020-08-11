@@ -123,7 +123,7 @@ void TfBuilderDevice::InitTask()
     }
 
     // start the info thread
-    mInfoThread = std::thread(&TfBuilderDevice::InfoThread, this);
+    mInfoThread = create_thread_member("tfb_info", &TfBuilderDevice::InfoThread, this);
   }
 }
 
@@ -155,7 +155,7 @@ bool TfBuilderDevice::start()
   }
 
   // start TF forwarding thread
-  mTfFwdThread = std::thread(&TfBuilderDevice::TfForwardThread, this);
+  mTfFwdThread = create_thread_member("tfb_out", &TfBuilderDevice::TfForwardThread, this);
   // start file sink
   mFileSink.start();
 

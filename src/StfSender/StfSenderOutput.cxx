@@ -37,7 +37,7 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
   std::scoped_lock lLock(mOutputMapLock);
 
   // create scheduler thread
-  mSchedulerThread = std::thread(&StfSenderOutput::StfSchedulerThread, this);
+  mSchedulerThread = create_thread_member("stfs_sched", &StfSenderOutput::StfSchedulerThread, this);
 
   if (mDevice.standalone()) {
     return;
@@ -121,6 +121,9 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
   {
     std::scoped_lock lLock(mOutputMapLock);
 
+    char tname[128];
+    fmt::format_to(tname, "stfs_out_{}", mOutputMap.size());
+
     mOutputMap.try_emplace(
       pTfBuilderId,
       OutputChannelObjects {
@@ -128,7 +131,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
         std::move(lNewChannel),
         std::make_unique<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>>(),
         // Note: this thread will try to access this same map. The MapLock will prevent races
-        std::thread(&StfSenderOutput::DataHandlerThread, this, pTfBuilderId),
+        create_thread_member(tname, &StfSenderOutput::DataHandlerThread, this, pTfBuilderId),
         std::make_unique<std::atomic_bool>(true) // running
       }
     );

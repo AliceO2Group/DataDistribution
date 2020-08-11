@@ -49,10 +49,10 @@ void StfInputInterface::start(const std::size_t pNumBuilders)
   }
 
   for (std::size_t i = 0; i < mNumBuilders; i++) {
-    mBuilderThreads.emplace_back(std::thread(&StfInputInterface::StfBuilderThread, this, i));
+    mBuilderThreads.emplace_back(create_thread_member("stfb_builder", &StfInputInterface::StfBuilderThread, this, i));
   }
 
-  mInputThread = std::thread(&StfInputInterface::DataHandlerThread, this, 0);
+  mInputThread = create_thread_member("stfb_input", &StfInputInterface::DataHandlerThread, this, 0);
 }
 
 void StfInputInterface::stop()

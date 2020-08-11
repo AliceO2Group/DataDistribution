@@ -62,7 +62,8 @@ class TfSchedulerConnManager
     mRunning = true;
 
     // start gRPC client monitoring thread
-    mStfSenderMonitoringThread = std::thread(&TfSchedulerConnManager::StfSenderMonitoringThread, this);
+    mStfSenderMonitoringThread = create_thread_member("sched_stfs_mon",
+      &TfSchedulerConnManager::StfSenderMonitoringThread, this);
     return true;
   }
 
