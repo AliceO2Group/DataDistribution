@@ -40,20 +40,19 @@ using namespace std::chrono_literals;
 /// SubTimeFrameFileSource
 ////////////////////////////////////////////////////////////////////////////////
 
-void SubTimeFrameFileSource::start(FairMQChannel& pDstChan, const bool pDplEnabled)
+void SubTimeFrameFileSource::start(FairMQChannel& pDstChan, MemoryResources &pMemRes, const bool pDplEnabled)
 {
   if (enabled()) {
     mDstChan = &pDstChan;
     mDplEnabled = pDplEnabled;
 
-    if (!mFileBuilder) {
-      mFileBuilder = std::make_unique<SubTimeFrameFileBuilder>(
-        pDstChan,
-        mRegionSizeMB << 20,
-        mHdrRegionSizeMB << 20,
-        mDplEnabled
-      );
-    }
+    mFileBuilder = std::make_unique<SubTimeFrameFileBuilder>(
+      pDstChan,
+      pMemRes,
+      mRegionSizeMB << 20,
+      mHdrRegionSizeMB << 20,
+      mDplEnabled
+    );
 
     mRunning = true;
 
@@ -71,6 +70,7 @@ void SubTimeFrameFileSource::stop()
   }
 
   mReadStfQueue.stop();
+  mReadStfQueue.flush();
 
   if (mSourceThread.joinable()) {
     mSourceThread.join();
@@ -79,11 +79,6 @@ void SubTimeFrameFileSource::stop()
   if (mInjectThread.joinable()) {
     mInjectThread.join();
   }
-
-  mReadStfQueue.flush();
-
-  mDstChan = nullptr;
-  /* mFileBuilder = nullptr; // carrying the fmq memory resource, leave it alone */
 }
 
 bpo::options_description SubTimeFrameFileSource::getProgramOptions()
@@ -282,7 +277,10 @@ void SubTimeFrameFileSource::DataHandlerThread()
         if (mRunning && lStfPtr) {
           // adapt Stf headers for different output channels, native or DPL
           mFileBuilder->adaptHeaders(lStfPtr.get());
-          mReadStfQueue.push(std::move(lStfPtr));
+          if (!mReadStfQueue.push(std::move(lStfPtr))) {
+            break;
+          }
+
         } else {
           // bad file?
           break; // EOF or !running

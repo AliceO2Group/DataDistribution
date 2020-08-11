@@ -78,17 +78,14 @@ class SubTimeFrameFileBuilder
 {
  public:
   SubTimeFrameFileBuilder() = delete;
-  SubTimeFrameFileBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize,
+  SubTimeFrameFileBuilder(FairMQChannel& pChan, MemoryResources &pMemRes, const std::size_t pDataSegSize,
     const std::size_t pHdrSegSize, bool pDplEnabled);
 
   void adaptHeaders(SubTimeFrame *pStf);
 
-  FairMQMessagePtr getDataMessage(const std::size_t pSize) {
-    return mDataMemRes->NewFairMQMessage(pSize);
-  }
-
   // allocate appropriate message for the header
-  FairMQMessagePtr getHeaderMessage(const o2::header::Stack &pIncomingStack, const std::uint64_t pTfId) {
+  inline
+  FairMQMessagePtr newHeaderMessage(const o2::header::Stack &pIncomingStack, const std::uint64_t pTfId) {
     std::unique_ptr<FairMQMessage> lMsg;
 
     if (mDplEnabled) {
@@ -97,35 +94,37 @@ class SubTimeFrameFileBuilder
         o2::framework::DataProcessingHeader{pTfId}
       );
 
-      lMsg = mHeaderMemRes->NewFairMQMessage(lStack.size());
+      lMsg = mMemRes.newHeaderMessage(lStack.size());
+      if (!lMsg) {
+        return nullptr;
+      }
       std::memcpy(lMsg->GetData(), lStack.data(), lStack.size());
 
     } else {
-      lMsg = mHeaderMemRes->NewFairMQMessage(pIncomingStack.size());
+      lMsg = mMemRes.newHeaderMessage(pIncomingStack.size());
+      if (!lMsg) {
+        return nullptr;
+      }
       std::memcpy(lMsg->GetData(), pIncomingStack.data(), pIncomingStack.size());
     }
 
     return lMsg;
   }
 
-  inline void stop() {
-    if (mHeaderMemRes) {
-      mHeaderMemRes->stop();
-    }
-
-    if (mDataMemRes) {
-      mDataMemRes->stop();
-    }
+  // allocate appropriate message for the header
+  inline
+  FairMQMessagePtr newDataMessage(const std::size_t pSize) {
+    return mMemRes.getDataMessage(pSize);
   }
 
-  auto& getHeaderMemRes() const { return *mHeaderMemRes; }
+  void stop() {
+    mMemRes.stop();
+  }
 
  private:
+  MemoryResources &mMemRes;
 
   bool mDplEnabled;
-
-  std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
-  std::unique_ptr<RegionAllocatorResource<>> mDataMemRes;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -140,11 +139,11 @@ class TimeFrameBuilder
 
   void adaptHeaders(SubTimeFrame *pStf);
 
-  FairMQMessagePtr getNewHeaderMessage(const std::size_t pSize) {
+  FairMQMessagePtr newHeaderMessage(const std::size_t pSize) {
     return mHeaderMemRes->NewFairMQMessage(pSize);
   }
 
-  FairMQMessagePtr getNewDataMessage(const std::size_t pSize) {
+  FairMQMessagePtr newDataMessage(const std::size_t pSize) {
     return mDataMemRes->NewFairMQMessage(pSize);
   }
 

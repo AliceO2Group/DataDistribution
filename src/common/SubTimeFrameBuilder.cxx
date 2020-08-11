@@ -229,18 +229,18 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameReadoutBuilder::getStf()
 /// SubTimeFrameFileBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize,
-  const std::size_t pHdrSegSize, bool pDplEnabled)
-  : mDplEnabled(pDplEnabled)
+SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(FairMQChannel& pChan, MemoryResources &pMemRes,
+  const std::size_t pDataSegSize, const std::size_t pHdrSegSize, bool pDplEnabled)
+  : mMemRes(pMemRes), mDplEnabled(pDplEnabled)
 {
-  mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
+  mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
     "O2HeadersRegion_FileSource",
     pChan,
     pHdrSegSize,
     0
   );
 
-  mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
+  mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
     "O2DataRegion_FileSource",
     pChan,
     pDataSegSize,
@@ -289,10 +289,12 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
               o2::framework::DataProcessingHeader{pStf->header().mId}
             );
 
-            lStfDataIter.mHeader = mHeaderMemRes->NewFairMQMessage(lStack.size());
+            lStfDataIter.mHeader = mMemRes.newHeaderMessage(lStack.size());
             if (lStfDataIter.mHeader) {
               assert(lStfDataIter.mHeader->GetSize() > sizeof (DataHeader));
               std::memcpy(lStfDataIter.mHeader->GetData(), lStack.data(), lStack.size());
+            } else {
+              return;
             }
           }
         }
@@ -376,7 +378,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
             );
 
             if (lOutChannelType == fair::mq::Transport::SHM) {
-              lStfDataIter.mHeader = getNewHeaderMessage(lStack.size());
+              lStfDataIter.mHeader = newHeaderMessage(lStack.size());
             } else {
               lStfDataIter.mHeader = mOutputChan.NewMessage(lStack.size());
             }
@@ -384,6 +386,8 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
             if (lStfDataIter.mHeader) {
               assert(lStfDataIter.mHeader->GetSize() >= sizeof (DataHeader));
               std::memcpy(lStfDataIter.mHeader->GetData(), lStack.data(), lStack.size());
+            } else {
+              return;
             }
           }
         }
@@ -403,9 +407,11 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
           {
             const auto &lHeaderMsg = lStfDataIter.mHeader;
             if (lHeaderMsg->GetType() != fair::mq::Transport::SHM) {
-              auto lNewHdr = getNewHeaderMessage(lHeaderMsg->GetSize());
+              auto lNewHdr = newHeaderMessage(lHeaderMsg->GetSize());
               if (lNewHdr) {
                 std::memcpy(lNewHdr->GetData(), lHeaderMsg->GetData(), lHeaderMsg->GetSize());
+              } else {
+                return;
               }
               lStfDataIter.mHeader.swap(lNewHdr);
             }
@@ -415,9 +421,11 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
           {
             const auto &lDataMsg = lStfDataIter.mData;
             if (lDataMsg->GetType() != fair::mq::Transport::SHM) {
-              auto lNewDataMsg = getNewDataMessage(lDataMsg->GetSize());
+              auto lNewDataMsg = newDataMessage(lDataMsg->GetSize());
               if (lNewDataMsg) {
                 std::memcpy(lNewDataMsg->GetData(), lDataMsg->GetData(), lDataMsg->GetSize());
+              } else {
+                return;
               }
               lStfDataIter.mData.swap(lNewDataMsg);
             }

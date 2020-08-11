@@ -279,9 +279,9 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
       return nullptr;
     }
 
-    auto lHdrStackMsg = pFileBuilder.getHeaderMessage(lDataHeaderStack, lStf->id());
+    auto lHdrStackMsg = pFileBuilder.newHeaderMessage(lDataHeaderStack, lStf->id());
     if (!lHdrStackMsg) {
-      DDLOGF(fair::Severity::WARNING, "Out of memory: header message, allocation size: {}", lDataHeaderStackSize);
+      DDLOGF_RL(1000, fair::Severity::INFO, "Header memory resource stopped. Exiting.");
       mFileMap.close();
       return nullptr;
     }
@@ -289,9 +289,9 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
     // read the data
     const std::uint64_t lDataSize = lDataHeader->payloadSize;
 
-    auto lDataMsg = pFileBuilder.getDataMessage(lDataSize);
+    auto lDataMsg = pFileBuilder.newDataMessage(lDataSize);
     if (!lDataMsg) {
-      DDLOGF(fair::Severity::WARNING, "Out of memory: data message, allocation size: {}", lDataSize);
+      DDLOGF(fair::Severity::INFO, "Data memory resource stopped. Exiting.");
       mFileMap.close();
       return nullptr;
     }

@@ -70,6 +70,9 @@ class TfBuilderDevice : public DataDistDevice,
   bool start();
   void stop();
 
+  void Init() override final;
+  void Reset() override final;
+
   void InitTask() final;
   void ResetTask() final;
 
@@ -112,6 +115,10 @@ class TfBuilderDevice : public DataDistDevice,
   const std::string& getDplChannelName() const { return mDplChannelName; }
 
   bool dplEnabled() const noexcept { return mDplEnabled; }
+
+  /// Memory region singletons
+  std::unique_ptr<MemoryResources> mMemI;
+  MemoryResources& MemI() { return *mMemI; }
 
   /// Configuration
   std::string mDplChannelName;

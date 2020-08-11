@@ -176,7 +176,10 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
     }
 
     if (lForwardOnly) {
-      mPipelineI.queue(mPipelineStageOut, std::move(lStf));
+      if (! mPipelineI.queue(mPipelineStageOut, std::move(lStf)) ) {
+        // the pipeline is stopped: exiting
+        break;
+      }
       continue;
     }
 
@@ -212,7 +215,10 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       mStfWriter.reset();
     }
 
-    mPipelineI.queue(mPipelineStageOut, std::move(lStf));
+    if (! mPipelineI.queue(mPipelineStageOut, std::move(lStf)) ) {
+      // the pipeline is stopped: exiting
+      break;
+    }
   }
   DDLOGF(fair::Severity::trace, "Exiting file sink thread [{}]", pIdx);
 }

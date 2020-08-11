@@ -133,9 +133,6 @@ public:
 
         // callback to be called when message buffers no longer needed by transports
         std::scoped_lock lock(mReclaimLock);
-        if (!mRunning) {
-          return;
-        }
 
         std::int64_t lReclaimed = 0;
         for (const auto &lBlk : lSortedBlks) {
@@ -196,7 +193,7 @@ public:
     return mChan.NewMessage(mRegion, pPtr, pSize);
   }
 
-  inline void stop() {
+  void stop() {
     std::scoped_lock lock(mReclaimLock);
     mRunning = false;
   }
@@ -272,18 +269,6 @@ protected:
     return lRet;
   }
 
-  void do_deallocate(void *, std::size_t pSize, std::size_t)
-  {
-    // we are called only if allocation was made through the polymorphic_allocator
-    // but with only a pointer, size == 0!
-    if (pSize != 0) {
-       DDLOGF(fair::Severity::WARNING, "do_deallocate: non-Zero message dealloc name={} size={}",
-        mSegmentName, pSize);
-    } else {
-      return; // dealloc goes through shmem queue
-    }
-  }
-
 private:
   void* try_alloc(const std::size_t pSize) {
     if (mLength >= pSize) {
@@ -310,10 +295,11 @@ private:
       assert(mStart != nullptr);
       // NOTE: caller must hold mReclaimLock lock
       reclaimSHMMessage(mStart, mLength);
-      // invalidate the working extent
-      mLength = 0;
-      mStart = nullptr;
     }
+
+    // invalidate the working extent
+    mStart = nullptr;
+    mLength = 0;
 
     if (mFrees.empty()) {
       return false;
@@ -415,6 +401,41 @@ private:
 
   // free space accounting
   std::atomic_int64_t mFree = 0;
+};
+
+
+class MemoryResources {
+
+public:
+  inline
+  FairMQMessagePtr newHeaderMessage(const std::size_t pSize) {
+    return mHeaderMemRes->NewFairMQMessage(pSize);
+  }
+
+  inline
+  FairMQMessagePtr getDataMessage(const std::size_t pSize) {
+    return mDataMemRes->NewFairMQMessage(pSize);
+  }
+
+  inline
+  bool running() { return mRunning == true; }
+
+  void stop() {
+    mRunning = false;
+
+    if (mHeaderMemRes) {
+      mHeaderMemRes->stop();
+    }
+    if (mDataMemRes) {
+      mDataMemRes->stop();
+    }
+  }
+
+  std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
+  std::unique_ptr<RegionAllocatorResource<64>> mDataMemRes;
+
+private:
+  bool mRunning = true;
 };
 
 }
