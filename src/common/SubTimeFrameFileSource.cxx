@@ -232,11 +232,13 @@ void SubTimeFrameFileSource::DataInjectThread()
       const double lSecNext = sNumSentStfs / mLoadRate;
 
       // check if we're done waiting
-      if (lSecNext <= lSecSinceStart) {
+      if ((lSecNext - lSecSinceStart) < 0.001) {
         break;
       }
 
-      std::this_thread::sleep_for(std::chrono::duration<double>( (lSecNext - lSecSinceStart) * 3. / 5. ));
+      // limit sleep time to 0.5s in order to be able to check for exit signal
+      auto lWaitTime = std::clamp((lSecNext - lSecSinceStart) * 3. / 5., 0.001, 0.5);
+      std::this_thread::sleep_for(std::chrono::duration<double>(lWaitTime));
     }
     DDLOGF_RL(2000, fair::Severity::DEBUG, "SubTimeFrameFileSource prepared_tfs={} inject_rate={:.4f}",
       mReadStfQueue.size(), sNumSentStfs / getElapsedTime());
