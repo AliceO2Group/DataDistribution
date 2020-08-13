@@ -46,6 +46,11 @@ void addCustomOptions(bpo::options_description& options)
       "Maximum number of buffered SubTimeFrames before starting to drop data (unlimited: -1)."
     )
     (
+      o2::DataDistribution::StfBuilderDevice::OptionKeyMaxBuiltStfs,
+      bpo::value<std::uint64_t>()->default_value(0),
+      "Maximum number of built and forwarded (Sub)TimeFrames before closing (unlimited: 0, default)."
+    )
+    (
       o2::DataDistribution::StfBuilderDevice::OptionKeyOutputChannelName,
       bpo::value<std::string>()->default_value("builder-stf-channel"),
       "Name of the output channel."
