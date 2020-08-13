@@ -68,11 +68,14 @@ class ConcurrentContainerImpl
     mImpl->mCond.notify_all();
   }
 
+  // push a new element to the queue, while in the running state
+  // return false (fail) if not running
   template <typename... Args>
   bool push(Args&&... args)
   {
     std::unique_lock<std::mutex> lLock(mImpl->mLock);
     if (!mImpl->mRunning) {
+      mImpl->mCond.notify_all(); // just in case someone is waiting
       return false;
     }
 
@@ -89,6 +92,8 @@ class ConcurrentContainerImpl
     return true;
   }
 
+  // pop an element from the queue. Caller will block while the queue is running
+  // returns true on success
   bool pop(T& d)
   {
     std::unique_lock<std::mutex> lLock(mImpl->mLock);
@@ -172,6 +177,8 @@ class ConcurrentContainerImpl
     std::unique_lock<std::mutex> lLock(mImpl->mLock);
     return mImpl->mContainer.size();
   }
+
+  bool empty() const { return size() == 0; }
 
   bool is_running() const { return mImpl->mRunning; }
 
@@ -258,6 +265,18 @@ class IFifoPipeline
       return true;
     }
     return false;
+  }
+
+  // notify the receiver the queue is closed
+  void close(unsigned pStage)
+  {
+    assert(pStage < mPipelineQueues.size());
+    auto lNextStage = getNextPipelineStage(pStage);
+    assert((lNextStage <= mPipelineQueues.size()) && "next stage larger than expected");
+
+    if (lNextStage < mPipelineQueues.size()) {
+      mPipelineQueues[lNextStage].stop();
+    }
   }
 
   T dequeue(unsigned pStage)

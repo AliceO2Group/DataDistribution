@@ -13,6 +13,7 @@
 
 #include "StfBuilderDevice.h"
 
+#include <DataDistLogger.h>
 #include <SubTimeFrameUtils.h>
 #include <SubTimeFrameVisitors.h>
 #include <ReadoutDataModel.h>
@@ -21,13 +22,12 @@
 #include <Utilities.h>
 
 #include <options/FairMQProgOptions.h>
+#include <Framework/SourceInfoHeader.h>
 
 #include <chrono>
 #include <thread>
 #include <exception>
 #include <boost/algorithm/string.hpp>
-
-#include <DataDistLogger.h>
 
 namespace o2
 {
@@ -94,6 +94,7 @@ void StfBuilderDevice::InitTask()
   I().mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
   I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   I().mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
+  I().mMaxBuiltStfs = GetConfig()->GetValue<std::uint64_t>(OptionKeyMaxBuiltStfs);
 
   // input data handling
   ReadoutDataUtils::sSpecifiedDataOrigin = getDataOriginFromOption(
@@ -126,6 +127,10 @@ void StfBuilderDevice::InitTask()
     DDLOGF(fair::Severity::info, "Not imposing limits on number of buffered SubTimeFrames. "
       "Possibility of creating back-pressure.");
   }
+
+  // Limited number of STF?
+  DDLOGF(fair::Severity::INFO, "Configuration: Number of built SubTimeFrames is {}",
+    I().mMaxBuiltStfs == 0 ? "not limited" : ("limited to " + std::to_string(I().mMaxBuiltStfs)));
 
   // File sink
   if (!I().mFileSink->loadVerifyConfig(*(this->GetConfig()))) {
@@ -254,6 +259,9 @@ void StfBuilderDevice::ResetTask()
 {
   DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::ResetTask()");
 
+  // Signal ConditionalRun() and other threads to stop
+  I().mRunning = false;
+
   // stop the memory resources
   MemI().stop();
 
@@ -364,10 +372,40 @@ void StfBuilderDevice::StfOutputThread()
       const double lTimeMs = std::max(1e-6, std::chrono::duration<double, std::milli>(lNow - lSendStartTime).count());
       I().mSentOutRate = double(I().mSentOutStfs) / std::chrono::duration<double>(lNow - sStartOfStfSending).count();
       I().mStfDataTimeSamples.Fill(lTimeMs);
-    } else {
-      // DDLOGF(fair::Severity::ERROR, "Dropping stf size={}", lStf->getDataSize());
+    }
+
+    // check if we should exit:
+    // 1. max number of stf set, or
+    // 2. file reply used without loop parameter
+    if ( (I().mMaxBuiltStfs > 0) && (I().mSentOutStfsTotal == I().mMaxBuiltStfs) ) {
+      DDLOGF(fair::Severity::INFO, "Maximum number of sent SubTimeFrames reached. Exiting.");
+      break;
     }
   }
+
+  // leaving the output thread, send end of the stream info
+  if (dplEnabled()) {
+    o2::framework::SourceInfoHeader lDplExitHdr;
+    lDplExitHdr.state = o2::framework::InputChannelState::Completed;
+    auto lDoneStack = Stack(
+      DataHeader(gDataDescriptionInfo, gDataOriginAny, 0, 0),
+      o2::framework::DataProcessingHeader(),
+      lDplExitHdr
+    );
+
+    // Send a multipart
+    FairMQParts lCompletedMsg;
+    auto lNoFree = [](void*, void*) { /* stack */ };
+    lCompletedMsg.AddPart(lOutputChan.NewMessage(lDoneStack.data(), lDoneStack.size(), lNoFree));
+    lCompletedMsg.AddPart(lOutputChan.NewMessage());
+    lOutputChan.Send(lCompletedMsg);
+
+    DDLOGF(fair::Severity::INFO, "Sent Source Completed message to DPL.");
+    // NOTE: no guarantees this will be sent out
+    std::this_thread::sleep_for(2s);
+  }
+
+  I().mRunning = false; // trigger stop via CondRun()
 
   DDLOGF(fair::Severity::info, "Exiting StfOutputThread...");
 }
@@ -397,7 +435,12 @@ bool StfBuilderDevice::ConditionalRun()
 {
   // nothing to do here sleep for awhile
   std::this_thread::sleep_for(500ms);
-  return true;
+
+  if (!I().mRunning) {
+    DDLOGF(fair::Severity::DEBUG, "ConditionalRun() returning false.");
+  }
+
+  return I().mRunning;
 }
 
 bpo::options_description StfBuilderDevice::getDetectorProgramOptions() {

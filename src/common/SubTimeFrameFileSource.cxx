@@ -244,6 +244,8 @@ void SubTimeFrameFileSource::DataInjectThread()
       mReadStfQueue.size(), sNumSentStfs / getElapsedTime());
   }
 
+  mPipelineI.close(mPipelineStageOut);
+
   DDLOGF(fair::Severity::INFO, "Exiting file source inject thread...");
 }
 
@@ -257,12 +259,12 @@ void SubTimeFrameFileSource::DataHandlerThread()
     mFilesVector = getDataFileList();
   }
 
-  if (mFilesVector.empty()) {
-    DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame directory contains no data files.");
-    return;
-  }
-
   while (mRunning) {
+
+    if (mFilesVector.empty()) {
+      DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame directory contains no data files.");
+      break;
+    }
 
     for (const auto &lFileName : mFilesVector) {
       if (!mRunning) {
@@ -300,6 +302,10 @@ void SubTimeFrameFileSource::DataHandlerThread()
       break;
     }
   }
+
+  // notify the injection thread to stop
+  mReadStfQueue.stop();
+
   DDLOGF(fair::Severity::INFO, "Exiting file source data load thread...");
 }
 

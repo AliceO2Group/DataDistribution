@@ -65,6 +65,7 @@ class StfBuilderDevice : public DataDistDevice,
   static constexpr const char* OptionKeyDplChannelName = "dpl-channel-name";
   static constexpr const char* OptionKeyStandalone = "stand-alone";
   static constexpr const char* OptionKeyMaxBufferedStfs = "max-buffered-stfs";
+  static constexpr const char* OptionKeyMaxBuiltStfs = "max-built-stfs";
 
   static constexpr const char* OptionKeyStfDetector = "detector";
   static constexpr const char* OptionKeyRhdVer = "detector-rdh";
@@ -201,6 +202,7 @@ class StfBuilderDevice : public DataDistDevice,
     bool mStandalone;
     bool mDplEnabled;
     std::int64_t mMaxStfsInPipeline;
+    std::uint64_t mMaxBuiltStfs;
     bool mPipelineLimit;
 
     /// Input Interface handler
@@ -209,6 +211,7 @@ class StfBuilderDevice : public DataDistDevice,
 
     /// Internal threads
     std::thread mOutputThread;
+    std::atomic_bool mRunning = true;
     std::atomic_bool mPaused = false;
 
     /// File sink
