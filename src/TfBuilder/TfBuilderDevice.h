@@ -144,7 +144,6 @@ class TfBuilderDevice : public DataDistDevice,
   SubTimeFrameFileSink mFileSink;
 
   /// File source
-  std::unique_ptr<FairMQChannel> mStandaloneChannel;
   SubTimeFrameFileSource mFileSource;
 
   /// TF forwarding thread

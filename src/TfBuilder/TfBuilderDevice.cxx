@@ -46,7 +46,7 @@ TfBuilderDevice::~TfBuilderDevice()
 
 void TfBuilderDevice::Init()
 {
-  mMemI = std::make_unique<MemoryResources>();
+  mMemI = std::make_unique<MemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
 }
 
 void TfBuilderDevice::Reset()
@@ -111,27 +111,6 @@ void TfBuilderDevice::InitTask()
       DDLOGF(fair::Severity::INFO, "Not sending to DPL.");
     }
 
-    // channel for FileSource: stf or dpl, or generic one in case of standalone
-    if (mStandalone) {
-      // create default FMQ shm channel
-      auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("shmem", "", GetConfig());
-      if (!lTransportFactory) {
-        DDLOG(fair::Severity::ERROR) << "Creating transport factory failed!";
-        throw "Transport factory";
-        return;
-      }
-      mStandaloneChannel = std::make_unique<FairMQChannel>(
-        "standalone-chan[0]" ,  // name
-        "pair",                 // type
-        "bind",                 // method
-        "ipc:///tmp/standalone-chan-tfb", // address
-        lTransportFactory
-      );
-
-      mStandaloneChannel->Init();
-      mStandaloneChannel->Validate();
-    }
-
     // start the info thread
     mInfoThread = create_thread_member("tfb_info", &TfBuilderDevice::InfoThread, this);
   }
@@ -157,10 +136,12 @@ bool TfBuilderDevice::start()
 
   // we reached the scheduler instance, initialize everything else
   mRunning = true;
+  auto lShmTransport = this->AddTransport(fair::mq::Transport::SHM);
 
   if (!mStandalone && dplEnabled()) {
     auto& lOutputChan = GetChannel(getDplChannelName(), 0);
-    mTfBuilder = std::make_unique<TimeFrameBuilder>(lOutputChan, mTfBufferSize, dplEnabled());
+
+    mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, 512 << 20 /* config */, dplEnabled());
     mTfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
   }
 
@@ -178,11 +159,7 @@ bool TfBuilderDevice::start()
   }
 
   // start file source
-  if (mStandalone) {
-    mFileSource.start(*mStandaloneChannel, MemI(), false);
-  } else {
-    mFileSource.start(GetChannel(mDplChannelName), MemI(), mDplEnabled);
-  }
+  mFileSource.start(MemI(), mStandalone ? false : mDplEnabled);
 
   return true;
 }

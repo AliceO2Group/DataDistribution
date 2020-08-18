@@ -91,10 +91,6 @@ class StfBuilderDevice : public DataDistDevice,
   const std::string& getDplChannelName() const { return I().mDplChannelName; }
 
   auto& getOutputChannel() {
-    if (isStandalone()) {
-      return *I().mStandaloneChannel;
-    }
-
     if (dplEnabled()) {
       return this->GetChannel(I().mDplChannelName);
     }
@@ -218,7 +214,6 @@ class StfBuilderDevice : public DataDistDevice,
     std::unique_ptr<SubTimeFrameFileSink> mFileSink;
 
     /// File source
-    std::unique_ptr<FairMQChannel> mStandaloneChannel;
     std::unique_ptr<SubTimeFrameFileSource> mFileSource;
 
     /// Info thread
@@ -233,10 +228,10 @@ class StfBuilderDevice : public DataDistDevice,
 
   std::unique_ptr<StfBuilderInstance> mI;
   std::unique_ptr<MemoryResources> mMemI;
-
+  const StfBuilderInstance& I() const { return *mI; }
+public:
   StfBuilderInstance& I() { return *mI; }
   MemoryResources& MemI() { return *mMemI; }
-  const StfBuilderInstance& I() const { return *mI; }
 };
 
 }

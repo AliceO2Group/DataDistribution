@@ -73,7 +73,7 @@ class SubTimeFrameFileSource
 
   bool enabled() const { return mEnabled; }
 
-  void start(FairMQChannel& pDstChan, MemoryResources &pMemRes, const bool pDplEnabled);
+  void start(MemoryResources &pMemRes, const bool pDplEnabled);
   void pause() { mPaused = true; }
   void resume() { mPaused = false; }
   void stop();
@@ -85,8 +85,6 @@ class SubTimeFrameFileSource
   stf_pipeline& mPipelineI;
 
   unsigned mPipelineStageOut;
-  /// Destination channel to send the Stfs to (allocation optimization)
-  FairMQChannel *mDstChan = nullptr;
   std::unique_ptr<SubTimeFrameFileBuilder> mFileBuilder;
 
   /// Configuration

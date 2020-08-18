@@ -40,7 +40,7 @@ class SubTimeFrameReadoutBuilder
 {
  public:
   SubTimeFrameReadoutBuilder() = delete;
-  SubTimeFrameReadoutBuilder(FairMQChannel& pChan, bool pDplEnabled);
+  SubTimeFrameReadoutBuilder(MemoryResources &pMemRes, bool pDplEnabled);
 
   void addHbFrames(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
@@ -50,10 +50,7 @@ class SubTimeFrameReadoutBuilder
 
   inline void stop() {
     mRunning = false;
-
-    if (mHeaderMemRes) {
-      mHeaderMemRes->stop();
-    }
+    mMemRes.stop();
   }
 
  private:
@@ -66,7 +63,7 @@ class SubTimeFrameReadoutBuilder
 
   bool mDplEnabled;
 
-  std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
+  MemoryResources &mMemRes;
 };
 
 
@@ -78,7 +75,7 @@ class SubTimeFrameFileBuilder
 {
  public:
   SubTimeFrameFileBuilder() = delete;
-  SubTimeFrameFileBuilder(FairMQChannel& pChan, MemoryResources &pMemRes, const std::size_t pDataSegSize,
+  SubTimeFrameFileBuilder(MemoryResources &pMemRes, const std::size_t pDataSegSize,
     const std::size_t pHdrSegSize, bool pDplEnabled);
 
   void adaptHeaders(SubTimeFrame *pStf);
@@ -111,10 +108,10 @@ class SubTimeFrameFileBuilder
     return lMsg;
   }
 
-  // allocate appropriate message for the header
+  // allocate appropriate message for the data blocks
   inline
   FairMQMessagePtr newDataMessage(const std::size_t pSize) {
-    return mMemRes.getDataMessage(pSize);
+    return mMemRes.newDataMessage(pSize);
   }
 
   void stop() {
@@ -135,35 +132,30 @@ class TimeFrameBuilder
 {
  public:
   TimeFrameBuilder() = delete;
-  TimeFrameBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize, bool pDplEnabled);
+  TimeFrameBuilder(MemoryResources &pMemRes, const std::size_t pDataSegSize, const std::size_t pHdrSegSize,
+    bool pDplEnabled);
 
   void adaptHeaders(SubTimeFrame *pStf);
 
+  inline
   FairMQMessagePtr newHeaderMessage(const std::size_t pSize) {
-    return mHeaderMemRes->NewFairMQMessage(pSize);
+    return mMemRes.newHeaderMessage(pSize);
   }
 
+  inline
   FairMQMessagePtr newDataMessage(const std::size_t pSize) {
-    return mDataMemRes->NewFairMQMessage(pSize);
+    return mMemRes.newDataMessage(pSize);
   }
 
   inline void stop() {
-    if (mHeaderMemRes) {
-      mHeaderMemRes->stop();
-    }
-
-    if (mDataMemRes) {
-      mDataMemRes->stop();
-    }
+    mMemRes.stop();
   }
 
  private:
 
   bool mDplEnabled;
-  FairMQChannel &mOutputChan;
 
-  std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
-  std::unique_ptr<RegionAllocatorResource<>> mDataMemRes;
+  MemoryResources &mMemRes;
 };
 
 }

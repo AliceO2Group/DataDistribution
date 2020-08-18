@@ -34,13 +34,12 @@ using namespace o2::header;
 /// SubTimeFrameReadoutBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(FairMQChannel& pChan, bool pDplEnabled)
-  : mStf(nullptr),
-    mDplEnabled(pDplEnabled)
+SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(MemoryResources &pMemRes, bool pDplEnabled)
+  : mStf(nullptr), mDplEnabled(pDplEnabled),mMemRes(pMemRes)
 {
-  mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
+  mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
     "O2HeadersRegion",
-    pChan,
+    *mMemRes.mShmTransport,
     std::size_t(256) << 20, /* make configurable */
     mDplEnabled ?
       sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
@@ -190,14 +189,14 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
         o2::framework::DataProcessingHeader{mStf->header().mId}
       );
 
-      lHdrMsg = mHeaderMemRes->NewFairMQMessage(lStack.size());
+      lHdrMsg = mMemRes.newHeaderMessage(lStack.size());
       if (lHdrMsg) {
         std::memcpy(lHdrMsg->GetData(), lStack.data(), lStack.size());
       }
     } else {
       auto lHdrMsgStack = Stack(lDataHdr);
 
-      lHdrMsg = mHeaderMemRes->NewFairMQMessage(lHdrMsgStack.size());
+      lHdrMsg = mMemRes.newHeaderMessage(lHdrMsgStack.size());
       if (lHdrMsg) {
         std::memcpy(lHdrMsg->GetData(), lHdrMsgStack.data(), lHdrMsgStack.size());
       }
@@ -229,20 +228,20 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameReadoutBuilder::getStf()
 /// SubTimeFrameFileBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(FairMQChannel& pChan, MemoryResources &pMemRes,
+SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(MemoryResources &pMemRes,
   const std::size_t pDataSegSize, const std::size_t pHdrSegSize, bool pDplEnabled)
   : mMemRes(pMemRes), mDplEnabled(pDplEnabled)
 {
   mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
     "O2HeadersRegion_FileSource",
-    pChan,
+    *mMemRes.mShmTransport,
     pHdrSegSize,
     0
   );
 
   mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
     "O2DataRegion_FileSource",
-    pChan,
+    *mMemRes.mShmTransport,
     pDataSegSize,
     0 // TODO: GPU flags
   );
@@ -307,20 +306,20 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
 /// TimeFrameBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-TimeFrameBuilder::TimeFrameBuilder(FairMQChannel& pChan, const std::size_t pDataSegSize, bool pDplEnabled)
-  : mDplEnabled(pDplEnabled),
-    mOutputChan(pChan)
+TimeFrameBuilder::TimeFrameBuilder(MemoryResources &pMemRes,
+  const std::size_t pDataSegSize, const std::size_t pHdrSegSize, bool pDplEnabled)
+  : mDplEnabled(pDplEnabled), mMemRes(pMemRes)
 {
-  mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
+  mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
     "O2HeadersRegion",
-    pChan,
-    std::size_t(256) << 20, /* make configurable */
+    *mMemRes.mShmTransport,
+    pHdrSegSize,
     0 /* dont need registration flags for headers */
   );
 
-  mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
+  mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
     "O2DataRegion_FileSource",
-    pChan,
+    *mMemRes.mShmTransport,
     pDataSegSize,
     0 // TODO: GPU flags
   );
@@ -332,7 +331,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
     return;
   }
 
-  const auto lOutChannelType = mOutputChan.GetTransportType();
+  const auto lOutChannelType = fair::mq::Transport::SHM;
 
   // adapt headers for DPL
   for (auto& lDataIdentMapIter : pStf->mData) {
@@ -377,11 +376,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
               o2::framework::DataProcessingHeader{pStf->header().mId}
             );
 
-            if (lOutChannelType == fair::mq::Transport::SHM) {
-              lStfDataIter.mHeader = newHeaderMessage(lStack.size());
-            } else {
-              lStfDataIter.mHeader = mOutputChan.NewMessage(lStack.size());
-            }
+            lStfDataIter.mHeader = newHeaderMessage(lStack.size());
 
             if (lStfDataIter.mHeader) {
               assert(lStfDataIter.mHeader->GetSize() >= sizeof (DataHeader));
