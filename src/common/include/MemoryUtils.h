@@ -51,10 +51,9 @@ class RegionAllocatorResource
 public:
   RegionAllocatorResource() = delete;
 
-  RegionAllocatorResource(std::string pSegmentName, FairMQChannel &pChan,
+  RegionAllocatorResource(std::string pSegmentName, FairMQTransportFactory& pShmTrans,
                           std::size_t pSize, std::uint64_t pRegionFlags = 0)
-  : mSegmentName(pSegmentName),
-    mChan(pChan)
+  : mSegmentName(pSegmentName), mTransport(pShmTrans)
   {
     static_assert(ALIGN && !(ALIGN & (ALIGN - 1)), "Alignment must be power of 2");
 
@@ -98,10 +97,10 @@ public:
       } while (false);
     }
 
-    DDLOGF(fair::Severity::INFO, "Creating new UnmanagedRegion name={} path={} size={} channel={}",
-      mSegmentName, lSegmentRoot, pSize, pChan.GetName());
+    DDLOGF(fair::Severity::INFO, "Creating new UnmanagedRegion name={} path={} size={}",
+      mSegmentName, lSegmentRoot, pSize);
 
-    mRegion = pChan.Transport()->CreateUnmanagedRegion(
+    mRegion = pShmTrans.CreateUnmanagedRegion(
       pSize,
       pRegionFlags,
       [this](const std::vector<FairMQRegionBlock>& pBlkVect) {
@@ -158,8 +157,8 @@ public:
     );
 
     if (!mRegion) {
-      DDLOGF(fair::Severity::FATAL, "Creation of new memory region failed. name={} size={} path={} channel={}",
-      mSegmentName, pSize, lSegmentRoot, pChan.GetName());
+      DDLOGF(fair::Severity::FATAL, "Creation of new memory region failed. name={} size={} path={}",
+      mSegmentName, pSize, lSegmentRoot);
       throw std::bad_alloc();
     }
 
@@ -185,7 +184,7 @@ public:
   std::unique_ptr<FairMQMessage> NewFairMQMessage(std::size_t pSize) {
     auto* lMem = do_allocate(pSize, ALIGN);
     if (lMem) {
-      return mChan.NewMessage(mRegion, lMem, pSize);
+      return mTransport.CreateMessage(mRegion, lMem, pSize);
     } else {
       return nullptr;
     }
@@ -196,7 +195,7 @@ public:
     assert(pPtr >= static_cast<char*>(mRegion->GetData()));
     assert(static_cast<char*>(pPtr)+pSize <= static_cast<char*>(mRegion->GetData()) + mRegion->GetSize());
 
-    return mChan.NewMessage(mRegion, pPtr, pSize);
+    return mTransport.CreateMessage(mRegion, pPtr, pSize);
   }
 
   void stop() {
@@ -410,7 +409,7 @@ private:
   std::size_t mSegmentSize;
   std::atomic_bool mRunning = true;
 
-  FairMQChannel& mChan;
+  FairMQTransportFactory &mTransport;
   std::unique_ptr<FairMQUnmanagedRegion> mRegion;
 
   char *mStart = nullptr;
@@ -428,13 +427,26 @@ private:
 class MemoryResources {
 
 public:
+  MemoryResources() = delete;
+  explicit MemoryResources(std::shared_ptr<FairMQTransportFactory> pShmTransport)
+  : mShmTransport(pShmTransport) { }
+
+  ~MemoryResources() {
+    // make sure to delete regions before dropping the transport
+    mHeaderMemRes.reset();
+    mDataMemRes.reset();
+    mShmTransport.reset();
+  }
+
   inline
   FairMQMessagePtr newHeaderMessage(const std::size_t pSize) {
+    assert(mHeaderMemRes);
     return mHeaderMemRes->NewFairMQMessage(pSize);
   }
 
   inline
-  FairMQMessagePtr getDataMessage(const std::size_t pSize) {
+  FairMQMessagePtr newDataMessage(const std::size_t pSize) {
+    assert(mDataMemRes);
     return mDataMemRes->NewFairMQMessage(pSize);
   }
 
@@ -442,6 +454,8 @@ public:
   bool running() { return mRunning == true; }
 
   void stop() {
+    assert(mShmTransport);
+
     mRunning = false;
 
     if (mHeaderMemRes) {
@@ -454,6 +468,9 @@ public:
 
   std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
   std::unique_ptr<RegionAllocatorResource<64>> mDataMemRes;
+
+  // shm transport
+  std::shared_ptr<FairMQTransportFactory> mShmTransport;
 
 private:
   bool mRunning = true;

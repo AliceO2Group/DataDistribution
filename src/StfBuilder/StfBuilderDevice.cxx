@@ -65,7 +65,7 @@ void StfBuilderDevice::Init()
 {
   DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::Init()");
   mI = std::make_unique<StfBuilderInstance>();
-  mMemI = std::make_unique<MemoryResources>();
+  mMemI = std::make_unique<MemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
 
   I().mFileSource = std::make_unique<SubTimeFrameFileSource>(*this, eStfFileSourceOut);
   I().mReadoutInterface = std::make_unique<StfInputInterface>(*this);
@@ -189,31 +189,6 @@ void StfBuilderDevice::InitTask()
     DDLOGF(fair::Severity::WARNING, "Running in standalone mode and with STF file sink disabled. Data will be lost.");
   }
 
-    // channel for FileSource: stf or dpl, or generic one in case of standalone
-  if (isStandalone()) {
-    // create default FMQ shm channel
-    auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("shmem", "", GetConfig());
-    if (!lTransportFactory) {
-      DDLOGF(fair::Severity::ERROR, "Creating transport factory failed!");
-      exit(-1);
-    }
-
-    I().mStandaloneChannel = std::make_unique<FairMQChannel>(
-      "standalone-chan[0]" ,  // name
-      "pair",                 // type
-      "bind",                 // method
-      "ipc:///tmp/standalone-chan-stfb", // address
-      lTransportFactory
-    );
-
-    // mStandaloneChannel.Init();
-    I().mStandaloneChannel->Init();
-    // mStandaloneChannel->BindEndpoint("ipc:///tmp/standalone-chan");
-    I().mStandaloneChannel->Validate();
-  }
-
-  DDLOGF(fair::Severity::info, "Sending data to channel: {}", getOutputChannel().GetName());
-
   // try to see if channels have been configured
   {
     if (!I().mFileSource->enabled()) {
@@ -241,8 +216,7 @@ void StfBuilderDevice::InitTask()
   I().mFileSink->start();
 
   // start file source
-  // channel for FileSource: stf or dpl, or generic one in case of standalone
-  I().mFileSource->start(getOutputChannel(), MemI(), I().mDplEnabled);
+  I().mFileSource->start(MemI(), I().mDplEnabled);
 
   // start a thread for readout process
   if (!I().mFileSource->enabled()) {
@@ -305,12 +279,11 @@ void StfBuilderDevice::StfOutputThread()
   std::unique_ptr<InterleavedHdrDataSerializer> lStfSerializer;
   std::unique_ptr<StfToDplAdapter> lStfDplAdapter;
 
-  // cannot get the channels in standalone mode
-  auto& lOutputChan = getOutputChannel();
-
-  DDLOGF(fair::Severity::info, "StfOutputThread: sending data to channel: {}", lOutputChan.GetName());
-
   if (!isStandalone()) {
+    // cannot get the channels in standalone mode
+    auto& lOutputChan = getOutputChannel();
+    DDLOGF(fair::Severity::info, "StfOutputThread: sending data to channel: {}", lOutputChan.GetName());
+
     if (!dplEnabled()) {
       lStfSerializer = std::make_unique<InterleavedHdrDataSerializer>(lOutputChan);
     } else {
@@ -329,8 +302,8 @@ void StfBuilderDevice::StfOutputThread()
     // decrement the stf counter
     I().mNumStfs--;
 
-    DDLOGF_RL(2000, fair::Severity::DEBUG, "Sending an STF out. stf_id={} channel={} stf_size={} unique_equipments={}",
-      lStf->header().mId, lOutputChan.GetName(), lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
+    DDLOGF_RL(2000, fair::Severity::DEBUG, "Sending an STF out. stf_id={} stf_size={} unique_equipments={}",
+      lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
     // get data size sample
     I().mStfSizeSamples.Fill(lStf->getDataSize());
@@ -394,6 +367,7 @@ void StfBuilderDevice::StfOutputThread()
     );
 
     // Send a multipart
+    auto& lOutputChan = getOutputChannel();
     FairMQParts lCompletedMsg;
     auto lNoFree = [](void*, void*) { /* stack */ };
     lCompletedMsg.AddPart(lOutputChan.NewMessage(lDoneStack.data(), lDoneStack.size(), lNoFree));

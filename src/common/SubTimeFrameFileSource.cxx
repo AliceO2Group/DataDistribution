@@ -40,14 +40,12 @@ using namespace std::chrono_literals;
 /// SubTimeFrameFileSource
 ////////////////////////////////////////////////////////////////////////////////
 
-void SubTimeFrameFileSource::start(FairMQChannel& pDstChan, MemoryResources &pMemRes, const bool pDplEnabled)
+void SubTimeFrameFileSource::start(MemoryResources &pMemRes, const bool pDplEnabled)
 {
   if (enabled()) {
-    mDstChan = &pDstChan;
     mDplEnabled = pDplEnabled;
 
     mFileBuilder = std::make_unique<SubTimeFrameFileBuilder>(
-      pDstChan,
       pMemRes,
       mRegionSizeMB << 20,
       mHdrRegionSizeMB << 20,

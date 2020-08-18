@@ -39,13 +39,9 @@ void StfInputInterface::start(const std::size_t pNumBuilders)
   mBuilderInputQueues.clear();
   mBuilderInputQueues.resize(mNumBuilders);
 
-  // Reference to the output or DPL channel
-  // const auto &lOutChanName = mDevice.getOutputChannelName();
-  auto& lOutputChan = mDevice.getOutputChannel();
-
   // NOTE: create the mStfBuilders first to avid resizing the vector; then threads
   for (std::size_t i = 0; i < mNumBuilders; i++) {
-    mStfBuilders.emplace_back(lOutputChan, mDevice.dplEnabled());
+    mStfBuilders.emplace_back(mDevice.MemI(), mDevice.dplEnabled());
   }
 
   for (std::size_t i = 0; i < mNumBuilders; i++) {
