@@ -137,7 +137,7 @@ void CruMemoryHandler::put_data_buffer(const char* dataBufferAddr, const std::si
   std::lock_guard<std::mutex> lock(lBucket.mLock);
 
   if (lBucket.mUsedSuperPages.count(lSpStartAddr) == 0) {
-    DDLOGF(fair::Severity::ERROR, "Returned data buffer is not in the list of used superpages!");
+    DDLOGF_RL(200, fair::Severity::ERROR, "Returned data buffer is not in the list of used superpages!");
     return;
   }
 

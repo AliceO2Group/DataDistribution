@@ -99,7 +99,7 @@ STF_BUILDER="StfBuilder"
 STF_BUILDER+=" --transport shmem"
 STF_BUILDER+=" --mq-config $chainConfig"
 STF_BUILDER+=" --detector TPC"
-STF_BUILDER+=" --detector 4"
+STF_BUILDER+=" --detector-rdh 6"
 STF_BUILDER+=" --io-threads $IO_THREADS"
 STF_BUILDER+=" --max-buffered-stfs 2"
 

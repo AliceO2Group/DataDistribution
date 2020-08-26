@@ -20,6 +20,8 @@
 
 #include <unistd.h>
 
+#include <Headers/DAQID.h>
+
 namespace o2
 {
 namespace DataDistribution
@@ -86,10 +88,11 @@ void CruLinkEmulator::linkReadoutThread()
           // Each channel is reported separately to the O2
           ReadoutLinkO2Data linkO2Data;
 
-          linkO2Data.mLinkDataHeader.dataOrigin = (rand() % 100 < 70) ? o2::header::gDataOriginTPC : o2::header::gDataOriginITS;
-          linkO2Data.mLinkDataHeader.dataDescription = o2::header::gDataDescriptionRawData;
-          linkO2Data.mLinkDataHeader.payloadSerializationMethod = o2::header::gSerializationMethodNone;
-          linkO2Data.mLinkDataHeader.subSpecification = mLinkID;
+          linkO2Data.mLinkHeader.mSystemId = (rand() % 100 < 70) ? o2::header::DAQID::TPC : o2::header::DAQID::ITS;
+          linkO2Data.mLinkHeader.mFeeId = 0xFEE0;
+          linkO2Data.mLinkHeader.mEquipmentId = 0xE1D0; // ?
+          linkO2Data.mLinkHeader.mLinkId = mLinkID;
+          linkO2Data.mLinkHeader.mFlags.mIsRdhFormat = 1;
 
           for (unsigned d = 0; d < cNumDmaChunkPerSuperpage; d++, lHbfToSend--) {
 
@@ -121,15 +124,13 @@ void CruLinkEmulator::linkReadoutThread()
             });
           }
 
-          // record how many chunks are there in a superpage
-          linkO2Data.mLinkDataHeader.payloadSize = linkO2Data.mLinkRawData.size();
           // Put the link info data into the send queue
           mMemHandler->putLinkData(std::move(linkO2Data));
 
         } else {
           // signal lost data (no free superpages)
           ReadoutLinkO2Data linkO2Data;
-          linkO2Data.mLinkDataHeader.subSpecification = -1;
+          linkO2Data.mLinkHeader.mFlags.mIsRdhFormat = 0;
 
           mMemHandler->putLinkData(std::move(linkO2Data));
           break;

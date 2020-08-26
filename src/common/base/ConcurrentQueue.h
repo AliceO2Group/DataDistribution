@@ -112,13 +112,18 @@ class ConcurrentContainerImpl
 
   bool pop_wait_for(T& d, const std::chrono::microseconds &us)
   {
+    const auto lWaitUntil = std::chrono::system_clock::now() + us;
     {
       std::unique_lock<std::mutex> lLock(mImpl->mLock);
       if (mImpl->mContainer.empty() && (mImpl->mRunning)) {
-        if (std::cv_status::timeout == mImpl->mCond.wait_for(lLock, us)) {
-          if (mImpl->mContainer.empty()) {
-            return false;
+        // wait until timeout is reached, or the queue has new elements
+        while (mImpl->mRunning && (mImpl->mCond.wait_until(lLock, lWaitUntil) != std::cv_status::timeout)) {
+          if (!mImpl->mContainer.empty()) {
+            break;
           }
+        }
+        if (!mImpl->mRunning || mImpl->mContainer.empty()) {
+          return false;
         }
       }
     }
