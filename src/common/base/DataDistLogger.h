@@ -34,7 +34,7 @@ class DataDistLogger {
 
   static thread_local char* sThisThreadName;
 
-  spdlog::logger static I() {
+  static spdlog::logger& I() {
     static std::shared_ptr<spdlog::logger> sTheLogger = nullptr;
 
     if (!sTheLogger) {
@@ -46,7 +46,7 @@ class DataDistLogger {
       sTheLogger->set_pattern("[%Y-%m-%d %T.%e][%^%L%$] %v");
     }
 
-    return *(sTheLogger.get());
+    return *sTheLogger;
   }
 
   inline void do_vformat(fmt::string_view format, fmt::format_args args) {
