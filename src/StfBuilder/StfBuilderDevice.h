@@ -151,7 +151,7 @@ class StfBuilderDevice : public DataDistDevice,
           // DROP policy in StfBuilder is to keep most current STFs. This will ensure that all
           // StfBuilders have the same set of STFs ready for distribution
 
-          DDLOGF(fair::Severity::WARNING, "Dropping oldest STF due to reaching the maximum number of buffered "
+          DDLOGF_RL(500, fair::Severity::WARNING, "Dropping oldest STF due to reaching the maximum number of buffered "
             "STFs in the process ({}). Consider increasing the limit, or reducing the input data rate.",
             I().mMaxStfsInPipeline);
 

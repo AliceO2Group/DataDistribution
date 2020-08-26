@@ -23,6 +23,7 @@
 
 #include <vector>
 #include <mutex>
+#include <optional>
 
 class FairMQDevice;
 class FairMQChannel;
@@ -44,9 +45,21 @@ class SubTimeFrameReadoutBuilder
 
   void addHbFrames(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
-    ReadoutSubTimeframeHeader& pHdr,
+    const ReadoutSubTimeframeHeader& pHdr,
     std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen);
-  std::unique_ptr<SubTimeFrame> getStf();
+
+  std::optional<std::uint32_t> getCurrentStfId() const {
+    return (mStf) ? std::optional<std::uint32_t>(mStf->header().mId) : std::nullopt;
+  }
+
+  std::optional<std::unique_ptr<SubTimeFrame>> getStf() {
+    mFirstFiltered.clear();
+    std::unique_ptr<SubTimeFrame> lStf = std::move(mStf);
+    mStf = nullptr;
+    mFirstFiltered.clear();
+
+    return (lStf) ? std::optional<std::unique_ptr<SubTimeFrame>>(std::move(lStf)) : std::nullopt;
+  }
 
   inline void stop() {
     mRunning = false;

@@ -36,7 +36,7 @@ bool ReadoutDataUtils::sEmptyTriggerHBFrameFilterring = false;
 std::unique_ptr<RDHReaderIf> RDHReader::sRDHReader = nullptr;
 
 /// static
-thread_local std::uint64_t ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
+std::uint32_t ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
 
 o2::header::DataOrigin
 ReadoutDataUtils::getDataOrigin(const RDHReader &R)
@@ -46,8 +46,8 @@ ReadoutDataUtils::getDataOrigin(const RDHReader &R)
     if (lOrig != o2::header::DAQID::DAQtoO2(o2::header::DAQID::INVALID)) {
       return lOrig;
     } else {
-        DDLOGF_RL(5000, fair::Severity::WARNING, "Data origin in RDH is invalid. Please configure the correct SYSTEM_ID in the hardware."
-          " Using the configuration value {}.", std::string(sSpecifiedDataOrigin.str));
+        DDLOGF_RL(1000, fair::Severity::ERROR, "Data origin in RDH is invalid: {}. Please configure the correct SYSTEM_ID in the hardware."
+          " Using the configuration value {}.", R.getSystemID(), std::string(sSpecifiedDataOrigin.str));
     }
   }
 
@@ -110,14 +110,14 @@ bool ReadoutDataUtils::rdhSanityCheck(const char* pData, const std::size_t pLen)
 
   // set first hbframe orbit if not set for this stf
   {
-    std::uint32_t lOrbit = 0;
-    std::memcpy(&lOrbit, pData + (5 * sizeof (std::uint32_t)), sizeof (std::uint32_t));
+    std::uint32_t lOrbit = R.getOrbit();
     if (sFirstSeenHBOrbitCnt == 0) {
       sFirstSeenHBOrbitCnt = lOrbit;
     } else {
       if (lOrbit < sFirstSeenHBOrbitCnt) {
-        DDLOGF(fair::Severity::ERROR, "Orbit counter of current data packet (HBF) is smaller than first orbit of the STF."
-          " orbit={} first_orbit={} diff={}", lOrbit, sFirstSeenHBOrbitCnt, sFirstSeenHBOrbitCnt-lOrbit);
+        DDLOGF(fair::Severity::ERROR,
+          "Orbit counter of the current data packet (HBF) is smaller than first orbit of the STF."
+          " orbit={} first_orbit={} diff={}", lOrbit, sFirstSeenHBOrbitCnt, (sFirstSeenHBOrbitCnt - lOrbit));
         return false;
       }
     }

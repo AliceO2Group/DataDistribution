@@ -123,18 +123,11 @@ void ReadoutDevice::SendingThread()
   // finish an STF every ~1/45 seconds
   static const auto cDataTakingStart = std::chrono::high_resolution_clock::now();
   static constexpr auto cStfInterval = std::chrono::microseconds(22810);
-  static uint64_t lNumberSentStfs = 0;
-  static uint64_t lCurrentTfId = 0;
+  uint64_t lNumberSentStfs = 0;
+  uint64_t lCurrentTfId = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::high_resolution_clock::now().time_since_epoch()).count() / cStfInterval.count();;
 
   while (IsRunningState()) {
-
-    auto isStfFinished =
-      (std::chrono::high_resolution_clock::now() - cDataTakingStart) - (lNumberSentStfs * cStfInterval) > cStfInterval;
-
-    if (isStfFinished) {
-      lNumberSentStfs += 1;
-      lCurrentTfId = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() / cStfInterval.count();
-    }
 
     ReadoutLinkO2Data lCruLinkData;
     if (!mCruMemoryHandler->getLinkData(lCruLinkData)) {
@@ -145,15 +138,26 @@ void ReadoutDevice::SendingThread()
     mFreeSuperpagesSamples.Fill(mCruMemoryHandler->free_superpages());
 
     // check no data signal
-    if (lCruLinkData.mLinkDataHeader.subSpecification ==
-      o2::header::DataHeader::SubSpecificationType(-1)) {
+    if (lCruLinkData.mLinkHeader.mFlags.mIsRdhFormat == 0) {
       // DDLOG(fair::Severity::WARN) << "No Superpages left! Losing data...";
     }
 
-    ReadoutSubTimeframeHeader lHBFHeader;
+    ReadoutSubTimeframeHeader lHBFHeader = lCruLinkData.mLinkHeader;
     lHBFHeader.mTimeFrameId = lCurrentTfId;
-    lHBFHeader.mNumberHbf = lCruLinkData.mLinkRawData.size();
-    lHBFHeader.mLinkId = lCruLinkData.mLinkDataHeader.subSpecification;
+    lHBFHeader.mTimeframeOrbitFirst = lCurrentTfId * 256;
+    lHBFHeader.mTimeframeOrbitLast = (lCurrentTfId + 1) * 256 - 1;
+    lHBFHeader.mFlags.mLastTFMessage = 0;
+
+    // last one?
+    auto isStfFinished =
+      (std::chrono::high_resolution_clock::now() - cDataTakingStart) - (lNumberSentStfs * cStfInterval) > cStfInterval;
+
+    if (isStfFinished) {
+      lNumberSentStfs += 1;
+      lCurrentTfId = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::high_resolution_clock::now().time_since_epoch()).count() / cStfInterval.count();
+      lHBFHeader.mFlags.mLastTFMessage = 1;
+    }
 
     assert(mDataBlockMsgs.empty());
     mDataBlockMsgs.reserve(lCruLinkData.mLinkRawData.size());

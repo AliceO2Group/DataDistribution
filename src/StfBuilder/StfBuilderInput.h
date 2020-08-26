@@ -33,6 +33,8 @@ class StfBuilderDevice;
 class StfInputInterface
 {
  public:
+  static constexpr uint8_t sReadoutInterfaceVersion = 2;
+
   StfInputInterface() = delete;
   StfInputInterface(StfBuilderDevice& pStfBuilderDev)
     : mDevice(pStfBuilderDev),

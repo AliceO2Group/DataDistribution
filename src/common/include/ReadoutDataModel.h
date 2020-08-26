@@ -42,7 +42,7 @@ class RDHReaderException : public std::runtime_error {
 public:
   RDHReaderException() = delete;
   RDHReaderException(const char* data, const std::size_t size, const std::string &pMsg)
-  : std::runtime_error("READOUT INTERFACE: Error when accessing the RDH: " + pMsg),
+  : std::runtime_error("READOUT INTERFACE: Error when accessing RDH: " + pMsg),
     mData(data),
     mSize(size) {}
 };
@@ -334,12 +334,23 @@ public:
 // FIXME: copied from Readout/SubTimeframe.h
 // definition of the header message for a subtimeframe made of 1
 // message with this header followed by a message for each HBFrame
-// All data belong to the same source (FEE link or user logic)
+// All data belong to the same source (a link or user logic)
 
 struct ReadoutSubTimeframeHeader {
-  std::uint32_t mTimeFrameId; // id of timeframe
-  std::uint32_t mNumberHbf;   // number of HB frames (i.e. following messages)
-  std::uint8_t mLinkId;       // common link id of all data in this HBFrame
+  uint8_t  mVersion = 2;
+  uint32_t mTimeFrameId = 0; // id of timeframe
+  uint32_t mRunNumber = 0;
+  uint8_t mSystemId = 0xFF;
+  uint16_t mFeeId = 0xFFFF;
+  uint16_t mEquipmentId = 0xFFFF;
+  uint8_t mLinkId = 0xFF;
+  uint32_t mTimeframeOrbitFirst = 0;
+  uint32_t mTimeframeOrbitLast = 0;
+  struct {
+    uint8_t mLastTFMessage : 1; // bit 0
+    uint8_t mIsRdhFormat : 1;   // bit 1
+    uint8_t mFlagsUnused : 6;   // bit 2-7: unused
+  } mFlags;
 };
 
 class ReadoutDataUtils {
@@ -370,7 +381,7 @@ public:
 
   static bool sEmptyTriggerHBFrameFilterring;
 
-  static thread_local std::uint64_t sFirstSeenHBOrbitCnt;
+  static std::uint32_t sFirstSeenHBOrbitCnt;
 
   static o2::header::DataOrigin getDataOrigin(const RDHReader &R);
   static o2::header::DataHeader::SubSpecificationType getSubSpecification(const RDHReader &R);

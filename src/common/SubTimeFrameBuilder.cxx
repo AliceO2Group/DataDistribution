@@ -50,9 +50,11 @@ SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(MemoryResources &pMemRes,
 void SubTimeFrameReadoutBuilder::addHbFrames(
   const o2::header::DataOrigin &pDataOrig,
   const o2::header::DataHeader::SubSpecificationType pSubSpecification,
-  ReadoutSubTimeframeHeader& pHdr,
+  const ReadoutSubTimeframeHeader& pHdr,
   std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen)
 {
+  static thread_local std::vector<bool> lRemoveBlocks;
+
   if (!mRunning) {
     DDLOGF(fair::Severity::WARNING, "Adding HBFrames while STFBuilder is not running!");
     return;
@@ -72,14 +74,14 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     return;
   }
 
-  std::vector<bool> lKeepBlocks(pHBFrameLen, true);
-
   // filter empty trigger
+  lRemoveBlocks.clear();
+  lRemoveBlocks.resize(pHBFrameLen);
   {
     if (ReadoutDataUtils::sEmptyTriggerHBFrameFilterring) {
       // filter empty trigger start stop pages
       for (std::size_t i = 0; i < pHBFrameLen; i++) {
-        if (lKeepBlocks[i] == false) {
+        if (lRemoveBlocks[i]) {
           continue; // already discarded
         }
 
@@ -98,9 +100,9 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
         if (!ReadoutDataUtils::filterEmptyTriggerBlocks(
               reinterpret_cast<const char*>(pHbFramesBegin[i]->GetData()),
               pHbFramesBegin[i]->GetSize()) ) {
-          lKeepBlocks[i] = true;
+          lRemoveBlocks[i] = false;
         } else {
-          lKeepBlocks[i] = false;
+          lRemoveBlocks[i] = true;
         }
       }
     }
@@ -112,7 +114,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
       // check blocks individually
       for (std::size_t i = 0; i < pHBFrameLen; i++) {
 
-        if (lKeepBlocks[i] == false) {
+        if (lRemoveBlocks[i]) {
           continue; // already filtered out
         }
 
@@ -123,7 +125,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
         if (!lOk && (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckDrop)) {
           DDLOGF(fair::Severity::WARNING, "RDH SANITY CHECK: Removing data block");
 
-          lKeepBlocks[i] = false;
+          lRemoveBlocks[i] = true;
 
         } else if (!lOk && (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckPrint)) {
 
@@ -167,21 +169,23 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     pDataOrig,
     pSubSpecification);
 
+  DataHeader lDataHdr(
+    lEqId.mDataDescription,
+    lEqId.mDataOrigin,
+    lEqId.mSubSpecification,
+    0 /* Update later */
+  );
+  lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
+
   for (size_t i = 0; i < pHBFrameLen; i++) {
 
-    if (lKeepBlocks[i] == false) {
+    if (lRemoveBlocks[i]) {
       continue; // already filtered out
     }
 
     std::unique_ptr<FairMQMessage> lHdrMsg;
 
-    DataHeader lDataHdr(
-      lEqId.mDataDescription,
-      lEqId.mDataOrigin,
-      lEqId.mSubSpecification,
-      pHbFramesBegin[i]->GetSize()
-    );
-    lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
+    lDataHdr.payloadSize = pHbFramesBegin[i]->GetSize();
 
     if (mDplEnabled) {
       auto lStack = Stack(
@@ -212,15 +216,6 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     );
   }
 
-}
-
-std::unique_ptr<SubTimeFrame> SubTimeFrameReadoutBuilder::getStf()
-{
-  std::unique_ptr<SubTimeFrame> lStf = std::move(mStf);
-  mStf = nullptr;
-  mFirstFiltered.clear();
-
-  return lStf;
 }
 
 
