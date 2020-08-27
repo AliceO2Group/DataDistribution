@@ -42,6 +42,7 @@ namespace DataDistribution
 {
 
 static constexpr const char *ENV_SHM_PATH = "DATADIST_SHM_PATH";
+static constexpr const char *ENV_SHM_DELAY = "DATADIST_SHM_DELAY";
 
 
 template<size_t ALIGN = 64>
@@ -169,6 +170,22 @@ public:
     memset(mStart, 0xAA, mLength);
 
     mFree = mSegmentSize;
+
+    // Insert delay for testing
+    const auto lShmDelay = std::getenv(ENV_SHM_DELAY);
+    if (lShmDelay) {
+      try {
+        double lDelaySec = std::stod(lShmDelay);
+        lDelaySec = std::abs(lDelaySec);
+
+        DDLOGF(fair::Severity::WARNING, "Memory segment '{}': delaying processing for specified={}s",
+          mSegmentName, lDelaySec);
+        std::this_thread::sleep_for(std::chrono::duration<double>(lDelaySec));
+      } catch (const std::logic_error &e) {
+        DDLOGF(fair::Severity::ERROR, "Memory segment '{}': invalid delay specified={} error={}",
+          mSegmentName, lShmDelay, e.what());
+      }
+    }
 
     // start the allocations
     mRunning = true;
