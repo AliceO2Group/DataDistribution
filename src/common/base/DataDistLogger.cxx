@@ -22,6 +22,8 @@ namespace DataDistribution
 // per thread log name
 thread_local char* DataDistLogger::sThisThreadName = nullptr;
 
+std::chrono::steady_clock::time_point DataDistLogger::sRateLimitLast = std::chrono::steady_clock::now();
+
 // this is a static object that will interpose early into FairLogger
 impl::DataDistLoggerCtx sLoggerCtx;
 

@@ -31,7 +31,11 @@ namespace DataDistribution
 {
 
 class DataDistLogger {
+public:
+  // rate logging updater
+  static std::chrono::steady_clock::time_point sRateLimitLast;
 
+private:
   static thread_local char* sThisThreadName;
 
   static spdlog::logger& I() {
@@ -176,12 +180,10 @@ private:
 do {                                                                                                                  \
   static thread_local auto sRateLimit__NoShadow = std::chrono::steady_clock::time_point::min();                       \
   static thread_local unsigned sRateLimitCnt__NoShadow = 0;                                                           \
-  std::chrono::steady_clock::time_point lNowLoggerTime__NoShadow;                                                     \
-  if ((sRateLimit__NoShadow + std::chrono::milliseconds(intervalMs)) <                                                \
-      (lNowLoggerTime__NoShadow = std::chrono::steady_clock::now())) {                                                \
+  if ((sRateLimit__NoShadow + std::chrono::milliseconds(intervalMs)) < DataDistLogger::sRateLimitLast) {           \
     o2::DataDistribution::DataDistLogger(severity, o2::DataDistribution::DataDistLogger::log_fmt{}, __VA_ARGS__) <<   \
       ((sRateLimitCnt__NoShadow > 0) ? fmt::format(" <msgs_suppressed={}>", sRateLimitCnt__NoShadow) : "");           \
-    sRateLimit__NoShadow = lNowLoggerTime__NoShadow;                                                                  \
+    sRateLimit__NoShadow = DataDistLogger::sRateLimitLast;                                                         \
     sRateLimitCnt__NoShadow = 0;                                                                                      \
   } else {                                                                                                            \
     sRateLimitCnt__NoShadow++;                                                                                        \
@@ -190,6 +192,9 @@ do {                                                                            
 
 namespace impl {
   struct DataDistLoggerCtx {
+    bool mRunning = false;
+    std::thread mRateUpdateThread;
+
     DataDistLoggerCtx() {
       // DDLOGF(fair::Severity::DEBUG, "Switching the logging to spdlog's nonblocking async backend.");
 
@@ -199,15 +204,30 @@ namespace impl {
       {
         DataDistLogger(meta.severity, content);
       });
+
+      mRunning = true;
+      mRateUpdateThread = std::thread([&]() {
+        while (mRunning) {
+          DataDistLogger::sRateLimitLast = std::chrono::steady_clock::now();
+
+          using namespace std::chrono_literals;
+          std::this_thread::sleep_for(100ms);
+        }
+      });
     }
 
     ~DataDistLoggerCtx() {
+      mRunning = false;
       // check if the FairLogger is still alive and remove spdlog's sink
       // NOTE: this is tricky, depends on static global variable destruction
       if (! fair::Logger::fIsDestructed) {
         // DDLOGF(fair::Severity::DEBUG, "Switching the logging back to FairMQLogger.");
         fair::Logger::RemoveCustomSink("TraceSink");
         fair::Logger::SetConsoleSeverity(fair::Severity::trace);
+      }
+
+      if (mRateUpdateThread.joinable()) {
+        mRateUpdateThread.join();
       }
     }
 };
