@@ -96,16 +96,6 @@ void StfSenderDevice::InitTask()
 void StfSenderDevice::PreRun()
 {
   if (!mStandalone) {
-    while (!mTfSchedulerRpcClient.start(mDiscoveryConfig)) {
-
-      // try to reach the scheduler unless we should exit
-      if (IsRunningState() && NewStatePending()) {
-        return;
-      }
-
-      std::this_thread::sleep_for(250ms);
-    }
-
     // Start output handler
     mOutputHandler.start(mDiscoveryConfig);
 
@@ -115,6 +105,15 @@ void StfSenderDevice::PreRun()
     mRpcServer.start(&mOutputHandler, lStatus.info().ip_address(), lRpcRealPort);
     lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
     mDiscoveryConfig->write();
+
+    // contact the scheduler on gRPC
+    while (!mTfSchedulerRpcClient.start(mDiscoveryConfig)) {
+      // try to reach the scheduler unless we should exit
+      if (!IsReadyOrRunningState()) {
+        return;
+      }
+      std::this_thread::sleep_for(250ms);
+    }
   }
 
   // start file sink
