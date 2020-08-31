@@ -191,14 +191,8 @@ void StfSenderDevice::StfReceiverThread()
     // get data size
     mStfSizeSamples.Fill(lStf->getDataSize());
 
-    { // rate-limited LOG: print stats every 100 TFs
-      static unsigned long floodgate = 0;
-      if (floodgate++ % 100 == 0) {
-        const TimeFrameIdType lStfId = lStf->header().mId;
-        DDLOGF(fair::Severity::INFO, "SubTimeFrame stf_id={} size={} unique_equip={}",
-          lStfId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
-      }
-    }
+    DDLOGF_RL(2000, fair::Severity::INFO, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
+      lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
     queue(eReceiverOut, std::move(lStf));
   }

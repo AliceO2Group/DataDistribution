@@ -239,24 +239,15 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       assert(lReadoutMsgs[0]->GetSize() == sizeof(ReadoutSubTimeframeHeader));
       std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
 
-      // log only
-      if (lReadoutHdr.mTimeFrameId % (100 + pIdx) == 0) {
-        static thread_local std::uint64_t sStfSeen = 0;
-        if (lReadoutHdr.mTimeFrameId != sStfSeen) {
-          sStfSeen = lReadoutHdr.mTimeFrameId;
-          DDLOGF(fair::Severity::DEBUG, "READOUT INTERFACE: Received an ReadoutMsg. stf_id={}", lReadoutHdr.mTimeFrameId);
-        }
-      }
+      // debug log
+      DDLOGF_RL(5000, fair::Severity::DEBUG, "READOUT INTERFACE: Received tf_id={} num_hbf={} eq_id={}",
+        lReadoutHdr.mTimeFrameId, lReadoutHdr.mNumberHbf, lReadoutHdr.mLinkId);
 
       // check multipart size
       {
         if (lReadoutHdr.mNumberHbf != lReadoutMsgs.size() - 1) {
-          static thread_local std::uint64_t sNumMessages = 0;
-          if (sNumMessages++ % 8192 == 0) {
-            DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: wrong number of HBFrames in the header."
-              "header_cnt={} msg_length={} total_occurrences={}",
-              lReadoutHdr.mNumberHbf, (lReadoutMsgs.size() - 1), sNumMessages);
-          }
+          DDLOGF_RL(1000, fair::Severity::ERROR, "READOUT INTERFACE: wrong number of HBFrames in the header."
+            "header_cnt={} msg_length={}", lReadoutHdr.mNumberHbf, (lReadoutMsgs.size() - 1));
 
           lReadoutHdr.mNumberHbf = lReadoutMsgs.size() - 1;
         }
@@ -267,11 +258,11 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
             const auto lLinkId = R.getLinkID();
 
             if (lLinkId != lReadoutHdr.mLinkId) {
-              DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: update link ID does not match RDH in the data block."
+              DDLOGF_RL(500, fair::Severity::ERROR, "READOUT INTERFACE: update link ID does not match RDH in the data block."
                 " hdr_link_id={} rdh_link_id={}", lReadoutHdr.mLinkId, lLinkId);
             }
           } catch (RDHReaderException &e) {
-            DDLOGF(fair::Severity::ERROR, e.what());
+            DDLOGF_RL(1000, fair::Severity::ERROR, e.what());
             // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
             continue;
           }
@@ -282,11 +273,6 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: no data sent, invalid blocks removed.");
         continue;
       }
-
-      // DDLOG(fair::Severity::DEBUG) << "RECEIVED:: "
-      //           << "TF id: " << lReadoutHdr.mTimeFrameId << ", "
-      //           << "#HBF: " << lReadoutHdr.mNumberHbf << ", "
-      //           << "EQ: " << lReadoutHdr.linkId;
 
       // check for the new TF marker
       if (lReadoutHdr.mTimeFrameId != lCurrentStfId) {

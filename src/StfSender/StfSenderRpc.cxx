@@ -29,6 +29,8 @@ void StfSenderRpcImpl::start(StfSenderOutput *pOutput, const std::string pRpcSrv
 {
   mOutput = pOutput;
 
+  DDLOGF(fair::Severity::INFO, "Starting the gRPC server... ip={}", pRpcSrvBindIp);
+
   ServerBuilder lSrvBuilder;
   lSrvBuilder.AddListeningPort(pRpcSrvBindIp + ":0", grpc::InsecureServerCredentials(), &lRealPort);
   lSrvBuilder.RegisterService(this);
@@ -36,7 +38,7 @@ void StfSenderRpcImpl::start(StfSenderOutput *pOutput, const std::string pRpcSrv
   assert(!mServer);
   mServer = lSrvBuilder.BuildAndStart();
 
-  DDLOG(fair::Severity::INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
+  DDLOGF(fair::Severity::INFO, "gRPC server listening on {}:{}", pRpcSrvBindIp, lRealPort);
 }
 
 void StfSenderRpcImpl::stop()
