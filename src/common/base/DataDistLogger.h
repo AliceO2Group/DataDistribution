@@ -71,7 +71,7 @@ public:
 
     if (log_enabled()) {
       if (mSeverity <= fair::Severity::debug && sThisThreadName) {
-        fmt::format_to(mLogMessage, "<{:s}> ", sThisThreadName);
+        fmt::format_to(mLogMessage, "<{}> ", sThisThreadName);
       }
 
       do_vformat(format, fmt::make_format_args(pArgs...));
@@ -91,7 +91,7 @@ public:
 
     if (log_enabled()) {
       if (mSeverity <= fair::Severity::debug && sThisThreadName) {
-        fmt::format_to(std::back_inserter(mLogMessage), "[{:s}] ", sThisThreadName);
+        fmt::format_to(mLogMessage, "<{}> ", sThisThreadName);
       }
 
       if constexpr (sizeof...(Args) > 0) {
