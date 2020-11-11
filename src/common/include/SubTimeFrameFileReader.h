@@ -118,7 +118,7 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
   inline
   bool ignore_nbytes(const std::size_t pLen)
   {
-    const std::size_t lToIgnore = std::min(pLen, mFileSize - mFileMapOffset);
+    const std::size_t lToIgnore = std::min(pLen, std::size_t(mFileSize - mFileMapOffset));
     if (pLen != lToIgnore) {
       DDLOGF(fair::Severity::ERROR, "FileReader: request to ignore bytes beyond the file end. pos={} size={} len={}",
         mFileMapOffset, mFileSize, pLen);
