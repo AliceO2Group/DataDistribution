@@ -139,7 +139,7 @@ void CruLinkEmulator::linkReadoutThread()
     }
   }
 
-  DDLOG(fair::Severity::TRACE) << "Exiting ReadoutEmulator thread...";
+  DDLOGF(fair::Severity::DEBUG, "Exiting ReadoutEmulator thread.");
 }
 
 /// Start "data taking" thread

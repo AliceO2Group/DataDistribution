@@ -59,7 +59,7 @@ class SubTimeFrameFileSink
       mPipelineStageIn(pPipelineStageIn),
       mPipelineStageOut(pPipelineStageOut)
   {
-    DDLOG(fair::Severity::TRACE) << "(Sub)TimeFrame Sink created...";
+    DDLOGF(fair::Severity::DEBUG, "(Sub)TimeFrame Sink created.");
   }
 
   ~SubTimeFrameFileSink()
@@ -67,7 +67,7 @@ class SubTimeFrameFileSink
     if (mSinkThread.joinable()) {
       mSinkThread.join();
     }
-    DDLOG(fair::Severity::TRACE) << "(Sub)TimeFrame Sink terminated...";
+    DDLOGF(fair::Severity::DEBUG, "(Sub)TimeFrame Sink terminated.");
   }
 
   bool loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt);

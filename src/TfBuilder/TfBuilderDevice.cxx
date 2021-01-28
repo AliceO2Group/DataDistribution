@@ -41,7 +41,7 @@ TfBuilderDevice::TfBuilderDevice()
 
 TfBuilderDevice::~TfBuilderDevice()
 {
-  DDLOG(fair::Severity::TRACE) << "TfBuilderDevice::~TfBuilderDevice()";
+  DDLOGF(fair::Severity::DEBUG, "TfBuilderDevice::~TfBuilderDevice()");
 }
 
 void TfBuilderDevice::Init()
@@ -94,9 +94,9 @@ void TfBuilderDevice::InitTask()
     lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
 
     if (! mDiscoveryConfig->write(true)) {
-      DDLOGF(fair::Severity::ERROR, "Can not start TfBuilder. id={:d}", lStatus.info().process_id());
-      DDLOG(fair::Severity::ERROR) << "Process with the same id already running? If not, clear the key manually.";
-      throw "Discovery database error";
+      DDLOGF(fair::Severity::ERROR, "Can not start TfBuilder. id={}", lStatus.info().process_id());
+      DDLOGF(fair::Severity::ERROR, "Process with the same id already running? If not, clear the key manually.");
+      throw "Discovery database error: this TfBuilder was/is already present.";
       return;
     }
 
@@ -153,7 +153,7 @@ bool TfBuilderDevice::start()
   // Start input handlers
   if (!mFlpInputHandler->start(mDiscoveryConfig)) {
     mShouldExit = true;
-    DDLOG(fair::Severity::ERROR) << "Could not initialize input connections. Exiting.";
+    DDLOGF(fair::Severity::ERROR, "Could not initialize input connections. Exiting.");
     throw "Input connection error";
     return false;
   }
@@ -200,7 +200,7 @@ void TfBuilderDevice::stop()
 
   mDiscoveryConfig.reset();
 
-  DDLOG(fair::Severity::trace) << "Reset() done... ";
+  DDLOGF(fair::Severity::DEBUG, "Reset() done... ");
 }
 
 void TfBuilderDevice::ResetTask()
@@ -212,12 +212,11 @@ bool TfBuilderDevice::ConditionalRun()
 {
   if (mShouldExit) {
     mRunning = false;
-    throw std::string("intentional exit");
     return false;
   }
 
   // nothing to do here sleep for awhile
-  std::this_thread::sleep_for(1s);
+  std::this_thread::sleep_for(250ms);
   return true;
 }
 
@@ -252,7 +251,7 @@ void TfBuilderDevice::TfForwardThread()
       try {
         lTfOutCnt++;
         DDLOGF_RL(1000, fair::Severity::INFO,
-          "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={}",
+          "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={:d}",
           lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), lTfOutCnt);
 
         if (dplEnabled()) {
@@ -280,7 +279,7 @@ void TfBuilderDevice::TfForwardThread()
     mRpc->recordTfForwarded(lTfId);
   }
 
-  DDLOG(fair::Severity::INFO) << "Exiting TF forwarding thread... ";
+  DDLOGF(fair::Severity::INFO, "Exiting TF forwarding thread.");
 }
 
 void TfBuilderDevice::InfoThread()
@@ -297,7 +296,7 @@ void TfBuilderDevice::InfoThread()
     std::this_thread::sleep_for(2s);
   }
 
-  DDLOGF(fair::Severity::trace, "Exiting info thread...");
+  DDLOGF(fair::Severity::DEBUG, "Exiting info thread...");
 }
 
 }

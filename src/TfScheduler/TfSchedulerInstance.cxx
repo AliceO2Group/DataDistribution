@@ -54,7 +54,7 @@ TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
 
   mDiscoveryConfig->write();
 
-  DDLOG(fair::Severity::DEBUG) << "Initialized new TfSchedulerInstance for partition " << mPartitionInfo.mPartitionId;
+  DDLOGF(fair::Severity::DEBUG, "Initialized new TfSchedulerInstance. partition={}", mPartitionInfo.mPartitionId);
 }
 
 void TfSchedulerInstanceHandler::start()
@@ -66,7 +66,7 @@ void TfSchedulerInstanceHandler::start()
   // start rpc processing
   mRpcServer.start();
 
-  DDLOG(fair::Severity::DEBUG) << "Started new TfSchedulerInstance for partition " << mPartitionInfo.mPartitionId;
+  DDLOGF(fair::Severity::DEBUG, "Started new TfSchedulerInstance. partition={}", mPartitionInfo.mPartitionId);
 }
 
 void TfSchedulerInstanceHandler::stop()
@@ -86,7 +86,7 @@ bool TfSchedulerInstanceHandler::running() const
 
 void TfSchedulerInstanceHandler::TfSchedulerInstanceThread()
 {
-  DDLOG(fair::Severity::INFO) << "Starting a TfSchedulerInstanceHandler thread...";
+  DDLOGF(fair::Severity::DEBUG, "Starting a TfSchedulerInstanceHandler thread.");
   // wait for the device to go into RUNNING state
   mDevice.WaitForRunningState();
 
@@ -95,7 +95,7 @@ void TfSchedulerInstanceHandler::TfSchedulerInstanceThread()
     std::this_thread::sleep_for(500ms);
   }
 
-  DDLOG(fair::Severity::INFO) << "Exiting TfSchedulerInstanceHandler thread...";
+  DDLOGF(fair::Severity::DEBUG, "Exiting TfSchedulerInstanceHandler thread.");
 }
 
 }

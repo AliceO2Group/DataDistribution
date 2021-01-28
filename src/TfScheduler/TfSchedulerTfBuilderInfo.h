@@ -106,7 +106,7 @@ class TfSchedulerTfBuilderInfo
     std::scoped_lock lLock(mReadyInfoLock);
     for (auto it = mReadyTfBuilders.begin(); it != mReadyTfBuilders.end(); it++) {
       if ((*it)->id() == pId) {
-        DDLOG(fair::Severity::DEBUG) << "Removed TfBuilder from the ready list :" << pId;
+        DDLOGF(fair::Severity::DEBUG, "Removed TfBuilder from the ready list. tfb_id={}", pId);
         mReadyTfBuilders.erase(it);
         break;
       }

@@ -225,7 +225,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       break;
     }
   }
-  DDLOGF(fair::Severity::trace, "Exiting file sink thread [{}]", pIdx);
+  DDLOGF(fair::Severity::DEBUG, "Exiting file sink thread [{}]", pIdx);
 }
 
 }

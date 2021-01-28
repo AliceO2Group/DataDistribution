@@ -155,12 +155,13 @@ void StfSenderDevice::ResetTask()
     mInfoThread.join();
   }
 
-  DDLOGF(fair::Severity::trace, "ResetTask() done... ");
+  DDLOGF(fair::Severity::DEBUG, "ResetTask() done.");
 }
 
 void StfSenderDevice::StfReceiverThread()
 {
   using hres_clock = std::chrono::high_resolution_clock;
+  static std::uint64_t sReceivedStfs = 0;
 
   auto& lInputChan = GetChannel(mInputChannelName, 0);
 
@@ -187,6 +188,9 @@ void StfSenderDevice::StfReceiverThread()
       lStfStartTime = hres_clock::now();
     }
 
+    ++sReceivedStfs;
+    DDLOGF_RL(5000, fair::Severity::DEBUG, "StfSender received total of {} STFs.", sReceivedStfs);
+
     // get data size
     mStfSizeSamples.Fill(lStf->getDataSize());
 
@@ -196,7 +200,8 @@ void StfSenderDevice::StfReceiverThread()
     queue(eReceiverOut, std::move(lStf));
   }
 
-  DDLOGF(fair::Severity::trace, "Exiting StfReceiverThread...");
+  DDLOGF(fair::Severity::INFO, "StfSender received total of {} STFs.", sReceivedStfs);
+  DDLOGF(fair::Severity::DEBUG, "Exiting StfReceiverThread.");
 }
 
 void StfSenderDevice::InfoThread()
@@ -213,7 +218,7 @@ void StfSenderDevice::InfoThread()
 
     std::this_thread::sleep_for(2s);
   }
-  DDLOGF(fair::Severity::trace, "Exiting Info thread...");
+  DDLOGF(fair::Severity::DEBUG, "Exiting Info thread.");
 }
 
 bool StfSenderDevice::ConditionalRun()

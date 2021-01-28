@@ -50,7 +50,7 @@ public:
 
     mTfBuilderConf.Clear();
     if (!pConfig->getTfBuilderConfig(lPartitionId, pTfBuilderId, mTfBuilderConf)) {
-     DDLOG(fair::Severity::WARNING) << "TfBuilder information is not discoverable";
+     DDLOGF(fair::Severity::WARNING, "TfBuilder information is not discoverable.");
       return false;
     }
 

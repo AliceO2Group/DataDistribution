@@ -53,14 +53,15 @@ void StfSenderRpcImpl::stop()
                                           const TfBuilderEndpoint* request,
                                           ConnectTfBuilderResponse* response)
 {
-  const std::string lTfSenderId = request->tf_builder_id();
-  const std::string lTfSenderEndpoint = request->endpoint();
+  const std::string lTfBuilderId = request->tf_builder_id();
+  const std::string lTfBuilderEndpoint = request->endpoint();
 
   // handle the request
-  DDLOG(fair::Severity::INFO) << "Requested to connect to TfBuilder " << lTfSenderId << " at endpoint: " << lTfSenderEndpoint;
+  DDLOGF(fair::Severity::DEBUG, "Requested to connect to TfBuilder. tfb_id={} tfb_ep={}",
+    lTfBuilderId, lTfBuilderEndpoint);
   response->set_status(OK);
 
-  const auto lStatus = mOutput->connectTfBuilder(lTfSenderId, lTfSenderEndpoint);
+  const auto lStatus = mOutput->connectTfBuilder(lTfBuilderId, lTfBuilderEndpoint);
   switch (lStatus) {
     case StfSenderOutput::ConnectStatus::eOK:
       response->set_status(OK);
@@ -81,14 +82,15 @@ void StfSenderRpcImpl::stop()
                                           StatusResponse* response)
 {
 
-  const std::string lTfSenderId = request->tf_builder_id();
-  const std::string lTfSenderEndpoint = request->endpoint();
+  const std::string lTfBuilderId = request->tf_builder_id();
+  const std::string lTfBuilderEndpoint = request->endpoint();
 
   // handle the request
-  DDLOG(fair::Severity::INFO) << "Requested to disconnect TfBuilder " << lTfSenderId << " at endpoint: " << lTfSenderEndpoint;
+  DDLOGF(fair::Severity::DEBUG, "Requested to disconnect from TfBuilder. tfb_id={} tfb_ep={}",
+    lTfBuilderId, lTfBuilderEndpoint);
   response->set_status(0);
 
-  if (!mOutput->disconnectTfBuilder(lTfSenderId, lTfSenderEndpoint)) {
+  if (!mOutput->disconnectTfBuilder(lTfBuilderId, lTfBuilderEndpoint)) {
     response->set_status(-1);
   }
 

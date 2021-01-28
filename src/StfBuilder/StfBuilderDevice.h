@@ -179,7 +179,7 @@ class StfBuilderDevice : public DataDistDevice,
     }
 
     if (!(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn)) {
-      DDLOG(fair::Severity::ERROR) << "Stage error! next: " << lNextStage;
+      DDLOGF(fair::Severity::ERROR, "Stage error! next_stage={}", lNextStage);
     }
 
     assert(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn);

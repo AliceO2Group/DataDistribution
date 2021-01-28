@@ -32,13 +32,14 @@ using namespace std::chrono_literals;
 void TfSchedulerStfInfo::SchedulingThread()
 {
   DataDistLogger::SetThreadName("SchedulingThread");
-  DDLOGF(fair::Severity::TRACE, "Starting StfInfo Scheduling thread...");
+  DDLOGF(fair::Severity::DEBUG, "Starting StfInfo Scheduling thread.");
 
   const auto lNumStfSenders = mDiscoveryConfig->status().stf_sender_count();
   const std::set<std::string> lStfSenderIdSet = mConnManager.getStfSenderSet();
   std::vector<std::uint64_t> lStfsToErase;
   lStfsToErase.reserve(1000);
   auto lLastDiscardTime = std::chrono::system_clock::now();
+  std::uint64_t lNumTfScheds = 0;
 
   while (mRunning) {
 
@@ -72,14 +73,10 @@ void TfSchedulerStfInfo::SchedulingThread()
         // 1: Get the best TfBuilder candidate
         std::string lTfBuilderId;
         if ( mTfBuilderInfo.findTfBuilderForTf(lTfSize, lTfBuilderId /*out*/) ) {
+          lNumTfScheds++;
+          DDLOGF_RL(1000, fair::Severity::DEBUG, "Scheduling new TF. tf_id={:d} tfb_id={:s} total={:d}",
+            lTfId, lTfBuilderId, lNumTfScheds);
 
-          {
-            static std::uint64_t sNumTfScheds = 0;
-            if (++sNumTfScheds % 50 == 0) {
-              DDLOGF(fair::Severity::TRACE, "Scheduling TF. tf_id={:d} tfb_id={:s} total={:d}",
-                lTfId, lTfBuilderId, sNumTfScheds);
-            }
-          }
 
           assert (!lTfBuilderId.empty());
           // Notify TfBuilder to build the TF
@@ -209,7 +206,7 @@ void TfSchedulerStfInfo::SchedulingThread()
     }
   }
 
-  DDLOGF(fair::Severity::TRACE, "Exiting StfInfo Scheduling thread.");
+  DDLOGF(fair::Severity::DEBUG, "Exiting StfInfo Scheduling thread.");
 }
 
 void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse)
@@ -226,7 +223,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
     std::unique_lock lLock(mGlobalStfInfoLock);
 
     if (lStfId > mLastStfId + 200) {
-      DDLOGF(fair::Severity::TRACE,
+      DDLOGF(fair::Severity::DEBUG,
         "Received STFid is much larger than the currently processed TF id. new_stf_id={} current_stf_id={} from_stf_sender={}",
         lStfId, mLastStfId, pStfInfo.info().process_id()
       );
