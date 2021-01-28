@@ -162,7 +162,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 
   std::string lCurrentFileName;
 
-  bool lForwardOnly = false; // set if we encounter error while writing to file
+  bool lDisableWriting = false; // set if we encounter error while writing to file
 
   // wait for running
   mDeviceI.WaitForRunningState();
@@ -175,44 +175,49 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       break;
     }
 
-    if (lForwardOnly) {
-      if (! mPipelineI.queue(mPipelineStageOut, std::move(lStf)) ) {
-        // the pipeline is stopped: exiting
-        break;
+    if (!lDisableWriting) {
+      do {
+        // make sure Stf is updated before writing
+        lStf->updateStf();
+
+        // check if we need a writer
+        if (!mStfWriter) {
+          const auto lStfId = lStf->id();
+          lCurrentFileName = newStfFileName(lStfId);
+          namespace bfs = boost::filesystem;
+
+          try {
+            mStfWriter = std::make_unique<SubTimeFrameFileWriter>(
+              bfs::path(mCurrentDir) / bfs::path(lCurrentFileName), mSidecar);
+          } catch (...) {
+            lDisableWriting = true;
+            break;
+          }
+            mCurrentFileIdx++;
+        }
+
+        // write
+        if (mStfWriter->write(*lStf)) {
+          lCurrentFileStfs++;
+          lCurrentFileSize = mStfWriter->size();
+        } else {
+          mStfWriter.reset();
+          lDisableWriting = true;
+          break;
+        }
+
+        // check if we should rotate the file
+        if (((mStfsPerFile > 0) && (lCurrentFileStfs >= mStfsPerFile)) || (lCurrentFileSize >= mFileSize)) {
+          lCurrentFileStfs = 0;
+          lCurrentFileSize = 0;
+          mStfWriter.reset();
+        }
+      } while(0);
+
+      if (lDisableWriting) {
+        DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: error while writing to file {}", lCurrentFileName);
+        DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: disabling file sink");
       }
-      continue;
-    }
-
-    // make sure Stf is updated before writing
-    lStf->updateStf();
-
-    // check if we need a writer
-    if (!mStfWriter) {
-      const auto lStfId = lStf->id();
-      lCurrentFileName = newStfFileName(lStfId);
-      namespace bfs = boost::filesystem;
-      mStfWriter = std::make_unique<SubTimeFrameFileWriter>(
-        bfs::path(mCurrentDir) / bfs::path(lCurrentFileName), mSidecar);
-
-      mCurrentFileIdx++;
-    }
-
-    // write
-    if (mStfWriter->write(*lStf)) {
-      lCurrentFileStfs++;
-      lCurrentFileSize = mStfWriter->size();
-    } else {
-      mStfWriter.reset();
-      lForwardOnly = false;
-      DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: error while writing to file {:s}", lCurrentFileName);
-      DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: disabling file sink");
-    }
-
-    // check if we should rotate the file
-    if (((mStfsPerFile > 0) && (lCurrentFileStfs >= mStfsPerFile)) || (lCurrentFileSize >= mFileSize)) {
-      lCurrentFileStfs = 0;
-      lCurrentFileSize = 0;
-      mStfWriter.reset();
     }
 
     if (! mPipelineI.queue(mPipelineStageOut, std::move(lStf)) ) {
