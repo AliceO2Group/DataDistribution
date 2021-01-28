@@ -39,6 +39,7 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
     sizeof(SubTimeFrame::Header)
   );
   lStfDistDataHeader.payloadSerializationMethod = gSerializationMethodNone;
+  lStfDistDataHeader.tfCounter = pStf.header().mId;
 
   o2::framework::DataProcessingHeader lDplHeader(pStf.header().mId);
 
@@ -116,8 +117,44 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
 
   const auto cMsgSize = mMessages.size() / 2;
 
+  DataHeader::TForbitType lFirstTForbit = ~  DataHeader::TForbitType{0};
+  DataHeader::TFCounterType lTfCounter = ~ DataHeader::TFCounterType{0};
+  DataHeader::RunNumberType lRunNumber = ~ DataHeader::RunNumberType{0};
+
+  o2::framework::DataProcessingHeader::StartTime lProcStart = ~ o2::framework::DataProcessingHeader::StartTime{0};
+
   for (size_t lIdx = 0; lIdx < cMsgSize; ) {
     const DataHeader *lDh = reinterpret_cast<DataHeader*>(mMessages[lIdx*2]->GetData());
+
+    if (lTfCounter == ~DataHeader::TFCounterType{0}) {
+      lFirstTForbit = lDh->firstTForbit;
+      lTfCounter = lDh->tfCounter;
+      lRunNumber = lDh->runNumber;
+    } if (lFirstTForbit == 0) { // not all things have the first orbit
+      lFirstTForbit = lDh->firstTForbit;
+    }
+
+    if ((lDh->firstTForbit != 0) && lFirstTForbit != lDh->firstTForbit) {
+      DDLOGF(fair::Severity::ERROR, "DPL output: first orbit is different first={} != current={}", lFirstTForbit, lDh->firstTForbit);
+    }
+
+    if (lTfCounter != lDh->tfCounter) {
+      DDLOGF(fair::Severity::ERROR, "DPL output: TF counter is different first={} != current={}", lTfCounter, lDh->tfCounter);
+    }
+
+    if (lRunNumber != lDh->runNumber) {
+      DDLOGF(fair::Severity::ERROR, "DPL output: run number is different first={} != current={}", lRunNumber, lDh->runNumber);
+    }
+
+    const auto *lProcHdr = o2::header::get<o2::framework::DataProcessingHeader*>(mMessages[lIdx*2]->GetData(), mMessages[lIdx*2]->GetSize());
+
+    if (lProcStart == ~ o2::framework::DataProcessingHeader::StartTime{0}) {
+      lProcStart = lProcHdr->startTime;
+    } else {
+      if (lProcStart != lProcHdr->startTime) {
+        DDLOGF(fair::Severity::ERROR, "DPL output: dpl proc header start is different first={} != current={}", lProcStart, lProcHdr->startTime);
+      }
+    }
 
     const auto& [ lOrigin, lType, lSubSpec ] = std::tie( lDh->dataOrigin, lDh->dataDescription, lDh->subSpecification );
 
