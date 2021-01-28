@@ -381,6 +381,7 @@ void StfBuilderDevice::StfOutputThread()
 
   I().mRunning = false; // trigger stop via CondRun()
 
+  DDLOGF(fair::Severity::info, "Output: Stopped SubTimeFrame sending. sent_total={} rate={:.4}", I().mSentOutStfsTotal);
   DDLOGF(fair::Severity::info, "Exiting StfOutputThread...");
 }
 
@@ -402,7 +403,8 @@ void StfBuilderDevice::InfoThread()
       I().mNumStfs);
     DDLOGF(fair::Severity::info, "SubTimeFrame sent_total={} rate={:.4}", I().mSentOutStfsTotal, I().mSentOutRate);
   }
-  DDLOGF(fair::Severity::trace, "Exiting Info thread...");
+
+  DDLOGF(fair::Severity::DEBUG, "Exiting Info thread...");
 }
 
 bool StfBuilderDevice::ConditionalRun()

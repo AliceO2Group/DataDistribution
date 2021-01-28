@@ -34,7 +34,7 @@ void TfBuilderRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, int &lReal
   lSrvBuilder.RegisterService(this);
   assert(!mServer);
   mServer = lSrvBuilder.BuildAndStart();
-  DDLOG(fair::Severity::INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
+  DDLOGF(fair::Severity::INFO, "gRPC server is started. server_ep={}:{}", pRpcSrvBindIp, lRealPort);
 }
 
 
@@ -111,7 +111,7 @@ void TfBuilderRpcImpl::stopAcceptingTfs() {
 void TfBuilderRpcImpl::UpdateSendingThread()
 {
   using namespace std::chrono_literals;
-  DDLOG(fair::Severity::DEBUG) << "Starting TfBuilder Update sending thread...";
+  DDLOGF(fair::Severity::DEBUG, "Starting TfBuilder Update sending thread.");
 
   while (mRunning) {
     std::unique_lock lLock(mUpdateLock);
@@ -125,13 +125,13 @@ void TfBuilderRpcImpl::UpdateSendingThread()
   std::unique_lock lLock(mUpdateLock);
   sendTfBuilderUpdate();
 
-  DDLOG(fair::Severity::DEBUG) << "Exiting TfBuilder Update sending thread...";
+  DDLOGF(fair::Severity::DEBUG, "Exiting TfBuilder Update sending thread.");
 }
 
 void TfBuilderRpcImpl::StfRequestThread()
 {
   using namespace std::chrono_literals;
-  DDLOG(fair::Severity::DEBUG) << "Starting Stf requesting thread...";
+  DDLOGF(fair::Severity::DEBUG, "Starting Stf requesting thread.");
 
   const auto &lTfBuilderId = mDiscoveryConfig->status().info().process_id();
   TfBuildingInformation mTfInfo;
@@ -139,19 +139,17 @@ void TfBuilderRpcImpl::StfRequestThread()
   StfDataRequestMessage lStfRequest;
   StfDataResponse lStfResponse;
   lStfRequest.set_tf_builder_id(lTfBuilderId);
+  std::uint64_t lNumTfRequests = 0;
 
   while (mRunning) {
     if (!mTfBuildRequests->pop(mTfInfo)) {
       continue; // mRunning will change to false
     }
 
-    {
-      static std::uint64_t sNumTfRequests = 0;
-      if (++sNumTfRequests % 50 == 0) {
-        DDLOG(fair::Severity::INFO) << "Requesting SubTimeFrames with id: " << mTfInfo.tf_id()
-                   << ", total size: " << mTfInfo.tf_size() << ". Total requests: " << sNumTfRequests;
-      }
-    }
+    lNumTfRequests++;
+    DDLOGF_RL(1000, fair::Severity::DEBUG, "Requesting SubTimeFrame. stf_id={} tf_size={} total_requests={}",
+      mTfInfo.tf_id(), mTfInfo.tf_size(), lNumTfRequests);
+
 
     for (auto &lStfDataIter : mTfInfo.stf_size_map()) {
       const auto &lStfSenderId = lStfDataIter.first;
@@ -161,14 +159,14 @@ void TfBuilderRpcImpl::StfRequestThread()
       grpc::Status lStatus = StfSenderRpcClients()[lStfSenderId]->StfDataRequest(lStfRequest, lStfResponse);
       if (!lStatus.ok()) {
         // gRPC problem... continue asking for other STFs
-        DDLOG(fair::Severity::WARNING) << "StfSender gRPC connection problem. Code: " <<lStatus.error_code()
-                      << ", message: " << lStatus.error_message();
+        DDLOGF(fair::Severity::ERROR, "StfSender gRPC connection problem. stfs_id={} code={} error={}",
+          lStfSenderId, lStatus.error_code(), lStatus.error_message());
         continue;
       }
 
       if (lStfResponse.status() != StfDataResponse::OK) {
-        DDLOG(fair::Severity::WARNING) << "StfSender " << lStfSenderId
-                      << " cannot send data. Reason: " << StfDataResponse_StfDataStatus_Name(lStfResponse.status());
+        DDLOGF(fair::Severity::ERROR, "StfSender did not sent data. stfs_id={} reason={}",
+          lStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
         continue;
       }
     }
@@ -177,13 +175,14 @@ void TfBuilderRpcImpl::StfRequestThread()
   // send disconnect update
   assert (!mRunning);
 
-  DDLOG(fair::Severity::DEBUG) << "Exiting Stf requesting thread...";
+  DDLOGF(fair::Severity::DEBUG, "Exiting Stf requesting thread.");
 }
 
 bool TfBuilderRpcImpl::sendTfBuilderUpdate()
 {
   TfBuilderUpdateMessage lUpdate;
   const auto &lStatus = mDiscoveryConfig->status();
+  static std::uint64_t sUpdateCnt = 0;
 
   *lUpdate.mutable_info() = lStatus.info();
   *lUpdate.mutable_partition() = lStatus.partition();
@@ -203,16 +202,12 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
     lUpdate.set_free_memory(mCurrentTfBufferSize);
   }
 
-  {
-    static thread_local std::uint64_t sUpdateCnt = 0;
-    if (++sUpdateCnt % 10 == 0) {
-      DDLOG(fair::Severity::DEBUG) << "Sending TfBuilder update, accepting: " << mAcceptingTfs << ", total: " << sUpdateCnt;
-    }
-  }
+  sUpdateCnt++;
+  DDLOGF_RL(5000, fair::Severity::DEBUG, "Sending TfBuilder update. accepting={} total={}", mAcceptingTfs, sUpdateCnt);
 
   auto lRet = mTfSchedulerRpcClient.TfBuilderUpdate(lUpdate);
   if (!lRet) {
-    DDLOG(fair::Severity::WARN) << "Sending TfBuilder status update failed.";
+    DDLOGF_RL(1000, fair::Severity::ERROR, "Sending TfBuilder status update failed.");
   }
   return lRet;
 }
@@ -230,7 +225,8 @@ bool TfBuilderRpcImpl::recordTfBuilt(const SubTimeFrame &pTf)
     if (mCurrentTfBufferSize >= lTfSize) {
       mCurrentTfBufferSize -= lTfSize;
     } else {
-      DDLOG(fair::Severity::ERROR) << "TimeFrame memory buffer overrun! Current size: 0, missing: " << lTfSize - mCurrentTfBufferSize;
+      DDLOGF(fair::Severity::ERROR, "TimeFrame memory buffer overrun! size=0 missing={}",
+        (lTfSize - mCurrentTfBufferSize));
       mCurrentTfBufferSize = 0;
     }
 
@@ -258,7 +254,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
     std::scoped_lock lLock(mTfIdSizesLock);
 
     if (mTfIdSizes.count(pTfId) != 1) {
-      DDLOG(fair::Severity::ERROR) << "TimeFrame buffer size increase error: No TimeFrame with ID " << pTfId;
+      DDLOGF(fair::Severity::ERROR, "TimeFrame buffer size increase error: No such TimeFrame. tf_id=={}", pTfId);
       return false;
     }
 
@@ -276,7 +272,8 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
   return true;
 }
 
-::grpc::Status TfBuilderRpcImpl::BuildTfRequest(::grpc::ServerContext* /*context*/, const TfBuildingInformation* request, BuildTfResponse* response)
+::grpc::Status TfBuilderRpcImpl::BuildTfRequest(::grpc::ServerContext* /*context*/,
+                                                const TfBuildingInformation* request, BuildTfResponse* response)
 {
   if(!mRunning) {
     response->set_status(BuildTfResponse::ERROR_NOT_RUNNING);
@@ -291,9 +288,9 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
     std::scoped_lock lLock(mTfIdSizesLock);
 
     if (lTfSize > mCurrentTfBufferSize) {
-      DDLOG(fair::Severity::ERROR) << "Request to build TF: " << lTfId
-                 << ", size: " << lTfSize
-                 << ". Available memory: " << mCurrentTfBufferSize;
+      DDLOGF(fair::Severity::ERROR,
+        "Request to build a TimeFrame: Not enough free memory! tf_id={} tf_size={} buffer_size={}",
+        lTfId,lTfSize, mCurrentTfBufferSize);
 
       response->set_status(BuildTfResponse::ERROR_NOMEM);
       return ::grpc::Status::OK;

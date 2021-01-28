@@ -191,7 +191,7 @@ void ReadoutDevice::InfoThread()
     std::this_thread::sleep_for(2s);
   }
 
-  DDLOGF(fair::Severity::trace, "Exiting Info thread...");
+  DDLOGF(fair::Severity::DEBUG, "Exiting Info thread...");
 }
 
 }

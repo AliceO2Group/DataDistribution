@@ -36,7 +36,7 @@ void TfSchedulerInstanceRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, 
   assert(!mServer);
   mServer = lSrvBuilder.BuildAndStart();
 
-  DDLOG(fair::Severity::INFO) << "gRPC server listening on : " << pRpcSrvBindIp << ":" << lRealPort;
+  DDLOGF(fair::Severity::INFO, "gRPC server is staretd. server_ep={}:{}", pRpcSrvBindIp, lRealPort);
 }
 
 void TfSchedulerInstanceRpcImpl::start()
@@ -64,10 +64,10 @@ void TfSchedulerInstanceRpcImpl::stop()
   }
 }
 
-
-::grpc::Status TfSchedulerInstanceRpcImpl::NumStfSendersInPartitionRequest(::grpc::ServerContext* /*context*/, const ::google::protobuf::Empty* /*request*/, ::o2::DataDistribution::NumStfSendersInPartitionResponse* response)
+::grpc::Status TfSchedulerInstanceRpcImpl::NumStfSendersInPartitionRequest(::grpc::ServerContext* /*context*/,
+  const ::google::protobuf::Empty* /*request*/, ::o2::DataDistribution::NumStfSendersInPartitionResponse* response)
 {
-  DDLOG(fair::Severity::TRACE) << "gRPC server: NumStfSendersInPartitionRequest";
+  DDLOGF(fair::Severity::DEBUG, "gRPC server: NumStfSendersInPartitionRequest");
 
   response->set_num_stf_senders(mPartitionInfo.mStfSenderIdList.size());
 
@@ -76,9 +76,11 @@ void TfSchedulerInstanceRpcImpl::stop()
 
 
 
-::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderConnectionRequest(::grpc::ServerContext* /*context*/, const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::TfBuilderConnectionResponse* response)
+::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderConnectionRequest(::grpc::ServerContext* /*context*/,
+  const ::o2::DataDistribution::TfBuilderConfigStatus* request,
+  ::o2::DataDistribution::TfBuilderConnectionResponse* response)
 {
-  DDLOG(fair::Severity::TRACE) << "gRPC server: TfBuilderConnectionRequest";
+  DDLOGF(fair::Severity::DEBUG, "gRPC server: TfBuilderConnectionRequest");
 
   mConnManager.connectTfBuilder(*request, *response /*out*/);
 
@@ -87,48 +89,44 @@ void TfSchedulerInstanceRpcImpl::stop()
 
 
 
-::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderDisconnectionRequest(::grpc::ServerContext* /*context*/, const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::StatusResponse* response)
+::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderDisconnectionRequest(::grpc::ServerContext* /*context*/,
+  const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::StatusResponse* response)
 {
-  DDLOG(fair::Severity::TRACE) << "gRPC server: TfBuilderDisconnectionRequest";
+  DDLOGF(fair::Severity::DEBUG, "gRPC server: TfBuilderDisconnectionRequest");
 
   mConnManager.disconnectTfBuilder(*request, *response /*out*/);
 
   return Status::OK;
 }
 
-::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderUpdate(::grpc::ServerContext* /*context*/, const ::o2::DataDistribution::TfBuilderUpdateMessage* request, ::google::protobuf::Empty* /*response*/)
+::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderUpdate(::grpc::ServerContext* /*context*/,
+  const ::o2::DataDistribution::TfBuilderUpdateMessage* request, ::google::protobuf::Empty* /*response*/)
 {
   static std::atomic_uint64_t sTfBuilderUpdates = 0;
-  if (++sTfBuilderUpdates % 10000 == 0) {
-    DDLOG(fair::Severity::DEBUG) << "gRPC server: TfBuilderDisconnectionRequest: " << request->info().process_id() << ", total : " << sTfBuilderUpdates;
-  }
+
+  sTfBuilderUpdates++;
+  DDLOGF_RL(3000, fair::Severity::DEBUG, "gRPC server: TfBuilderUpdate. tfb_id={} total={}",
+    request->info().process_id(), sTfBuilderUpdates);
 
   mTfBuilderInfo.updateTfBuilderInfo(*request);
 
   return Status::OK;
 }
 
-::grpc::Status TfSchedulerInstanceRpcImpl::StfSenderStfUpdate(::grpc::ServerContext* /*context*/, const ::o2::DataDistribution::StfSenderStfInfo* request, ::o2::DataDistribution::SchedulerStfInfoResponse* response)
+::grpc::Status TfSchedulerInstanceRpcImpl::StfSenderStfUpdate(::grpc::ServerContext* /*context*/,
+  const ::o2::DataDistribution::StfSenderStfInfo* request, ::o2::DataDistribution::SchedulerStfInfoResponse* response)
 {
   static std::atomic_uint64_t sStfUpdates = 0;
-  if (++sStfUpdates % 1000 == 0) {
-    DDLOG(fair::Severity::DEBUG) << "gRPC server: StfSenderStfUpdate from: " <<  request->info().process_id() << ", total : " << sStfUpdates;
-  }
 
-  //
+  sStfUpdates++;
+  DDLOGF_RL(3000, fair::Severity::DEBUG, "gRPC server: StfSenderStfUpdate. stfs_id={} total={}",
+    request->info().process_id(), sStfUpdates);
+
   response->Clear();
   mStfInfo.addStfInfo(*request, *response /*out*/);
 
-  // if (sStfUpdates % 1000 == 0) {
-  //   DDLOG(fair::Severity::DEBUG) << "gRPC server: StfSenderStfUpdate::Done";
-  // }
-
   return Status::OK;
 }
-
-
-
-
 
 
 }

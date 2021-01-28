@@ -19,6 +19,7 @@
 
 #include <fairmq/tools/Unique.h>
 
+#include <algorithm>
 #include <condition_variable>
 #include <stdexcept>
 
@@ -96,8 +97,11 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
   // create a socket and connect
   auto transportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq");
 
+  auto lChanName = "tf_builder_" + pTfBuilderId;
+  std::replace(lChanName.begin(), lChanName.end(),'.', '_');
+
   auto lNewChannel = std::make_unique<FairMQChannel>(
-    "tf_builder_" + pTfBuilderId ,  // name
+    lChanName ,              // name
     "pair",                  // type
     "connect",               // method
     pEndpoint,               // address (TODO: this should only ever be ib interface)
@@ -198,7 +202,7 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
 
 void StfSenderOutput::StfSchedulerThread()
 {
-  DDLOGF(fair::Severity::INFO, "StfSchedulerThread: Starting...");
+  DDLOGF(fair::Severity::INFO, "StfSchedulerThread: Starting.");
   // queue the Stf to the appropriate EPN queue
   std::unique_ptr<SubTimeFrame> lStf;
 
@@ -263,7 +267,7 @@ void StfSenderOutput::StfSchedulerThread()
     }
   }
 
-  DDLOGF(fair::Severity::TRACE, "StfSchedulerThread: Exiting...");
+  DDLOGF(fair::Severity::DEBUG, "StfSchedulerThread: Exiting.");
 }
 
 void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::string &pTfBuilderId, StfDataResponse &pRes)

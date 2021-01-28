@@ -78,7 +78,7 @@ void TfSchedulerDevice::ResetTask()
   mSchedulerInstances.clear();
 
 
-  DDLOG(fair::Severity::INFO) << "ResetTask() done... ";
+  DDLOGF(fair::Severity::DEBUG, "ResetTask() done.");
 }
 
 bool TfSchedulerDevice::ConditionalRun()
@@ -100,10 +100,10 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
 
     // check for new requests
     PartitionRequest lNewPartitionRequest;
-    // DDLOG(fair::Severity::DEBUG) << "Checking for new partition creation requests";
+    DDLOGF_RL(2000, fair::Severity::DEBUG, "Checking for new partition creation requests.");
     if (mDiscoveryConfig->getNewPartitionRequest(lNewPartitionRequest)) {
       // new request
-      DDLOG(fair::Severity::INFO) << "Request for starting new partition: " << lNewPartitionRequest.mPartitionId;
+      DDLOGF(fair::Severity::INFO, "Request for starting a new partition. partition={}", lNewPartitionRequest.mPartitionId);
 
       // check if we already have instance for the requested partition
       if (mSchedulerInstances.count(lNewPartitionRequest.mPartitionId) == 0) {
@@ -121,9 +121,9 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
           auto &lNewInstance = lNewInstIt->second;
           lNewInstance->start();
         }
-        DDLOG(fair::Severity::DEBUG) << "Created new scheduler instance for partition: " << lNewPartitionRequest.mPartitionId;
+        DDLOGF(fair::Severity::INFO, "Created new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
       } else {
-        DDLOG(fair::Severity::DEBUG) << "Already have a scheduler instance for partition: " << lNewPartitionRequest.mPartitionId;
+        DDLOGF(fair::Severity::ERROR, "Scheduler instance already exists. partition={}",lNewPartitionRequest.mPartitionId);
       }
 
 
@@ -132,7 +132,7 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
     std::this_thread::sleep_for(2000ms);
   }
 
-  DDLOG(fair::Severity::INFO) << "Exiting TfSchedulerServiceThread...";
+  DDLOGF(fair::Severity::DEBUG, "Exiting TfSchedulerServiceThread.");
 }
 
 }

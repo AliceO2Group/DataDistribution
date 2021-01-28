@@ -77,7 +77,7 @@ mRunning = false;
   mBuilderThreads.clear();
   mBuilderInputQueues.clear();
 
-  DDLOGF(fair::Severity::trace, "INPUT INTERFACE: Stopped.");
+  DDLOGF(fair::Severity::DEBUG, "INPUT INTERFACE: Stopped.");
 }
 
 /// Receiving thread
@@ -165,11 +165,11 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       mBuilderInputQueues[lReadoutHdr.mTimeFrameId % mNumBuilders].push(std::move(lReadoutMsgs));
     }
   } catch (std::runtime_error& e) {
-    DDLOGF(fair::Severity::ERROR, "Input channel receive failed. Stopping input thread...");
+    DDLOGF(fair::Severity::ERROR, "Input channel receive failed. Stopping input thread.");
     return;
   }
 
-  DDLOGF(fair::Severity::trace, "Exiting the input thread...");
+  DDLOGF(fair::Severity::DEBUG, "Exiting the input thread.");
 }
 
 /// StfBuilding thread
@@ -349,7 +349,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       }
 
       if (!lErrorWhileAdding && (lAdded != lReadoutMsgs.size() - 1) ) {
-        DDLOGF(fair::Severity::ERROR, "BUG: Not all received HBFrames added to the STF...");
+        DDLOGF(fair::Severity::ERROR, "BUG: Not all received HBFrames added to the STF.");
       }
 
       // check if this was the last message of an STF
@@ -358,7 +358,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       }
     }
 
-  DDLOGF(fair::Severity::trace, "Exiting StfBuilder thread...");
+  DDLOGF(fair::Severity::DEBUG, "Exiting StfBuilder thread.");
 }
 
 }

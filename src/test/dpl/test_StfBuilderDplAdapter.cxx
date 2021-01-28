@@ -81,7 +81,7 @@ WorkflowSpec defineDataProcessing(ConfigContext const& specs)
               const auto* msgHdr = o2::header::get<o2::header::DataHeader*>(itInputs.header);
 
               o2::DataDistribution::EquipmentIdentifier lId = *msgHdr;
-              DDLOG(fair::Severity::INFO) << "Equipment identifier: " << lId.info() << " Payload size: " << msgHdr->payloadSize;
+              DDLOGF(fair::Severity::INFO, "Equipment identifier: {}, Payload size: {}", lId.info(), msgHdr->payloadSize);
             }
           }
         } } });

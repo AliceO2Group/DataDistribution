@@ -125,7 +125,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
   using namespace std::chrono_literals;
 
   DataDistLogger::SetThreadName("TfBuilder::HousekeepingThread");
-  DDLOGF(fair::Severity::TRACE, "Starting TfBuilderInfo-Housekeeping thread.");
+  DDLOGF(fair::Severity::DEBUG, "Starting TfBuilderInfo-Housekeeping thread.");
 
   std::vector<std::string> lIdsToErase;
 
@@ -165,7 +165,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
     }
   }
 
-  DDLOGF(fair::Severity::TRACE, "Exiting TfBuilderInfo-Housekeeping thread.");
+  DDLOGF(fair::Severity::DEBUG, "Exiting TfBuilderInfo-Housekeeping thread.");
 }
 
 }
