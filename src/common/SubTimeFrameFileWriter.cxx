@@ -124,7 +124,7 @@ SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pF
       mInfoFile << impl::sInfoToHdrString() << '\n';
     }
   } catch (std::ifstream::failure& eOpenErr) {
-    DDLOG(fair::Severity::ERROR) << "Failed to open/create TF file for writing. Error: " << eOpenErr.what();
+    DDLOGF(fair::Severity::ERROR, "Failed to open/create TF file for writing. error={}", eOpenErr.what());
     throw eOpenErr;
   }
 }
@@ -137,9 +137,9 @@ SubTimeFrameFileWriter::~SubTimeFrameFileWriter()
       mInfoFile.close();
     }
   } catch (std::ifstream::failure& eCloseErr) {
-    DDLOG(fair::Severity::ERROR) << "Closing TF file failed. Error: " << eCloseErr.what();
+    DDLOGF(fair::Severity::ERROR, "Closing TF file failed. error={}", eCloseErr.what());
   } catch (...) {
-    DDLOG(fair::Severity::ERROR) << "Closing TF file failed.";
+    DDLOGF(fair::Severity::ERROR, "Closing TF file failed.");
   }
 }
 
@@ -197,7 +197,7 @@ std::uint64_t SubTimeFrameFileWriter::getSizeInFile() const
 std::uint64_t SubTimeFrameFileWriter::write(const SubTimeFrame& pStf)
 {
   if (!mFile.good()) {
-   DDLOG(fair::Severity::WARNING) << "Error while writing a TF to file. (bad stream state)";
+    DDLOGF(fair::Severity::ERROR, "Error while writing a TF to file. (bad stream state)");
     return std::uint64_t(0);
   }
 
@@ -245,7 +245,7 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
     mFile.flush();
 
   } catch (const std::ios_base::failure& eFailExc) {
-    DDLOG(fair::Severity::ERROR) << "Writing to file failed. Error: " << eFailExc.what();
+    DDLOGF(fair::Severity::ERROR, "Writing to file failed. error={}", eFailExc.what());
     return std::uint64_t(0);
   }
 
@@ -314,7 +314,7 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
       }
       mInfoFile.flush();
     } catch (const std::ios_base::failure& eFailExc) {
-      DDLOG(fair::Severity::ERROR) << "Writing to file failed. Error: " << eFailExc.what();
+      DDLOGF(fair::Severity::ERROR, "Writing to file failed. error={}", eFailExc.what());
       return std::uint64_t(0);
     }
   }

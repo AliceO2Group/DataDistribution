@@ -68,15 +68,15 @@ void StfSenderDevice::InitTask()
   if (mMaxStfsInPipeline > 0) {
     if (mMaxStfsInPipeline < 4) {
       mMaxStfsInPipeline = 4;
-      DDLOG(fair::Severity::INFO) << "Max buffered SubTimeFrames limit increased to: " << mMaxStfsInPipeline;
+      DDLOGF(fair::Severity::INFO, "Max buffered SubTimeFrames limit increased to {}.", mMaxStfsInPipeline);
     }
     mPipelineLimit = true;
-    DDLOG(fair::Severity::WARN) << "Max buffered SubTimeFrames limit is set to " << mMaxStfsInPipeline
-              << ". Consider increasing it if data loss occurs.";
+    DDLOGF(fair::Severity::WARN, "Max buffered SubTimeFrames limit is set to {}. "
+      "Consider increasing it if data loss occurs.", mMaxStfsInPipeline);
   } else {
     mPipelineLimit = false;
-    DDLOG(fair::Severity::INFO) << "Not imposing limits on number of buffered SubTimeFrames. "
-                 "Possibility of creating back-pressure";
+    DDLOGF(fair::Severity::INFO, "Not imposing limits on number of buffered SubTimeFrames. "
+      "Possibility of creating back-pressure.");
   }
 
   // File sink
@@ -85,8 +85,8 @@ void StfSenderDevice::InitTask()
 
   // check if any outputs enabled
   if (mStandalone && !mFileSink.enabled()) {
-    DDLOG(fair::Severity::WARNING) << "Running in standalone mode and with STF file sink disabled. "
-                    "Data will be lost.";
+    DDLOGF(fair::Severity::WARNING, "Running in standalone mode and with STF file sink disabled. "
+      "Data will be lost.");
   }
 
   // Info thread
