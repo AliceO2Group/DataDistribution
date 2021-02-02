@@ -85,14 +85,14 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
 {
   mEnabled = pFMQProgOpt.GetValue<bool>(OptionKeyStfSinkEnable);
 
-  DDLOG(fair::Severity::INFO) << "(Sub)TimeFrame file sink is " << (mEnabled ? "enabled." : "disabled.");
+  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame file sink is {}", (mEnabled ? "enabled." : "disabled."));
 
   if (!mEnabled)
     return true;
 
   mRootDir = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSinkDir);
   if (mRootDir.length() == 0) {
-    DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame file sink directory must be specified";
+    DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink directory must be specified");
     return false;
   }
 
@@ -106,14 +106,14 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   namespace bfs = boost::filesystem;
   bfs::path lDirPath(mRootDir);
   if (!bfs::is_directory(lDirPath)) {
-    DDLOG(fair::Severity::ERROR) << "(Sub)TimeFrame file sink directory does not exist";
+    DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink directory does not exist");
     return false;
   }
 
   // make a session directory
   mCurrentDir = (bfs::path(mRootDir) / FilePathUtils::getDataDirName(mRootDir)).string();
   if (!bfs::create_directory(mCurrentDir)) {
-    DDLOG(fair::Severity::ERROR) << "Directory '" << mCurrentDir << "' for (Sub)TimeFrame file sink cannot be created";
+    DDLOGF(fair::Severity::ERROR, "Directory for (Sub)TimeFrame file sink cannot be created. path={}", mCurrentDir);
     return false;
   }
 

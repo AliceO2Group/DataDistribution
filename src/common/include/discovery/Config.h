@@ -130,9 +130,9 @@ public:
   static
   std::string getNetworkIfAddressOption(const FairMQProgOptions& pFMQProgOpt)
   {
-    auto lIf = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryNetInterface);
+    const std::string lIf = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryNetInterface);
     if (lIf.empty()) {
-      DDLOG(fair::Severity::ERROR) << "Network interface for DataDistribution discovery must be provided.";
+      DDLOGF(fair::Severity::ERROR, "Network interface for DataDistribution discovery must be provided.");
       throw std::invalid_argument("Network interface not provided.");
     }
 
@@ -141,12 +141,12 @@ public:
     try {
       lAddr = fair::mq::tools::getInterfaceIP(lIf);
     } catch (...) {
-      DDLOG(fair::Severity::ERROR) << "Could not determine IP address for network interface " << lIf;
+      DDLOGF(fair::Severity::ERROR, "Could not determine IP address for network interface. iface={}", lIf);
       throw std::invalid_argument("Error while looking up address for interface " + lIf);
     }
 
     if (lAddr.empty()) {
-      DDLOG(fair::Severity::ERROR) << "Could not determine IP address for network interface " << lIf;
+      DDLOGF(fair::Severity::ERROR, "Could not determine IP address for network interface. iface={}", lIf);
       throw std::invalid_argument("Could not find address for interface " + lIf);
     }
 
@@ -158,8 +158,8 @@ public:
   {
     auto lOpt = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryEndpoint);
     if (lOpt.empty()) {
-      DDLOG(fair::Severity::ERROR) << "Endpoint for DataDistribution discovery must be provided.";
-      DDLOG(fair::Severity::ERROR) << "Connection to local endpoint will be attempted... Not suitable for production!";
+      DDLOGF(fair::Severity::WARNING, "Endpoint for DataDistribution discovery must be provided.");
+      DDLOGF(fair::Severity::WARNING, "Connection to local endpoint will be attempted... Not suitable for production!");
     }
     return lOpt;
   }
@@ -185,7 +185,6 @@ public:
   explicit Config(const ProcessType pProcessType): mProcessType(pProcessType) {
     // setKV("type", std::string(pProcessType));
   }
-
 
   const ProcessType getProcessType() const { return mProcessType; }
 

@@ -48,7 +48,7 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
 
     auto lDataHeaderMsg = mChan.NewMessage(lHdrStack.size());
     if (!lDataHeaderMsg) {
-      DDLOG(fair::Severity::ERROR) << "Allocation error: Stf DataHeader::size: " << sizeof(DataHeader);
+      DDLOGF(fair::Severity::ERROR, "Allocation error: Stf DataHeader. size={}", sizeof(DataHeader));
       throw std::bad_alloc();
     }
 
@@ -56,7 +56,7 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
 
     auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
     if (!lDataMsg) {
-      DDLOG(fair::Severity::ERROR) << "Allocation error: Stf::Header::size: " << sizeof(SubTimeFrame::Header);
+      DDLOGF(fair::Severity::ERROR, "Allocation error: Stf::Header. size={}", sizeof(SubTimeFrame::Header));
       throw std::bad_alloc();
     }
     std::memcpy(lDataMsg->GetData(), &pStf.header(), sizeof(SubTimeFrame::Header));
@@ -101,10 +101,10 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
   pStf->accept(*this);
 
 #if 0
-  DDLOG(fair::Severity::DEBUG) << "Content of the Stf:";
+  DDLOGF(fair::Severity::DEBUG, "Content of the Stf:");
   uint64_t lMsgIdx = 0;
   for (auto lM = mMessages.cbegin(); lM != mMessages.cend(); ) {
-    DDLOG(fair::Severity::DEBUG) << "  o2: message " << lMsgIdx++;
+    DDLOGF(fair::Severity::DEBUG, "  o2: message #{}", lMsgIdx++);
     o2::header::hexDump("o2 header", (*lM)->GetData(), (*lM)->GetSize());
     lM++;
     o2::header::hexDump("o2 payload", (*lM)->GetData(), std::clamp((*lM)->GetSize(), std::size_t(0), std::size_t(256)) );
