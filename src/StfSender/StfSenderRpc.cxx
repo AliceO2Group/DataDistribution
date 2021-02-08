@@ -29,7 +29,7 @@ void StfSenderRpcImpl::start(StfSenderOutput *pOutput, const std::string pRpcSrv
 {
   mOutput = pOutput;
 
-  DDLOGF(fair::Severity::INFO, "Starting the gRPC server... ip={}", pRpcSrvBindIp);
+  IDDLOG("Starting the gRPC server... ip={}", pRpcSrvBindIp);
 
   ServerBuilder lSrvBuilder;
   lSrvBuilder.AddListeningPort(pRpcSrvBindIp + ":0", grpc::InsecureServerCredentials(), &lRealPort);
@@ -38,7 +38,7 @@ void StfSenderRpcImpl::start(StfSenderOutput *pOutput, const std::string pRpcSrv
   assert(!mServer);
   mServer = lSrvBuilder.BuildAndStart();
 
-  DDLOGF(fair::Severity::INFO, "gRPC server listening on {}:{}", pRpcSrvBindIp, lRealPort);
+  IDDLOG("gRPC server listening on {}:{}", pRpcSrvBindIp, lRealPort);
 }
 
 void StfSenderRpcImpl::stop()
@@ -57,8 +57,7 @@ void StfSenderRpcImpl::stop()
   const std::string lTfBuilderEndpoint = request->endpoint();
 
   // handle the request
-  DDLOGF(fair::Severity::DEBUG, "Requested to connect to TfBuilder. tfb_id={} tfb_ep={}",
-    lTfBuilderId, lTfBuilderEndpoint);
+  DDDLOG("Requested to connect to TfBuilder. tfb_id={} tfb_ep={}", lTfBuilderId, lTfBuilderEndpoint);
   response->set_status(OK);
 
   const auto lStatus = mOutput->connectTfBuilder(lTfBuilderId, lTfBuilderEndpoint);
@@ -86,8 +85,7 @@ void StfSenderRpcImpl::stop()
   const std::string lTfBuilderEndpoint = request->endpoint();
 
   // handle the request
-  DDLOGF(fair::Severity::DEBUG, "Requested to disconnect from TfBuilder. tfb_id={} tfb_ep={}",
-    lTfBuilderId, lTfBuilderEndpoint);
+  DDDLOG("Requested to disconnect from TfBuilder. tfb_id={} tfb_ep={}", lTfBuilderId, lTfBuilderEndpoint);
   response->set_status(0);
 
   if (!mOutput->disconnectTfBuilder(lTfBuilderId, lTfBuilderEndpoint)) {

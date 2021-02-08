@@ -110,7 +110,7 @@ class StfBuilderDevice : public DataDistDevice,
     I().mPaused = false;
     if (I().mFileSource) {
       I().mFileSource->resume();
-      DDLOGF(fair::Severity::INFO, "Restarting file source.");
+      IDDLOG("Restarting file source.");
     }
     I().mRestartRateCounter = true;
   }
@@ -118,7 +118,7 @@ class StfBuilderDevice : public DataDistDevice,
     I().mPaused = true;
     if (I().mFileSource) {
       I().mFileSource->pause();
-      DDLOGF(fair::Severity::INFO, "Pausing file source.");
+      IDDLOG("Pausing file source.");
     }
   }
 
@@ -151,7 +151,7 @@ class StfBuilderDevice : public DataDistDevice,
           // DROP policy in StfBuilder is to keep most current STFs. This will ensure that all
           // StfBuilders have the same set of STFs ready for distribution
 
-          DDLOGF_RL(500, fair::Severity::WARNING, "Dropping oldest STF due to reaching the maximum number of buffered "
+          DDLOGF_RL(500, DataDistSeverity::warning, "Dropping oldest STF due to reaching the maximum number of buffered "
             "STFs in the process ({}). Consider increasing the limit, or reducing the input data rate.",
             I().mMaxStfsInPipeline);
 
@@ -179,7 +179,7 @@ class StfBuilderDevice : public DataDistDevice,
     }
 
     if (!(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn)) {
-      DDLOGF(fair::Severity::ERROR, "Stage error! next_stage={}", lNextStage);
+      EDDLOG("Stage error! next_stage={}", lNextStage);
     }
 
     assert(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn);

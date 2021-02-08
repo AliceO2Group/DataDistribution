@@ -78,7 +78,7 @@ void TfSchedulerDevice::ResetTask()
   mSchedulerInstances.clear();
 
 
-  DDLOGF(fair::Severity::DEBUG, "ResetTask() done.");
+  DDDLOG("ResetTask() done.");
 }
 
 bool TfSchedulerDevice::ConditionalRun()
@@ -100,10 +100,10 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
 
     // check for new requests
     PartitionRequest lNewPartitionRequest;
-    DDLOGF_RL(2000, fair::Severity::DEBUG, "Checking for new partition creation requests.");
+    DDLOGF_RL(2000, DataDistSeverity::debug, "Checking for new partition creation requests.");
     if (mDiscoveryConfig->getNewPartitionRequest(lNewPartitionRequest)) {
       // new request
-      DDLOGF(fair::Severity::INFO, "Request for starting a new partition. partition={}", lNewPartitionRequest.mPartitionId);
+      IDDLOG("Request for starting a new partition. partition={}", lNewPartitionRequest.mPartitionId);
 
       // check if we already have instance for the requested partition
       if (mSchedulerInstances.count(lNewPartitionRequest.mPartitionId) == 0) {
@@ -121,9 +121,9 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
           auto &lNewInstance = lNewInstIt->second;
           lNewInstance->start();
         }
-        DDLOGF(fair::Severity::INFO, "Created new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
+        IDDLOG("Created new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
       } else {
-        DDLOGF(fair::Severity::ERROR, "Scheduler instance already exists. partition={}",lNewPartitionRequest.mPartitionId);
+        EDDLOG("Scheduler instance already exists. partition={}",lNewPartitionRequest.mPartitionId);
       }
 
 
@@ -132,7 +132,7 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
     std::this_thread::sleep_for(2000ms);
   }
 
-  DDLOGF(fair::Severity::DEBUG, "Exiting TfSchedulerServiceThread.");
+  DDDLOG("Exiting TfSchedulerServiceThread.");
 }
 
 }

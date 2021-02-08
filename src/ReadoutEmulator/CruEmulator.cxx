@@ -37,12 +37,12 @@ void CruLinkEmulator::linkReadoutThread()
   const auto cNumDmaChunkPerSuperpage = std::min(size_t(256), size_t(cSuperpageSize / mDmaChunkSize));
   constexpr int64_t cStfTimeUs = std::chrono::microseconds(std::uint64_t(1000000) * 256 / cHBFrameFreq).count();
 
-  DDLOGF(fair::Severity::DEBUG, "Superpage size: {}", cSuperpageSize);
-  DDLOGF(fair::Severity::DEBUG, "mDmaChunkSize size: {}", mDmaChunkSize);
-  DDLOGF(fair::Severity::DEBUG, "HBFrameSize size: {}", cHBFrameSize);
-  DDLOGF(fair::Severity::DEBUG, "StfLinkSize size: {}", cStfLinkSize);
-  DDLOGF(fair::Severity::DEBUG, "cNumDmaChunkPerSuperpage: {}", cNumDmaChunkPerSuperpage);
-  DDLOGF(fair::Severity::DEBUG, "Sleep time us: {}", cStfTimeUs);
+  DDDLOG("Superpage size: {}", cSuperpageSize);
+  DDDLOG("mDmaChunkSize size: {}", mDmaChunkSize);
+  DDDLOG("HBFrameSize size: {}", cHBFrameSize);
+  DDDLOG("StfLinkSize size: {}", cStfLinkSize);
+  DDDLOG("cNumDmaChunkPerSuperpage: {}", cNumDmaChunkPerSuperpage);
+  DDDLOG("Sleep time us: {}", cStfTimeUs);
 
   // os might sleep much longer than requested
   // keep count of transmitted pages and adjust when needed
@@ -63,7 +63,7 @@ void CruLinkEmulator::linkReadoutThread()
     }
 
     if (lStfToSend > 1 || lStfToSend < 0) {
-      DDLOGF(fair::Severity::WARNING, "Data producer is running slow. StfBacklog: {}", lStfToSend);
+      WDDLOG("Data producer is running slow. StfBacklog: {}", lStfToSend);
     }
 
     const std::int64_t lPagesToSend = std::max(lStfToSend, int64_t(lStfToSend * (cStfLinkSize + cSuperpageSize - 1) / cSuperpageSize));
@@ -139,7 +139,7 @@ void CruLinkEmulator::linkReadoutThread()
     }
   }
 
-  DDLOGF(fair::Severity::DEBUG, "Exiting ReadoutEmulator thread.");
+  DDDLOG("Exiting ReadoutEmulator thread.");
 }
 
 /// Start "data taking" thread

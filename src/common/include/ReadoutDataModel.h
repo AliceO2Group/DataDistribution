@@ -215,8 +215,7 @@ public:
         sRDHReader = std::make_unique<RDHv6Reader>();
         break;
       default:
-        DDLOGF(fair::Severity::error, "Unknown RDH version! version={}"
-          "Supported versions are RDHv3, RDHv4, RDHv5, and RDHv6", pVer);
+        EDDLOG("Unknown RDH version! version={} Supported versions are RDHv3, RDHv4, RDHv5, and RDHv6", pVer);
         throw std::runtime_error("Unknown RDH version");
         break;
     }
@@ -227,7 +226,7 @@ public:
     mSize(size)
   {
     if (!sRDHReader) {
-      DDLOGF(fair::Severity::WARNING, "RDH version not initialized manually! Using the value from the first data packet.");
+      WDDLOG("RDH version not initialized manually! Using the value from the first data packet.");
       if (size > 0) {
         Initialize(data[0]);
       } else {

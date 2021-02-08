@@ -56,7 +56,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
   static thread_local std::vector<bool> lRemoveBlocks;
 
   if (!mRunning) {
-    DDLOGF(fair::Severity::WARNING, "Adding HBFrames while STFBuilder is not running!");
+    WDDLOG("Adding HBFrames while STFBuilder is not running!");
     return;
   }
 
@@ -70,7 +70,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     const auto R = RDHReader(pHbFramesBegin[0]);
     mStf->updateFirstOrbit(R.getOrbit());
   } catch (...) {
-    DDLOGF(fair::Severity::ERROR, "Error getting RDHReader instace. Not using {} HBFs", pHBFrameLen);
+    EDDLOG("Error getting RDHReader instace. Not using {} HBFs", pHBFrameLen);
     return;
   }
 
@@ -123,13 +123,13 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
           pHbFramesBegin[i]->GetSize());
 
         if (!lOk && (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckDrop)) {
-          DDLOGF(fair::Severity::WARNING, "RDH SANITY CHECK: Removing data block");
+          WDDLOG("RDH SANITY CHECK: Removing data block");
 
           lRemoveBlocks[i] = true;
 
         } else if (!lOk && (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckPrint)) {
 
-          DDLOGF(fair::Severity::INFO, "Printing data blocks of update with TF ID={} Lik ID={}",
+          IDDLOG("Printing data blocks of update with TF ID={} Lik ID={}",
             pHdr.mTimeFrameId, unsigned(pHdr.mLinkId));
 
           // dump the data block, skipping data
@@ -149,7 +149,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
               reinterpret_cast<char*>(pHbFramesBegin[i]->GetData()) + lCurrentDataIdx,
               std::size_t(std::min(std::size_t(64), lDataSizeLeft)));
 
-            DDLOGF(fair::Severity::INFO, "RDH info CRU={} Endpoint={} Link={}", lCru, lEp, lLink);
+            IDDLOG("RDH info CRU={} Endpoint={} Link={}", lCru, lEp, lLink);
 
             const auto R = RDHReader(
               reinterpret_cast<const char*>(pHbFramesBegin[i]->GetData()) + lCurrentDataIdx,
@@ -207,7 +207,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     }
 
     if (!lHdrMsg) {
-      DDLOGF(fair::Severity::ERROR, "Allocation error: HbFrame::DataHeader={}", sizeof(DataHeader));
+      EDDLOG("Allocation error: HbFrame::DataHeader={}", sizeof(DataHeader));
       throw std::bad_alloc();
     }
 
@@ -256,7 +256,7 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
         const auto &lHeader = lStfDataIter.mHeader;
 
         if (!lHeader || lHeader->GetSize() < sizeof(DataHeader)) {
-          DDLOGF(fair::Severity::ERROR, "File data invalid. Missing DataHeader.");
+          EDDLOG("File data invalid. Missing DataHeader.");
           return;
         }
 
@@ -273,7 +273,7 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
           // get the DataHeader
           auto lDHdr = o2::header::get<o2::header::DataHeader*>(lHeader->GetData(), lHeader->GetSize());
           if (lDHdr == nullptr) {
-            DDLOGF(fair::Severity::ERROR, "File data invalid. DataHeader not found in the header stack.");
+            EDDLOG("File data invalid. DataHeader not found in the header stack.");
             return;
           }
 
@@ -337,7 +337,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
         const auto &lHeader = lStfDataIter.mHeader;
 
         if (!lHeader || lHeader->GetSize() < sizeof(DataHeader)) {
-          DDLOGF(fair::Severity::ERROR, "Adapting TF headers: Missing DataHeader.");
+          EDDLOG("Adapting TF headers: Missing DataHeader.");
           continue;
         }
 
@@ -361,7 +361,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
           );
 
           if (lDHdr == nullptr) {
-            DDLOGF(fair::Severity::ERROR, "TimeFrame invalid. DataHeader not found in the header stack.");
+            EDDLOG("TimeFrame invalid. DataHeader not found in the header stack.");
             continue;
           }
 

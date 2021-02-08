@@ -48,10 +48,10 @@ static bool sResetDeviceCalled = false;
 
 StfBuilderDevice::~StfBuilderDevice()
 {
-  DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::~StfBuilderDevice()");
+  DDDLOG("StfBuilderDevice::~StfBuilderDevice()");
 
   if (!sResetDeviceCalled) {
-    DDLOGF(fair::Severity::ERROR, "StfBuilderDevice::Reset() was not called. Performing cleanup");
+    EDDLOG("StfBuilderDevice::Reset() was not called. Performing cleanup");
     // clear all Stfs from the pipeline before the transport is deleted
     stopPipeline();
     clearPipeline();
@@ -63,7 +63,7 @@ StfBuilderDevice::~StfBuilderDevice()
 
 void StfBuilderDevice::Init()
 {
-  DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::Init()");
+  DDDLOG("StfBuilderDevice::Init()");
   mI = std::make_unique<StfBuilderInstance>();
   mMemI = std::make_unique<MemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
 
@@ -74,7 +74,7 @@ void StfBuilderDevice::Init()
 
 void StfBuilderDevice::Reset()
 {
-  DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::Reset()");
+  DDDLOG("StfBuilderDevice::Reset()");
   // clear all Stfs from the pipeline before the transport is deleted
   stopPipeline();
   clearPipeline();
@@ -116,20 +116,18 @@ void StfBuilderDevice::InitTask()
   if (I().mMaxStfsInPipeline > 0) {
     if (I().mMaxStfsInPipeline < 4) {
       I().mMaxStfsInPipeline = 4;
-      DDLOGF(fair::Severity::WARNING, "Configuration: max buffered SubTimeFrames limit increased to {}",
-        I().mMaxStfsInPipeline);
+      WDDLOG("Configuration: max buffered SubTimeFrames limit increased to {}", I().mMaxStfsInPipeline);
     }
     I().mPipelineLimit = true;
-    DDLOGF(fair::Severity::WARNING, "Configuration: Max buffered SubTimeFrames limit is set to {}."
+    WDDLOG("Configuration: Max buffered SubTimeFrames limit is set to {}."
       " Consider increasing it if data loss occurs.", I().mMaxStfsInPipeline);
   } else {
     I().mPipelineLimit = false;
-    DDLOGF(fair::Severity::info, "Not imposing limits on number of buffered SubTimeFrames. "
-      "Possibility of creating back-pressure.");
+    IDDLOG("Not imposing limits on number of buffered SubTimeFrames. Possibility of creating back-pressure.");
   }
 
   // Limited number of STF?
-  DDLOGF(fair::Severity::INFO, "Configuration: Number of built SubTimeFrames is {}",
+  IDDLOG("Configuration: Number of built SubTimeFrames is {}",
     I().mMaxBuiltStfs == 0 ? "not limited" : ("limited to " + std::to_string(I().mMaxBuiltStfs)));
 
   // File sink
@@ -146,47 +144,46 @@ void StfBuilderDevice::InitTask()
   if (!I().mFileSource->enabled()) {
     if ((ReadoutDataUtils::sRdhVersion < ReadoutDataUtils::RdhVersion::eRdhVer6) &&
       (ReadoutDataUtils::sSpecifiedDataOrigin == gDataOriginInvalid)) {
-      DDLOGF(fair::Severity::ERROR, "Detector string parameter must be specified when receiving the data from the "
+      EDDLOG("Detector string parameter must be specified when receiving the data from the "
         "readout and not using RDHv6 or greater.");
       std::this_thread::sleep_for(1s); exit(-1);
     } else {
-      DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured detector: {}",
-        ReadoutDataUtils::sSpecifiedDataOrigin.str);
+      IDDLOG("READOUT INTERFACE: Configured detector: {}", ReadoutDataUtils::sSpecifiedDataOrigin.str);
     }
 
     if (ReadoutDataUtils::sRdhVersion == ReadoutDataUtils::RdhVersion::eRdhInvalid) {
-      DDLOGF(fair::Severity::error, "The RDH version must be specified when receiving data from readout.");
+      EDDLOG("The RDH version must be specified when receiving data from readout.");
       std::this_thread::sleep_for(1s); exit(-1);
     } else {
-      DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured RDHv{}", ReadoutDataUtils::sRdhVersion);
+      IDDLOG("READOUT INTERFACE: Configured RDHv{}", ReadoutDataUtils::sRdhVersion);
       RDHReader::Initialize(unsigned(ReadoutDataUtils::sRdhVersion));
     }
 
-    DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured O2 SubSpec mode: {}", to_string(ReadoutDataUtils::sRawDataSubspectype));
+    IDDLOG("READOUT INTERFACE: Configured O2 SubSpec mode: {}", to_string(ReadoutDataUtils::sRawDataSubspectype));
 
     if (ReadoutDataUtils::sRdhSanityCheckMode != ReadoutDataUtils::SanityCheckMode::eNoSanityCheck) {
-      DDLOGF(fair::Severity::info, "Extensive RDH checks enabled. Data that does not meet the criteria will be {}.",
+      IDDLOG("Extensive RDH checks enabled. Data that does not meet the criteria will be {}.",
         (ReadoutDataUtils::sRdhSanityCheckMode == ReadoutDataUtils::eSanityCheckDrop ? "dropped" : "kept"));
     }
 
     if (ReadoutDataUtils::sEmptyTriggerHBFrameFilterring) {
-      DDLOGF(fair::Severity::info, "Filtering of empty HBFrames in triggered mode enabled.");
+      IDDLOG("Filtering of empty HBFrames in triggered mode enabled.");
     }
   }
 
   // Using DPL?
   if (I().mDplChannelName != "" && !I().mStandalone) {
     I().mDplEnabled = true;
-    DDLOGF(fair::Severity::info, "DPL Channel name: {}",  I().mDplChannelName);
+    IDDLOG("DPL Channel name: {}",  I().mDplChannelName);
   } else {
     I().mDplEnabled = false;
     I().mDplChannelName = "";
-    DDLOGF(fair::Severity::info, "Not sending data to DPL.");
+    IDDLOG("Not sending data to DPL.");
   }
 
   // check if output enabled
   if (isStandalone() && !I().mFileSink->enabled()) {
-    DDLOGF(fair::Severity::WARNING, "Running in standalone mode and with STF file sink disabled. Data will be lost.");
+    WDDLOG("Running in standalone mode and with STF file sink disabled. Data will be lost.");
   }
 
   // try to see if channels have been configured
@@ -195,7 +192,7 @@ void StfBuilderDevice::InitTask()
       try {
         GetChannel(I().mInputChannelName);
       } catch(std::exception &) {
-        DDLOGF(fair::Severity::ERROR, "Input channel not configured (from readout.exe) and not running with file source enabled.");
+        EDDLOG("Input channel not configured (from readout.exe) and not running with file source enabled.");
         std::this_thread::sleep_for(1s); exit(-1);
       }
     }
@@ -205,7 +202,7 @@ void StfBuilderDevice::InitTask()
         GetChannel(I().mDplEnabled ? I().mDplChannelName : I().mOutputChannelName);
       }
     } catch(std::exception &) {
-      DDLOGF(fair::Severity::ERROR, "Output channel (to DPL or StfSender) must be configured if not running in stand-alone mode.");
+      EDDLOG("Output channel (to DPL or StfSender) must be configured if not running in stand-alone mode.");
       std::this_thread::sleep_for(1s); exit(-1);
     }
   }
@@ -226,12 +223,12 @@ void StfBuilderDevice::InitTask()
   // info thread
   I().mInfoThread = create_thread_member("stfb_info", &StfBuilderDevice::InfoThread, this);
 
-  DDLOGF(fair::Severity::info, "PreRun() done... ");
+  IDDLOG("PreRun() done... ");
 }
 
 void StfBuilderDevice::ResetTask()
 {
-  DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::ResetTask()");
+  DDDLOG("StfBuilderDevice::ResetTask()");
 
   // Signal ConditionalRun() and other threads to stop
   I().mRunning = false;
@@ -267,7 +264,7 @@ void StfBuilderDevice::ResetTask()
     I().mInfoThread.join();
   }
 
-  DDLOGF(fair::Severity::DEBUG, "StfBuilderDevice::ResetTask() done... ");
+  DDDLOG("StfBuilderDevice::ResetTask() done... ");
 }
 
 
@@ -282,7 +279,7 @@ void StfBuilderDevice::StfOutputThread()
   if (!isStandalone()) {
     // cannot get the channels in standalone mode
     auto& lOutputChan = getOutputChannel();
-    DDLOGF(fair::Severity::info, "StfOutputThread: sending data to channel: {}", lOutputChan.GetName());
+    IDDLOG("StfOutputThread: sending data to channel: {}", lOutputChan.GetName());
 
     if (!dplEnabled()) {
       lStfSerializer = std::make_unique<InterleavedHdrDataSerializer>(lOutputChan);
@@ -302,7 +299,7 @@ void StfBuilderDevice::StfOutputThread()
     // decrement the stf counter
     I().mNumStfs--;
 
-    DDLOGF_RL(2000, fair::Severity::DEBUG, "Sending an STF out. stf_id={} stf_size={} unique_equipments={}",
+    DDLOGF_RL(2000, DataDistSeverity::debug, "Sending an STF out. stf_id={} stf_size={} unique_equipments={}",
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
     // get data size sample
@@ -323,9 +320,9 @@ void StfBuilderDevice::StfOutputThread()
         }
       } catch (std::exception& e) {
         if (IsReadyOrRunningState()) {
-          DDLOGF(fair::Severity::ERROR, "StfOutputThread: exception on send: what={}", e.what());
+          EDDLOG("StfOutputThread: exception on send: what={}", e.what());
         } else {
-          DDLOGF(fair::Severity::info, "StfOutputThread(NOT_RUNNING): shutting down: what={}", e.what());
+          IDDLOG("StfOutputThread(NOT_RUNNING): shutting down: what={}", e.what());
         }
         break;
       }
@@ -351,7 +348,7 @@ void StfBuilderDevice::StfOutputThread()
     // 1. max number of stf set, or
     // 2. file reply used without loop parameter
     if ( (I().mMaxBuiltStfs > 0) && (I().mSentOutStfsTotal == I().mMaxBuiltStfs) ) {
-      DDLOGF(fair::Severity::INFO, "Maximum number of sent SubTimeFrames reached. Exiting.");
+      IDDLOG("Maximum number of sent SubTimeFrames reached. Exiting.");
       break;
     }
   }
@@ -374,15 +371,15 @@ void StfBuilderDevice::StfOutputThread()
     lCompletedMsg.AddPart(lOutputChan.NewMessage());
     lOutputChan.Send(lCompletedMsg);
 
-    DDLOGF(fair::Severity::INFO, "Sent Source Completed message to DPL.");
+    IDDLOG("Sent Source Completed message to DPL.");
     // NOTE: no guarantees this will be sent out
     std::this_thread::sleep_for(2s);
   }
 
   I().mRunning = false; // trigger stop via CondRun()
 
-  DDLOGF(fair::Severity::info, "Output: Stopped SubTimeFrame sending. sent_total={} rate={:.4}", I().mSentOutStfsTotal);
-  DDLOGF(fair::Severity::info, "Exiting StfOutputThread...");
+  IDDLOG("Output: Stopped SubTimeFrame sending. sent_total={} rate={:.4}", I().mSentOutStfsTotal);
+  IDDLOG("Exiting StfOutputThread...");
 }
 
 void StfBuilderDevice::InfoThread()
@@ -398,13 +395,13 @@ void StfBuilderDevice::InfoThread()
       continue;
     }
 
-    DDLOGF(fair::Severity::info, "SubTimeFrame size_mean={} frequency_mean={} sending_time_ms_mean={} queued_stf={}",
+    IDDLOG("SubTimeFrame size_mean={} frequency_mean={} sending_time_ms_mean={} queued_stf={}",
       I().mStfSizeSamples.Mean(), I().mReadoutInterface->StfFreqSamples().Mean(), I().mStfDataTimeSamples.Mean(),
       I().mNumStfs);
-    DDLOGF(fair::Severity::info, "SubTimeFrame sent_total={} rate={:.4}", I().mSentOutStfsTotal, I().mSentOutRate);
+    IDDLOG("SubTimeFrame sent_total={} rate={:.4}", I().mSentOutStfsTotal, I().mSentOutRate);
   }
 
-  DDLOGF(fair::Severity::DEBUG, "Exiting Info thread...");
+  DDDLOG("Exiting Info thread...");
 }
 
 bool StfBuilderDevice::ConditionalRun()
@@ -413,7 +410,7 @@ bool StfBuilderDevice::ConditionalRun()
   std::this_thread::sleep_for(500ms);
 
   if (!I().mRunning) {
-    DDLOGF(fair::Severity::DEBUG, "ConditionalRun() returning false.");
+    DDDLOG("ConditionalRun() returning false.");
   }
 
   return I().mRunning;

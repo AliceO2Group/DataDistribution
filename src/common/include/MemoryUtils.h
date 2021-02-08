@@ -81,14 +81,14 @@ public:
         namespace bfs = boost::filesystem;
         bfs::path lDirPath(lHugetlbfsPath);
         if (!bfs::is_directory(lDirPath)) {
-          DDLOGF(fair::Severity::ERROR, "Hugetlbfs mountpoint does not exist. Not using huge pages. {}={}",
+          EDDLOG("Hugetlbfs mountpoint does not exist. Not using huge pages. {}={}",
             ENV_SHM_PATH, lHugetlbfsPath);
           break;
         }
 
         // check if the hugetlbs is writeable
         if (0 != access(lHugetlbfsPath, W_OK)) {
-          DDLOGF(fair::Severity::ERROR, "Hugetlbfs mountpoint is not writeable. "
+          EDDLOG("Hugetlbfs mountpoint is not writeable. "
             "Make sure the permissions are properly set. {}={}", ENV_SHM_PATH, lHugetlbfsPath);
           break;
         }
@@ -98,7 +98,7 @@ public:
       } while (false);
     }
 
-    DDLOGF(fair::Severity::INFO, "Creating new UnmanagedRegion name={} path={} size={}",
+    IDDLOG("Creating new UnmanagedRegion name={} path={} size={}",
       mSegmentName, lSegmentRoot, pSize);
 
     mRegion = pShmTrans.CreateUnmanagedRegion(
@@ -150,7 +150,7 @@ public:
 
         // weighted average merge ratio
         sMergeRatio = sMergeRatio * 0.75 + double(lMergedBlocks) / double(pBlkVect.size()) * 0.25;
-        DDLOGF_RL(5000, fair::Severity::DEBUG, "Memory segment '{}'::block merging ratio average={:.4}",
+        DDLOGF_RL(5000, DataDistSeverity::debug, "Memory segment '{}'::block merging ratio average={:.4}",
           mSegmentName, sMergeRatio);
       },
       lSegmentRoot.c_str(),
@@ -158,7 +158,7 @@ public:
     );
 
     if (!mRegion) {
-      DDLOGF(fair::Severity::error, "Creation of new memory region failed. name={} size={} path={}",
+      EDDLOG("Creation of new memory region failed. name={} size={} path={}",
       mSegmentName, pSize, lSegmentRoot);
       throw std::bad_alloc();
     }
@@ -178,11 +178,11 @@ public:
         double lDelaySec = std::stod(lShmDelay);
         lDelaySec = std::abs(lDelaySec);
 
-        DDLOGF(fair::Severity::WARNING, "Memory segment '{}': delaying processing for specified={}s",
+        WDDLOG("Memory segment '{}': delaying processing for specified={}s",
           mSegmentName, lDelaySec);
         std::this_thread::sleep_for(std::chrono::duration<double>(lDelaySec));
       } catch (const std::logic_error &e) {
-        DDLOGF(fair::Severity::ERROR, "Memory segment '{}': invalid delay specified={} error={}",
+        EDDLOG("Memory segment '{}': invalid delay specified={} error={}",
           mSegmentName, lShmDelay, e.what());
       }
     }
@@ -233,7 +233,7 @@ protected:
 #if !defined(NDEBUG)
     static const std::thread::id d_sThisId = std::this_thread::get_id();
     if (d_sThisId != std::this_thread::get_id()) {
-      DDLOGF_RL(1000, fair::Severity::ERROR, "Allocation from RegionAllocatorResource {} is not thread safe",
+      DDLOGF_RL(1000, DataDistSeverity::error, "Allocation from RegionAllocatorResource {} is not thread safe",
         mSegmentName);
     }
 #endif
@@ -262,10 +262,10 @@ protected:
       if (!lRet) {
         using namespace std::chrono_literals;
 
-        DDLOGF_RL(1000, fair::Severity::WARNING,
+        DDLOGF_RL(1000, DataDistSeverity::warning,
           "RegionAllocatorResource: waiting to allocate a message. region={} alloc={} region_size={} free={} ",
           mSegmentName, pSize, mRegion->GetSize(), mFree.load(std::memory_order_acquire));
-        DDLOGF_RL(1000, fair::Severity::WARNING, "Memory region '{}' is too small, or there is a large backpressure.",
+        DDLOGF_RL(1000, DataDistSeverity::warning, "Memory region '{}' is too small, or there is a large backpressure.",
           mSegmentName);
 
         std::this_thread::sleep_for(5ms);
@@ -274,7 +274,7 @@ protected:
 
     // check the running again
     if (!mRunning && !lRet) {
-      DDLOGF(fair::Severity::WARNING, "Memory segment '{}' is stopped. No allocations are possible.", mSegmentName);
+      WDDLOG("Memory segment '{}' is stopped. No allocations are possible.", mSegmentName);
       return nullptr;
     }
 
@@ -284,7 +284,7 @@ protected:
     static std::size_t sLogRateLimit = 0;
     if (sLogRateLimit++ % 1024 == 0) {
       const auto lFree = mFree.load(std::memory_order_acquire);
-      DDLOGF_RL(2000, fair::Severity::DEBUG, "DataRegionResource {} memory free={} allocated={}",
+      DDLOGF_RL(2000, DataDistSeverity::debug, "DataRegionResource {} memory free={} allocated={}",
         mSegmentName, lFree, (mSegmentSize - lFree));
     }
 
@@ -352,7 +352,7 @@ private:
       sFragmentation = sFragmentation * 0.75 + double(lFree - mLength)/double(lFree) * 0.25;
       sNumFragments = sNumFragments *0.75 + double(mFrees.size() + 1) * 0.25;
 
-      DDLOGF_RL(5000, fair::Severity::DEBUG, "DataRegionResource {} estimated: free={:.4} num_fragments={:.4} "
+      DDLOGF_RL(5000, DataDistSeverity::debug, "DataRegionResource {} estimated: free={:.4} num_fragments={:.4} "
         "fragmentation={:.4}", mSegmentName, sFree, sNumFragments, sFragmentation);
     }
 
@@ -373,10 +373,10 @@ private:
 #if !defined(NDEBUG)
     if (lIter != mFrees.end()) {
       if (lIter->first <= lData) {
-        DDLOGF(fair::Severity::ERROR, "iter={:p}, data={:p}, Free map:", lIter->first, lData);
+        EDDLOG("iter={:p}, data={:p}, Free map:", lIter->first, lData);
 
         for (const auto &lit : mFrees) {
-          DDLOGF(fair::Severity::ERROR, " iter={:p}, size={}", lit.first, lit.second);
+          EDDLOG(" iter={:p}, size={}", lit.first, lit.second);
         }
       }
       assert(lIter->first > lData); // we cannot have this exact value in the free list
@@ -406,7 +406,7 @@ private:
       auto lIt = mFrees.emplace_hint(lIter, lData, pSize);
 
       if (lIt->second != pSize) {
-        DDLOGF(fair::Severity::ERROR, "BUG: RegionAllocatorResource: REPEATED INSERT!!! "
+        EDDLOG("BUG: RegionAllocatorResource: REPEATED INSERT!!! "
           " {:p} : {}, original size: {}", lIt->first, pSize, lIt->second);
       }
 

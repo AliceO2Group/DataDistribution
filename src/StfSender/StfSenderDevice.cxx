@@ -67,7 +67,7 @@ void StfSenderDevice::InitTask()
   try {
     GetChannel(mInputChannelName, 0);
   } catch (...) {
-    DDLOGF(DataDistSeverity::error, "Requested input channel is not configured. input_chan={}", mInputChannelName);
+    EDDLOG("Requested input channel is not configured. input_chan={}", mInputChannelName);
     std::this_thread::sleep_for(1s); exit(-1);
   }
 
@@ -75,15 +75,14 @@ void StfSenderDevice::InitTask()
   if (mMaxStfsInPipeline > 0) {
     if (mMaxStfsInPipeline < 4) {
       mMaxStfsInPipeline = 4;
-      DDLOGF(fair::Severity::INFO, "Max buffered SubTimeFrames limit increased to {}.", mMaxStfsInPipeline);
+      IDDLOG("Max buffered SubTimeFrames limit increased to {}.", mMaxStfsInPipeline);
     }
     mPipelineLimit = true;
-    DDLOGF(fair::Severity::WARN, "Max buffered SubTimeFrames limit is set to {}. "
-      "Consider increasing it if data loss occurs.", mMaxStfsInPipeline);
+    WDDLOG("Max buffered SubTimeFrames limit is set to {}. Consider increasing it if data loss occurs.",
+      mMaxStfsInPipeline);
   } else {
     mPipelineLimit = false;
-    DDLOGF(fair::Severity::INFO, "Not imposing limits on number of buffered SubTimeFrames. "
-      "Possibility of creating back-pressure.");
+    IDDLOG("Not imposing limits on number of buffered SubTimeFrames. Possibility of creating back-pressure.");
   }
 
   // File sink
@@ -93,8 +92,7 @@ void StfSenderDevice::InitTask()
 
   // check if any outputs enabled
   if (mStandalone && !mFileSink.enabled()) {
-    DDLOGF(fair::Severity::WARNING, "Running in standalone mode and with STF file sink disabled. "
-      "Data will be lost.");
+    WDDLOG("Running in standalone mode and with STF file sink disabled. Data will be lost.");
   }
 
   // Info thread
@@ -163,7 +161,7 @@ void StfSenderDevice::ResetTask()
     mInfoThread.join();
   }
 
-  DDLOGF(fair::Severity::DEBUG, "ResetTask() done.");
+  DDDLOG("ResetTask() done.");
 }
 
 void StfSenderDevice::StfReceiverThread()
@@ -197,19 +195,19 @@ void StfSenderDevice::StfReceiverThread()
     }
 
     ++sReceivedStfs;
-    DDLOGF_RL(5000, fair::Severity::DEBUG, "StfSender received total of {} STFs.", sReceivedStfs);
+    DDLOGF_RL(5000, DataDistSeverity::debug, "StfSender received total of {} STFs.", sReceivedStfs);
 
     // get data size
     mStfSizeSamples.Fill(lStf->getDataSize());
 
-    DDLOGF_RL(2000, fair::Severity::INFO, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
+    DDLOGF_RL(2000, DataDistSeverity::info, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
     queue(eReceiverOut, std::move(lStf));
   }
 
-  DDLOGF(fair::Severity::INFO, "StfSender received total of {} STFs.", sReceivedStfs);
-  DDLOGF(fair::Severity::DEBUG, "Exiting StfReceiverThread.");
+  IDDLOG("StfSender received total of {} STFs.", sReceivedStfs);
+  DDDLOG("Exiting StfReceiverThread.");
 }
 
 void StfSenderDevice::InfoThread()
@@ -219,14 +217,14 @@ void StfSenderDevice::InfoThread()
 
   while (IsRunningState()) {
 
-    // DDLOGF(fair::Severity::INFO, "StfSender queued_stfs={}", this->getPipelineSize());
+    // IDDLOG("StfSender queued_stfs={}", this->getPipelineSize());
 
-    DDLOGF(fair::Severity::info, "SubTimeFrame size_mean={} in_frequency_mean={} queued_stf={}",
+    IDDLOG("SubTimeFrame size_mean={} in_frequency_mean={} queued_stf={}",
       mStfSizeSamples.Mean(), mStfFreqSamples.Mean(), mNumStfs);
 
     std::this_thread::sleep_for(2s);
   }
-  DDLOGF(fair::Severity::DEBUG, "Exiting Info thread.");
+  DDDLOG("Exiting Info thread.");
 }
 
 bool StfSenderDevice::ConditionalRun()

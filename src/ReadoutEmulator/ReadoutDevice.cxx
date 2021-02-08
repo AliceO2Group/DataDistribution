@@ -48,12 +48,12 @@ void ReadoutDevice::InitTask()
   mCruLinkBitsPerS = GetConfig()->GetValue<double>(OptionKeyCruLinkBitsPerS);
 
   if (mSuperpageSize < (1ULL << 20)) {
-    DDLOGF(fair::Severity::WARN, "Superpage size too low ({}). Setting to 1 MiB...", mSuperpageSize);
+    WDDLOG("Superpage size too low ({}). Setting to 1 MiB...", mSuperpageSize);
     mSuperpageSize = (1ULL << 20);
   }
 
   mDmaChunkSize = (mCruLinkBitsPerS / 11223ULL) >> 3;
-  DDLOGF(fair::Severity::INFO, "Using HBFrame size of {} B.", mDmaChunkSize);
+  IDDLOG("Using HBFrame size of {} B.", mDmaChunkSize);
 
   mDataRegion.reset();
 
@@ -67,7 +67,7 @@ void ReadoutDevice::InitTask()
       }
     });
 
-  DDLOGF(fair::Severity::INFO, "Memory regions created");
+  IDDLOG("Memory regions created");
 
   mCruMemoryHandler->init(mDataRegion.get(), mSuperpageSize);
 
@@ -131,7 +131,7 @@ void ReadoutDevice::SendingThread()
 
     ReadoutLinkO2Data lCruLinkData;
     if (!mCruMemoryHandler->getLinkData(lCruLinkData)) {
-      DDLOGF(fair::Severity::INFO, "GetLinkData failed. Stopping interface thread.");
+      IDDLOG("GetLinkData failed. Stopping interface thread.");
       return;
     }
 
@@ -139,7 +139,7 @@ void ReadoutDevice::SendingThread()
 
     // check no data signal
     if (lCruLinkData.mLinkHeader.mFlags.mIsRdhFormat == 0) {
-      // DDLOGF(fair::Severity::WARN, "No Superpages left! Losing data...");
+      // WDDLOG("No Superpages left! Losing data...");
     }
 
     ReadoutSubTimeframeHeader lHBFHeader = lCruLinkData.mLinkHeader;
@@ -185,13 +185,13 @@ void ReadoutDevice::InfoThread()
   WaitForRunningState();
 
   while (IsRunningState()) {
-    DDLOGF(fair::Severity::info, "Free superpages count_mean={}", mFreeSuperpagesSamples.Mean());
+    IDDLOG("Free superpages count_mean={}", mFreeSuperpagesSamples.Mean());
 
     using namespace std::chrono_literals;
     std::this_thread::sleep_for(2s);
   }
 
-  DDLOGF(fair::Severity::DEBUG, "Exiting Info thread...");
+  DDDLOG("Exiting Info thread...");
 }
 
 }

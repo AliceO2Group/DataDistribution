@@ -36,7 +36,7 @@ void TfSchedulerInstanceRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, 
   assert(!mServer);
   mServer = lSrvBuilder.BuildAndStart();
 
-  DDLOGF(fair::Severity::INFO, "gRPC server is staretd. server_ep={}:{}", pRpcSrvBindIp, lRealPort);
+  IDDLOG("gRPC server is staretd. server_ep={}:{}", pRpcSrvBindIp, lRealPort);
 }
 
 void TfSchedulerInstanceRpcImpl::start()
@@ -67,7 +67,7 @@ void TfSchedulerInstanceRpcImpl::stop()
 ::grpc::Status TfSchedulerInstanceRpcImpl::NumStfSendersInPartitionRequest(::grpc::ServerContext* /*context*/,
   const ::google::protobuf::Empty* /*request*/, ::o2::DataDistribution::NumStfSendersInPartitionResponse* response)
 {
-  DDLOGF(fair::Severity::DEBUG, "gRPC server: NumStfSendersInPartitionRequest");
+  DDDLOG("gRPC server: NumStfSendersInPartitionRequest");
 
   response->set_num_stf_senders(mPartitionInfo.mStfSenderIdList.size());
 
@@ -80,7 +80,7 @@ void TfSchedulerInstanceRpcImpl::stop()
   const ::o2::DataDistribution::TfBuilderConfigStatus* request,
   ::o2::DataDistribution::TfBuilderConnectionResponse* response)
 {
-  DDLOGF(fair::Severity::DEBUG, "gRPC server: TfBuilderConnectionRequest");
+  DDDLOG("gRPC server: TfBuilderConnectionRequest");
 
   mConnManager.connectTfBuilder(*request, *response /*out*/);
 
@@ -92,7 +92,7 @@ void TfSchedulerInstanceRpcImpl::stop()
 ::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderDisconnectionRequest(::grpc::ServerContext* /*context*/,
   const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::StatusResponse* response)
 {
-  DDLOGF(fair::Severity::DEBUG, "gRPC server: TfBuilderDisconnectionRequest");
+  DDDLOG("gRPC server: TfBuilderDisconnectionRequest");
 
   mConnManager.disconnectTfBuilder(*request, *response /*out*/);
 
@@ -105,7 +105,7 @@ void TfSchedulerInstanceRpcImpl::stop()
   static std::atomic_uint64_t sTfBuilderUpdates = 0;
 
   sTfBuilderUpdates++;
-  DDLOGF_RL(3000, fair::Severity::DEBUG, "gRPC server: TfBuilderUpdate. tfb_id={} total={}",
+  DDLOGF_RL(3000, DataDistSeverity::debug, "gRPC server: TfBuilderUpdate. tfb_id={} total={}",
     request->info().process_id(), sTfBuilderUpdates);
 
   mTfBuilderInfo.updateTfBuilderInfo(*request);
@@ -119,7 +119,7 @@ void TfSchedulerInstanceRpcImpl::stop()
   static std::atomic_uint64_t sStfUpdates = 0;
 
   sStfUpdates++;
-  DDLOGF_RL(3000, fair::Severity::DEBUG, "gRPC server: StfSenderStfUpdate. stfs_id={} total={}",
+  DDLOGF_RL(3000, DataDistSeverity::debug, "gRPC server: StfSenderStfUpdate. stfs_id={} total={}",
     request->info().process_id(), sStfUpdates);
 
   response->Clear();
