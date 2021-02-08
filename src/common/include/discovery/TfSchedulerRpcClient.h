@@ -49,7 +49,7 @@ public:
 
     mTfSchedulerConf.Clear();
     if (!pConfig->getTfSchedulerConfig(lPartitionId, mTfSchedulerConf)) {
-      DDLOGF(fair::Severity::INFO, "TfScheduler instance configuration not found.");
+      IDDLOG("TfScheduler instance configuration not found.");
       return false;
     }
 
@@ -58,7 +58,7 @@ public:
     mStub = TfSchedulerInstanceRpc::NewStub(
       grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials()));
 
-    DDLOGF(fair::Severity::INFO, "Connected to TfSchedulerInstance RPC endpoint={}", lEndpoint);
+    IDDLOG("Connected to TfSchedulerInstance RPC endpoint={}", lEndpoint);
 
     return true;
   }
@@ -77,7 +77,7 @@ public:
   // rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
   bool NumStfSendersInPartitionRequest(std::uint32_t &pNumStfSenders) {
     if (!mStub) {
-      DDLOGF(fair::Severity::ERROR, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+      EDDLOG("NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
       return false;
     }
 
@@ -95,12 +95,12 @@ public:
         return true;
       }
       if (lStatus.error_code() == grpc::StatusCode::UNAVAILABLE) {
-          DDLOGF(fair::Severity::WARNING, "NumStfSendersInPartitionRequest: Scheduler gRPC server UNAVAILABLE. Retrying...");
+          WDDLOG("NumStfSendersInPartitionRequest: Scheduler gRPC server UNAVAILABLE. Retrying...");
           std::this_thread::sleep_for(250ms);
           continue; // retry
       }
 
-      DDLOGF(fair::Severity::ERROR, "gRPC request error. code={} message={}", lStatus.error_code(), lStatus.error_message());
+      EDDLOG("gRPC request error. code={} message={}", lStatus.error_code(), lStatus.error_message());
       break;
 
     } while (true);
@@ -112,7 +112,7 @@ public:
   // rpc TfBuilderConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderConnectionResponse) { }
   bool TfBuilderConnectionRequest(TfBuilderConfigStatus &pParam, TfBuilderConnectionResponse &pRet /*out*/) {
     if (!mStub) {
-      DDLOGF(fair::Severity::ERROR, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+      EDDLOG("NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
       return false;
     }
 
@@ -143,7 +143,7 @@ public:
   // rpc TfBuilderDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
   bool TfBuilderDisconnectionRequest(TfBuilderConfigStatus &pParam, StatusResponse &pRet /*out*/) {
     if (!mStub) {
-      DDLOGF(fair::Severity::ERROR, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+      EDDLOG("NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
       return false;
     }
 
@@ -174,7 +174,7 @@ public:
   // rpc TfBuilderUpdate(TfBuilderUpdateMessage) returns (google.protobuf.Empty) { }
   bool TfBuilderUpdate(TfBuilderUpdateMessage &pMsg) {
     if (!mStub) {
-      DDLOGF(fair::Severity::ERROR, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+      EDDLOG("NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
       return false;
     }
 
@@ -191,7 +191,7 @@ public:
       return true;
     }
 
-    DDLOGF(fair::Severity::ERROR, "gRPC: TfBuilderUpdate error. code={} message={}",
+    EDDLOG("gRPC: TfBuilderUpdate error. code={} message={}",
       lStatus.error_code(), lStatus.error_message());
     return false;
   }
@@ -200,7 +200,7 @@ public:
   // rpc StfSenderStfUpdate(StfSenderStfInfo) returns (SchedulerStfInfoResponse) { }
   bool StfSenderStfUpdate(StfSenderStfInfo &pMsg, SchedulerStfInfoResponse &pRet) {
     if (!mStub) {
-      DDLOGF(fair::Severity::ERROR, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+      EDDLOG("NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
       return false;
     }
 
@@ -214,7 +214,7 @@ public:
       return true;
     }
 
-    DDLOGF(fair::Severity::ERROR, "gRPC: StfSenderStfUpdate error. code={} message={}",
+    EDDLOG("gRPC: StfSenderStfUpdate error. code={} message={}",
       lStatus.error_code(), lStatus.error_message());
     return false;
   }

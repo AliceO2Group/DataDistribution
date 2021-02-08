@@ -97,9 +97,9 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
     const std::uint64_t lToRead = std::min(pLen, mFileSize - mFileMapOffset);
 
     if (lToRead != pLen) {
-      DDLOGF(fair::Severity::ERROR, "FileReader: request to read beyond the file end. pos={} size={} len={}",
+      EDDLOG("FileReader: request to read beyond the file end. pos={} size={} len={}",
         mFileMapOffset, mFileSize, pLen);
-      DDLOGF(fair::Severity::ERROR, "Closing the file {}. The read data is invalid.", mFileName);
+      EDDLOG("Closing the file {}. The read data is invalid.", mFileName);
       mFileMap.close(); mFileMapOffset = 0; mFileSize = 0;
       return false;
     }
@@ -120,9 +120,9 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
   {
     const std::size_t lToIgnore = std::min(pLen, std::size_t(mFileSize - mFileMapOffset));
     if (pLen != lToIgnore) {
-      DDLOGF(fair::Severity::ERROR, "FileReader: request to ignore bytes beyond the file end. pos={} size={} len={}",
+      EDDLOG("FileReader: request to ignore bytes beyond the file end. pos={} size={} len={}",
         mFileMapOffset, mFileSize, pLen);
-      DDLOGF(fair::Severity::ERROR, "Closing the file {}. The read data is invalid.", mFileName);
+      EDDLOG("Closing the file {}. The read data is invalid.", mFileName);
       mFileMap.close(); mFileMapOffset = 0; mFileSize = 0;
       return false;
     }

@@ -41,7 +41,7 @@ TfBuilderDevice::TfBuilderDevice()
 
 TfBuilderDevice::~TfBuilderDevice()
 {
-  DDLOGF(fair::Severity::DEBUG, "TfBuilderDevice::~TfBuilderDevice()");
+  DDDLOG("TfBuilderDevice::~TfBuilderDevice()");
 }
 
 void TfBuilderDevice::Init()
@@ -94,8 +94,8 @@ void TfBuilderDevice::InitTask()
     lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
 
     if (! mDiscoveryConfig->write(true)) {
-      DDLOGF(fair::Severity::ERROR, "Can not start TfBuilder. id={}", lStatus.info().process_id());
-      DDLOGF(fair::Severity::ERROR, "Process with the same id already running? If not, clear the key manually.");
+      EDDLOG("Can not start TfBuilder. id={}", lStatus.info().process_id());
+      EDDLOG("Process with the same id already running? If not, clear the key manually.");
       throw "Discovery database error: this TfBuilder was/is already present.";
       return;
     }
@@ -104,11 +104,11 @@ void TfBuilderDevice::InitTask()
     if (mDplChannelName != "") {
       mDplEnabled = true;
       mStandalone = false;
-      DDLOGF(fair::Severity::INFO, "Using DPL channel. channel_name={:s}", mDplChannelName);
+      IDDLOG("Using DPL channel. channel_name={}", mDplChannelName);
     } else {
       mDplEnabled = false;
       mStandalone = true;
-      DDLOGF(fair::Severity::INFO, "Not sending to DPL.");
+      IDDLOG("Not sending to DPL.");
     }
 
     // start the info thread
@@ -153,7 +153,7 @@ bool TfBuilderDevice::start()
   // Start input handlers
   if (!mFlpInputHandler->start(mDiscoveryConfig)) {
     mShouldExit = true;
-    DDLOGF(fair::Severity::ERROR, "Could not initialize input connections. Exiting.");
+    EDDLOG("Could not initialize input connections. Exiting.");
     throw "Input connection error";
     return false;
   }
@@ -200,7 +200,7 @@ void TfBuilderDevice::stop()
 
   mDiscoveryConfig.reset();
 
-  DDLOGF(fair::Severity::DEBUG, "Reset() done... ");
+  DDDLOG("Reset() done... ");
 }
 
 void TfBuilderDevice::ResetTask()
@@ -228,7 +228,7 @@ void TfBuilderDevice::TfForwardThread()
   while (mRunning) {
     std::unique_ptr<SubTimeFrame> lTf = dequeue(eTfFwdIn);
     if (!lTf) {
-      DDLOGF(fair::Severity::INFO, "TfForwardThread(): Queue closed. Exiting... ");
+      IDDLOG("TfForwardThread(): Queue closed. Exiting... ");
       break;
     }
 
@@ -250,7 +250,7 @@ void TfBuilderDevice::TfForwardThread()
     if (!mStandalone) {
       try {
         lTfOutCnt++;
-        DDLOGF_RL(1000, fair::Severity::INFO,
+        DDLOGF_RL(1000, DataDistSeverity::info,
           "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={:d}",
           lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), lTfOutCnt);
 
@@ -265,9 +265,9 @@ void TfBuilderDevice::TfForwardThread()
         }
       } catch (std::exception& e) {
         if (IsRunningState()) {
-          DDLOGF(fair::Severity::ERROR, "StfOutputThread: exception on send. exception_what={:s}", e.what());
+          EDDLOG("StfOutputThread: exception on send. exception_what={:s}", e.what());
         } else {
-          DDLOGF(fair::Severity::INFO, "StfOutputThread: shutting down. exception_what={:s}", e.what());
+          IDDLOG("StfOutputThread: shutting down. exception_what={:s}", e.what());
         }
         break;
       }
@@ -279,7 +279,7 @@ void TfBuilderDevice::TfForwardThread()
     mRpc->recordTfForwarded(lTfId);
   }
 
-  DDLOGF(fair::Severity::INFO, "Exiting TF forwarding thread.");
+  IDDLOG("Exiting TF forwarding thread.");
 }
 
 void TfBuilderDevice::InfoThread()
@@ -289,14 +289,14 @@ void TfBuilderDevice::InfoThread()
 
   while (IsRunningState()) {
 
-    DDLOGF(fair::Severity::INFO, "Mean size of TimeFrames : {}", mTfSizeSamples.Mean());
-    DDLOGF(fair::Severity::INFO, "Mean TimeFrame frequency: {}", mTfFreqSamples.Mean());
-    DDLOGF(fair::Severity::INFO, "Number of queued TFs    : {}", getPipelineSize()); // current value
+    IDDLOG("Mean size of TimeFrames : {}", mTfSizeSamples.Mean());
+    IDDLOG("Mean TimeFrame frequency: {}", mTfFreqSamples.Mean());
+    IDDLOG("Number of queued TFs    : {}", getPipelineSize()); // current value
 
     std::this_thread::sleep_for(2s);
   }
 
-  DDLOGF(fair::Severity::DEBUG, "Exiting info thread...");
+  DDDLOG("Exiting info thread...");
 }
 
 }

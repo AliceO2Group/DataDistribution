@@ -40,8 +40,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
   // check for system time drifts; account for gRPC latency
   const auto lTimeDiff = lLocalTime - lUpdateTimepoint;
   if (std::chrono::abs(lTimeDiff) > 1s) {
-    DDLOGF(fair::Severity::WARNING,
-      "Large system clock drift detected. tfb_id={:s} drift_ms={:d}", lTfBuilderId,
+    WDDLOG("Large system clock drift detected. tfb_id={:s} drift_ms={:d}", lTfBuilderId,
       std::chrono::duration_cast<std::chrono::milliseconds>(lTimeDiff).count());
   }
 
@@ -58,7 +57,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
         removeReadyTfBuilder(lTfBuilderId);
         // remove from global
         mGlobalInfo.erase(lTfIter);
-        DDLOGF(fair::Severity::INFO, "TfBuilder left the partition. tfb_id={:s} reason=NOT_RUNNING", lTfBuilderId);
+        IDDLOG("TfBuilder left the partition. tfb_id={:s} reason=NOT_RUNNING", lTfBuilderId);
       }
       return;
     }
@@ -71,7 +70,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
       );
       addReadyTfBuilder(mGlobalInfo.at(lTfBuilderId));
 
-      DDLOGF(fair::Severity::INFO, "TfBuilder joined the partition. tfb_id={:s}", lTfBuilderId);
+      IDDLOG("TfBuilder joined the partition. tfb_id={:s}", lTfBuilderId);
     } else {
       auto &lInfo = mGlobalInfo.at(lTfBuilderId);
 
@@ -86,8 +85,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
 
         // verify the memory estimation is correct
         if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory() ) {
-          DDLOGF(fair::Severity::DEBUG,
-            "TfBuilder memory estimate is too high. tfb_id={:s} mem_estimate={f}", lTfBuilderId,
+          DDDLOG("TfBuilder memory estimate is too high. tfb_id={:s} mem_estimate={f}", lTfBuilderId,
             (double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory())));
         }
 
@@ -98,8 +96,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
         // update scheduler's estimate to be on the safe side
         if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory() ) {
 
-          DDLOGF(fair::Severity::DEBUG,
-            "Ignoring TfBuilder info (last_build < last_scheduled). Fixing the estimate ratio. "
+          DDDLOG("Ignoring TfBuilder info (last_build < last_scheduled). Fixing the estimate ratio. "
             "tfb_id={:s} new_mem_stimate={f}", lTfBuilderId,
             (double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory())));
 
@@ -125,7 +122,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
   using namespace std::chrono_literals;
 
   DataDistLogger::SetThreadName("TfBuilder::HousekeepingThread");
-  DDLOGF(fair::Severity::DEBUG, "Starting TfBuilderInfo-Housekeeping thread.");
+  DDDLOG("Starting TfBuilderInfo-Housekeeping thread.");
 
   std::vector<std::string> lIdsToErase;
 
@@ -145,8 +142,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
           lIdsToErase.emplace_back(lInfo->mTfBuilderUpdate.info().process_id());
         }
 
-        DDLOGF(fair::Severity::DEBUG,
-          "TfBuilder information: tfb_id={:s} free_memory={:d} num_buffered_tfs={:d}",
+        DDDLOG("TfBuilder information: tfb_id={:s} free_memory={:d} num_buffered_tfs={:d}",
           lInfo->mTfBuilderUpdate.info().process_id(), lInfo->mTfBuilderUpdate.free_memory(),
           lInfo->mTfBuilderUpdate.num_buffered_tfs());
       }
@@ -159,13 +155,13 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
 
         mGlobalInfo.erase(lId);
         removeReadyTfBuilder(lId);
-        DDLOGF(fair::Severity::WARNING, "TfBuilder removed from the partition. reason=STALE_INFO tfb_id={:s}", lId);
+        WDDLOG("TfBuilder removed from the partition. reason=STALE_INFO tfb_id={:s}", lId);
       }
       lIdsToErase.clear();
     }
   }
 
-  DDLOGF(fair::Severity::DEBUG, "Exiting TfBuilderInfo-Housekeeping thread.");
+  DDDLOG("Exiting TfBuilderInfo-Housekeeping thread.");
 }
 
 }

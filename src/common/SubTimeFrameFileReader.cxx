@@ -37,7 +37,7 @@ SubTimeFrameFileReader::SubTimeFrameFileReader(boost::filesystem::path& pFileNam
   mFileName = pFileName.string();
   mFileMap.open(mFileName);
   if (! mFileMap.is_open()) {
-    DDLOGF(fair::Severity::ERROR, "Failed to open TF file for reading (mmap).");
+    EDDLOG("Failed to open TF file for reading (mmap).");
     return;
   }
 
@@ -100,7 +100,7 @@ std::size_t SubTimeFrameFileReader::getHeaderStackSize() // throws ios_base::fai
   set_position(lFilePosStart);
 
   if (lNumHeaders >= cMaxHeaders) {
-    DDLOGF(fair::Severity::ERROR, "FileReader: Reached max number of headers allowed: {}.", cMaxHeaders);
+    EDDLOG("FileReader: Reached max number of headers allowed: {}.", cMaxHeaders);
     return 0;
   }
 
@@ -147,9 +147,9 @@ Stack SubTimeFrameFileReader::getHeaderStack(std::size_t &pOrigsize)
     if (lBaseOfDH->headerVersion == 1 || lBaseOfDH->headerVersion == 2) {
       /* nothing to do for the upgrade */
     } else {
-      DDLOGF_RL(1000, fair::Severity::ERROR, "FileReader: DataHeader v{} read from file is not upgraded to "
+      DDLOGF_RL(1000, DataDistSeverity::error, "FileReader: DataHeader v{} read from file is not upgraded to "
         "the current version {}", lBaseOfDH->headerVersion, DataHeader::sVersion);
-      DDLOGF_RL(1000, fair::Severity::ERROR, "Try using a newer version of DataDistribution or file a BUG");
+      DDLOGF_RL(1000, DataDistSeverity::error, "Try using a newer version of DataDistribution or file a BUG");
     }
 
     if (lBaseOfDH->size() == lStackSize) {
@@ -196,7 +196,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
   // Read DataHeader + SubTimeFrameFileMeta
   auto lMetaHdrStack = getHeaderStack(lMetaHdrStackSize);
   if (lMetaHdrStackSize == 0) {
-    DDLOGF(fair::Severity::ERROR, "Failed to read the TF file header. The file might be corrupted.");
+    EDDLOG("Failed to read the TF file header. The file might be corrupted.");
     mFileMap.close();
     return nullptr;
   }
@@ -209,7 +209,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
 
   // verify we're actually reading the correct data in
   if (!(SubTimeFrameFileMeta::getDataHeader().dataDescription == lStfMetaDataHdr->dataDescription)) {
-    DDLOGF(fair::Severity::WARNING, "Reading bad data: SubTimeFrame META header");
+    WDDLOG("Reading bad data: SubTimeFrame META header");
     mFileMap.close();
     return nullptr;
   }
@@ -217,14 +217,14 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
   // prepare to read the TF data
   const auto lStfSizeInFile = lStfFileMeta.mStfSizeInFile;
   if (lStfSizeInFile == (sizeof(DataHeader) + sizeof(SubTimeFrameFileMeta))) {
-    DDLOGF(fair::Severity::WARNING, "Reading an empty TF from file. Only meta information present");
+    WDDLOG("Reading an empty TF from file. Only meta information present");
     mFileMap.close();
     return nullptr;
   }
 
   // check there's enough data in the file
   if ((lTfStartPosition + lStfSizeInFile) > this->size()) {
-    DDLOGF_RL(200, fair::Severity::WARNING, "Not enough data in file for this TF. Required: {}, available: {}",
+    DDLOGF_RL(200, DataDistSeverity::warning, "Not enough data in file for this TF. Required: {}, available: {}",
       lStfSizeInFile, (this->size() - lTfStartPosition));
     mFileMap.close();
     return nullptr;
@@ -243,7 +243,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
   }
   lStfIndexHdr = o2::header::DataHeader::Get(lStfIndexHdrStack.first());
   if (!lStfIndexHdr) {
-    DDLOGF(fair::Severity::ERROR, "Failed to read the TF index structure. The file might be corrupted.");
+    EDDLOG("Failed to read the TF index structure. The file might be corrupted.");
     return nullptr;
   }
 
@@ -273,14 +273,14 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
     }
     const DataHeader *lDataHeader = o2::header::DataHeader::Get(lDataHeaderStack.first());
     if (!lDataHeader) {
-      DDLOGF(fair::Severity::ERROR, "Failed to read the TF HBF DataHeader structure. The file might be corrupted.");
+      EDDLOG("Failed to read the TF HBF DataHeader structure. The file might be corrupted.");
       mFileMap.close();
       return nullptr;
     }
 
     auto lHdrStackMsg = pFileBuilder.newHeaderMessage(lDataHeaderStack, lStf->id());
     if (!lHdrStackMsg) {
-      DDLOGF_RL(1000, fair::Severity::INFO, "Header memory resource stopped. Exiting.");
+      DDLOGF_RL(1000, DataDistSeverity::info, "Header memory resource stopped. Exiting.");
       mFileMap.close();
       return nullptr;
     }
@@ -290,7 +290,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
 
     auto lDataMsg = pFileBuilder.newDataMessage(lDataSize);
     if (!lDataMsg) {
-      DDLOGF(fair::Severity::INFO, "Data memory resource stopped. Exiting.");
+      IDDLOG("Data memory resource stopped. Exiting.");
       mFileMap.close();
       return nullptr;
     }
@@ -307,7 +307,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
         lStf->updateFirstOrbit(R.getOrbit());
       }
     } catch (...) {
-      DDLOGF(fair::Severity::ERROR, "Error getting RDHReader instace. Not setting firstOrbit for file data");
+      EDDLOG("Error getting RDHReader instace. Not setting firstOrbit for file data");
     }
 
     mStfData.emplace_back(
@@ -321,7 +321,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
   }
 
   if (lLeftToRead < 0) {
-    DDLOGF(fair::Severity::ERROR, "FileRead: Read more data than it is indicated in the META header!");
+    EDDLOG("FileRead: Read more data than it is indicated in the META header!");
     return nullptr;
   }
 

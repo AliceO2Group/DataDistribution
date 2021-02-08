@@ -43,7 +43,7 @@ int main(int argc, char* argv[])
 
     runner.AddHook<InstantiateDevice>([](DeviceRunner& r){
       // r.fPluginManager.ForEachPlugin([](Plugin& p) {
-      //   DDLOGF(DataDistSeverity::INFO, "Controlling pluggin: {}", p.GetName());
+      //   IDDLOG("Controlling pluggin: {}", p.GetName());
       // });
 
       // Install listener for Logging options

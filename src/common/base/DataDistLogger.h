@@ -277,6 +277,12 @@ private:
   if(DataDistLogger::LogEnabled(severity)) DataDistLogger(severity)
 
 
+#define DDDLOG(...) DDLOGF(DataDistSeverity::debug, __VA_ARGS__)
+#define IDDLOG(...) DDLOGF(DataDistSeverity::info, __VA_ARGS__)
+#define WDDLOG(...) DDLOGF(DataDistSeverity::warn, __VA_ARGS__)
+#define EDDLOG(...) DDLOGF(DataDistSeverity::error, __VA_ARGS__)
+
+
 // Log with fmt using ratelimiting
 #define DDLOGF_RL(intervalMs, severity, ...)                                                                          \
 do {                                                                                                                  \
@@ -302,7 +308,7 @@ struct DataDistLoggerCtx {
 
   DataDistLoggerCtx() {
     if (sRunning) {
-      DDLOGF(DataDistSeverity::error, "DataDistLoggerCtx: Already initialized! Static init was already done.");
+      EDDLOG("DataDistLoggerCtx: Already initialized! Static init was already done.");
       return;
     }
 
@@ -344,7 +350,7 @@ struct DataDistLoggerCtx {
     // check if the FairLogger is still alive and remove spdlog's sink
     // NOTE: this is tricky, depends on static global variable destruction
     if (! fair::Logger::fIsDestructed) {
-      // DDLOGF(DataDistSeverity::DEBUG, "Switching the logging back to FairMQLogger.");
+      // DDDLOG("Switching the logging back to FairMQLogger.");
       try {
         fair::Logger::RemoveCustomSink("DDTraceSink");
         fair::Logger::SetConsoleSeverity(fair::Severity::trace);
@@ -386,7 +392,7 @@ struct DataDistLoggerCtx {
       } else if (pSevKey == "severity-infologger") {
         // check the InfoLogger mode. Only infoLoggerD is supported.
         if(!checkInfoLoggerOptions()) {
-          DDLOGF(DataDistSeverity::warning, "DataDistLogger: Invalid INFOLOGGER_MODE. Ignoring severity-infologger={}",
+          WDDLOG("DataDistLogger: Invalid INFOLOGGER_MODE. Ignoring severity-infologger={}",
             pSevVal);
           DataDistLogger::sInfologgerSeverity = DataDistSeverity::nolog;
           DataDistLogger::sInfologgerEnabled = false;
@@ -407,7 +413,7 @@ struct DataDistLoggerCtx {
         }
 
       } else if (pSevKey == "severity-file") {
-          DDLOGF(DataDistSeverity::ERROR, "DataDistLogger: FMQ File logger is not supported.");
+          EDDLOG("DataDistLogger: FMQ File logger is not supported.");
       }
     };
 
@@ -447,29 +453,29 @@ private:
   // check the InfoLogger mode. Only infoLoggerD is supported.
   static inline bool checkInfoLoggerOptions() {
 
-    DDLOGF(DataDistSeverity::debug, "DataDistLogger: Checking INFOLOGGER_MODE variable");
+    DDDLOG("DataDistLogger: Checking INFOLOGGER_MODE variable");
 
     const char *cMode = getenv("INFOLOGGER_MODE");
 
     if (cMode == nullptr) {
-      DDLOGF(DataDistSeverity::info, "DataDistLogger: INFOLOGGER_MODE backend is not set.");
+      IDDLOG("DataDistLogger: INFOLOGGER_MODE backend is not set.");
       return false;
     }
 
     const std::string cModeStr = std::string(cMode);
 
     if (cModeStr.length() == 0) {
-      DDLOGF(DataDistSeverity::warning, "DataDistLogger: INFOLOGGER_MODE variable is empty.");
+      WDDLOG("DataDistLogger: INFOLOGGER_MODE variable is empty.");
       return false;
     }
 
     if (cModeStr != "infoLoggerD") {
-      DDLOGF(DataDistSeverity::error, "DataDistLogger: INFOLOGGER_MODE mode is not supported "
+      EDDLOG("DataDistLogger: INFOLOGGER_MODE mode is not supported "
         "(only infoLoggerD mode). INFOLOGGER_MODE={}", cModeStr);
       return false;
     }
 
-    DDLOGF(DataDistSeverity::info, "DataDistLogger: enabling InfoLogger in infoLoggerD mode.");
+    IDDLOG("DataDistLogger: enabling InfoLogger in infoLoggerD mode.");
 
     return true;
   }
@@ -486,7 +492,7 @@ static inline void InitInfoLogger() {
     DataDistLogger::sInfoLoggerFacility);
   lIlogger.setContext(lInfoLoggerCtx);
 
-  DDLOGF(DataDistSeverity::debug, "DataDistLogger: infoLoggerD settings are updated.");
+  DDDLOG("DataDistLogger: infoLoggerD settings are updated.");
 }
 };
 

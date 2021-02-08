@@ -85,14 +85,14 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
 {
   mEnabled = pFMQProgOpt.GetValue<bool>(OptionKeyStfSinkEnable);
 
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame file sink is {}", (mEnabled ? "enabled." : "disabled."));
+  IDDLOG("(Sub)TimeFrame file sink is {}", (mEnabled ? "enabled." : "disabled."));
 
   if (!mEnabled)
     return true;
 
   mRootDir = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSinkDir);
   if (mRootDir.length() == 0) {
-    DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink directory must be specified");
+    EDDLOG("(Sub)TimeFrame file sink directory must be specified");
     return false;
   }
 
@@ -106,25 +106,25 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   namespace bfs = boost::filesystem;
   bfs::path lDirPath(mRootDir);
   if (!bfs::is_directory(lDirPath)) {
-    DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink directory does not exist");
+    EDDLOG("(Sub)TimeFrame file sink directory does not exist");
     return false;
   }
 
   // make a session directory
   mCurrentDir = (bfs::path(mRootDir) / FilePathUtils::getDataDirName(mRootDir)).string();
   if (!bfs::create_directory(mCurrentDir)) {
-    DDLOGF(fair::Severity::ERROR, "Directory for (Sub)TimeFrame file sink cannot be created. path={}", mCurrentDir);
+    EDDLOG("Directory for (Sub)TimeFrame file sink cannot be created. path={}", mCurrentDir);
     return false;
   }
 
   // print options
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: enabled       = {:s}", (mEnabled ? "yes" : "no"));
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: root dir      = {:s}", mRootDir);
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: file pattern  = {:s}", mFileNamePattern);
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: stfs per file = {:s}", (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" ));
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: max file size = {:d}", mFileSize);
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: sidecar files = {:s}", (mSidecar ? "yes" : "no"));
-  DDLOGF(fair::Severity::INFO, "(Sub)TimeFrame Sink :: write dir     = {:s}", mCurrentDir);
+  IDDLOG("(Sub)TimeFrame Sink :: enabled       = {:s}", (mEnabled ? "yes" : "no"));
+  IDDLOG("(Sub)TimeFrame Sink :: root dir      = {:s}", mRootDir);
+  IDDLOG("(Sub)TimeFrame Sink :: file pattern  = {:s}", mFileNamePattern);
+  IDDLOG("(Sub)TimeFrame Sink :: stfs per file = {:s}", (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" ));
+  IDDLOG("(Sub)TimeFrame Sink :: max file size = {:d}", mFileSize);
+  IDDLOG("(Sub)TimeFrame Sink :: sidecar files = {:s}", (mSidecar ? "yes" : "no"));
+  IDDLOG("(Sub)TimeFrame Sink :: write dir     = {:s}", mCurrentDir);
 
   return true;
 }
@@ -215,8 +215,8 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       } while(0);
 
       if (lDisableWriting) {
-        DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: error while writing to file {}", lCurrentFileName);
-        DDLOGF(fair::Severity::ERROR, "(Sub)TimeFrame file sink: disabling file sink");
+        EDDLOG("(Sub)TimeFrame file sink: error while writing to file {}", lCurrentFileName);
+        EDDLOG("(Sub)TimeFrame file sink: disabling file sink");
       }
     }
 
@@ -225,7 +225,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       break;
     }
   }
-  DDLOGF(fair::Severity::DEBUG, "Exiting file sink thread [{}]", pIdx);
+  DDDLOG("Exiting file sink thread [{}]", pIdx);
 }
 
 }

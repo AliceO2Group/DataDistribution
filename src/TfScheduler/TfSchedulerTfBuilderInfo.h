@@ -106,7 +106,7 @@ class TfSchedulerTfBuilderInfo
     std::scoped_lock lLock(mReadyInfoLock);
     for (auto it = mReadyTfBuilders.begin(); it != mReadyTfBuilders.end(); it++) {
       if ((*it)->id() == pId) {
-        DDLOGF(fair::Severity::DEBUG, "Removed TfBuilder from the ready list. tfb_id={}", pId);
+        DDDLOG("Removed TfBuilder from the ready list. tfb_id={}", pId);
         mReadyTfBuilders.erase(it);
         break;
       }
@@ -136,13 +136,11 @@ class TfSchedulerTfBuilderInfo
     if ( lIt == mReadyTfBuilders.end() ) {
       if (mReadyTfBuilders.empty()) {
         if (++sNoTfBuilderAvailable % 10 == 0) {
-          DDLOGF(fair::Severity::INFO,
-            "FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={:d}", sNoTfBuilderAvailable);
+          IDDLOG("FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={:d}", sNoTfBuilderAvailable);
         }
       } else {
         if (++sNoMemoryAvailable % 10 == 0) {
-          DDLOGF(fair::Severity::INFO,
-            "FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={:d}", sNoMemoryAvailable);
+          IDDLOG("FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={:d}", sNoMemoryAvailable);
         }
       }
 

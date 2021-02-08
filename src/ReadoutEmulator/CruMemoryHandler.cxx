@@ -60,13 +60,13 @@ void CruMemoryHandler::init(FairMQUnmanagedRegion* pDataRegion, std::size_t pSup
     const CRUSuperpage sp{ getDataRegionPtr() + (i * mSuperpageSize), reinterpret_cast<char*>(~0x0) };
     // stack of free superpages to feed the CRU
     if (!sp.mDataVirtualAddress) {
-      DDLOGF(fair::Severity::error, "init_superpage: Data region pointer null region_ptr={:p}", getDataRegionPtr());
+      EDDLOG("init_superpage: Data region pointer null region_ptr={:p}", getDataRegionPtr());
     }
     mSuperpages.push(sp);
 
     // Virtual address to superpage mapping to help with returning of the used pages
     if (!sp.mDataVirtualAddress) {
-      DDLOGF(fair::Severity::error, "init_superpage: Data region pointer null region_ptr={:p}", getDataRegionPtr());
+      EDDLOG("init_superpage: Data region pointer null region_ptr={:p}", getDataRegionPtr());
     }
 
     auto& lBucket = getBufferBucket(sp.mDataVirtualAddress);
@@ -75,7 +75,7 @@ void CruMemoryHandler::init(FairMQUnmanagedRegion* pDataRegion, std::size_t pSup
     lBucket.mVirtToSuperpage[sp.mDataVirtualAddress] = sp;
   }
 
-  DDLOGF(fair::Severity::INFO, "CRU Memory Handler initialization finished. Using {} superpages.", lCntSuperpages);
+  IDDLOG("CRU Memory Handler initialization finished. Using {} superpages.", lCntSuperpages);
 }
 
 bool CruMemoryHandler::getSuperpage(CRUSuperpage& sp)
@@ -90,7 +90,8 @@ void CruMemoryHandler::put_superpage(const char* spVirtAddr)
   std::lock_guard<std::mutex> lock(lBucket.mLock); // needed for the mVirtToSuperpage[] lookup
   const auto lSp = lBucket.mVirtToSuperpage[spVirtAddr];
   if (!lSp.mDataVirtualAddress) {
-    DDLOGF(fair::Severity::error, "put_superpage: Data region pointer null region_ptr={:p} num_spaages={}", getDataRegionPtr(), lBucket.mVirtToSuperpage.size());
+    EDDLOG("put_superpage: Data region pointer null region_ptr={:p} num_spaages={}",
+      getDataRegionPtr(), lBucket.mVirtToSuperpage.size());
   }
   mSuperpages.push(lSp);
 }
@@ -109,7 +110,7 @@ void CruMemoryHandler::get_data_buffer(const char* dataBufferAddr, const std::si
 
   // make sure the data buffer is not already in use
   if (lBucket.mUsedSuperPages[lSpStartAddr].count(dataBufferAddr) != 0) {
-    DDLOGF(fair::Severity::ERROR, "Data buffer is already in the used list! addr={:#010X}", dataBufferAddr);
+    EDDLOG("Data buffer is already in the used list! addr={:#010X}", dataBufferAddr);
     return;
   }
 
@@ -121,7 +122,7 @@ void CruMemoryHandler::put_data_buffer(const char* dataBufferAddr, const std::si
   const char* lSpStartAddr = reinterpret_cast<char*>((uintptr_t)dataBufferAddr & ~(mSuperpageSize - 1));
 
   if (lSpStartAddr < getDataRegionPtr() || lSpStartAddr > getDataRegionPtr() + getDataRegionSize()) {
-    DDLOGF(fair::Severity::ERROR, "Returned data buffer outside of the data segment!"
+    EDDLOG("Returned data buffer outside of the data segment!"
       " sp_start={:#010X} b_addr={:#010X} reg_addr={:#010X} reg_end={:#010X}",
       reinterpret_cast<uintptr_t>(lSpStartAddr),
       reinterpret_cast<uintptr_t>(dataBufferAddr),
@@ -137,19 +138,19 @@ void CruMemoryHandler::put_data_buffer(const char* dataBufferAddr, const std::si
   std::lock_guard<std::mutex> lock(lBucket.mLock);
 
   if (lBucket.mUsedSuperPages.count(lSpStartAddr) == 0) {
-    DDLOGF_RL(200, fair::Severity::ERROR, "Returned data buffer is not in the list of used superpages!");
+    DDLOGF_RL(200, DataDistSeverity::error, "Returned data buffer is not in the list of used superpages!");
     return;
   }
 
   auto& lSpBuffMap = lBucket.mUsedSuperPages[lSpStartAddr];
 
   if (lSpBuffMap.count(lDataBufferAddr) == 0) {
-    DDLOGF(fair::Severity::ERROR, "Returned data buffer is not marked as used within the superpage!");
+    EDDLOG("Returned data buffer is not marked as used within the superpage!");
     return;
   }
 
   if (lSpBuffMap[lDataBufferAddr] != lDataBuffSize) {
-    DDLOGF(fair::Severity::ERROR, "Returned data buffer size does not match the records! recorded={} returned={}",
+    EDDLOG("Returned data buffer size does not match the records! recorded={} returned={}",
       lSpBuffMap[lDataBufferAddr], lDataBuffSize);
     return;
   }
@@ -161,12 +162,13 @@ void CruMemoryHandler::put_data_buffer(const char* dataBufferAddr, const std::si
 
     const auto lSp = lBucket.mVirtToSuperpage[lSpStartAddr];
     if (!lSp.mDataVirtualAddress) {
-      DDLOGF(fair::Severity::error, "put_data_buffer: Data region pointer null region_ptr={:p} sp_addr={:p} num_spaages={}", getDataRegionPtr(), lSpStartAddr, lBucket.mVirtToSuperpage.size());
+      EDDLOG("put_data_buffer: Data region pointer null region_ptr={:p} sp_addr={:p} num_spaages={}",
+        getDataRegionPtr(), lSpStartAddr, lBucket.mVirtToSuperpage.size());
     }
 
     mSuperpages.push(lSp);
   } else {
-    DDLOGF(fair::Severity::ERROR, "Superpage chunk lost.");
+    EDDLOG("Superpage chunk lost.");
   }
 }
 }

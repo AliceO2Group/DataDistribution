@@ -59,13 +59,13 @@ class SubTimeFrameFileSource
     : mPipelineI(pPipeline),
       mPipelineStageOut(pPipelineStageOut)
   {
-    DDLOGF(fair::Severity::DEBUG, "(Sub)TimeFrame Source started...");
+    DDDLOG("(Sub)TimeFrame Source started...");
   }
 
   ~SubTimeFrameFileSource()
   {
     stop();
-    DDLOGF(fair::Severity::DEBUG, "(Sub)TimeFrame Source terminated...");
+    DDDLOG("(Sub)TimeFrame Source terminated...");
   }
 
   bool loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt);

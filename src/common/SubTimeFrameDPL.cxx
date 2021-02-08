@@ -48,7 +48,7 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
 
     auto lDataHeaderMsg = mChan.NewMessage(lHdrStack.size());
     if (!lDataHeaderMsg) {
-      DDLOGF(fair::Severity::ERROR, "Allocation error: Stf DataHeader. size={}", sizeof(DataHeader));
+      EDDLOG("Allocation error: Stf DataHeader. size={}", sizeof(DataHeader));
       throw std::bad_alloc();
     }
 
@@ -56,7 +56,7 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
 
     auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
     if (!lDataMsg) {
-      DDLOGF(fair::Severity::ERROR, "Allocation error: Stf::Header. size={}", sizeof(SubTimeFrame::Header));
+      EDDLOG("Allocation error: Stf::Header. size={}", sizeof(SubTimeFrame::Header));
       throw std::bad_alloc();
     }
     std::memcpy(lDataMsg->GetData(), &pStf.header(), sizeof(SubTimeFrame::Header));
@@ -101,10 +101,10 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
   pStf->accept(*this);
 
 #if 0
-  DDLOGF(fair::Severity::DEBUG, "Content of the Stf:");
+  DDDLOG("Content of the Stf:");
   uint64_t lMsgIdx = 0;
   for (auto lM = mMessages.cbegin(); lM != mMessages.cend(); ) {
-    DDLOGF(fair::Severity::DEBUG, "  o2: message #{}", lMsgIdx++);
+    DDDLOG("  o2: message #{}", lMsgIdx++);
     o2::header::hexDump("o2 header", (*lM)->GetData(), (*lM)->GetSize());
     lM++;
     o2::header::hexDump("o2 payload", (*lM)->GetData(), std::clamp((*lM)->GetSize(), std::size_t(0), std::size_t(256)) );
@@ -135,15 +135,15 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
     }
 
     if ((lDh->firstTForbit != 0) && lFirstTForbit != lDh->firstTForbit) {
-      DDLOGF(fair::Severity::ERROR, "DPL output: first orbit is different first={} != current={}", lFirstTForbit, lDh->firstTForbit);
+      EDDLOG("DPL output: first orbit is different first={} != current={}", lFirstTForbit, lDh->firstTForbit);
     }
 
     if (lTfCounter != lDh->tfCounter) {
-      DDLOGF(fair::Severity::ERROR, "DPL output: TF counter is different first={} != current={}", lTfCounter, lDh->tfCounter);
+      EDDLOG("DPL output: TF counter is different first={} != current={}", lTfCounter, lDh->tfCounter);
     }
 
     if (lRunNumber != lDh->runNumber) {
-      DDLOGF(fair::Severity::ERROR, "DPL output: run number is different first={} != current={}", lRunNumber, lDh->runNumber);
+      EDDLOG("DPL output: run number is different first={} != current={}", lRunNumber, lDh->runNumber);
     }
 
     const auto *lProcHdr = o2::header::get<o2::framework::DataProcessingHeader*>(mMessages[lIdx*2]->GetData(), mMessages[lIdx*2]->GetSize());
@@ -152,7 +152,7 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
       lProcStart = lProcHdr->startTime;
     } else {
       if (lProcStart != lProcHdr->startTime) {
-        DDLOGF(fair::Severity::ERROR, "DPL output: dpl proc header start is different first={} != current={}", lProcStart, lProcHdr->startTime);
+        EDDLOG("DPL output: dpl proc header start is different first={} != current={}", lProcStart, lProcHdr->startTime);
       }
     }
 
@@ -166,14 +166,14 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
 
     // check we have enough messsages
     if (lDh->splitPayloadParts > cMsgSize - lIdx ) {
-      DDLOGF(fair::Severity::ERROR, "DPL output: the multi-part is too short for the split-payload message. "
+      EDDLOG("DPL output: the multi-part is too short for the split-payload message. "
         "splitpayload_size={} tf_available={} tf_total={}", lDh->splitPayloadParts, (cMsgSize - lIdx), cMsgSize);
       break;
     }
 
     // check the first message
     if (lDh->splitPayloadIndex != 0) {
-      DDLOGF(fair::Severity::ERROR, "DPL output: index of the first split-payload message is invalid. index={}",
+      EDDLOG("DPL output: index of the first split-payload message is invalid. index={}",
         lDh->splitPayloadIndex);
       break;
     }
@@ -184,7 +184,7 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
 
       // check origin
       if (lOrigin != lSplitDh->dataOrigin || lType != lSplitDh->dataDescription || lSubSpec != lSplitDh->subSpecification) {
-        DDLOGF(fair::Severity::ERROR, "DPL output: origin of the split-payload message is invalid. "
+        EDDLOG("DPL output: origin of the split-payload message is invalid. "
           "[0]=<{}{}{}> [{}]=<{}{}{}>", lOrigin.str, lType.str, lSubSpec,
           lSplitI, lSplitDh->dataOrigin.str, lSplitDh->dataDescription.str, lSplitDh->subSpecification);
         break;
@@ -192,14 +192,14 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
 
       // check the count value
       if (lDh->splitPayloadParts != lSplitDh->splitPayloadParts) {
-        DDLOGF(fair::Severity::ERROR, "DPL output: number of payload parts in split-payload message invalid. "
+        EDDLOG("DPL output: number of payload parts in split-payload message invalid. "
           "split_pos={} number={} original_number={}", lSplitI, lSplitDh->splitPayloadParts, lDh->splitPayloadParts);
         break;
       }
 
       // check the index value
       if (lSplitDh->splitPayloadIndex != lSplitI) {
-        DDLOGF(fair::Severity::ERROR, "DPL output: index of the split-payload message is invalid. "
+        EDDLOG("DPL output: index of the split-payload message is invalid. "
           "split_pos={} != index={} parts_count={}", lSplitI, lSplitDh->splitPayloadIndex, lDh->splitPayloadParts);
         break;
       }
@@ -236,7 +236,7 @@ void DplToStfAdapter::visit(SubTimeFrame& pStf)
 {
   if (mMessages.size() < 2) {
     // stf meta messages must be present
-    DDLOGF(fair::Severity::ERROR, "DPL interface: expected at least 2 messages received={}", mMessages.size());
+    EDDLOG("DPL interface: expected at least 2 messages received={}", mMessages.size());
     mMessages.clear();
     pStf.clear();
 
@@ -245,7 +245,7 @@ void DplToStfAdapter::visit(SubTimeFrame& pStf)
 
   if (mMessages.size() % 2 != 0) {
     // stf meta messages must be even
-    DDLOGF(fair::Severity::ERROR, "DPL interface: expected even number of messages received={}", mMessages.size());
+    EDDLOG("DPL interface: expected even number of messages received={}", mMessages.size());
     mMessages.clear();
     pStf.clear();
 
@@ -261,7 +261,7 @@ void DplToStfAdapter::visit(SubTimeFrame& pStf)
     const DataHeader* lStfDataHdr = o2::header::get<DataHeader*>(lHdrMsg->GetData(), lHdrMsg->GetSize());
 
     if (!lStfDataHdr) {
-      DDLOGF(fair::Severity::ERROR, "DPL interface: cannot find DataHeader in header stack");
+      EDDLOG("DPL interface: cannot find DataHeader in header stack");
       mMessages.clear();
       pStf.clear();
       throw std::runtime_error("SubTimeFrame::Header::DataHeader");
@@ -271,7 +271,7 @@ void DplToStfAdapter::visit(SubTimeFrame& pStf)
     if (gStfDistDataHeader == *lStfDataHdr) {
 
       if (sizeof(SubTimeFrame::Header) != lDataMsg->GetSize()) {
-        DDLOGF(fair::Severity::ERROR, "DPL interface: Stf Header size does not match expected={} received={}",
+        EDDLOG("DPL interface: Stf Header size does not match expected={} received={}",
           sizeof(SubTimeFrame::Header), lDataMsg->GetSize());
 
         mMessages.clear();
@@ -296,11 +296,11 @@ std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize_impl()
   try {
     lStf->accept(*this);
   } catch (std::runtime_error& e) {
-    DDLOGF(fair::Severity::ERROR, "SubTimeFrame deserialization failed. reason={}", e.what());
+    EDDLOG("SubTimeFrame deserialization failed. reason={}", e.what());
     mMessages.clear();
     return nullptr;
   } catch (std::exception& e) {
-    DDLOGF(fair::Severity::ERROR, "SubTimeFrame deserialization failed. reason={}", e.what());
+    EDDLOG("SubTimeFrame deserialization failed. reason={}", e.what());
     mMessages.clear();
     return nullptr;
   }
@@ -333,7 +333,7 @@ std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQChannel& pChan)
   }
 
   if (ret < 0) {
-    DDLOGF_RL(1000, fair::Severity::ERROR, "STF receive failed err={} errno={} error={}", ret, errno,
+    DDLOGF_RL(1000, DataDistSeverity::error, "STF receive failed err={} errno={} error={}", ret, errno,
       std::string(strerror(errno)));
 
     mMessages.clear();

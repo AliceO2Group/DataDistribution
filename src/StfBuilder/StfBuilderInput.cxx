@@ -77,7 +77,7 @@ mRunning = false;
   mBuilderThreads.clear();
   mBuilderInputQueues.clear();
 
-  DDLOGF(fair::Severity::DEBUG, "INPUT INTERFACE: Stopped.");
+  DDDLOG("INPUT INTERFACE: Stopped.");
 }
 
 /// Receiving thread
@@ -102,7 +102,7 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       // receive readout messages
       const auto lRet = lInputChan.Receive(lReadoutMsgs);
       if (lRet < 0 && mRunning) {
-        DDLOGF_RL(1000, fair::Severity::WARNING, "READOUT INTERFACE: Receive failed . err={}", std::to_string(lRet));
+        DDLOGF_RL(1000, DataDistSeverity::warning, "READOUT INTERFACE: Receive failed . err={}", std::to_string(lRet));
         continue;
       } else if (lRet < 0 && !mRunning) {
         break; // should exit
@@ -115,7 +115,7 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
 
       // Copy to avoid surprises. The receiving header is not O2 compatible and can be discarded
       if (lReadoutMsgs[0]->GetSize() != sizeof(ReadoutSubTimeframeHeader)) {
-        DDLOGF_RL(1000, fair::Severity::ERROR,
+        DDLOGF_RL(1000, DataDistSeverity::error,
           "READOUT INTERFACE: incompatible readout header received. Make sure to use compatible readout.exe version."
           " received_size={} expected_size={}", lReadoutMsgs[0]->GetSize(), sizeof(ReadoutSubTimeframeHeader));
         continue;
@@ -124,7 +124,7 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
 
       // check the readout header version
       if (lReadoutHdr.mVersion != sReadoutInterfaceVersion) {
-        DDLOGF_RL(1000, fair::Severity::ERROR, "READOUT INTERFACE: Unsupported readout interface version. "
+        DDLOGF_RL(1000, DataDistSeverity::error, "READOUT INTERFACE: Unsupported readout interface version. "
           "Make sure to use compatible readout.exe version. "
           "received={} expected={}", lReadoutHdr.mVersion, sReadoutInterfaceVersion);
         continue;
@@ -143,8 +143,8 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
               "readout.exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
               "Total occurrences: " << sNumNonContIncStfs;
 
-          DDLOGF_RL(200, fair::Severity::ERROR, lErrMsg.str());
-          DDLOGF(fair::Severity::DEBUG, lErrMsg.str());
+          DDLOGF_RL(200, DataDistSeverity::error, lErrMsg.str());
+          DDDLOG( lErrMsg.str());
 
           // TODO: accout for lost data
           continue;
@@ -152,7 +152,7 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
 
         // forward jump
         if (lReadoutHdr.mTimeFrameId > (lCurrentStfId + 1)) {
-          DDLOGF_RL(200, fair::Severity::WARNING, "READOUT INTERFACE: "
+          DDLOGF_RL(200, DataDistSeverity::warning, "READOUT INTERFACE: "
             "TF ID non-contiguous increase! ({}) -> ({}). Total occurrences: {}", lCurrentStfId,
             lReadoutHdr.mTimeFrameId, sNumNonContDecStfs);
         }
@@ -165,11 +165,11 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       mBuilderInputQueues[lReadoutHdr.mTimeFrameId % mNumBuilders].push(std::move(lReadoutMsgs));
     }
   } catch (std::runtime_error& e) {
-    DDLOGF(fair::Severity::ERROR, "Input channel receive failed. Stopping input thread.");
+    EDDLOG("Input channel receive failed. Stopping input thread.");
     return;
   }
 
-  DDLOGF(fair::Severity::DEBUG, "Exiting the input thread.");
+  DDDLOG("Exiting the input thread.");
 }
 
 /// StfBuilding thread
@@ -208,7 +208,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         if (auto lStf = lStfBuilder.getStf()) {
           // start the new STF
           if (pTimeout) {
-            DDLOGF(fair::Severity::WARNING, "READOUT INTERFACE: finishing STF on a timeout. stf_id={} size={}",
+            WDDLOG("READOUT INTERFACE: finishing STF on a timeout. stf_id={} size={}",
               (*lStf)->header().mId, (*lStf)->getDataSize());
           }
 
@@ -239,7 +239,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
 
       // must not be empty
       if (lReadoutMsgs.empty()) {
-        DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: empty readout multipart.");
+        EDDLOG("READOUT INTERFACE: empty readout multipart.");
         continue;
       }
 
@@ -252,12 +252,12 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
 
       // log only
-      DDLOGF_RL(1000, fair::Severity::DEBUG, "READOUT INTERFACE: Received an ReadoutMsg. stf_id={}",
+      DDLOGF_RL(1000, DataDistSeverity::debug, "READOUT INTERFACE: Received an ReadoutMsg. stf_id={}",
         lReadoutHdr.mTimeFrameId);
 
       // check multipart size
       if (lReadoutMsgs.size() == 1 && !lReadoutHdr.mFlags.mLastTFMessage) {
-        DDLOGF_RL(1000, fair::Severity::ERROR,
+        DDLOGF_RL(1000, DataDistSeverity::error,
           "READOUT INTERFACE: Received only a header message without the STF stop bit set.");
         continue;
       }
@@ -269,11 +269,11 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
           const auto lLinkId = R.getLinkID();
 
           if (lLinkId != lReadoutHdr.mLinkId) {
-            DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: Update link ID does not match RDH in the data block."
+            EDDLOG("READOUT INTERFACE: Update link ID does not match RDH in the data block."
               " hdr_link_id={} rdh_link_id={}", lReadoutHdr.mLinkId, lLinkId);
           }
         } catch (RDHReaderException &e) {
-          DDLOGF(fair::Severity::ERROR, e.what());
+          EDDLOG( e.what());
           // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
           continue;
         }
@@ -286,7 +286,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       if (lReadoutHdr.mTimeFrameId != lCurrentStfId) {
         // we expect to be notified about new TFs
         if (lIdInBuilding) {
-          DDLOGF_RL(1000, fair::Severity::ERROR, "READOUT INTERFACE: Update with a new TF ID. Stop flag not received "
+          DDLOGF_RL(1000, DataDistSeverity::error, "READOUT INTERFACE: Update with a new TF ID. Stop flag not received "
             "the current STF. current_id={} new_id={} ", lCurrentStfId, lReadoutHdr.mTimeFrameId);
           finishBuildingCurrentStf();
         }
@@ -301,7 +301,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         lDataOrigin = ReadoutDataUtils::getDataOrigin(R1);
         lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
       } catch (RDHReaderException &e) {
-        DDLOGF(fair::Severity::ERROR, "READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
+        EDDLOG("READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
         // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
         continue;
       }
@@ -328,14 +328,14 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
           const auto Rend = RDHReader(*lEndHbf);
           lNewSubSpec = ReadoutDataUtils::getSubSpecification(Rend);
         } catch (RDHReaderException &e) {
-          DDLOGF(fair::Severity::ERROR, e.what());
+          EDDLOG(e.what());
           // TODO: portion of the ReadoutMsg is discarded. Account and report the data size.
           lErrorWhileAdding = true;
           break;
         }
 
         if (lNewSubSpec != lSubSpecification) {
-          DDLOGF(fair::Severity::ERROR, "READOUT INTERFACE: update with mismatched subspecification."
+          EDDLOG("READOUT INTERFACE: update with mismatched subspecification."
             " block[0]: {:#06x}, block[{}]: {:#06x}",
             lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
           // insert
@@ -349,7 +349,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       }
 
       if (!lErrorWhileAdding && (lAdded != lReadoutMsgs.size() - 1) ) {
-        DDLOGF(fair::Severity::ERROR, "BUG: Not all received HBFrames added to the STF.");
+        EDDLOG("BUG: Not all received HBFrames added to the STF.");
       }
 
       // check if this was the last message of an STF
@@ -358,7 +358,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       }
     }
 
-  DDLOGF(fair::Severity::DEBUG, "Exiting StfBuilder thread.");
+  DDDLOG("Exiting StfBuilder thread.");
 }
 
 }

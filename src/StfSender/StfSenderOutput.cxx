@@ -89,7 +89,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
     std::scoped_lock lLock(mOutputMapLock);
 
     if (mOutputMap.count(pTfBuilderId) > 0) {
-      DDLOGF(fair::Severity::WARN, "StfSenderOutput::connectTfBuilder: TfBuilder is already connected. tfb_id={}", pTfBuilderId);
+      WDDLOG("StfSenderOutput::connectTfBuilder: TfBuilder is already connected. tfb_id={}", pTfBuilderId);
       return eEXISTS; // TODO: ERRORCODE
     }
   }
@@ -112,12 +112,12 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
   lNewChannel->UpdateRateLogging(1); // log each second
 
   if (!lNewChannel->Validate()) {
-    DDLOGF(fair::Severity::ERROR, "Channel validation failed when connecting. tfb_id={} ep={}", pTfBuilderId, pEndpoint);
+    EDDLOG("Channel validation failed when connecting. tfb_id={} ep={}", pTfBuilderId, pEndpoint);
     return eCONNERR;
   }
 
   if (!lNewChannel->ConnectEndpoint(pEndpoint)) {
-    DDLOGF(fair::Severity::ERROR, "Cannot connect a new cannel. ep={}", pEndpoint);
+    EDDLOG("Cannot connect a new cannel. ep={}", pEndpoint);
     return eCONNERR;
   }
 
@@ -160,15 +160,14 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
     auto lIt = mOutputMap.find(pTfBuilderId);
 
     if (lIt == mOutputMap.end()) {
-      DDLOGF(fair::Severity::WARN, "StfSenderOutput::disconnectTfBuilder: TfBuilder was not connected. tfb_id={}",
-        pTfBuilderId);
+      WDDLOG("StfSenderOutput::disconnectTfBuilder: TfBuilder was not connected. tfb_id={}", pTfBuilderId);
       return false; // TODO: ERRORCODE
     }
 
     if (!lEndpoint.empty()) {
       // Check if the endpoint matches if provided
       if (lEndpoint != lIt->second.mTfBuilderEndpoint) {
-        DDLOGF(fair::Severity::WARN, "StfSenderOutput::disconnectTfBuilder: TfBuilder connected with a different endpoint"
+        WDDLOG("StfSenderOutput::disconnectTfBuilder: TfBuilder connected with a different endpoint"
           "current_ep={} requested_ep={}", lOutputObj.mTfBuilderEndpoint, lEndpoint);
         return false;
       }
@@ -179,13 +178,13 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
   }
 
   // stop and teardown everything
-  DDLOGF(fair::Severity::INFO, "StfSenderOutput::disconnectTfBuilder: Stopping sending thread. tfb_id={}", pTfBuilderId);
+  IDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending thread. tfb_id={}", pTfBuilderId);
   lOutputObj.mRunning->store(false);
   lOutputObj.mStfQueue->stop();
   if (lOutputObj.mThread.joinable()) {
     lOutputObj.mThread.join();
   }
-  DDLOGF(fair::Severity::DEBUG, "StfSenderOutput::disconnectTfBuilder: Stopping sending channel. tfb_id={}", pTfBuilderId);
+  DDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending channel. tfb_id={}", pTfBuilderId);
   if (lOutputObj.mChannel->IsValid() ) {
     lOutputObj.mChannel->GetSocket().Close();
   }
@@ -195,14 +194,14 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
   lSocketMap.erase(pTfBuilderId);
   mDiscoveryConfig->write();
 
-  DDLOGF(fair::Severity::INFO, "StfSenderOutput::disconnectTfBuilder tfb_id={}", pTfBuilderId);
+  IDDLOG("StfSenderOutput::disconnectTfBuilder tfb_id={}", pTfBuilderId);
   return true;
 }
 
 
 void StfSenderOutput::StfSchedulerThread()
 {
-  DDLOGF(fair::Severity::INFO, "StfSchedulerThread: Starting.");
+  IDDLOG("StfSchedulerThread: Starting.");
   // queue the Stf to the appropriate EPN queue
   std::unique_ptr<SubTimeFrame> lStf;
 
@@ -221,7 +220,7 @@ void StfSenderOutput::StfSchedulerThread()
       continue;
     }
 
-    DDLOGF_RL(1000, fair::Severity::DEBUG, "StfSchedulerThread: scheduling stf_id={}", lStfId);
+    DDLOGF_RL(1000, DataDistSeverity::debug, "StfSchedulerThread: scheduling stf_id={}", lStfId);
 
     // move the stf into triage map (before notifying the scheduler to avoid races)
     {
@@ -229,8 +228,7 @@ void StfSenderOutput::StfSchedulerThread()
       auto [it, ins] = mScheduledStfMap.try_emplace(lStfId, std::move(lStf));
       if (!ins) {
         (void)it;
-        DDLOGF(fair::Severity::ERROR, "StfSchedulerThread: Stf already scheduled! Skipping the duplicate. std_id={}",
-          lStfId);
+        EDDLOG("StfSchedulerThread: Stf already scheduled! Skipping the duplicate. std_id={}", lStfId);
         continue;
       }
     }
@@ -250,11 +248,11 @@ void StfSenderOutput::StfSchedulerThread()
 
       mDevice.TfSchedRpcCli().StfSenderStfUpdate(lStfInfo, lSchedResponse);
 
-      DDLOGF_RL(3000, fair::Severity::DEBUG, "Sent STF announce, stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
+      DDLOGF_RL(3000, DataDistSeverity::debug, "Sent STF announce, stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
 
       // check if the scheduler rejected the data
       if (lSchedResponse.status() != SchedulerStfInfoResponse::OK) {
-        DDLOGF_RL(500, fair::Severity::INFO, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
+        DDLOGF_RL(500, DataDistSeverity::info, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
           lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
 
         // remove from the scheduling map
@@ -267,7 +265,7 @@ void StfSenderOutput::StfSchedulerThread()
     }
   }
 
-  DDLOGF(fair::Severity::DEBUG, "StfSchedulerThread: Exiting.");
+  DDDLOG("StfSchedulerThread: Exiting.");
 }
 
 void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::string &pTfBuilderId, StfDataResponse &pRes)
@@ -281,7 +279,7 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     static std::uint64_t sNumDropRequests = 0;
     sNumDropRequests++;
 
-    DDLOGF_RL(1000, fair::Severity::WARNING, "Scheduler requested drop of an STF. stf_id={} total_drop_req={}",
+    DDLOGF_RL(1000, DataDistSeverity::warning, "Scheduler requested drop of an STF. stf_id={} total_drop_req={}",
       pStfId, sNumDropRequests);
 
     pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
@@ -314,7 +312,7 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
 /// Sending thread
 void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
 {
-  DDLOGF(fair::Severity::INFO, "StfSenderOutput[{}]: Starting the thread", pTfBuilderId);
+  IDDLOG("StfSenderOutput[{}]: Starting the thread", pTfBuilderId);
 
   FairMQChannel *lOutputChan = nullptr;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> *lInputStfQueue = nullptr;
@@ -339,12 +337,12 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
     std::unique_ptr<SubTimeFrame> lStf;
 
     if (!lInputStfQueue->pop(lStf)) {
-      DDLOGF(fair::Severity::INFO, "StfSenderOutput[{}]: STF queue drained. Exiting.", pTfBuilderId);
+      IDDLOG("StfSenderOutput[{}]: STF queue drained. Exiting.", pTfBuilderId);
       break;
     }
 
     lNumSentStfs++;
-    DDLOGF_RL(2000, fair::Severity::DEBUG, "Sending an STF to TfBuilder. stf_id={} tfb_id={} total_sent_stf={}",
+    DDLOGF_RL(2000, DataDistSeverity::debug, "Sending an STF to TfBuilder. stf_id={} tfb_id={} total_sent_stf={}",
       lStf->header().mId, pTfBuilderId, lNumSentStfs);
 
     try {
@@ -352,9 +350,9 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
     } catch (std::exception &e) {
 
       if (mDevice.IsRunningState()){
-        DDLOGF(fair::Severity::ERROR, "StfSenderOutput[{}]: exception on send, what={}", pTfBuilderId, e.what());
+        EDDLOG("StfSenderOutput[{}]: exception on send, what={}", pTfBuilderId, e.what());
       } else {
-        DDLOGF(fair::Severity::INFO, "StfSenderOutput[{}](NOT RUNNING): exception on send. what={}", pTfBuilderId, e.what());
+        IDDLOG("StfSenderOutput[{}](NOT RUNNING): exception on send. what={}", pTfBuilderId, e.what());
       }
 
       break;
@@ -366,7 +364,7 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
 
   }
 
-  DDLOGF(fair::Severity::INFO, "Exiting StfSenderOutput[{}]", pTfBuilderId);
+  IDDLOG("Exiting StfSenderOutput[{}]", pTfBuilderId);
 }
 
 }

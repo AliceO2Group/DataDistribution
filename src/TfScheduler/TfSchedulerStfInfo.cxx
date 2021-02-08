@@ -32,7 +32,7 @@ using namespace std::chrono_literals;
 void TfSchedulerStfInfo::SchedulingThread()
 {
   DataDistLogger::SetThreadName("SchedulingThread");
-  DDLOGF(fair::Severity::DEBUG, "Starting StfInfo Scheduling thread.");
+  DDDLOG("Starting StfInfo Scheduling thread.");
 
   const auto lNumStfSenders = mDiscoveryConfig->status().stf_sender_count();
   const std::set<std::string> lStfSenderIdSet = mConnManager.getStfSenderSet();
@@ -74,9 +74,8 @@ void TfSchedulerStfInfo::SchedulingThread()
         std::string lTfBuilderId;
         if ( mTfBuilderInfo.findTfBuilderForTf(lTfSize, lTfBuilderId /*out*/) ) {
           lNumTfScheds++;
-          DDLOGF_RL(1000, fair::Severity::DEBUG, "Scheduling new TF. tf_id={:d} tfb_id={:s} total={:d}",
+          DDLOGF_RL(1000, DataDistSeverity::debug, "Scheduling new TF. tf_id={} tfb_id={} total={}",
             lTfId, lTfBuilderId, lNumTfScheds);
-
 
           assert (!lTfBuilderId.empty());
           // Notify TfBuilder to build the TF
@@ -100,19 +99,17 @@ void TfSchedulerStfInfo::SchedulingThread()
                   mTfBuilderInfo.markTfBuilderWithTfId(lTfBuilderId, lRequest.tf_id());
                   break;
                 case BuildTfResponse::ERROR_NOMEM:
-                  DDLOGF(fair::Severity::ERROR,
-                    "Scheduling error: selected TfBuilder returned ERROR_NOMEM. tf_id={:s}", lTfBuilderId);
+                  EDDLOG("Scheduling error: selected TfBuilder returned ERROR_NOMEM. tf_id={:s}", lTfBuilderId);
                   break;
                 case BuildTfResponse::ERROR_NOT_RUNNING:
-                  DDLOGF(fair::Severity::ERROR,
-                    "Scheduling error: selected TfBuilder returned ERROR_NOT_RUNNING. tf_id={:s}", lTfBuilderId);
+                  EDDLOG("Scheduling error: selected TfBuilder returned ERROR_NOT_RUNNING. tf_id={:s}", lTfBuilderId);
                   break;
                 default:
                   break;
               }
             } else {
-              DDLOGF(fair::Severity::ERROR, "Scheduling of TF failed. to_tfb_id={:s} reason=grpc_error", lTfBuilderId);
-              DDLOGF(fair::Severity::WARNING, "Removing TfBuilder from scheduling. tfb_id={:s}", lTfBuilderId);
+              EDDLOG("Scheduling of TF failed. to_tfb_id={:s} reason=grpc_error", lTfBuilderId);
+              WDDLOG("Removing TfBuilder from scheduling. tfb_id={:s}", lTfBuilderId);
 
               lRpcCli.put();
               mConnManager.dropAllStfsAsync(lTfId);
@@ -122,7 +119,7 @@ void TfSchedulerStfInfo::SchedulingThread()
           } else {
             // TfBuilder was removed in the meantime, e.g. by housekeeping thread because of stale info
             // We drop the current TF as this is not a likely situation
-            DDLOGF(fair::Severity::WARNING,
+            WDDLOG(
               "Selected TfBuilder is not currently reachable. TF will be dropped. tfb_id={:s} tf_id={:d}",
               lTfBuilderId, lTfId);
 
@@ -157,8 +154,7 @@ void TfSchedulerStfInfo::SchedulingThread()
           const auto &lLastStfInfo = lStfInfoVec.back();
           const auto lTimeDiff = std::chrono::abs(lLastStfInfo.mUpdateLocalTime - lNow);
           if (lTimeDiff > sStfDiscardTimeout) {
-            DDLOGF(fair::Severity::WARNING,
-              "Discarding incomplete SubTimeFrame. stf_id={:d} received={:d} expected={:d}",
+            WDDLOG("Discarding incomplete SubTimeFrame. stf_id={:d} received={:d} expected={:d}",
               lStfId, lStfInfoVec.size(), lNumStfSenders);
 
             // find missing StfSenders
@@ -169,7 +165,7 @@ void TfSchedulerStfInfo::SchedulingThread()
             }
 
             std::string lMissingIds = boost::algorithm::join(lMissingStfSenders, ", ");
-            DDLOGF(fair::Severity::DEBUG, "Missing STFs from StfSender IDs: {:s}", lMissingIds);
+            DDDLOG("Missing STFs from StfSender IDs: {:s}", lMissingIds);
 
             // TODO: more robust reporting needed!
             //       which stfSenders did not send?
@@ -185,9 +181,7 @@ void TfSchedulerStfInfo::SchedulingThread()
       }
 
       if (lStfsToErase.size() > 0) {
-        DDLOGF(fair::Severity::WARNING,
-          "TFs have been discarded due to incomplete number of STFs. discarded_tf_count={:d}",
-          lStfsToErase.size());
+        WDDLOG("TFs have been discarded due to incomplete number of STFs. discarded_tf_count={}", lStfsToErase.size());
       }
     }
 
@@ -199,14 +193,13 @@ void TfSchedulerStfInfo::SchedulingThread()
       }
 
       if (std::cv_status::timeout == mStfScheduleCondition.wait_for(lLock, sStfDiscardTimeout)) {
-        DDLOGF(fair::Severity::WARNING,
-          "No new complete SubTimeFrames in {:d} seconds. Starting stale SubTimeFrame discard procedure.",
+        WDDLOG("No new complete SubTimeFrames in {:d} seconds. Starting stale SubTimeFrame discard procedure.",
           sStfDiscardTimeout.count());
       }
     }
   }
 
-  DDLOGF(fair::Severity::DEBUG, "Exiting StfInfo Scheduling thread.");
+  DDDLOG("Exiting StfInfo Scheduling thread.");
 }
 
 void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse)
@@ -223,10 +216,8 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
     std::unique_lock lLock(mGlobalStfInfoLock);
 
     if (lStfId > mLastStfId + 200) {
-      DDLOGF(fair::Severity::DEBUG,
-        "Received STFid is much larger than the currently processed TF id. new_stf_id={} current_stf_id={} from_stf_sender={}",
-        lStfId, mLastStfId, pStfInfo.info().process_id()
-      );
+      DDDLOG("Received STFid is much larger than the currently processed TF id."
+        " new_stf_id={} current_stf_id={} from_stf_sender={}", lStfId, mLastStfId, pStfInfo.info().process_id());
     }
 
     // Sanity check for delayed Stf info
@@ -235,8 +226,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
     const auto lMinAccept = mLastStfId < lMaxDelayTf ? 0 : mLastStfId - lMaxDelayTf;
 
     if ((lStfId < lMinAccept) && (mStfInfoMap.count(lStfId) == 0)) {
-      DDLOGF(fair::Severity::WARNING, "Delayed or duplicate STF info. "
-        "stf_id={:d} current_stf_id={:d} from_stf_sender={:s}",
+      WDDLOG("Delayed or duplicate STF info. stf_id={} current_stf_id={} from_stf_sender={}",
         lStfId, mLastStfId, pStfInfo.info().process_id());
 
       // TODO: discarded or scheduled?

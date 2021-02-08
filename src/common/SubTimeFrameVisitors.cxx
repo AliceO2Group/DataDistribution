@@ -45,7 +45,7 @@ void InterleavedHdrDataSerializer::visit(SubTimeFrame& pStf)
   // Pack the Stf header
   auto lDataHeaderMsg = mChan.NewMessage(sizeof(DataHeader));
   if (!lDataHeaderMsg) {
-    DDLOGF(fair::Severity::ERROR, "Allocation error: Stf DataHeader. size={}", sizeof(DataHeader));
+    EDDLOG("Allocation error: Stf DataHeader. size={}", sizeof(DataHeader));
     throw std::bad_alloc();
   }
   std::memcpy(lDataHeaderMsg->GetData(), &gStfDistDataHeader, sizeof(DataHeader));
@@ -54,7 +54,7 @@ void InterleavedHdrDataSerializer::visit(SubTimeFrame& pStf)
 
   auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
   if (!lDataMsg) {
-    DDLOGF(fair::Severity::ERROR, "Allocation error: Stf::Header. size={}", sizeof(SubTimeFrame::Header));
+    EDDLOG("Allocation error: Stf::Header. size={}", sizeof(SubTimeFrame::Header));
     throw std::bad_alloc();
   }
   std::memcpy(lDataMsg->GetData(), &pStf.header(), sizeof(SubTimeFrame::Header));
@@ -68,7 +68,7 @@ void InterleavedHdrDataSerializer::visit(SubTimeFrame& pStf)
         mMessages.emplace_back(std::move(lStfDataIter.mHeader));
 
         if (lStfDataIter.mData->GetSize() == 0) {
-          DDLOGF(fair::Severity::ERROR, "Sending STF data payload with zero size");
+          EDDLOG("Sending STF data payload with zero size");
         }
 
         mMessages.emplace_back(std::move(lStfDataIter.mData));
@@ -104,7 +104,7 @@ void InterleavedHdrDataDeserializer::visit(SubTimeFrame& pStf)
   std::memcpy(&lStfDataHdr, mMessages[0]->GetData(), sizeof(DataHeader));
   // verify the stf DataHeader
   if (!(gStfDistDataHeader == lStfDataHdr)) {
-   DDLOGF(fair::Severity::WARNING, "Receiving bad SubTimeFrame::Header::DataHeader message");
+   WDDLOG("Receiving bad SubTimeFrame::Header::DataHeader message");
     throw std::runtime_error("SubTimeFrame::Header::DataHeader");
   }
   // copy the header
@@ -116,7 +116,7 @@ void InterleavedHdrDataDeserializer::visit(SubTimeFrame& pStf)
     auto &lDataMsg = mMessages[i + 1];
 
     if (lDataMsg->GetSize() == 0) {
-      DDLOGF(fair::Severity::ERROR, "Received STF data payload with zero size");
+      EDDLOG("Received STF data payload with zero size");
     }
 
     pStf.addStfData({ std::move(mMessages[i]), std::move(lDataMsg) });
@@ -133,7 +133,7 @@ std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize(FairMQ
   }
 
   if (ret < 0) {
-    DDLOGF_RL(1000, fair::Severity::ERROR, "STF receive failed err={} errno={} error={}", ret, errno,
+    DDLOGF_RL(1000, DataDistSeverity::error, "STF receive failed err={} errno={} error={}", ret, errno,
       std::string(strerror(errno)));
 
     mMessages.clear();
@@ -158,11 +158,11 @@ std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize_impl()
   try {
     lStf->accept(*this);
   } catch (std::runtime_error& e) {
-    DDLOGF(fair::Severity::ERROR, "SubTimeFrame deserialization failed. reason={}", e.what());
+    EDDLOG("SubTimeFrame deserialization failed. reason={}", e.what());
     mMessages.clear();
     return nullptr;
   } catch (std::exception& e) {
-    DDLOGF(fair::Severity::ERROR, "SubTimeFrame deserialization failed. reason={}", e.what());
+    EDDLOG("SubTimeFrame deserialization failed. reason={}", e.what());
     mMessages.clear();
     return nullptr;
   }

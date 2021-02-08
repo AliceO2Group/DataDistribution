@@ -72,7 +72,7 @@ void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf)
 
   for (const auto& lId : pStf->getEquipmentIdentifiers()) {
     if (lUnionSet.emplace(lId).second == false /* not inserted */) {
-      DDLOGF(fair::Severity::ERROR, "Mergingin STFs error: Equipment already present: fee={}", lId.info());
+      EDDLOG("Merging STFs error: Equipment already present: fee={}", lId.info());
     }
   }
 
