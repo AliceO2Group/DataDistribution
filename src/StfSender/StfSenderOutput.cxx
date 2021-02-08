@@ -272,7 +272,7 @@ void StfSenderOutput::StfSchedulerThread()
 
 void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::string &pTfBuilderId, StfDataResponse &pRes)
 {
-  assert(! pTfBuilderId.empty());
+  assert(!pTfBuilderId.empty());
 
   std::scoped_lock lLock(mOutputMapLock, mScheduledStfMapLock);
 
@@ -281,7 +281,7 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     static std::uint64_t sNumDropRequests = 0;
     sNumDropRequests++;
 
-    DDLOGF_RL(1000, fair::Severity::WARNING, "Scheduler requested drop of the STF stf_id={} total_drop_req={}",
+    DDLOGF_RL(1000, fair::Severity::WARNING, "Scheduler requested drop of an STF. stf_id={} total_drop_req={}",
       pStfId, sNumDropRequests);
 
     pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
