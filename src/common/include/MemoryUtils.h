@@ -158,7 +158,7 @@ public:
     );
 
     if (!mRegion) {
-      DDLOGF(fair::Severity::FATAL, "Creation of new memory region failed. name={} size={} path={}",
+      DDLOGF(fair::Severity::error, "Creation of new memory region failed. name={} size={} path={}",
       mSegmentName, pSize, lSegmentRoot);
       throw std::bad_alloc();
     }

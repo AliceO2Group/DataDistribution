@@ -11,48 +11,71 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include "DataDistLogger.h"
 #include "TfBuilderDevice.h"
-
-#include <Config.h>
 #include <SubTimeFrameFileSink.h>
+#include <Config.h>
 
 #include <options/FairMQProgOptions.h>
-#include <runFairMQDevice.h>
+#include <fairmq/DeviceRunner.h>
 
-namespace bpo = boost::program_options;
-template class std::basic_string<char, std::char_traits<char>, std::allocator<char> >; // Workaround for bug in CC7 devtoolset7
+using namespace o2::DataDistribution;
 
-void addCustomOptions(bpo::options_description& options)
+int main(int argc, char* argv[])
 {
+    using namespace fair::mq;
+    using namespace fair::mq::hooks;
+    namespace bpo = boost::program_options;
 
-  bpo::options_description lTfBuilderOptions("TfBuilder options", 120);
+    // set InfoLogger Facility
+    DataDistLogger::sInfoLoggerFacility = "datadist/tfbuilder";
 
-  lTfBuilderOptions.add_options()(
-    o2::DataDistribution::TfBuilderDevice::OptionKeyStandalone,
-    bpo::bool_switch()->default_value(false),
-    "Standalone operation. TimeFrames will not be forwarded to other processes.")(
-    o2::DataDistribution::TfBuilderDevice::OptionKeyTfMemorySize,
-    bpo::value<std::uint64_t>()->default_value(512),
-    "Memory buffer reserved for building and buffering TimeFrames (in MiB).");
+    fair::mq::DeviceRunner runner{argc, argv};
 
-  bpo::options_description lTfBuilderDplOptions("TfBuilder DPL options", 120);
-  lTfBuilderDplOptions.add_options()
-  (
-    o2::DataDistribution::TfBuilderDevice::OptionKeyDplChannelName,
-    bpo::value<std::string>()->default_value(""),
-    "Name of the DPL output channel."
-  );
+    // Populate options from the command line
+    runner.AddHook<fair::mq::hooks::SetCustomCmdLineOptions>([](fair::mq::DeviceRunner& r) {
 
-  options.add(lTfBuilderOptions);
-  options.add(lTfBuilderDplOptions);
+      // Add InfoLogger Options
+      r.fConfig.AddToCmdLineOptions(impl::DataDistLoggerCtx::getProgramOptions());
 
-  // Add options for TF file sink
-  options.add(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());
-  // Add options for Data Distribution discovery
-  options.add(o2::DataDistribution::Config::getProgramOptions(o2::DataDistribution::ProcessType::TfBuilder));
-}
+      // TfBuilder options
+      bpo::options_description lTfBuilderOptions("TfBuilder options", 120);
+      lTfBuilderOptions.add_options()(
+        o2::DataDistribution::TfBuilderDevice::OptionKeyStandalone,
+        bpo::bool_switch()->default_value(false),
+        "Standalone operation. TimeFrames will not be forwarded to other processes.")(
+        o2::DataDistribution::TfBuilderDevice::OptionKeyTfMemorySize,
+        bpo::value<std::uint64_t>()->default_value(512),
+        "Memory buffer reserved for building and buffering TimeFrames (in MiB).");
 
-FairMQDevicePtr getDevice(const FairMQProgOptions& /*config*/)
-{
-  return new o2::DataDistribution::TfBuilderDevice();
+      bpo::options_description lTfBuilderDplOptions("TfBuilder DPL options", 120);
+      lTfBuilderDplOptions.add_options()(
+        o2::DataDistribution::TfBuilderDevice::OptionKeyDplChannelName,
+        bpo::value<std::string>()->default_value(""),
+        "Name of the DPL output channel.");
+
+      r.fConfig.AddToCmdLineOptions(lTfBuilderOptions);
+      r.fConfig.AddToCmdLineOptions(lTfBuilderDplOptions);
+
+      // Add options for TF file sink
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());
+      // Add options for Data Distribution discovery
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::Config::getProgramOptions(o2::DataDistribution::ProcessType::TfBuilder));
+
+    });
+
+
+    runner.AddHook<InstantiateDevice>([](DeviceRunner& r){
+      // r.fPluginManager.ForEachPlugin([](Plugin& p) {
+      //   DDLOGF(DataDistSeverity::INFO, "Controlling pluggin: {}", p.GetName());
+      // });
+
+      // Install listener for Logging options
+      o2::DataDistribution::impl::DataDistLoggerCtx::HandleFMQOptions(r);
+
+      // Instantiate the device
+      r.fDevice = std::make_unique<o2::DataDistribution::TfBuilderDevice>();
+    });
+
+    return runner.RunWithExceptionHandlers();
 }

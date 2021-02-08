@@ -92,6 +92,39 @@ class ConcurrentContainerImpl
     return true;
   }
 
+  // push a new element to the queue, while in the running state
+  // The oldest element will be dropped if over capacity
+  // return false (fail) if not running. Capacity is not strictly enforced if the container size is already over cap.
+  template <typename... Args>
+  bool push_capacity(const std::size_t pCap, Args&&... args)
+  {
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    if (!mImpl->mRunning) {
+      mImpl->mCond.notify_all(); // just in case someone is waiting
+      return false;
+    }
+
+    if ((pCap > 0) && (pCap <= mImpl->mContainer.size())) {
+      if constexpr (type == eFIFO) {
+        mImpl->mContainer.pop_front();
+      } else if constexpr (type == eLIFO) {
+        mImpl->mContainer.pop_back();
+      }
+    }
+
+    if constexpr (type == eFIFO) {
+      mImpl->mContainer.emplace_back(std::forward<Args>(args)...);
+    } else if constexpr (type == eLIFO) {
+      mImpl->mContainer.emplace_front(std::forward<Args>(args)...);
+    } else {
+      static_assert("Unknown queuing strategy.");
+    }
+
+    lLock.unlock(); // reduce contention
+    mImpl->mCond.notify_one();
+    return true;
+  }
+
   // pop an element from the queue. Caller will block while the queue is running
   // returns true on success
   bool pop(T& d)

@@ -134,12 +134,12 @@ void StfBuilderDevice::InitTask()
 
   // File sink
   if (!I().mFileSink->loadVerifyConfig(*(this->GetConfig()))) {
-    exit(-1);
+    std::this_thread::sleep_for(1s); exit(-1);
   }
 
   // File source
   if (!I().mFileSource->loadVerifyConfig(*(this->GetConfig()))) {
-    exit(-1);
+    std::this_thread::sleep_for(1s); exit(-1);
   }
 
   // make sure we have detector if not using files
@@ -148,15 +148,15 @@ void StfBuilderDevice::InitTask()
       (ReadoutDataUtils::sSpecifiedDataOrigin == gDataOriginInvalid)) {
       DDLOGF(fair::Severity::ERROR, "Detector string parameter must be specified when receiving the data from the "
         "readout and not using RDHv6 or greater.");
-      exit(-1);
+      std::this_thread::sleep_for(1s); exit(-1);
     } else {
       DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured detector: {}",
         ReadoutDataUtils::sSpecifiedDataOrigin.str);
     }
 
     if (ReadoutDataUtils::sRdhVersion == ReadoutDataUtils::RdhVersion::eRdhInvalid) {
-      DDLOGF(fair::Severity::FATAL, "RDH version must be specified when receiving the data from the readout.");
-      exit(-1);
+      DDLOGF(fair::Severity::error, "The RDH version must be specified when receiving data from readout.");
+      std::this_thread::sleep_for(1s); exit(-1);
     } else {
       DDLOGF(fair::Severity::info, "READOUT INTERFACE: Configured RDHv{}", ReadoutDataUtils::sRdhVersion);
       RDHReader::Initialize(unsigned(ReadoutDataUtils::sRdhVersion));
@@ -196,7 +196,7 @@ void StfBuilderDevice::InitTask()
         GetChannel(I().mInputChannelName);
       } catch(std::exception &) {
         DDLOGF(fair::Severity::ERROR, "Input channel not configured (from readout.exe) and not running with file source enabled.");
-        exit(-1);
+        std::this_thread::sleep_for(1s); exit(-1);
       }
     }
 
@@ -206,7 +206,7 @@ void StfBuilderDevice::InitTask()
       }
     } catch(std::exception &) {
       DDLOGF(fair::Severity::ERROR, "Output channel (to DPL or StfSender) must be configured if not running in stand-alone mode.");
-      exit(-1);
+      std::this_thread::sleep_for(1s); exit(-1);
     }
   }
 

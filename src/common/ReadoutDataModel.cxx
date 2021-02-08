@@ -66,7 +66,7 @@ ReadoutDataUtils::getSubSpecification(const RDHReader &R)
   } else if (ReadoutDataUtils::sRawDataSubspectype == eFeeId) {
     lSubSpec = R.getFeeID();
   } else {
-    DDLOGF(fair::Severity::FATAL, "Invalid SubSpecification method={}", ReadoutDataUtils::sRawDataSubspectype);
+    DDLOGF(fair::Severity::error, "Invalid SubSpecification method={}", ReadoutDataUtils::sRawDataSubspectype);
   }
 
   return lSubSpec;

@@ -215,7 +215,7 @@ public:
         sRDHReader = std::make_unique<RDHv6Reader>();
         break;
       default:
-        DDLOGF(fair::Severity::FATAL, "Unknown RDH version! version={}"
+        DDLOGF(fair::Severity::error, "Unknown RDH version! version={}"
           "Supported versions are RDHv3, RDHv4, RDHv5, and RDHv6", pVer);
         throw std::runtime_error("Unknown RDH version");
         break;

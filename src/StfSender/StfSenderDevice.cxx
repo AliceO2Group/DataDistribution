@@ -64,6 +64,13 @@ void StfSenderDevice::InitTask()
     mDiscoveryConfig->write();
   }
 
+  try {
+    GetChannel(mInputChannelName, 0);
+  } catch (...) {
+    DDLOGF(DataDistSeverity::error, "Requested input channel is not configured. input_chan={}", mInputChannelName);
+    std::this_thread::sleep_for(1s); exit(-1);
+  }
+
   // Buffering limitation
   if (mMaxStfsInPipeline > 0) {
     if (mMaxStfsInPipeline < 4) {
@@ -80,8 +87,9 @@ void StfSenderDevice::InitTask()
   }
 
   // File sink
-  if (!mFileSink.loadVerifyConfig(*GetConfig()))
-    exit(-1);
+  if (!mFileSink.loadVerifyConfig(*GetConfig())) {
+    std::this_thread::sleep_for(1s); exit(-1);
+  }
 
   // check if any outputs enabled
   if (mStandalone && !mFileSink.enabled()) {

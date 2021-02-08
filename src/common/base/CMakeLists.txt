@@ -27,4 +27,5 @@ target_link_libraries(base
     Boost::filesystem
     FairLogger::FairLogger
     FairMQ::FairMQ
+    AliceO2::InfoLogger
 )

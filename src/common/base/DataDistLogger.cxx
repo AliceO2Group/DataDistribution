@@ -22,10 +22,32 @@ namespace DataDistribution
 // per thread log name
 thread_local char* DataDistLogger::sThisThreadName = nullptr;
 
-std::chrono::steady_clock::time_point DataDistLogger::sRateLimitLast = std::chrono::steady_clock::now();
+// InfoLoggerFacility
+std::string DataDistLogger::sInfoLoggerFacility;
+
+std::chrono::steady_clock::time_point
+DataDistLogger::sRateLimitLast = std::chrono::steady_clock::now();
+
+volatile bool impl::DataDistLoggerCtx::sRunning = false;
+std::thread impl::DataDistLoggerCtx::sRateUpdateThread;
+std::thread impl::DataDistLoggerCtx::mInfoLoggerThread;
+
+
+std::unique_ptr<ConcurrentFifo<std::tuple<AliceO2::InfoLogger::InfoLogger::Severity, std::string>>>
+DataDistLogger::sInfoLogQueue = nullptr;
+
+
+// Keep the desired stdout Severity level
+DataDistSeverity DataDistLogger::sConfigSeverity = DataDistSeverity::debug;
+
+// Keep the desired InfoLogger Severity level
+bool DataDistLogger::sInfologgerEnabled = false;
+DataDistSeverity DataDistLogger::sInfologgerSeverity = DataDistSeverity::nolog;
+
 
 // this is a static object that will interpose early into FairLogger
 impl::DataDistLoggerCtx sLoggerCtx;
+
 
 }
 }

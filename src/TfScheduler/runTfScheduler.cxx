@@ -8,23 +8,50 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
+#include "DataDistLogger.h"
 #include "TfSchedulerDevice.h"
-
 #include <Config.h>
 
 #include <options/FairMQProgOptions.h>
-#include <runFairMQDevice.h>
+#include <fairmq/DeviceRunner.h>
 
-namespace bpo = boost::program_options;
-template class std::basic_string<char, std::char_traits<char>, std::allocator<char> >; // Workaround for bug in CC7 devtoolset7
+using namespace o2::DataDistribution;
 
-void addCustomOptions(bpo::options_description& options)
+int main(int argc, char* argv[])
 {
-  // Add options for Data Distribution discovery
-  options.add(o2::DataDistribution::Config::getProgramOptions(o2::DataDistribution::ProcessType::TfSchedulerService));
-}
+    using namespace fair::mq;
+    using namespace fair::mq::hooks;
+    namespace bpo = boost::program_options;
 
-FairMQDevicePtr getDevice(const FairMQProgOptions& /*config*/)
-{
-  return new o2::DataDistribution::TfSchedulerDevice();
+    // set InfoLogger Facility
+    DataDistLogger::sInfoLoggerFacility = "datadist/tfscheduler";
+
+    fair::mq::DeviceRunner runner{argc, argv};
+
+    // Populate options from the command line
+    runner.AddHook<fair::mq::hooks::SetCustomCmdLineOptions>([](fair::mq::DeviceRunner& r) {
+
+      // Add InfoLogger Options
+      r.fConfig.AddToCmdLineOptions(impl::DataDistLoggerCtx::getProgramOptions());
+
+      // Add options for Data Distribution discovery
+      r.fConfig.AddToCmdLineOptions(
+        o2::DataDistribution::Config::getProgramOptions(o2::DataDistribution::ProcessType::TfSchedulerService)
+      );
+    });
+
+
+    runner.AddHook<InstantiateDevice>([](DeviceRunner& r){
+      // r.fPluginManager.ForEachPlugin([](Plugin& p) {
+      //   DDLOGF(DataDistSeverity::INFO, "Controlling pluggin: {}", p.GetName());
+      // });
+
+      // Install listener for Logging options
+      o2::DataDistribution::impl::DataDistLoggerCtx::HandleFMQOptions(r);
+
+      // Instantiate the device
+      r.fDevice = std::make_unique<o2::DataDistribution::TfSchedulerDevice>();
+    });
+
+    return runner.RunWithExceptionHandlers();
 }

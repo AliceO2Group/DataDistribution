@@ -17,66 +17,90 @@
 #include <SubTimeFrameFileSink.h>
 #include <SubTimeFrameFileSource.h>
 
-#include <Headers/DataHeader.h>
+#include <fairmq/DeviceRunner.h>
 
-#include <runFairMQDevice.h>
+#include "DataDistLogger.h"
 
-namespace bpo = boost::program_options;
-template class std::basic_string<char, std::char_traits<char>, std::allocator<char> >; // Workaround for bug in CC7 devtoolset7
+using namespace o2::DataDistribution;
 
-void addCustomOptions(bpo::options_description& options)
+int main(int argc, char* argv[])
 {
+    using namespace fair::mq;
+    using namespace fair::mq::hooks;
+    namespace bpo = boost::program_options;
 
-  bpo::options_description lStfBuilderOptions("StfBuilder options", 120);
+    // set InfoLogger Facility
+    DataDistLogger::sInfoLoggerFacility = "datadist/stfbuilder";
 
-  lStfBuilderOptions.add_options()
-    (
-      o2::DataDistribution::StfBuilderDevice::OptionKeyInputChannelName,
-      bpo::value<std::string>()->default_value("readout"),
-      "Name of the readout channel (input)."
-    )
-    (
-      o2::DataDistribution::StfBuilderDevice::OptionKeyStandalone,
-      bpo::bool_switch()->default_value(false),
-      "Standalone operation. SubTimeFrames will not be forwarded to other processes."
-    )
-    (
-      o2::DataDistribution::StfBuilderDevice::OptionKeyMaxBufferedStfs,
-      bpo::value<std::int64_t>()->default_value(-1),
-      "Maximum number of buffered SubTimeFrames before starting to drop data (unlimited: -1)."
-    )
-    (
-      o2::DataDistribution::StfBuilderDevice::OptionKeyMaxBuiltStfs,
-      bpo::value<std::uint64_t>()->default_value(0),
-      "Maximum number of built and forwarded (Sub)TimeFrames before closing (unlimited: 0, default)."
-    )
-    (
-      o2::DataDistribution::StfBuilderDevice::OptionKeyOutputChannelName,
-      bpo::value<std::string>()->default_value("builder-stf-channel"),
-      "Name of the output channel."
-    );
+    fair::mq::DeviceRunner runner{argc, argv};
 
-  bpo::options_description lStfBuilderDplOptions("StfBuilder DPL options", 120);
-  lStfBuilderDplOptions.add_options()
-  (
-    o2::DataDistribution::StfBuilderDevice::OptionKeyDplChannelName,
-    bpo::value<std::string>()->default_value(""),
-    "Name of the dpl output channel. If empty, skip the DPL and connect to StfSender."
-  );
+    // Populate options from the command line
+    runner.AddHook<fair::mq::hooks::SetCustomCmdLineOptions>([](fair::mq::DeviceRunner& r) {
 
-  options.add(lStfBuilderOptions);
-  options.add(lStfBuilderDplOptions);
+      // Add InfoLogger Options
+      r.fConfig.AddToCmdLineOptions(impl::DataDistLoggerCtx::getProgramOptions());
 
-  options.add(o2::DataDistribution::StfBuilderDevice::getDetectorProgramOptions());
-  options.add(o2::DataDistribution::StfBuilderDevice::getStfBuildingProgramOptions());
+      bpo::options_description lStfBuilderOptions("StfBuilder options", 120);
 
-  // Add options for STF file sink
-  options.add(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());
-  // Add options for STF file source
-  options.add(o2::DataDistribution::SubTimeFrameFileSource::getProgramOptions());
-}
+      lStfBuilderOptions.add_options()
+        (
+          o2::DataDistribution::StfBuilderDevice::OptionKeyInputChannelName,
+          bpo::value<std::string>()->default_value("readout"),
+          "Name of the readout channel (input)."
+        )
+        (
+          o2::DataDistribution::StfBuilderDevice::OptionKeyStandalone,
+          bpo::bool_switch()->default_value(false),
+          "Standalone operation. SubTimeFrames will not be forwarded to other processes."
+        )
+        (
+          o2::DataDistribution::StfBuilderDevice::OptionKeyMaxBufferedStfs,
+          bpo::value<std::int64_t>()->default_value(-1),
+          "Maximum number of buffered SubTimeFrames before starting to drop data (unlimited: -1)."
+        )
+        (
+          o2::DataDistribution::StfBuilderDevice::OptionKeyMaxBuiltStfs,
+          bpo::value<std::uint64_t>()->default_value(0),
+          "Maximum number of built and forwarded (Sub)TimeFrames before closing (unlimited: 0, default)."
+        )
+        (
+          o2::DataDistribution::StfBuilderDevice::OptionKeyOutputChannelName,
+          bpo::value<std::string>()->default_value("builder-stf-channel"),
+          "Name of the output channel."
+        );
 
-FairMQDevicePtr getDevice(const FairMQProgOptions& /*config*/)
-{
-  return new o2::DataDistribution::StfBuilderDevice();
+      bpo::options_description lStfBuilderDplOptions("StfBuilder DPL options", 120);
+      lStfBuilderDplOptions.add_options()
+      (
+        o2::DataDistribution::StfBuilderDevice::OptionKeyDplChannelName,
+        bpo::value<std::string>()->default_value(""),
+        "Name of the dpl output channel. If empty, skip the DPL and connect to StfSender."
+      );
+
+      r.fConfig.AddToCmdLineOptions(lStfBuilderOptions);
+      r.fConfig.AddToCmdLineOptions(lStfBuilderDplOptions);
+
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::StfBuilderDevice::getDetectorProgramOptions());
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::StfBuilderDevice::getStfBuildingProgramOptions());
+
+      // Add options for STF file sink
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());
+      // Add options for STF file source
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::SubTimeFrameFileSource::getProgramOptions());
+
+    });
+
+    runner.AddHook<InstantiateDevice>([](DeviceRunner& r){
+      // r.fPluginManager.ForEachPlugin([](Plugin& p) {
+      //   DDLOGF(DataDistSeverity::INFO, "Controlling pluggin: {}", p.GetName());
+      // });
+
+      // Install listener for Logging options
+      o2::DataDistribution::impl::DataDistLoggerCtx::HandleFMQOptions(r);
+
+      // Instantiate the device
+      r.fDevice = std::make_unique<o2::DataDistribution::StfBuilderDevice>();
+    });
+
+    return runner.RunWithExceptionHandlers();
 }

@@ -101,6 +101,8 @@ find_package(gRPC CONFIG REQUIRED)
 find_package(AliceO2 REQUIRED)
 find_package(Monitoring 3 REQUIRED) # AliceO2::Monitoring
 
+find_package(InfoLogger REQUIRED CONFIG NAMES InfoLogger libInfoLogger)
+
 # see if our 3rd parties are Installed
 # note: spdlog builds against external fmt because FairLogger does the same
 
