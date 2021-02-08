@@ -6,4 +6,6 @@ add_subdirectory(TfBuilder)
 
 add_subdirectory(TfScheduler)
 
+add_subdirectory(DataDistControl)
+
 add_subdirectory(tests)
