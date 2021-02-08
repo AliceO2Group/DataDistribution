@@ -433,7 +433,7 @@ bpo::options_description StfBuilderDevice::getDetectorProgramOptions() {
     "Specifies the version of RDH. Supported versions of the RDH are: 3, 4, 5, 6."
   )(
     OptionKeySubSpec,
-    bpo::value<ReadoutDataUtils::SubSpecMode>()->default_value(ReadoutDataUtils::SubSpecMode::eCruLinkId, "cru_linkid"),
+    bpo::value<ReadoutDataUtils::SubSpecMode>()->default_value(ReadoutDataUtils::SubSpecMode::eCruLinkId, "feeid"),
     "Specifies the which RDH fields are used for O2 Subspecification field: Allowed are:"
     "'cru_linkid' or 'feeid'."
   );
