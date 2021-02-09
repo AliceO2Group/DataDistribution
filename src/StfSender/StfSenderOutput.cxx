@@ -279,7 +279,7 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     static std::uint64_t sNumDropRequests = 0;
     sNumDropRequests++;
 
-    DDLOGF_RL(1000, DataDistSeverity::warning, "Scheduler requested drop of an STF. stf_id={} total_drop_req={}",
+    DDLOGF_GRL(1000, DataDistSeverity::warning, "Scheduler requested drop of an STF. stf_id={} total_drop_req={}",
       pStfId, sNumDropRequests);
 
     pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
