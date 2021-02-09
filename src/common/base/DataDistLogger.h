@@ -387,6 +387,10 @@ struct DataDistLoggerCtx {
 
     fair::mq::ProgOptions& lFMQConfig = pFMQRunner.fConfig;
 
+    // disable fairlogger file backend
+    lFMQConfig.SetProperty<std::string>("file-severity", "nolog");
+    lFMQConfig.SetProperty<std::string>("log-to-file", "");
+
     auto lSetSeverity = [](const std::string &pSevKey, const std::string &pSevVal) {
       // we never allow FairMQ console or file backends!
       fair::Logger::SetFileSeverity(DataDistSeverity::nolog);
