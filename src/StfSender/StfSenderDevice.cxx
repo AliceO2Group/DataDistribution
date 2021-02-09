@@ -167,7 +167,7 @@ void StfSenderDevice::ResetTask()
 void StfSenderDevice::StfReceiverThread()
 {
   using hres_clock = std::chrono::high_resolution_clock;
-  static std::uint64_t sReceivedStfs = 0;
+  std::uint64_t lReceivedStfs = 0;
 
   auto& lInputChan = GetChannel(mInputChannelName, 0);
 
@@ -178,7 +178,7 @@ void StfSenderDevice::StfReceiverThread()
   // wait for the device to go into RUNNING state
   WaitForRunningState();
 
-  auto lStfStartTime = hres_clock::now();
+  const auto lStfStartTime = hres_clock::now();
 
   while (IsRunningState()) {
     lStf = lStfReceiver.deserialize(lInputChan);
@@ -189,13 +189,12 @@ void StfSenderDevice::StfReceiverThread()
     }
 
     { // Input STF frequency
-      const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
-      mStfFreqSamples.Fill(1.0f / lStfDur.count());
-      lStfStartTime = hres_clock::now();
+      const auto lStfDur = std::chrono::duration<double>(hres_clock::now() - lStfStartTime);
+      mStfTimeSamples.Fill((float)lStfDur.count());
     }
 
-    ++sReceivedStfs;
-    DDLOGF_RL(5000, DataDistSeverity::debug, "StfSender received total of {} STFs.", sReceivedStfs);
+    ++lReceivedStfs;
+    DDLOGF_RL(5000, DataDistSeverity::debug, "StfSender received total of {} STFs.", lReceivedStfs);
 
     // get data size
     mStfSizeSamples.Fill(lStf->getDataSize());
@@ -206,7 +205,7 @@ void StfSenderDevice::StfReceiverThread()
     queue(eReceiverOut, std::move(lStf));
   }
 
-  IDDLOG("StfSender received total of {} STFs.", sReceivedStfs);
+  IDDLOG("StfSender received total of {} STFs.", lReceivedStfs);
   DDDLOG("Exiting StfReceiverThread.");
 }
 
@@ -216,11 +215,8 @@ void StfSenderDevice::InfoThread()
   WaitForRunningState();
 
   while (IsRunningState()) {
-
-    // IDDLOG("StfSender queued_stfs={}", this->getPipelineSize());
-
-    IDDLOG("SubTimeFrame size_mean={} in_frequency_mean={} queued_stf={}",
-      mStfSizeSamples.Mean(), mStfFreqSamples.Mean(), mNumStfs);
+    IDDLOG("SubTimeFrame size_mean={} in_frequency_mean={:.4} queued_stf={}",
+      mStfSizeSamples.Mean(), mStfTimeSamples.MeanStepFreq(), mNumStfs);
 
     std::this_thread::sleep_for(2s);
   }
