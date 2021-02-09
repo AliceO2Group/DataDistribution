@@ -135,18 +135,16 @@ class TfSchedulerTfBuilderInfo
     // TfBuilder not found?
     if ( lIt == mReadyTfBuilders.end() ) {
       if (mReadyTfBuilders.empty()) {
-        if (++sNoTfBuilderAvailable % 10 == 0) {
-          IDDLOG("FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={:d}", sNoTfBuilderAvailable);
-        }
+        ++sNoTfBuilderAvailable;
+        DDLOGF_RL(1000, DataDistSeverity::warning, "FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={}",
+          sNoTfBuilderAvailable);
       } else {
-        if (++sNoMemoryAvailable % 10 == 0) {
-          IDDLOG("FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={:d}", sNoMemoryAvailable);
-        }
+        ++sNoMemoryAvailable;
+        DDLOGF_RL(1000, DataDistSeverity::warning, "FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={}",
+          sNoMemoryAvailable);
       }
-
       return false;
     }
-
 
     // reposition the selected StfBuilder to the end of the list
     auto lTfBuilder = std::move(*lIt);

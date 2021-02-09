@@ -138,10 +138,10 @@ bool TfBuilderDevice::start()
   mRunning = true;
   auto lShmTransport = this->AddTransport(fair::mq::Transport::SHM);
 
+  mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, 512 << 20 /* config */, dplEnabled());
+
   if (!mStandalone && dplEnabled()) {
     auto& lOutputChan = GetChannel(getDplChannelName(), 0);
-
-    mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, 512 << 20 /* config */, dplEnabled());
     mTfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
   }
 

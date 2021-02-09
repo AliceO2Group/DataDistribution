@@ -250,7 +250,7 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
   auto& lInputChan = *mStfSenderChannels[pFlpIndex];
 
   // Deserialization object
-  InterleavedHdrDataDeserializer lStfReceiver;
+  CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
 
   while (mState == RUNNING) {
     // receive a STF

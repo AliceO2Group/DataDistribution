@@ -21,6 +21,8 @@
 #include <fairmq/FairMQDevice.h>
 #include <fairmq/FairMQChannel.h>
 
+#include <Headers/DataHeader.h>
+
 #include "DataDistLogger.h"
 
 #include <vector>
