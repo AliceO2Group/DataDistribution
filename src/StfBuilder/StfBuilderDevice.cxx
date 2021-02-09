@@ -378,8 +378,8 @@ void StfBuilderDevice::StfOutputThread()
 
   I().mRunning = false; // trigger stop via CondRun()
 
-  IDDLOG("Output: Stopped SubTimeFrame sending. sent_total={} rate={:.4}", I().mSentOutStfsTotal);
-  IDDLOG("Exiting StfOutputThread...");
+  IDDLOG("Output: Stopped SubTimeFrame sending. sent_total={} rate={:.4}", I().mSentOutStfsTotal, I().mSentOutRate);
+  DDDLOG("Exiting StfOutputThread...");
 }
 
 void StfBuilderDevice::InfoThread()
@@ -396,8 +396,8 @@ void StfBuilderDevice::InfoThread()
     }
 
     IDDLOG("SubTimeFrame size_mean={} frequency_mean={} sending_time_ms_mean={} queued_stf={}",
-      I().mStfSizeSamples.Mean(), I().mReadoutInterface->StfFreqSamples().Mean(), I().mStfDataTimeSamples.Mean(),
-      I().mNumStfs);
+      I().mStfSizeSamples.Mean(), I().mReadoutInterface->StfTimeSamples().MeanStepFreq(),
+      I().mStfDataTimeSamples.Mean(), I().mNumStfs);
     IDDLOG("SubTimeFrame sent_total={} rate={:.4}", I().mSentOutStfsTotal, I().mSentOutRate);
   }
 

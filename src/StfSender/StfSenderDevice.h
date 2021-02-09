@@ -174,7 +174,7 @@ class StfSenderDevice : public DataDistDevice,
   void InfoThread();
   std::thread mInfoThread;
   RunningSamples<uint64_t> mStfSizeSamples;
-  RunningSamples<float> mStfFreqSamples;
+  RunningSamples<float> mStfTimeSamples;
 };
 }
 } /* namespace o2::DataDistribution */

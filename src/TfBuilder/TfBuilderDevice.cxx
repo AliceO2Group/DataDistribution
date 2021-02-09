@@ -35,7 +35,7 @@ TfBuilderDevice::TfBuilderDevice()
     mFileSink(*this, *this, eTfFileSinkIn, eTfFileSinkOut),
     mFileSource(*this, eTfFileSourceOut),
     mTfSizeSamples(),
-    mTfFreqSamples()
+    mTfTimeSamples()
 {
 }
 
@@ -222,7 +222,8 @@ bool TfBuilderDevice::ConditionalRun()
 
 void TfBuilderDevice::TfForwardThread()
 {
-  auto lFreqStartTime = std::chrono::high_resolution_clock::now();
+  using hres_clock = std::chrono::high_resolution_clock;
+  const auto lFreqStartTime = hres_clock::now();
   std::uint64_t lTfOutCnt = 0;
 
   while (mRunning) {
@@ -236,13 +237,7 @@ void TfBuilderDevice::TfForwardThread()
 
     // MON: record frequency and size of TFs
     {
-      mTfFreqSamples.Fill(
-        1.0 / std::chrono::duration<double>(
-                std::chrono::high_resolution_clock::now() - lFreqStartTime)
-                .count());
-
-      lFreqStartTime = std::chrono::high_resolution_clock::now();
-
+      mTfTimeSamples.Fill((float)std::chrono::duration<double>(hres_clock::now() - lFreqStartTime).count());
       // size samples
       mTfSizeSamples.Fill(lTf->getDataSize());
     }
@@ -289,11 +284,10 @@ void TfBuilderDevice::InfoThread()
 
   while (IsRunningState()) {
 
-    IDDLOG("Mean size of TimeFrames : {}", mTfSizeSamples.Mean());
-    IDDLOG("Mean TimeFrame frequency: {}", mTfFreqSamples.Mean());
-    IDDLOG("Number of queued TFs    : {}", getPipelineSize()); // current value
+    IDDLOG("TimeFrame size_mean={} in_frequency_mean={:.4} queued_stf={}",
+      mTfSizeSamples.Mean(), mTfTimeSamples.MeanStepFreq(), getPipelineSize());
 
-    std::this_thread::sleep_for(2s);
+    std::this_thread::sleep_for(5s);
   }
 
   DDDLOG("Exiting info thread...");

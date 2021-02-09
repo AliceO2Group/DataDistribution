@@ -197,166 +197,166 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
   const auto cStfDataWaitFor = std::max(cMinWaitTime, cDesiredWaitTime);
 
   using hres_clock = std::chrono::high_resolution_clock;
-  auto lStfStartTime = hres_clock::now();
 
-    while (mRunning) {
+  const std::chrono::time_point<hres_clock, std::chrono::duration<double>> lStartSec = hres_clock::now();
 
-      auto finishBuildingCurrentStf = [&](bool pTimeout = false) {
-        // Finished: queue the current STF and start a new one
-        ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
+  while (mRunning) {
 
-        if (auto lStf = lStfBuilder.getStf()) {
-          // start the new STF
-          if (pTimeout) {
-            WDDLOG("READOUT INTERFACE: finishing STF on a timeout. stf_id={} size={}",
-              (*lStf)->header().mId, (*lStf)->getDataSize());
-          }
+    auto finishBuildingCurrentStf = [&](bool pTimeout = false) {
+      // Finished: queue the current STF and start a new one
+      ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
 
-          mDevice.queue(eStfBuilderOut, std::move(*lStf));
-
-          { // MON: data of a new STF received, get the freq and new start time
-            const auto lStfDur = std::chrono::duration<float>(hres_clock::now() - lStfStartTime);
-            mStfFreqSamples.Fill(1.0f / lStfDur.count() * mNumBuilders);
-            lStfStartTime = hres_clock::now();
-          }
+      if (auto lStf = lStfBuilder.getStf()) {
+        // start the new STF
+        if (pTimeout) {
+          WDDLOG("READOUT INTERFACE: finishing STF on a timeout. stf_id={} size={}",
+            (*lStf)->header().mId, (*lStf)->getDataSize());
         }
-      };
 
-      // Equipment ID for the HBFrames (from the header)
-      lReadoutMsgs.clear();
+        mDevice.queue(eStfBuilderOut, std::move(*lStf));
 
-      // receive readout messages
-      const auto lRet = lInputQueue.pop_wait_for(lReadoutMsgs, cStfDataWaitFor);
-      if (!lRet && mRunning) {
-        if (lStarted) {
-          // finish on a timeout
-          finishBuildingCurrentStf(cBuildOnTimeout);
-        }
-        continue;
-      } else if (!mRunning) {
-        break;
-      }
-
-      // must not be empty
-      if (lReadoutMsgs.empty()) {
-        EDDLOG("READOUT INTERFACE: empty readout multipart.");
-        continue;
-      }
-
-      // stated to build STFs
-      lStarted = true;
-
-      // Copy to avoid surprises. The receiving header is not O2 compatible and can be discarded
-      ReadoutSubTimeframeHeader lReadoutHdr;
-      // the size is checked on receive
-      std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
-
-      // log only
-      DDLOGF_RL(1000, DataDistSeverity::debug, "READOUT INTERFACE: Received an ReadoutMsg. stf_id={}",
-        lReadoutHdr.mTimeFrameId);
-
-      // check multipart size
-      if (lReadoutMsgs.size() == 1 && !lReadoutHdr.mFlags.mLastTFMessage) {
-        DDLOGF_RL(1000, DataDistSeverity::error,
-          "READOUT INTERFACE: Received only a header message without the STF stop bit set.");
-        continue;
-      }
-
-      // check the link/feeids (first HBF only)
-      if (lReadoutMsgs.size() > 1 && lReadoutHdr.mFlags.mIsRdhFormat) {
-        try {
-          const auto R = RDHReader(lReadoutMsgs[1]);
-          const auto lLinkId = R.getLinkID();
-
-          if (lLinkId != lReadoutHdr.mLinkId) {
-            EDDLOG("READOUT INTERFACE: Update link ID does not match RDH in the data block."
-              " hdr_link_id={} rdh_link_id={}", lReadoutHdr.mLinkId, lLinkId);
-          }
-        } catch (RDHReaderException &e) {
-          EDDLOG( e.what());
-          // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
-          continue;
+        { // MON: data of a new STF received, get the freq and new start time
+          std::chrono::duration<double> lTimeSinceStart = hres_clock::now() - lStartSec;
+          mStfTimeSamples.Fill((float)lTimeSinceStart.count());
         }
       }
+    };
 
-      const auto lIdInBuilding = lStfBuilder.getCurrentStfId();
-      lCurrentStfId = lIdInBuilding ? *lIdInBuilding : lReadoutHdr.mTimeFrameId;
+    // Equipment ID for the HBFrames (from the header)
+    lReadoutMsgs.clear();
 
-      // check for the new TF marker
-      if (lReadoutHdr.mTimeFrameId != lCurrentStfId) {
-        // we expect to be notified about new TFs
-        if (lIdInBuilding) {
-          DDLOGF_RL(1000, DataDistSeverity::error, "READOUT INTERFACE: Update with a new TF ID. Stop flag not received "
-            "the current STF. current_id={} new_id={} ", lCurrentStfId, lReadoutHdr.mTimeFrameId);
-          finishBuildingCurrentStf();
-        }
-        lCurrentStfId = lReadoutHdr.mTimeFrameId;
+    // receive readout messages
+    const auto lRet = lInputQueue.pop_wait_for(lReadoutMsgs, cStfDataWaitFor);
+    if (!lRet && mRunning) {
+      if (lStarted) {
+        // finish on a timeout
+        finishBuildingCurrentStf(cBuildOnTimeout);
       }
+      continue;
+    } else if (!mRunning) {
+      break;
+    }
 
-      // check subspecifications of all messages
-      header::DataHeader::SubSpecificationType lSubSpecification = ~header::DataHeader::SubSpecificationType(0);
-      header::DataOrigin lDataOrigin;
+    // must not be empty
+    if (lReadoutMsgs.empty()) {
+      EDDLOG("READOUT INTERFACE: empty readout multipart.");
+      continue;
+    }
+
+    // stated to build STFs
+    lStarted = true;
+
+    // Copy to avoid surprises. The receiving header is not O2 compatible and can be discarded
+    ReadoutSubTimeframeHeader lReadoutHdr;
+    // the size is checked on receive
+    std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
+
+    // log only
+    DDLOGF_RL(1000, DataDistSeverity::debug, "READOUT INTERFACE: Received an ReadoutMsg. stf_id={}",
+      lReadoutHdr.mTimeFrameId);
+
+    // check multipart size
+    if (lReadoutMsgs.size() == 1 && !lReadoutHdr.mFlags.mLastTFMessage) {
+      DDLOGF_RL(1000, DataDistSeverity::error,
+        "READOUT INTERFACE: Received only a header message without the STF stop bit set.");
+      continue;
+    }
+
+    // check the link/feeids (first HBF only)
+    if (lReadoutMsgs.size() > 1 && lReadoutHdr.mFlags.mIsRdhFormat) {
       try {
-        const auto R1 = RDHReader(lReadoutMsgs[1]);
-        lDataOrigin = ReadoutDataUtils::getDataOrigin(R1);
-        lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
+        const auto R = RDHReader(lReadoutMsgs[1]);
+        const auto lLinkId = R.getLinkID();
+
+        if (lLinkId != lReadoutHdr.mLinkId) {
+          EDDLOG("READOUT INTERFACE: Update link ID does not match RDH in the data block."
+            " hdr_link_id={} rdh_link_id={}", lReadoutHdr.mLinkId, lLinkId);
+        }
       } catch (RDHReaderException &e) {
-        EDDLOG("READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
+        EDDLOG( e.what());
         // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
         continue;
       }
+    }
 
-      assert (lReadoutMsgs.size() > 1);
-      auto lStartHbf = lReadoutMsgs.begin() + 1; // skip the meta message
-      auto lEndHbf = lStartHbf + 1;
+    const auto lIdInBuilding = lStfBuilder.getCurrentStfId();
+    lCurrentStfId = lIdInBuilding ? *lIdInBuilding : lReadoutHdr.mTimeFrameId;
 
-      std::size_t lAdded = 0;
-      bool lErrorWhileAdding = false;
-      const bool lFinishStf = lReadoutHdr.mFlags.mLastTFMessage;
-
-      while (true) {
-        if (lEndHbf == lReadoutMsgs.end()) {
-          //insert the remaining span
-          std::size_t lInsertCnt = (lEndHbf - lStartHbf);
-          lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
-          lAdded += lInsertCnt;
-          break;
-        }
-
-        header::DataHeader::SubSpecificationType lNewSubSpec = ~header::DataHeader::SubSpecificationType(0);
-        try {
-          const auto Rend = RDHReader(*lEndHbf);
-          lNewSubSpec = ReadoutDataUtils::getSubSpecification(Rend);
-        } catch (RDHReaderException &e) {
-          EDDLOG(e.what());
-          // TODO: portion of the ReadoutMsg is discarded. Account and report the data size.
-          lErrorWhileAdding = true;
-          break;
-        }
-
-        if (lNewSubSpec != lSubSpecification) {
-          EDDLOG("READOUT INTERFACE: update with mismatched subspecification."
-            " block[0]: {:#06x}, block[{}]: {:#06x}",
-            lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
-          // insert
-          lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
-          lAdded += (lEndHbf - lStartHbf);
-          lStartHbf = lEndHbf;
-
-          lSubSpecification = lNewSubSpec;
-        }
-        lEndHbf = lEndHbf + 1;
-      }
-
-      if (!lErrorWhileAdding && (lAdded != lReadoutMsgs.size() - 1) ) {
-        EDDLOG("BUG: Not all received HBFrames added to the STF.");
-      }
-
-      // check if this was the last message of an STF
-      if (lFinishStf) {
+    // check for the new TF marker
+    if (lReadoutHdr.mTimeFrameId != lCurrentStfId) {
+      // we expect to be notified about new TFs
+      if (lIdInBuilding) {
+        DDLOGF_RL(1000, DataDistSeverity::error, "READOUT INTERFACE: Update with a new TF ID. Stop flag not received "
+          "the current STF. current_id={} new_id={} ", lCurrentStfId, lReadoutHdr.mTimeFrameId);
         finishBuildingCurrentStf();
       }
+      lCurrentStfId = lReadoutHdr.mTimeFrameId;
     }
+
+    // check subspecifications of all messages
+    header::DataHeader::SubSpecificationType lSubSpecification = ~header::DataHeader::SubSpecificationType(0);
+    header::DataOrigin lDataOrigin;
+    try {
+      const auto R1 = RDHReader(lReadoutMsgs[1]);
+      lDataOrigin = ReadoutDataUtils::getDataOrigin(R1);
+      lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
+    } catch (RDHReaderException &e) {
+      EDDLOG("READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
+      // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
+      continue;
+    }
+
+    assert (lReadoutMsgs.size() > 1);
+    auto lStartHbf = lReadoutMsgs.begin() + 1; // skip the meta message
+    auto lEndHbf = lStartHbf + 1;
+
+    std::size_t lAdded = 0;
+    bool lErrorWhileAdding = false;
+    const bool lFinishStf = lReadoutHdr.mFlags.mLastTFMessage;
+
+    while (true) {
+      if (lEndHbf == lReadoutMsgs.end()) {
+        //insert the remaining span
+        std::size_t lInsertCnt = (lEndHbf - lStartHbf);
+        lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
+        lAdded += lInsertCnt;
+        break;
+      }
+
+      header::DataHeader::SubSpecificationType lNewSubSpec = ~header::DataHeader::SubSpecificationType(0);
+      try {
+        const auto Rend = RDHReader(*lEndHbf);
+        lNewSubSpec = ReadoutDataUtils::getSubSpecification(Rend);
+      } catch (RDHReaderException &e) {
+        EDDLOG(e.what());
+        // TODO: portion of the ReadoutMsg is discarded. Account and report the data size.
+        lErrorWhileAdding = true;
+        break;
+      }
+
+      if (lNewSubSpec != lSubSpecification) {
+        EDDLOG("READOUT INTERFACE: update with mismatched subspecification."
+          " block[0]: {:#06x}, block[{}]: {:#06x}",
+          lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
+        // insert
+        lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
+        lAdded += (lEndHbf - lStartHbf);
+        lStartHbf = lEndHbf;
+
+        lSubSpecification = lNewSubSpec;
+      }
+      lEndHbf = lEndHbf + 1;
+    }
+
+    if (!lErrorWhileAdding && (lAdded != lReadoutMsgs.size() - 1) ) {
+      EDDLOG("BUG: Not all received HBFrames added to the STF.");
+    }
+
+    // check if this was the last message of an STF
+    if (lFinishStf) {
+      finishBuildingCurrentStf();
+    }
+  }
 
   DDDLOG("Exiting StfBuilder thread.");
 }

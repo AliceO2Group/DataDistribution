@@ -156,7 +156,7 @@ class TfBuilderDevice : public DataDistDevice,
   std::thread mInfoThread;
 
   RunningSamples<uint64_t> mTfSizeSamples;
-  RunningSamples<float> mTfFreqSamples;
+  RunningSamples<float> mTfTimeSamples;
 
   std::atomic_bool mRunning = false;
   std::atomic_bool mShouldExit = false;

@@ -38,7 +38,7 @@ class StfInputInterface
   StfInputInterface() = delete;
   StfInputInterface(StfBuilderDevice& pStfBuilderDev)
     : mDevice(pStfBuilderDev),
-      mStfFreqSamples()
+      mStfTimeSamples()
   {
   }
 
@@ -48,7 +48,7 @@ class StfInputInterface
   void DataHandlerThread(const unsigned pInputChannelIdx);
   void StfBuilderThread(const std::size_t pIdx);
 
-  const RunningSamples<float>& StfFreqSamples() const { return mStfFreqSamples; }
+  const RunningSamples<float>& StfTimeSamples() const { return mStfTimeSamples; }
  private:
   /// Main SubTimeBuilder O2 device
   StfBuilderDevice& mDevice;
@@ -57,7 +57,7 @@ class StfInputInterface
   std::atomic_bool mRunning = false;
   std::thread mInputThread;
 
-  RunningSamples<float> mStfFreqSamples;
+  RunningSamples<float> mStfTimeSamples;
 
 
   /// StfBuilding threads
