@@ -104,6 +104,8 @@ void ReadoutDevice::ResetTask()
   if (mSendingThread.joinable()) {
     mSendingThread.join();
   }
+
+  mDataRegion = nullptr;
 }
 
 bool ReadoutDevice::ConditionalRun()

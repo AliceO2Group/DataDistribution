@@ -237,8 +237,13 @@ public:
     mRDHSize = sRDHReader->CheckRdhData(mData, mSize);
   }
 
-  explicit RDHReader(const FairMQMessagePtr &msg)
-  : RDHReader(reinterpret_cast<const char*>(msg->GetData()), msg->GetSize()) { }
+  explicit RDHReader(const FairMQMessagePtr &msg) {
+    if (!msg) {
+      throw std::runtime_error("RDHReader::msg is null");
+    }
+
+    *this = std::move(RDHReader(reinterpret_cast<const char*>(msg->GetData()), msg->GetSize()));
+  }
 
   RDHReader(const RDHReader &b) = default;
   RDHReader(RDHReader &&b) = default;
