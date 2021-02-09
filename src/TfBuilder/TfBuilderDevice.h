@@ -77,6 +77,9 @@ class TfBuilderDevice : public DataDistDevice,
   void ResetTask() final;
 
 
+  MemoryResources& MemI() { return *mMemI; }
+  TimeFrameBuilder& TfBuilderI() const { return *mTfBuilder; }
+
  protected:
   void PreRun() final;
   bool ConditionalRun() final;
@@ -118,7 +121,6 @@ class TfBuilderDevice : public DataDistDevice,
 
   /// Memory region singletons
   std::unique_ptr<MemoryResources> mMemI;
-  MemoryResources& MemI() { return *mMemI; }
 
   /// Configuration
   std::string mDplChannelName;

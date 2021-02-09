@@ -330,7 +330,8 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
   assert(lInputStfQueue != nullptr && lInputStfQueue->is_running());
   assert(lRunning != nullptr && (lRunning->load() == true));
 
-  InterleavedHdrDataSerializer lStfSerializer(*lOutputChan);
+  CoalescedHdrDataSerializer lStfSerializer(*lOutputChan);
+
   std::uint64_t lNumSentStfs = 0;
 
   while (lRunning->load()) {

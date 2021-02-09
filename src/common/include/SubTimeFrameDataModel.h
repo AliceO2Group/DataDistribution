@@ -213,7 +213,9 @@ struct HBFrameHeader : public o2hdr::BaseHeader {
   friend class SubTimeFrameFileWriter;         \
   friend class SubTimeFrameFileReader;         \
   friend class StfToDplAdapter;                \
-  friend class DplToStfAdapter;
+  friend class DplToStfAdapter;                \
+  friend class CoalescedHdrDataSerializer;     \
+  friend class CoalescedHdrDataDeserializer;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// SubTimeFrame
