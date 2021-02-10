@@ -41,13 +41,8 @@ using grpc::Status;
 
 class StfSenderRpcClient {
 public:
-  StfSenderRpcClient(const std::string &pEndpoint)
-  :
-  mStub(StfSenderRpc::NewStub(grpc::CreateChannel(pEndpoint, grpc::InsecureChannelCredentials())))
-  {
-    // Check the connection...
-
-  }
+  StfSenderRpcClient() = delete;
+  StfSenderRpcClient(const std::string &pEndpoint);
 
   // rpc ConnectTfBuilderRequest(TfBuilderEndpoint) returns (ConnectTfBuilderResponse) { }
   grpc::Status ConnectTfBuilderRequest(const TfBuilderEndpoint &pParam, ConnectTfBuilderResponse &pRet /*out*/) {
@@ -67,8 +62,12 @@ public:
     return mStub->StfDataRequest(&lContext, pParam, &pRet);
   }
 
+  bool is_ready();
+  std::string grpc_status();
+
 private:
   std::unique_ptr<StfSenderRpc::Stub> mStub;
+  std::shared_ptr<grpc::Channel> mChannel;
 };
 
 template <class T>
@@ -134,12 +133,12 @@ public:
       );
     }
 
-    IDDLOG("gRPC: Connected to {}/{} StfSender.", mClients.size(), lNumStfSenders);
+    DDLOGF_RL(1000, DataDistSeverity::info, "gRPC: Connected to {}/{} StfSender.", mClients.size(), lNumStfSenders);
 
     if (mClients.size() != lNumStfSenders) {
       static int sBackoff = 0;
-      sBackoff = std::min(sBackoff + 1, 20);
-      // back off until gRPC server on all StfSeners becomes ready
+      sBackoff = std::min(sBackoff + 1, 10);
+      // back off until gRPC servers on all StfSeners become ready
       std::this_thread::sleep_for(sBackoff * 100ms);
     }
 
@@ -148,21 +147,36 @@ public:
       return false;
     }
 
-    return true;
+    // make sure all connections are ready
+    bool lAllConnReady = true;
+
+    for (auto &[ mCliId, lClient] : mClients) {
+      if (!lClient->is_ready()) {
+        lAllConnReady = false;
+        WDDLOG("StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
+      }
+    }
+
+    mClientsCreated = lAllConnReady;
+
+    return lAllConnReady;
   }
 
   void stop()
   {
     mRunning = false;
     mClients.clear();
+    mClientsCreated = false;
 
   }
 
-  void checkStfSenderRpcConn(const std::string &lStfSenderId)
+  bool checkStfSenderRpcConn(const std::string &lStfSenderId)
   {
-    if (mClients.count(lStfSenderId) == 1) {
-      start();
+    if (mClientsCreated && mClients.count(lStfSenderId) == 1) {
+      return mClients[lStfSenderId]->is_ready();
     }
+
+    return false;
   }
 
   std::size_t size() const { return mClients.size(); }
@@ -175,9 +189,9 @@ public:
 private:
 
   std::atomic_bool mRunning = false;
-
   std::shared_ptr<T> mDiscoveryConfig;
 
+  bool mClientsCreated = false;
   std::map<std::string, std::unique_ptr<StfSenderRpcClient>> mClients;
 };
 

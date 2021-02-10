@@ -220,7 +220,12 @@ void StfSenderOutput::StfSchedulerThread()
       continue;
     }
 
-    DDLOGF_RL(1000, DataDistSeverity::debug, "StfSchedulerThread: scheduling stf_id={}", lStfId);
+    if (!mDevice.TfSchedRpcCli().is_ready()) {
+      EDDLOG_RL(1000, "StfSchedulerThread: TfScheduler gRPC connection is not ready stf_id={}", lStfId);
+      continue;
+    }
+
+    DDDLOG_RL(5000, "StfSchedulerThread: scheduling stf_id={}", lStfId);
 
     // move the stf into triage map (before notifying the scheduler to avoid races)
     {
@@ -248,11 +253,11 @@ void StfSenderOutput::StfSchedulerThread()
 
       mDevice.TfSchedRpcCli().StfSenderStfUpdate(lStfInfo, lSchedResponse);
 
-      DDLOGF_RL(3000, DataDistSeverity::debug, "Sent STF announce, stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
+      DDDLOG_RL(5000, "Sent STF announce, stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
 
       // check if the scheduler rejected the data
       if (lSchedResponse.status() != SchedulerStfInfoResponse::OK) {
-        DDLOGF_RL(500, DataDistSeverity::info, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
+        IDDLOG_RL(1000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
           lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
 
         // remove from the scheduling map

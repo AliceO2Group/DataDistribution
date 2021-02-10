@@ -119,8 +119,7 @@ void TfSchedulerStfInfo::SchedulingThread()
           } else {
             // TfBuilder was removed in the meantime, e.g. by housekeeping thread because of stale info
             // We drop the current TF as this is not a likely situation
-            WDDLOG(
-              "Selected TfBuilder is not currently reachable. TF will be dropped. tfb_id={:s} tf_id={:d}",
+            WDDLOG("Selected TfBuilder is not currently reachable. TF will be dropped. tfb_id={} tf_id={}",
               lTfBuilderId, lTfId);
 
             mConnManager.dropAllStfsAsync(lTfId);
@@ -204,11 +203,23 @@ void TfSchedulerStfInfo::SchedulingThread()
 
 void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse)
 {
+  static std::uint64_t sLastDropNotRunning = -1;
+  static std::uint64_t sLastDropIncomplete = -1;
+
   const auto lNumStfSenders = mDiscoveryConfig->status().stf_sender_count();
   const auto lStfId = pStfInfo.stf_id();
 
-  if (!mRunning) {
+  // Drop not running
+  if ((sLastDropNotRunning == lStfId) || !mRunning) {
     pResponse.set_status(SchedulerStfInfoResponse::DROP_NOT_RUNNING);
+    sLastDropNotRunning = lStfId;
+    return;
+  }
+
+  // DROP When not complete
+  if ((sLastDropIncomplete == lStfId) || (mConnManager.getStfSenderState() == StfSenderState::STF_SENDER_STATE_INCOMPLETE)) {
+    pResponse.set_status(SchedulerStfInfoResponse::DROP_STFS_INCOMPLETE);
+    sLastDropIncomplete = lStfId;
     return;
   }
 

@@ -38,6 +38,12 @@ namespace o2
 namespace DataDistribution
 {
 
+enum StfSenderState {
+  STF_SENDER_STATE_OK = 1,
+  STF_SENDER_STATE_INITIALIZING,
+  STF_SENDER_STATE_INCOMPLETE
+};
+
 class TfSchedulerConnManager
 {
  public:
@@ -116,14 +122,19 @@ class TfSchedulerConnManager
     return mTfBuilderRpcClients.get(pId);
   }
 
-  void checkStfSenderRpcConn(const std::string &lStfSenderId)
+  bool checkStfSenderRpcConn(const std::string &lStfSenderId)
   {
-    mStfSenderRpcClients.checkStfSenderRpcConn(lStfSenderId);
+    return mStfSenderRpcClients.checkStfSenderRpcConn(lStfSenderId);
   }
+
+  StfSenderState getStfSenderState() const { return mStfSenderState; }
 
 private:
   /// Partition information
   PartitionRequest mPartitionInfo;
+
+  /// StfSender state
+  std::atomic<StfSenderState> mStfSenderState = STF_SENDER_STATE_INITIALIZING;
 
   /// Discovery configuration
   std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;

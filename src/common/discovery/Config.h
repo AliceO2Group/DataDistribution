@@ -24,6 +24,13 @@
 #include <string>
 #include <map>
 #include <cassert>
+#include <future>
+
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/asio/ip/host_name.hpp>
 
 namespace o2
 {
@@ -52,13 +59,13 @@ struct ProcessType {
     mType = -1;
   }
 
-  constexpr operator int() const { return mType; }
+  // constexpr operator int() const { return mType; }
 
   constexpr bool operator==(const ProcessType &b) const { return mType == b.mType; }
   constexpr bool operator!=(const ProcessType &b) const { return mType != b.mType; }
   constexpr bool operator<(const ProcessType &b) const { return mType < b.mType; }
 
-  operator std::string() const {
+  std::string to_string() const {
 
     if (*this == ProcessType::StfBuilder)
       return "StfBuilder";
@@ -165,20 +172,72 @@ public:
   }
 
   static
-  std::string getIdOption(const FairMQProgOptions& pFMQProgOpt)
+  std::string getIdOption(const ProcessType pProcType, const FairMQProgOptions& pFMQProgOpt)
   {
-    auto lId = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryId);
-    if (lId.empty()) {
-      DDLOG(fair::Severity::ERROR) << "Process must have unique ID for DataDistribution discovery.";
-      throw std::invalid_argument("Process ID for DataDiscovery must be provided.");
+    // check cmdline first
+    {
+      std::string lId = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryId);
+      if (!lId.empty()) {
+        IDDLOG("Parameter <{}> provided on command line. value={}", OptionKeyDiscoveryId, lId);
+        return lId;
+      }
+
+      if (pProcType == ProcessType::StfSender) {
+        const auto lErrorMsg = fmt::format("Parameter <{}> for StfSender must be provided on command line.",
+          OptionKeyDiscoveryId);
+        EDDLOG( lErrorMsg);
+        throw std::invalid_argument(lErrorMsg);
+      }
     }
-    return lId;
+
+    {
+      // get an unique ID
+      std::string lUniquePart = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+      std::string lUniqueId = pProcType.to_string() + "-" + boost::asio::ip::host_name() + "-" + lUniquePart;
+
+      IDDLOG("Parameter {} not provided, using random value={}", Config::OptionKeyDiscoveryId, lUniqueId);
+      return lUniqueId;
+    }
   }
 
   static
   std::string getPartitionOption(const FairMQProgOptions& pFMQProgOpt)
   {
-    return pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryPartition);
+    // check cmdline first
+    {
+      std::string lPartId = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryPartition);
+      if (!lPartId.empty()) {
+        IDDLOG("Parameter <{}> provided on command line. value={}",
+          OptionKeyDiscoveryPartition, lPartId);
+        return lPartId;
+      }
+    }
+
+    // setup for ODC
+    std::promise<std::string> mPartIdPromise;
+    std::future<std::string> mPartIdFuture = mPartIdPromise.get_future();
+
+    pFMQProgOpt.Subscribe<std::string>("o2.datadist", [&](const std::string& pKey, std::string pValue) {
+      IDDLOG("Config::Subscribe received key-value pair <{}>=<{}>", pKey, pValue);
+
+      // partition key for tf builder
+      if (pKey == OptionKeyDiscoveryPartition) {
+        mPartIdPromise.set_value(pValue);
+      } else {
+        EDDLOG("Config::Subscribe unrecognized key value pushed {}={}", pKey, pValue);
+      }
+    });
+
+    // wait for an ODC value
+    mPartIdFuture.wait();
+    const auto lDiscId = mPartIdFuture.get();
+    if (lDiscId.length() == 0) {
+      EDDLOG("Parameter {} provided from ODC. zero length", Config::OptionKeyDiscoveryPartition);
+      throw std::invalid_argument(fmt::format("Invalid ODC parameter <{}>: zero length", Config::OptionKeyDiscoveryPartition));
+    }
+
+    IDDLOG("Parameter {} provided from ODC. value={}", Config::OptionKeyDiscoveryPartition, lDiscId);
+    return lDiscId;
   }
 
   Config() = delete;

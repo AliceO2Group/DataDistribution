@@ -193,6 +193,7 @@ message SchedulerStfInfoResponse {
     DROP_NOT_RUNNING          = 1;
     DROP_RESOURCES            = 2; // not able to schedule
     DROP_SCHED_DISCARDED      = 3; // scheduler already processed that tf
+    DROP_STFS_INCOMPLETE      = 4; // all StfSenders are not reachable
   }
 
   StfInfoStatus  status = 1;

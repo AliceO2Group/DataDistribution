@@ -56,7 +56,7 @@ set_target_properties(discovery PROPERTIES
 target_include_directories(discovery
   PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR} # protobuf puts generated c++ files there
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include/discovery
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(discovery

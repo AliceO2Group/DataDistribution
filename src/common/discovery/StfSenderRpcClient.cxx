@@ -21,6 +21,38 @@ namespace o2
 namespace DataDistribution
 {
 
+StfSenderRpcClient::StfSenderRpcClient(const std::string &pEndpoint) {
+
+  mChannel = grpc::CreateChannel(pEndpoint, grpc::InsecureChannelCredentials());
+  mStub = StfSenderRpc::NewStub(mChannel);
+}
+
+bool StfSenderRpcClient::is_ready() {
+  // check state, the flag will move it from IDLE to READY
+  mChannel->GetState(true);
+  // check state and try to reconnect (keep alive)
+  return (mChannel->GetState(true) == grpc_connectivity_state::GRPC_CHANNEL_READY);
+}
+
+std::string StfSenderRpcClient::grpc_status() {
+  // check state, the flag will move it from IDLE to READY
+  switch(mChannel->GetState(true)) {
+    case grpc_connectivity_state::GRPC_CHANNEL_CONNECTING:
+      return "GRPC_CHANNEL_CONNECTING";
+    case grpc_connectivity_state::GRPC_CHANNEL_IDLE:
+      return "GRPC_CHANNEL_IDLE";
+    case grpc_connectivity_state::GRPC_CHANNEL_READY:
+      return "GRPC_CHANNEL_READY";
+    case grpc_connectivity_state::GRPC_CHANNEL_SHUTDOWN:
+      return "GRPC_CHANNEL_SHUTDOWN";
+    case grpc_connectivity_state::GRPC_CHANNEL_TRANSIENT_FAILURE:
+      return "GRPC_CHANNEL_TRANSIENT_FAILURE";
+    // default:
+
+
+  }
+  return "GRPC_CHANNEL_UNKNOWN_STATE";
+}
 
 
 }

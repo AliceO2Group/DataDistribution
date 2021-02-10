@@ -99,6 +99,33 @@ class RunningSamples
     return mCount == 0 ? T(0) : (Sum() / T(mCount));
   }
 
+  T MeanStep() const
+  {
+    T lStepSum = 0;
+    std::size_t lStepsCounted = 0;
+
+    if (mCount < 2) {
+      return T(0);
+    }
+
+    for (auto it = begin()+1; it < end(); it++) {
+      if (*it <= *(it-1)) {
+        continue;
+      }
+
+      lStepSum += (*it - *(it-1));
+      lStepsCounted++;
+    }
+
+    return (lStepsCounted > 0) ? ((T)lStepSum / (T)lStepsCounted) : T(0);
+  }
+
+  T MeanStepFreq() const
+  {
+    const T lMeanStep = MeanStep();
+    return (lMeanStep != T(0)) ? (T(1) / lMeanStep) : T(0);
+  }
+
   std::pair<T, T> MinMax() const
   {
     if (mCount == 0)
