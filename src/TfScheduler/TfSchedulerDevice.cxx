@@ -122,14 +122,13 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
           lNewInstance->start();
         }
         IDDLOG("Created new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
+        break; // Only service one partition per process
       } else {
         EDDLOG("Scheduler instance already exists. partition={}",lNewPartitionRequest.mPartitionId);
       }
-
-
     }
 
-    std::this_thread::sleep_for(2000ms);
+    std::this_thread::sleep_for(1000ms);
   }
 
   DDDLOG("Exiting TfSchedulerServiceThread.");
