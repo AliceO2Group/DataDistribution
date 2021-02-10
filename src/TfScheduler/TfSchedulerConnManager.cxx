@@ -30,8 +30,15 @@ using namespace std::chrono_literals;
 
 std::size_t TfSchedulerConnManager::checkStfSenders()
 {
-  // TODO: monitor and reconnect?
-  return mStfSenderRpcClients.size();
+  std::size_t lReadyCnt = 0;
+  for (const auto &lId : mPartitionInfo.mStfSenderIdList) {
+    // this will attempt reconnection on existing connections
+    if (checkStfSenderRpcConn(lId)) {
+      lReadyCnt++;
+    }
+  }
+
+  return lReadyCnt;
 }
 
 void TfSchedulerConnManager::connectTfBuilder(const TfBuilderConfigStatus &pTfBuilderStatus, TfBuilderConnectionResponse &pResponse /*out*/)
@@ -243,20 +250,26 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
   std::vector<std::uint64_t> lDroppedStfs;
 
   while (mRunning) {
+    std::chrono::milliseconds lSleep = 1000ms;
+
     // make sure all StfSenders are alive
     const std::uint32_t lNumStfSenders = checkStfSenders();
     if (lNumStfSenders < mPartitionInfo.mStfSenderIdList.size()) {
-      IDDLOG("Waiting for StfSenders. connected={} total={}", lNumStfSenders, mPartitionInfo.mStfSenderIdList.size() );
-      std::this_thread::sleep_for(1000ms);
-      continue;
+
+      mStfSenderState = STF_SENDER_STATE_INCOMPLETE;
+
+      WDDLOG_RL(1000, "Waiting for StfSenders. ready={} total={}", lNumStfSenders, mPartitionInfo.mStfSenderIdList.size());
+      lSleep = 250ms;
     }
+
+    mStfSenderState = STF_SENDER_STATE_OK;
 
     // wait for drop futures
     {
       {
         std::scoped_lock lLock(mStfDropFuturesLock);
         for (auto lFutureIt = mStfDropFutures.begin(); lFutureIt != mStfDropFutures.end(); lFutureIt++) {
-          if (std::future_status::ready == lFutureIt->wait_for(std::chrono::seconds(0))) {
+          if (std::future_status::ready == lFutureIt->wait_for(0s)) {
             assert (lFutureIt->valid());
             lDroppedStfs.push_back(lFutureIt->get());
             lFutureIt = mStfDropFutures.erase(lFutureIt);
@@ -267,13 +280,12 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
       sort(lDroppedStfs.begin(), lDroppedStfs.end());
       for (auto &lDroppedId : lDroppedStfs) {
         lDroppedTotal++;
-        DDLOGF_RL(1000, DataDistSeverity::info, "Dropped SubTimeFrame (cannot schedule). stf_id={} total={}",
-          lDroppedId, lDroppedTotal);
+        IDDLOG_RL(1000, "Dropped SubTimeFrame (cannot schedule). stf_id={} total={}", lDroppedId, lDroppedTotal);
       }
       lDroppedStfs.clear();
     }
 
-    std::this_thread::sleep_for(1000ms);
+    std::this_thread::sleep_for(lSleep);
   }
 
   DDDLOG("Exiting StfSender RPC Monitoring thread.");

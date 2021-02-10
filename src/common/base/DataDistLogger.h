@@ -282,7 +282,6 @@ private:
 #define WDDLOG(...) DDLOGF(DataDistSeverity::warn, __VA_ARGS__)
 #define EDDLOG(...) DDLOGF(DataDistSeverity::error, __VA_ARGS__)
 
-
 // Log with fmt using ratelimiting (per thread)
 #define DDLOGF_RL(intervalMs, severity, ...)                                                                          \
 do {                                                                                                                  \
@@ -299,6 +298,12 @@ do {                                                                            
   }                                                                                                                   \
 } while(0)
 
+
+#define DDDLOG_RL(intervalMs, ...) DDLOGF_RL(intervalMs, DataDistSeverity::debug, __VA_ARGS__)
+#define IDDLOG_RL(intervalMs, ...) DDLOGF_RL(intervalMs, DataDistSeverity::info, __VA_ARGS__)
+#define WDDLOG_RL(intervalMs, ...) DDLOGF_RL(intervalMs, DataDistSeverity::warn, __VA_ARGS__)
+#define EDDLOG_RL(intervalMs, ...) DDLOGF_RL(intervalMs, DataDistSeverity::error, __VA_ARGS__)
+
 // Log with fmt using ratelimiting (global)
 #define DDLOGF_GRL(intervalMs, severity, ...)                                                                          \
 do {                                                                                                                  \
@@ -314,6 +319,12 @@ do {                                                                            
     sRateLimitCnt__NoShadow++;                                                                                        \
   }                                                                                                                   \
 } while(0)
+
+
+#define DDDLOG_GRL(intervalMs, ...) DDLOGF_GRL(intervalMs, DataDistSeverity::debug, __VA_ARGS__)
+#define IDDLOG_GRL(intervalMs, ...) DDLOGF_GRL(intervalMs, DataDistSeverity::info, __VA_ARGS__)
+#define WDDLOG_GRL(intervalMs, ...) DDLOGF_GRL(intervalMs, DataDistSeverity::warn, __VA_ARGS__)
+#define EDDLOG_GRL(intervalMs, ...) DDLOGF_GRL(intervalMs, DataDistSeverity::error, __VA_ARGS__)
 
 namespace impl {
 struct DataDistLoggerCtx {
