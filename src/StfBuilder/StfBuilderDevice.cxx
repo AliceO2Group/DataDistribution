@@ -233,15 +233,11 @@ void StfBuilderDevice::ResetTask()
   // Signal ConditionalRun() and other threads to stop
   I().mRunning = false;
 
-  // stop the memory resources
-  MemI().stop();
-
   // Stop the pipeline
   stopPipeline();
   clearPipeline();
 
   // NOTE: everything with threads goes below
-
   // signal and wait for the output thread
   if (I().mFileSource->enabled()) {
     I().mFileSource->stop();
@@ -264,9 +260,11 @@ void StfBuilderDevice::ResetTask()
     I().mInfoThread.join();
   }
 
+  // stop the memory resources very last
+  MemI().stop();
+
   DDDLOG("StfBuilderDevice::ResetTask() done... ");
 }
-
 
 void StfBuilderDevice::StfOutputThread()
 {
