@@ -293,63 +293,65 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       lCurrentStfId = lReadoutHdr.mTimeFrameId;
     }
 
-    // check subspecifications of all messages
-    header::DataHeader::SubSpecificationType lSubSpecification = ~header::DataHeader::SubSpecificationType(0);
-    header::DataOrigin lDataOrigin;
-    try {
-      const auto R1 = RDHReader(lReadoutMsgs[1]);
-      lDataOrigin = ReadoutDataUtils::getDataOrigin(R1);
-      lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
-    } catch (RDHReaderException &e) {
-      EDDLOG("READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
-      // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
-      continue;
-    }
-
-    assert (lReadoutMsgs.size() > 1);
-    auto lStartHbf = lReadoutMsgs.begin() + 1; // skip the meta message
-    auto lEndHbf = lStartHbf + 1;
-
-    std::size_t lAdded = 0;
-    bool lErrorWhileAdding = false;
     const bool lFinishStf = lReadoutHdr.mFlags.mLastTFMessage;
-
-    while (true) {
-      if (lEndHbf == lReadoutMsgs.end()) {
-        //insert the remaining span
-        std::size_t lInsertCnt = (lEndHbf - lStartHbf);
-        lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
-        lAdded += lInsertCnt;
-        break;
-      }
-
-      header::DataHeader::SubSpecificationType lNewSubSpec = ~header::DataHeader::SubSpecificationType(0);
+    if (lReadoutMsgs.size() > 1) {
+      // check subspecifications of all messages
+      header::DataHeader::SubSpecificationType lSubSpecification = ~header::DataHeader::SubSpecificationType(0);
+      header::DataOrigin lDataOrigin;
       try {
-        const auto Rend = RDHReader(*lEndHbf);
-        lNewSubSpec = ReadoutDataUtils::getSubSpecification(Rend);
+        const auto R1 = RDHReader(lReadoutMsgs[1]);
+        lDataOrigin = ReadoutDataUtils::getDataOrigin(R1);
+        lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
       } catch (RDHReaderException &e) {
-        EDDLOG(e.what());
-        // TODO: portion of the ReadoutMsg is discarded. Account and report the data size.
-        lErrorWhileAdding = true;
-        break;
+        EDDLOG("READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
+        // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
+        continue;
       }
 
-      if (lNewSubSpec != lSubSpecification) {
-        EDDLOG("READOUT INTERFACE: update with mismatched subspecification."
-          " block[0]: {:#06x}, block[{}]: {:#06x}",
-          lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
-        // insert
-        lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
-        lAdded += (lEndHbf - lStartHbf);
-        lStartHbf = lEndHbf;
+      assert (lReadoutMsgs.size() > 1);
+      auto lStartHbf = lReadoutMsgs.begin() + 1; // skip the meta message
+      auto lEndHbf = lStartHbf + 1;
 
-        lSubSpecification = lNewSubSpec;
+      std::size_t lAdded = 0;
+      bool lErrorWhileAdding = false;
+
+      while (true) {
+        if (lEndHbf == lReadoutMsgs.end()) {
+          //insert the remaining span
+          std::size_t lInsertCnt = (lEndHbf - lStartHbf);
+          lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
+          lAdded += lInsertCnt;
+          break;
+        }
+
+        header::DataHeader::SubSpecificationType lNewSubSpec = ~header::DataHeader::SubSpecificationType(0);
+        try {
+          const auto Rend = RDHReader(*lEndHbf);
+          lNewSubSpec = ReadoutDataUtils::getSubSpecification(Rend);
+        } catch (RDHReaderException &e) {
+          EDDLOG(e.what());
+          // TODO: portion of the ReadoutMsg is discarded. Account and report the data size.
+          lErrorWhileAdding = true;
+          break;
+        }
+
+        if (lNewSubSpec != lSubSpecification) {
+          EDDLOG("READOUT INTERFACE: update with mismatched subspecification."
+            " block[0]: {:#06x}, block[{}]: {:#06x}",
+            lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
+          // insert
+          lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
+          lAdded += (lEndHbf - lStartHbf);
+          lStartHbf = lEndHbf;
+
+          lSubSpecification = lNewSubSpec;
+        }
+        lEndHbf = lEndHbf + 1;
       }
-      lEndHbf = lEndHbf + 1;
-    }
 
-    if (!lErrorWhileAdding && (lAdded != lReadoutMsgs.size() - 1) ) {
-      EDDLOG("BUG: Not all received HBFrames added to the STF.");
+      if (!lErrorWhileAdding && (lAdded != lReadoutMsgs.size() - 1) ) {
+        EDDLOG("BUG: Not all received HBFrames added to the STF.");
+      }
     }
 
     // check if this was the last message of an STF
