@@ -185,15 +185,20 @@ public:
       if (pProcType == ProcessType::StfSender) {
         const auto lErrorMsg = fmt::format("Parameter <{}> for StfSender must be provided on command line.",
           OptionKeyDiscoveryId);
-        EDDLOG( lErrorMsg);
+        EDDLOG(lErrorMsg);
         throw std::invalid_argument(lErrorMsg);
       }
     }
 
     {
       // get an unique ID
-      std::string lUniquePart = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-      std::string lUniqueId = pProcType.to_string() + "-" + boost::asio::ip::host_name() + "-" + lUniquePart;
+      const std::string lUniquePart = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+      std::string lHostname = boost::asio::ip::host_name();
+      lHostname = lHostname.substr(0, lHostname.find('.'));
+
+      std::string lUniqueId = pProcType.to_string();
+      lUniqueId += "-" + lHostname;
+      lUniqueId += "-" + lUniquePart.substr(0, 8);
 
       IDDLOG("Parameter {} not provided, using random value={}", Config::OptionKeyDiscoveryId, lUniqueId);
       return lUniqueId;
