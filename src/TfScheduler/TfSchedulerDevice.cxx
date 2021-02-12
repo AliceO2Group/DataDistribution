@@ -90,7 +90,6 @@ bool TfSchedulerDevice::ConditionalRun()
   return true;
 }
 
-
 void TfSchedulerDevice::TfSchedulerServiceThread()
 {
   // wait for the device to go into RUNNING state
@@ -112,7 +111,7 @@ void TfSchedulerDevice::TfSchedulerServiceThread()
         auto [lNewInstIt, lEmplaced ] = mSchedulerInstances.emplace(
           lNewPartitionRequest.mPartitionId,
           std::make_unique<TfSchedulerInstanceHandler>(*this,
-            mDiscoveryConfig->status().info().process_id() + "-" + lNewPartitionRequest.mPartitionId,
+            std::string("0"), // TODO: add multiple schedulers
             lNewPartitionRequest
           ) // value
         );
