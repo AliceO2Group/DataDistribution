@@ -40,24 +40,24 @@ class TfSchedulerInstanceHandler
     const std::string &pProcessId,
     const PartitionRequest &pPartitionRequest);
 
+  ~TfSchedulerInstanceHandler();
+
   void start();
   void stop();
 
-  bool running() const;
-
   void TfSchedulerInstanceThread();
 
- private:
-  /// Ref to the main SubTimeBuilder O2 device
-  DataDistDevice& mDevice;
+  bool isTerminated() const { return mRpcServer.getPartitionState() == PartitionState::PARTITION_TERMINATED; }
 
-  /// Partiton info
+ private:
+    /// Partiton info
   PartitionRequest mPartitionInfo;
 
   /// Discovery configuration
   std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;
 
   /// Scheduler threads
+  bool mRunning = false;
   std::thread mSchedulerInstanceThread;
 
   /// Rpc server and connection manager

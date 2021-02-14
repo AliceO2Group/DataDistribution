@@ -52,6 +52,9 @@ class TfSchedulerInstanceRpcImpl final : public TfSchedulerInstanceRpc::Service
 
   virtual ~TfSchedulerInstanceRpcImpl() { }
 
+  ::grpc::Status GetPartitionState(::grpc::ServerContext* context, const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response) override;
+  ::grpc::Status TerminatePartition(::grpc::ServerContext* context, const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response) override;
+
   ::grpc::Status NumStfSendersInPartitionRequest(::grpc::ServerContext* context, const ::google::protobuf::Empty* request, ::o2::DataDistribution::NumStfSendersInPartitionResponse* response) override;
   ::grpc::Status TfBuilderConnectionRequest(::grpc::ServerContext* context, const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::TfBuilderConnectionResponse* response) override;
   ::grpc::Status TfBuilderDisconnectionRequest(::grpc::ServerContext* context, const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::StatusResponse* response) override;
@@ -64,8 +67,20 @@ class TfSchedulerInstanceRpcImpl final : public TfSchedulerInstanceRpc::Service
   void start();
   void stop();
 
+  void PartitionMonitorThread();
+
+  bool accepting_updates() const {
+    return !(mPartitionState == PartitionState::PARTITION_TERMINATING ||
+    mPartitionState == PartitionState::PARTITION_TERMINATED);
+  }
+
+  PartitionState getPartitionState() const { return mPartitionState; }
 
  private:
+  /// Partition monitoring thread
+  bool mRunning = false;
+  std::thread mMonitorThread;
+
   /// Discovery
   std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;
   /// Partition information
@@ -82,13 +97,13 @@ class TfSchedulerInstanceRpcImpl final : public TfSchedulerInstanceRpc::Service
 
   /// Stfs for scheduling
   TfSchedulerStfInfo mStfInfo;
+
+  /// Partition State. Always update via the method.
+  void updatePartitionState(const PartitionState pNewState);
+  PartitionState mPartitionState = PartitionState::PARTITION_CONFIGURING;
 };
 }
 } /* namespace o2::DataDistribution */
-
-
-
-
 
 
 

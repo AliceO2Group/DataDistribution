@@ -72,7 +72,7 @@ void TfSchedulerStfInfo::SchedulingThread()
 
         // 1: Get the best TfBuilder candidate
         std::string lTfBuilderId;
-        if ( mTfBuilderInfo.findTfBuilderForTf(lTfSize, lTfBuilderId /*out*/) ) {
+        if (mTfBuilderInfo.findTfBuilderForTf(lTfSize, lTfBuilderId /*out*/) ) {
           lNumTfScheds++;
           DDLOGF_RL(1000, DataDistSeverity::debug, "Scheduling new TF. tf_id={} tfb_id={} total={}",
             lTfId, lTfBuilderId, lNumTfScheds);

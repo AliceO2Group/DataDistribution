@@ -56,10 +56,16 @@ public:
 
     const std::string &lEndpoint = mTfBuilderConf.rpc_endpoint();
 
-    mStub = TfBuilderRpc::NewStub(
-      grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials()));
+    mChannel = grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials());
+    mStub = TfBuilderRpc::NewStub(mChannel);
 
-    IDDLOG("Connected gRPC client to TfBuilder. tf_builder={:s} endpoint={:s}", pTfBuilderId, lEndpoint);
+    if (is_alive()) {
+      IDDLOG("Connected gRPC client to TfBuilder. tf_builder={:s} endpoint={:s}", pTfBuilderId, lEndpoint);
+    } else {
+      EDDLOG("Error in gRPC client to TfBuilder. tf_builder={:s} endpoint={:s}", pTfBuilderId, lEndpoint);
+      return false;
+    }
+
     mRunning = true;
     return true;
   }
@@ -77,7 +83,6 @@ public:
   }
 
   // rpc BuildTfRequest(TfBuildingInformation) returns (BuildTfResponse) { }
-
   bool BuildTfRequest(const TfBuildingInformation &pTfInfo, BuildTfResponse &pResponse /*out */)
   {
     using namespace std::chrono_literals;
@@ -95,9 +100,37 @@ public:
     return false;
   }
 
+  //  rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
+  bool TerminatePartition() {
+    ClientContext lContext;
+    PartitionInfo lPartitionInfo; // TODO: set proper partition id
+    PartitionResponse lResponse;
+
+    auto lStatus = mStub->TerminatePartition(&lContext, lPartitionInfo, &lResponse);
+    if (!lStatus.ok()) {
+      return false;
+    }
+
+    if (lStatus.ok() && lResponse.partition_state() != PartitionState::PARTITION_TERMINATING) {
+      EDDLOG("TerminatePartition: TfBuilder. state={} message={}", lResponse.partition_state(), lStatus.error_message());
+    }
+    return true;
+  }
 
   std::string getEndpoint() { return mTfBuilderConf.rpc_endpoint(); }
 
+  bool is_ready() const {
+    if (mChannel) {
+      return (mChannel->GetState(true) == grpc_connectivity_state::GRPC_CHANNEL_READY);
+    }
+    return false;
+  }
+  bool is_alive() const {
+    if (mChannel) {
+      return (mChannel->GetState(true) != grpc_connectivity_state::GRPC_CHANNEL_SHUTDOWN);
+    }
+    return false;
+  }
 
 private:
   std::atomic_bool mRunning = false;
@@ -105,6 +138,7 @@ private:
   TfBuilderConfigStatus mTfBuilderConf;
 
   std::unique_ptr<TfBuilderRpc::Stub> mStub;
+  std::shared_ptr<grpc::Channel> mChannel;
 };
 
 
@@ -159,7 +193,6 @@ public:
     if (mClients.count(pId) > 0) {
 
       RpcClient lCliStruct = std::move(mClients.at(pId));
-
       {
         // we have to wait for RpcClient lock before erasing
         std::scoped_lock lCliLock(mClientsGlobalLock, *(lCliStruct.mClientLock));
@@ -167,7 +200,6 @@ public:
         lCliStruct.mClient->stop();
 
         mClients.erase(pId);
-
       } // need to unlock lCliStruct.mClientLock here before destroying the object
 
       return true;
@@ -220,6 +252,22 @@ public:
 
   auto begin() const { return mClients.begin(); }
   auto end() const { return mClients.end(); }
+
+  void clear() {
+    // remove each of the clients while holding their locks
+    std::scoped_lock lLock(mClientsGlobalLock);
+
+    for (auto &[lId, lCli] : mClients) {
+      (void)lCli;
+      RpcClient lCliStruct = std::move(mClients.at(lId));
+
+      // we have to wait for RpcClient lock before erasing
+      std::scoped_lock lCliLock(mClientsGlobalLock, *(lCliStruct.mClientLock));
+      lCliStruct.mClient->stop();
+    }
+
+    mClients.clear();
+  }
 
 private:
 

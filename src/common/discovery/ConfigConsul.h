@@ -63,6 +63,7 @@ public:
 
     try {
       mConsul = std::make_unique<ppconsul::Consul>(mEndpoint);
+      IDDLOG("Connecting to Consul. endpoint={}", mEndpoint);
     } catch (std::exception &err) {
       EDDLOG("Error while connecting to Consul. endpoint={} what={}", mEndpoint, err.what());
     }
@@ -87,6 +88,20 @@ public:
 
     std::string lData;
     mStatus.SerializeToString(&lData);
+
+    // persist global partition info
+    if constexpr (std::is_same_v<T, TfSchedulerInstanceConfigStatus>) {
+      using namespace std::string_literals;
+      static const std::string sPartStateKey = getInfoPrefix(mStatus.partition().partition_id());
+      try {
+        Kv kv(*mConsul);
+        kv.set(sPartStateKey + "/partition-state"s, std::to_string(mStatus.partition_state()) );
+        kv.set(sPartStateKey + "/partition-state-str"s, PartitionState_Name(mStatus.partition_state()));
+        kv.set(sPartStateKey + "/last-update"s, lTimeStr);
+      } catch (std::exception &e) {
+        EDDLOG("Consul kv::set error. what={}", e.what());
+      }
+    }
 
     return write_string(lData, pIinitial);
   }
@@ -155,14 +170,21 @@ private:
 
   T mStatus;
 
-public:
+private:
 
+  static
+  const std::string getInfoPrefix(const std::string pPartId)
+  {
+    using namespace std::string_literals;
+    return "epn/data-dist/partition/"s + pPartId + "/info"s;
+  }
+
+public:
   bool getNewPartitionRequest(PartitionRequest &pNewPartitionRequest)
   {
     using namespace std::string_literals;
 
     static const std::string sReqKeyPrefix = "epn/data-dist/request"s;
-    static const std::string sInfoKeyPrefix = "epn/data-dist/partition/"s; // + "partID/info"
     static const std::string sInvalidKeyPrefix = "epn/data-dist/invalid_requests/"s; // + "time_t"
 
     static const std::string sTimeSubKey = "/request-time"s;
@@ -174,9 +196,8 @@ public:
     static const std::string sReqPartitionIdKey   = sReqKeyPrefix + sPartitionIdSubKey;
     static const std::string sReqStfSenderListKey = sReqKeyPrefix + sStfSenderListSubKey;
 
-
-    if (getProcessType() != ProcessType::TfSchedulerService) {
-      throw std::logic_error("Only TfScheduler process can call this method.");
+    if constexpr (! std::is_same_v<T, TfSchedulerServiceConfigStatus>) {
+      static_assert("Only TfSchedulerService process can call this method.");
     }
 
     bool lReqValid = false;
@@ -261,7 +282,7 @@ public:
         auto [lTimeStr, lTimet] = getCurrentTimeString();
         // build info key for valid or invalid partition request
         if (lReqValid) {
-          lInfoPrefix = sInfoKeyPrefix + pNewPartitionRequest.mPartitionId + "/info";
+          lInfoPrefix = getInfoPrefix(pNewPartitionRequest.mPartitionId);
         } else {
           lInfoPrefix = sInvalidKeyPrefix + std::to_string(lTimet);
         }
@@ -377,7 +398,7 @@ public:
         return a.key < b.key;
       });
 
-
+      // get the scheduler with lowest ID
       if (!pTfSchedulerStat.ParseFromString(lReqItems.begin()->value)) {
         EDDLOG("Cannot parse protobuf message from consul! (type StfSenderConfigStatus)");
       }

@@ -30,8 +30,7 @@ using namespace std::chrono_literals;
 TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
   const std::string &pProcessId,
   const PartitionRequest &pPartitionRequest)
-: mDevice(pDev),
-  mPartitionInfo(pPartitionRequest),
+: mPartitionInfo(pPartitionRequest),
   mDiscoveryConfig(std::make_shared<ConsulTfSchedulerInstance>(ProcessType::TfSchedulerInstance, Config::getEndpointOption(*pDev.GetConfig()))),
   mRpcServer(mDiscoveryConfig, pPartitionRequest)
 {
@@ -46,6 +45,7 @@ TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
   for (const auto &lStfSenderId : mPartitionInfo.mStfSenderIdList) {
     lStatus.add_stf_sender_id_list(lStfSenderId);
   }
+  lStatus.set_partition_state(PARTITION_CONFIGURING);
 
   // start RPC server
   int lRpcRealPort = 0;
@@ -57,8 +57,14 @@ TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
   DDDLOG("Initialized new TfSchedulerInstance. partition={}", mPartitionInfo.mPartitionId);
 }
 
+TfSchedulerInstanceHandler::~TfSchedulerInstanceHandler()
+{
+  stop();
+}
+
 void TfSchedulerInstanceHandler::start()
 {
+  mRunning = true;
   // create scheduler thread
   mSchedulerInstanceThread = create_thread_member("sched_instance",
     &TfSchedulerInstanceHandler::TfSchedulerInstanceThread, this);
@@ -73,26 +79,21 @@ void TfSchedulerInstanceHandler::stop()
 {
   mRpcServer.stop();
 
+  mRunning = false;
   // stop the scheduler
   if (mSchedulerInstanceThread.joinable()) {
     mSchedulerInstanceThread.join();
   }
 }
 
-bool TfSchedulerInstanceHandler::running() const
-{
-  return mDevice.IsRunningState();
-}
-
 void TfSchedulerInstanceHandler::TfSchedulerInstanceThread()
 {
   DDDLOG("Starting a TfSchedulerInstanceHandler thread.");
-  // wait for the device to go into RUNNING state
-  mDevice.WaitForRunningState();
 
-  while (running()) {
+  while (mRunning) {
 
-    std::this_thread::sleep_for(500ms);
+
+    std::this_thread::sleep_for(1000ms);
   }
 
   DDDLOG("Exiting TfSchedulerInstanceHandler thread.");
