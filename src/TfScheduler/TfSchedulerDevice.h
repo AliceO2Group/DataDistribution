@@ -21,7 +21,6 @@
 #include <Utilities.h>
 
 #include <thread>
-#include <map>
 
 
 namespace o2
@@ -45,21 +44,14 @@ class TfSchedulerDevice : public DataDistDevice
 
  protected:
   void PreRun() final;
-  void PostRun() final { };
+  void PostRun() final;
   bool ConditionalRun() final;
 
-  /// Discovery configuration
-  std::shared_ptr<ConsulTfSchedulerService> mDiscoveryConfig;
-
-  /// Scheduler service thread
-  void TfSchedulerServiceThread();
-  std::thread mServiceThread;
-
   /// Scheduler Instances
-  // NOTE (unique_ptr): TfSchedulerInstance has threads that take *this.
-  //                    unique_ptr ensures that *this does not change due to container
-  std::map<std::string, std::unique_ptr<TfSchedulerInstanceHandler>> mSchedulerInstances;
+  std::string mPartitionId;
+  std::unique_ptr<TfSchedulerInstanceHandler> mSchedInstance;
 
+  std::unique_ptr<ConsulTfSchedulerService> mDiscoveryConfig;
 };
 }
 } /* namespace o2::DataDistribution */

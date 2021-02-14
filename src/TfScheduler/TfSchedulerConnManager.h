@@ -62,7 +62,7 @@ class TfSchedulerConnManager
     using namespace std::chrono_literals;
 
     while (!mStfSenderRpcClients.start()) {
-      std::this_thread::sleep_for(1s);
+      return false; // we'll be called back
     }
 
     mRunning = true;
@@ -98,6 +98,10 @@ class TfSchedulerConnManager
 
   void StfSenderMonitoringThread();
 
+  /// Partition RPCs
+  bool requestTfBuildersTerminate();
+  bool requestStfSendersTerminate();
+
   /// External requests by TfBuilders
   void connectTfBuilder(const TfBuilderConfigStatus &pTfBuilderStatus, TfBuilderConnectionResponse &pResponse /*out*/);
   void disconnectTfBuilder(const TfBuilderConfigStatus &pTfBuilderStatus, StatusResponse &pResponse /*out*/);
@@ -127,7 +131,13 @@ class TfSchedulerConnManager
     return mStfSenderRpcClients.checkStfSenderRpcConn(lStfSenderId);
   }
 
+  void deleteStfSenderRpcClient(const std::string &pId)
+  {
+    mStfSenderRpcClients.remove(pId);
+  }
+
   StfSenderState getStfSenderState() const { return mStfSenderState; }
+  std::size_t getStfSenderCount() const { return mStfSenderRpcClients.size(); }
 
 private:
   /// Partition information

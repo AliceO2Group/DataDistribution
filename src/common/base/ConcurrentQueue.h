@@ -60,12 +60,14 @@ class ConcurrentContainerImpl
     mImpl->mCond.notify_all();
   }
 
-  void flush()
+  std::size_t flush()
   {
     std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    auto lCount = mImpl->mContainer.size();
     mImpl->mContainer.clear();
     lLock.unlock();
     mImpl->mCond.notify_all();
+    return lCount;
   }
 
   // push a new element to the queue, while in the running state
@@ -315,6 +317,20 @@ class IFifoPipeline
     if (lNextStage < mPipelineQueues.size()) {
       mPipelineQueues[lNextStage].stop();
     }
+  }
+
+  // notify the receiver the queue is closed and flush the queue
+  std::size_t flush(unsigned pStage)
+  {
+    assert(pStage < mPipelineQueues.size());
+    auto lNextStage = getNextPipelineStage(pStage);
+    assert((lNextStage <= mPipelineQueues.size()) && "next stage larger than expected");
+
+    std::size_t lCount = 0;
+    if (lNextStage < mPipelineQueues.size()) {
+      lCount = mPipelineQueues[lNextStage].flush();
+    }
+    return lCount;
   }
 
   T dequeue(unsigned pStage)

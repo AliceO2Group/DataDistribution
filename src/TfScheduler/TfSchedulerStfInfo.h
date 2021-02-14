@@ -84,6 +84,12 @@ public:
   void stop() {
     mRunning = false;
 
+    {
+      std::unique_lock lLock(mCompleteStfInfoLock);
+      mCompleteStfsInfo.clear();
+      mStfScheduleCondition.notify_all();
+    }
+
     if (mSchedulingThread.joinable()) {
       mSchedulingThread.join();
     }
@@ -94,7 +100,6 @@ public:
 
   void SchedulingThread();
   void addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse);
-
 
 private:
   /// Discard timeout for incomplete TFs

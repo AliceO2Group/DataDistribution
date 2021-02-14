@@ -42,43 +42,32 @@ TfSchedulerDevice::~TfSchedulerDevice()
 void TfSchedulerDevice::InitTask()
 {
   DataDistLogger::SetThreadName("tfs-main");
-
-  // Discovery
-  mDiscoveryConfig = std::make_shared<ConsulTfSchedulerService>(ProcessType::TfSchedulerService, Config::getEndpointOption(*GetConfig()));
-
-  auto &lStatus = mDiscoveryConfig->status();
-
-  lStatus.mutable_info()->set_type(TfSchedulerService);
-  lStatus.mutable_info()->set_process_id(Config::getIdOption(*GetConfig()));
-  lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
-
-  mDiscoveryConfig->write();
-
-  // start the service thread
-  mServiceThread = create_thread_member("sched_service", &TfSchedulerDevice::TfSchedulerServiceThread, this);
 }
 
 void TfSchedulerDevice::PreRun()
 {
+  mDiscoveryConfig = std::make_unique<ConsulTfSchedulerService>(
+    ProcessType::TfSchedulerService,
+    Config::getEndpointOption(*GetConfig())
+  );
+}
 
+void TfSchedulerDevice::PostRun()
+{
+  IDDLOG("Stopping the TfScheduler and exiting. partition_id={}", mPartitionId);
+
+  // delete everything
+  if (mSchedInstance) {
+    mSchedInstance->stop();
+  }
+  mSchedInstance.reset();
+  mPartitionId.clear();
+
+  throw "Intentional exit";
 }
 
 void TfSchedulerDevice::ResetTask()
 {
-  // stop the scheduler service
-  if (mServiceThread.joinable()) {
-    mServiceThread.join();
-  }
-
-  // stop all instances
-  for (auto &lInstIt : mSchedulerInstances) {
-    lInstIt.second->stop();
-  }
-
-  mSchedulerInstances.clear();
-
-
-  DDDLOG("ResetTask() done.");
 }
 
 bool TfSchedulerDevice::ConditionalRun()
@@ -86,51 +75,34 @@ bool TfSchedulerDevice::ConditionalRun()
   // nothing to do here sleep for awhile
   std::this_thread::sleep_for(500ms);
 
-  // NOTE: Not using Run or ConditionalRun lets us put teardown in PostRun()
-  return true;
-}
-
-void TfSchedulerDevice::TfSchedulerServiceThread()
-{
-  // wait for the device to go into RUNNING state
-  WaitForRunningState();
-
-  while (IsRunningState()) {
-
+  if (!mSchedInstance) {
     // check for new requests
     PartitionRequest lNewPartitionRequest;
-    DDLOGF_RL(2000, DataDistSeverity::debug, "Checking for new partition creation requests.");
+    DDLOGF_RL(5000, DataDistSeverity::debug, "Checking for new partition creation requests.");
     if (mDiscoveryConfig->getNewPartitionRequest(lNewPartitionRequest)) {
       // new request
       IDDLOG("Request for starting a new partition. partition={}", lNewPartitionRequest.mPartitionId);
 
-      // check if we already have instance for the requested partition
-      if (mSchedulerInstances.count(lNewPartitionRequest.mPartitionId) == 0) {
+      // Create a new instance for the partition
+      mPartitionId = lNewPartitionRequest.mPartitionId;
+      mSchedInstance = std::make_unique<TfSchedulerInstanceHandler>(*this,
+        std::string("0"), // TODO: add multiple schedulers
+        lNewPartitionRequest
+      );
+      mSchedInstance->start();
 
-        // Create a new instance for the partition
-        auto [lNewInstIt, lEmplaced ] = mSchedulerInstances.emplace(
-          lNewPartitionRequest.mPartitionId,
-          std::make_unique<TfSchedulerInstanceHandler>(*this,
-            std::string("0"), // TODO: add multiple schedulers
-            lNewPartitionRequest
-          ) // value
-        );
-
-        if (lEmplaced) {
-          auto &lNewInstance = lNewInstIt->second;
-          lNewInstance->start();
-        }
-        IDDLOG("Created new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
-        break; // Only service one partition per process
-      } else {
-        EDDLOG("Scheduler instance already exists. partition={}",lNewPartitionRequest.mPartitionId);
-      }
+      IDDLOG("Created new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
     }
-
-    std::this_thread::sleep_for(1000ms);
   }
 
-  DDDLOG("Exiting TfSchedulerServiceThread.");
+  if (mSchedInstance) {
+    if (mSchedInstance->isTerminated()) {
+      std::this_thread::sleep_for(2000ms);
+      return false; // -> PostRun() -> exit
+    }
+  }
+
+  return true;
 }
 
 }

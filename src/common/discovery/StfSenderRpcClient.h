@@ -62,7 +62,23 @@ public:
     return mStub->StfDataRequest(&lContext, pParam, &pRet);
   }
 
-  bool is_ready();
+  // rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
+  bool TerminatePartition() {
+    ClientContext lContext;
+    PartitionInfo lPartInfo; // TODO: specify and check partition ID
+    PartitionResponse lRet;
+
+    return mStub->TerminatePartition(&lContext, lPartInfo, &lRet).ok();
+  }
+
+  bool is_ready() const;
+  bool is_alive() const {
+    if (mChannel) {
+      return (mChannel->GetState(true) != grpc_connectivity_state::GRPC_CHANNEL_SHUTDOWN);
+    }
+    return false;
+  }
+
   std::string grpc_status();
 
 private:
@@ -108,6 +124,7 @@ public:
 
     // Connect to all StfSenders
     for (const std::string &lStfSenderId : lSchedulerInst.stf_sender_id_list()) {
+      std::scoped_lock lLock(mClientsGlobalLock);
 
       // check if already connected
       if (mClients.count(lStfSenderId) == 1) {
@@ -133,7 +150,8 @@ public:
       );
     }
 
-    DDLOGF_RL(1000, DataDistSeverity::info, "gRPC: Connected to {}/{} StfSender.", mClients.size(), lNumStfSenders);
+    DDLOGF_RL(1000, DataDistSeverity::info, "gRPC: Connected to {} out of {} StfSender{}.",
+      mClients.size(), lNumStfSenders, lNumStfSenders > 1 ? "s" : "");
 
     if (mClients.size() != lNumStfSenders) {
       static int sBackoff = 0;
@@ -149,11 +167,15 @@ public:
 
     // make sure all connections are ready
     bool lAllConnReady = true;
+    {
+      std::scoped_lock lLock(mClientsGlobalLock);
 
-    for (auto &[ mCliId, lClient] : mClients) {
-      if (!lClient->is_ready()) {
-        lAllConnReady = false;
-        WDDLOG("StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
+      for (auto &[ mCliId, lClient] : mClients) {
+        if (!lClient->is_ready()) {
+          lAllConnReady = false;
+          WDDLOG("StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId,
+          lClient->grpc_status());
+       }
       }
     }
 
@@ -165,17 +187,29 @@ public:
   void stop()
   {
     mRunning = false;
+    std::scoped_lock lLock(mClientsGlobalLock);
     mClients.clear();
     mClientsCreated = false;
-
   }
 
   bool checkStfSenderRpcConn(const std::string &lStfSenderId)
   {
+    std::scoped_lock lLock(mClientsGlobalLock);
     if (mClientsCreated && mClients.count(lStfSenderId) == 1) {
-      return mClients[lStfSenderId]->is_ready();
+      auto &lCli = mClients[lStfSenderId];
+      return lCli->is_alive();
     }
+    return false;
+  }
 
+  bool remove(const std::string pId)
+  {
+    std::scoped_lock lLock(mClientsGlobalLock);
+
+    if (mClients.count(pId) > 0) {
+      mClients.erase(pId);
+      return true;
+    }
     return false;
   }
 
@@ -192,6 +226,7 @@ private:
   std::shared_ptr<T> mDiscoveryConfig;
 
   bool mClientsCreated = false;
+  std::recursive_mutex mClientsGlobalLock;
   std::map<std::string, std::unique_ptr<StfSenderRpcClient>> mClients;
 };
 

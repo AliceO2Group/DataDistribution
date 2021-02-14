@@ -27,7 +27,7 @@ StfSenderRpcClient::StfSenderRpcClient(const std::string &pEndpoint) {
   mStub = StfSenderRpc::NewStub(mChannel);
 }
 
-bool StfSenderRpcClient::is_ready() {
+bool StfSenderRpcClient::is_ready() const {
   // check state, the flag will move it from IDLE to READY
   mChannel->GetState(true);
   // check state and try to reconnect (keep alive)

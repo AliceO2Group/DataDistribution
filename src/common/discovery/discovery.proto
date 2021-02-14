@@ -41,7 +41,10 @@ message BasicInfo {
 }
 
 message PartitionInfo {
-  string partition_id  = 1;
+  string environment_id = 1;
+  // AliECS environment ID (required)
+  string partition_id = 2;
+  // Partition ID. (required)
 }
 
 message TfSchedulerServiceConfigStatus {
@@ -58,6 +61,7 @@ message TfSchedulerInstanceConfigStatus {
 
             uint32          stf_sender_count    = 4;
   repeated  string          stf_sender_id_list  = 5;
+            PartitionState  partition_state     = 6;
 }
 
 message StfSenderSocketMap {
@@ -118,6 +122,7 @@ enum TfBuilderConnectionStatus {
   ERROR_GRPC_TF_BUILDER       = 5;
   ERROR_STF_SENDER_CONNECTING = 6;
   ERROR_STF_SENDER_EXISTS     = 7;
+  ERROR_PARTITION_TERMINATING = 8;
 }
 
 message ConnectTfBuilderResponse {
@@ -148,6 +153,9 @@ service StfSenderRpc {
   rpc DisconnectTfBuilderRequest(TfBuilderEndpoint) returns (StatusResponse) { }
 
   rpc StfDataRequest(StfDataRequestMessage) returns (StfDataResponse) { }
+
+  // Partition RPCs
+  rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
 }
 
 
@@ -219,10 +227,15 @@ message BuildTfResponse {
 
 service TfSchedulerInstanceRpc {
 
+  // Partition RPCs
+  rpc GetPartitionState(PartitionInfo) returns (PartitionResponse) { }
+  rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
+  rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
+
+  // TfBuilder connect/disconnect
   rpc TfBuilderConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderConnectionResponse) { }
   rpc TfBuilderDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
 
-  rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
 
   // TfBuilder updates
   rpc TfBuilderUpdate(TfBuilderUpdateMessage) returns (google.protobuf.Empty) { }
@@ -236,5 +249,44 @@ service TfSchedulerInstanceRpc {
 service TfBuilderRpc {
 
   rpc BuildTfRequest(TfBuildingInformation) returns (BuildTfResponse) { }
+
+  // Partition RPCs
+  rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
 }
 
+
+enum PartitionState {
+  IGNORE__ = 0;
+
+  PARTITION_UNKNOWN = 1;
+  // Partition not known to DataDistControl. Initialize by calling PartitionInitialize()
+
+  PARTITION_ERROR = 2;
+  // Error state, requires manual Terminate/Initialize.
+  // DD control could not configure the partition according to required specifications
+
+  PARTITION_REQUEST_INVALID = 3;
+  // Provided configuration does not meet requirements or the request is not accepted at the current state.
+
+  PARTITION_CONFIGURING = 4;
+  // Configuration accepted, waiting on FLP and EPN DD components to respond and connect.
+
+  PARTITION_CONFIGURED = 5;
+  // All components configured, ready for dataflow commands
+
+  PARTITION_TERMINATING = 6;
+  // Partition is terminating. EPN-FLP connections will be cleanly closed.
+
+  PARTITION_TERMINATED = 7;
+  // Partition is terminated. TfScheduler does not accept further requests
+}
+
+
+
+message PartitionResponse {
+  PartitionState partition_state = 1;
+  // Current or new state of the partition following reception of the request.
+
+  string info_message = 2;
+  // Optional information message.
+}

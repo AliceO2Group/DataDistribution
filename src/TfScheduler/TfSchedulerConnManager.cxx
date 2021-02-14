@@ -116,14 +116,9 @@ void TfSchedulerConnManager::disconnectTfBuilder(const TfBuilderConfigStatus &pT
   pResponse.set_status(0);
   const std::string &lTfBuilderId = pTfBuilderStatus.info().process_id();
 
-  std::scoped_lock lLock(mStfSenderClientsLock);
-
-  deleteTfBuilderRpcClient(lTfBuilderId);
-
-  if (!stfSendersReady()) {
-    IDDLOG("TfBuilder Connection error: StfSenders not ready.");
-    pResponse.set_status(ERROR_STF_SENDERS_NOT_READY);
-    return;
+  {
+    std::scoped_lock lLock(mStfSenderClientsLock);
+    deleteTfBuilderRpcClient(lTfBuilderId);
   }
 
   TfBuilderEndpoint lParam;
@@ -137,31 +132,70 @@ void TfSchedulerConnManager::disconnectTfBuilder(const TfBuilderConfigStatus &pT
       continue; // not connected
     }
 
-    lParam.set_tf_builder_id(lTfBuilderId);
-    lParam.set_endpoint(lSocketInfo.endpoint());
+    { // lock clients
+      std::scoped_lock lLock(mStfSenderClientsLock);
 
-    if (mStfSenderRpcClients.count(lStfSenderId) == 0) {
-      WDDLOG("disconnectTfBuilder: Unknown StfSender. stfs_id={}", lStfSenderId);
-      continue;
-    }
+      if (mStfSenderRpcClients.count(lStfSenderId) == 0) {
+        WDDLOG("disconnectTfBuilder: Unknown StfSender. stfs_id={}", lStfSenderId);
+        continue;
+      }
 
-    auto &lRpcClient = mStfSenderRpcClients[lSocketInfo.peer_id()];
+      lParam.set_tf_builder_id(lTfBuilderId);
+      lParam.set_endpoint(lSocketInfo.endpoint());
+      StatusResponse lResponse;
 
-    StatusResponse lResponse;
-    if(!lRpcClient->DisconnectTfBuilderRequest(lParam, lResponse).ok()) {
-      EDDLOG("TfBuilder Connection error: gRPC error. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
-      pResponse.set_status(ERROR_GRPC_STF_SENDER);
-      break;
-    }
-
-    // check StfSender status
-    if (lResponse.status() != 0) {
-      EDDLOG("TfBuilder Connection error. stfs_id={} tfb_id={} response={}",
-        lStfSenderId, lTfBuilderId, lResponse.status());
-      pResponse.set_status(ERROR_STF_SENDER_CONNECTING);
-      break;
+      auto &lRpcClient = mStfSenderRpcClients[lSocketInfo.peer_id()];
+      if(!lRpcClient->DisconnectTfBuilderRequest(lParam, lResponse).ok()) {
+        EDDLOG("StfSender Connection error: gRPC error. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
+        pResponse.set_status(ERROR_GRPC_STF_SENDER);
+        continue;
+      }
+      // check StfSender status
+      if (lResponse.status() != 0) {
+        EDDLOG("TfBuilder Connection error. stfs_id={} tfb_id={} response={}", lStfSenderId, lTfBuilderId, lResponse.status());
+        pResponse.set_status(ERROR_STF_SENDER_CONNECTING);
+        continue;
+      }
     }
   }
+}
+
+// Partition RPC: keep sending until all TfBuilders are gone
+bool TfSchedulerConnManager::requestTfBuildersTerminate() {
+  std::vector<std::string> lFailedRpcsForDeletion;
+
+  std::scoped_lock lLock(mStfSenderClientsLock);
+
+  for (auto &lTfBuilder : mTfBuilderRpcClients) {
+    if (!lTfBuilder.second.mClient->TerminatePartition()) {
+      lFailedRpcsForDeletion.emplace_back(lTfBuilder.first);
+    }
+  }
+
+  for (const auto &lId : lFailedRpcsForDeletion) {
+    deleteTfBuilderRpcClient(lId);
+  }
+
+  return mTfBuilderRpcClients.size() == 0;
+}
+
+// Partition RPC: notify all StfSenders and remove rpc clients
+bool TfSchedulerConnManager::requestStfSendersTerminate() {
+  std::vector<std::string> lFailedRpcsForDeletion;
+
+  std::scoped_lock lLock(mStfSenderClientsLock);
+
+  for (auto &lStfSender : mStfSenderRpcClients) {
+    if (!lStfSender.second->TerminatePartition()) {
+      lFailedRpcsForDeletion.emplace_back(lStfSender.first);
+    }
+  }
+
+  for (const auto &lId : lFailedRpcsForDeletion) {
+    deleteTfBuilderRpcClient(lId);
+  }
+
+  return mTfBuilderRpcClients.size() == 0;
 }
 
 
@@ -260,9 +294,9 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
 
       WDDLOG_RL(1000, "Waiting for StfSenders. ready={} total={}", lNumStfSenders, mPartitionInfo.mStfSenderIdList.size());
       lSleep = 250ms;
+    } else {
+      mStfSenderState = STF_SENDER_STATE_OK;
     }
-
-    mStfSenderState = STF_SENDER_STATE_OK;
 
     // wait for drop futures
     {
