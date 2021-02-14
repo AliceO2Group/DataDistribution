@@ -398,6 +398,10 @@ struct DataDistLoggerCtx {
 
     fair::mq::ProgOptions& lFMQConfig = pFMQRunner.fConfig;
 
+    try {
+      pFMQRunner.UnsubscribeFromConfigChange();
+    } catch(...) { }
+
     // disable fairlogger file backend
     lFMQConfig.SetProperty<std::string>("file-severity", "nolog");
     lFMQConfig.SetProperty<std::string>("log-to-file", "");

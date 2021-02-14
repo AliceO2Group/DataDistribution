@@ -120,7 +120,12 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
       continue;
     }
 
-    if (lConnResult.status() != 0) {
+    if (lConnResult.status() == ERROR_PARTITION_TERMINATING) {
+      WDDLOG("Partition is terminating. Stopping.");
+      return false;
+    }
+
+    if (lConnResult.status() != OK) {
       EDDLOG("Request for StfSender connection failed. scheduler_error={}",
         TfBuilderConnectionStatus_Name(lConnResult.status()));
       return false;

@@ -66,6 +66,7 @@ public:
   void stop() {
     mTfSchedulerConf.Clear();
     mStub.reset(nullptr);
+    mChannel.reset();
   }
 
   void updateTimeInformation(BasicInfo &pInfo);
@@ -87,7 +88,13 @@ public:
 
   std::string getEndpoint() { return mTfSchedulerConf.rpc_endpoint(); }
 
-  bool is_ready();
+  bool is_ready() const;
+  bool is_alive() const {
+    if (mChannel) {
+      return (mChannel->GetState(true) != grpc_connectivity_state::GRPC_CHANNEL_SHUTDOWN);
+    }
+    return false;
+  }
 
 private:
   TfSchedulerInstanceConfigStatus mTfSchedulerConf;

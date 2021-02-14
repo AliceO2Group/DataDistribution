@@ -51,6 +51,7 @@ void TfBuilderDevice::Init()
 
 void TfBuilderDevice::Reset()
 {
+  mMemI->stop();
   mMemI.reset();
 }
 
@@ -69,10 +70,15 @@ void TfBuilderDevice::InitTask()
 
     auto &lStatus =  mDiscoveryConfig->status();
     lStatus.mutable_info()->set_type(TfBuilder);
-    lStatus.mutable_info()->set_process_id(Config::getIdOption(*GetConfig()));
+    lStatus.mutable_info()->set_process_id(Config::getIdOption(TfBuilder, *GetConfig()));
     lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
 
-    mPartitionId = Config::getPartitionOption(*GetConfig());
+    // wait for "partition-id"
+    while (!Config::getPartitionOption(*GetConfig())) {
+      WDDLOG("TfBuilder waiting on 'discovery-partition' config parameter.");
+      std::this_thread::sleep_for(1s);
+    }
+    mPartitionId = *Config::getPartitionOption(*GetConfig());
     lStatus.mutable_partition()->set_partition_id(mPartitionId);
 
     // File sink
@@ -110,15 +116,14 @@ void TfBuilderDevice::InitTask()
       mStandalone = true;
       IDDLOG("Not sending to DPL.");
     }
-
-    // start the info thread
-    mInfoThread = create_thread_member("tfb_info", &TfBuilderDevice::InfoThread, this);
   }
 }
 
 void TfBuilderDevice::PreRun()
 {
-  start();
+  if (!start()) {
+    mShouldExit = true;
+  }
 }
 
 bool TfBuilderDevice::start()
@@ -136,7 +141,6 @@ bool TfBuilderDevice::start()
 
   // we reached the scheduler instance, initialize everything else
   mRunning = true;
-  auto lShmTransport = this->AddTransport(fair::mq::Transport::SHM);
 
   mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, 512 << 20 /* config */, dplEnabled());
 
@@ -154,19 +158,23 @@ bool TfBuilderDevice::start()
   if (!mFlpInputHandler->start(mDiscoveryConfig)) {
     mShouldExit = true;
     EDDLOG("Could not initialize input connections. Exiting.");
-    throw "Input connection error";
     return false;
   }
 
   // start file source
   mFileSource.start(MemI(), mStandalone ? false : mDplEnabled);
 
+  // start the info thread
+  mInfoThread = create_thread_member("tfb_info", &TfBuilderDevice::InfoThread, this);
+
   return true;
 }
 
 void TfBuilderDevice::stop()
 {
-  mRpc->stopAcceptingTfs();
+  if (mRpc) {
+    mRpc->stopAcceptingTfs();
+  }
 
   if (mTfDplAdapter) {
     mTfDplAdapter->stop();
@@ -177,41 +185,58 @@ void TfBuilderDevice::stop()
   }
 
   mRunning = false;
+  DDDLOG("TfBuilderDevice::stop(): mRunning is false.");
 
   // Stop the pipeline
   stopPipeline();
 
   // stop output handlers
-  mFlpInputHandler->stop(mDiscoveryConfig);
+  if (mFlpInputHandler) {
+    mFlpInputHandler->stop(mDiscoveryConfig);
+  }
+  DDDLOG("TfBuilderDevice::stop(): Input handler stopped.");
   // signal and wait for the output thread
   mFileSink.stop();
   // join on fwd thread
   if (mTfFwdThread.joinable()) {
     mTfFwdThread.join();
   }
+  DDDLOG("TfBuilderDevice::stop(): Forward thread stopped.");
 
   //wait for the info thread
   if (mInfoThread.joinable()) {
     mInfoThread.join();
   }
+  DDDLOG("TfBuilderDevice::stop(): Info thread stopped.");
 
   // stop the RPCs
-  mRpc->stop();
+  if (mRpc) {
+    mRpc->stop();
+  }
+  DDDLOG("TfBuilderDevice::stop(): RPC clients stopped.");
 
   mDiscoveryConfig.reset();
 
-  DDDLOG("Reset() done... ");
+  DDDLOG("TfBuilderDevice() stopped... ");
 }
 
 void TfBuilderDevice::ResetTask()
 {
   stop();
+  DDDLOG("ResetTask()");
+}
+
+// Get here when ConditionalRun returns false
+void TfBuilderDevice::PostRun()
+{
+  stop();
+  DDDLOG("PostRun()");
 }
 
 bool TfBuilderDevice::ConditionalRun()
 {
-  if (mShouldExit) {
-    mRunning = false;
+  if (mShouldExit || mRpc->isTerminateRequested()) {
+    // mRunning = false;
     return false;
   }
 
@@ -279,10 +304,7 @@ void TfBuilderDevice::TfForwardThread()
 
 void TfBuilderDevice::InfoThread()
 {
-  // wait for the device to go into RUNNING state
-  WaitForRunningState();
-
-  while (IsRunningState()) {
+  while (mRunning) {
 
     IDDLOG("TimeFrame size_mean={} in_frequency_mean={:.4} queued_stf={}",
       mTfSizeSamples.Mean(), mTfTimeSamples.MeanStepFreq(), getPipelineSize());

@@ -56,6 +56,11 @@ void StfSenderRpcImpl::stop()
   const std::string lTfBuilderId = request->tf_builder_id();
   const std::string lTfBuilderEndpoint = request->endpoint();
 
+  if (mTerminateRequested) {
+    response->set_status(TfBuilderConnectionStatus::ERROR_PARTITION_TERMINATING);
+    return Status::OK;
+  }
+
   // handle the request
   DDDLOG("Requested to connect to TfBuilder. tfb_id={} tfb_ep={}", lTfBuilderId, lTfBuilderEndpoint);
   response->set_status(OK);
@@ -80,7 +85,6 @@ void StfSenderRpcImpl::stop()
                                           const TfBuilderEndpoint* request,
                                           StatusResponse* response)
 {
-
   const std::string lTfBuilderId = request->tf_builder_id();
   const std::string lTfBuilderEndpoint = request->endpoint();
 
@@ -99,8 +103,20 @@ void StfSenderRpcImpl::stop()
                                 const StfDataRequestMessage* request,
                                 StfDataResponse* response)
 {
-
   mOutput->sendStfToTfBuilder(request->stf_id(), request->tf_builder_id(), *response/*out*/);
+
+  return Status::OK;
+}
+
+// rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
+::grpc::Status StfSenderRpcImpl::TerminatePartition(::grpc::ServerContext* /*context*/,
+  const PartitionInfo* /*request*/, PartitionResponse* response)
+{
+  DDDLOG("TerminatePartition request received.");
+  // TODO: verify partition id
+  response->set_partition_state(PartitionState::PARTITION_TERMINATING);
+
+  mTerminateRequested = true;
 
   return Status::OK;
 }
