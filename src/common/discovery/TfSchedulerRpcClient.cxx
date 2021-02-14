@@ -23,7 +23,7 @@ namespace o2
 namespace DataDistribution
 {
 
-bool TfSchedulerRpcClient::is_ready() {
+bool TfSchedulerRpcClient::is_ready() const {
   if (!mChannel) {
     return false;
   }
@@ -39,13 +39,13 @@ void TfSchedulerRpcClient::updateTimeInformation(BasicInfo &pInfo) {
 
 // rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
 bool TfSchedulerRpcClient::NumStfSendersInPartitionRequest(std::uint32_t &pNumStfSenders) {
-  if (!mStub) {
+  if (!mStub || !is_alive()) {
     EDDLOG_GRL(1000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
     return false;
   }
 
   using namespace std::chrono_literals;
-  do {
+  while (is_alive()) {
     ClientContext lContext;
     pNumStfSenders = 0;
 
@@ -57,16 +57,16 @@ bool TfSchedulerRpcClient::NumStfSendersInPartitionRequest(std::uint32_t &pNumSt
       pNumStfSenders = lRet.num_stf_senders();
       return true;
     }
-    if (lStatus.error_code() == grpc::StatusCode::UNAVAILABLE) {
-        WDDLOG("NumStfSendersInPartitionRequest: Scheduler gRPC server UNAVAILABLE. Retrying...");
-        std::this_thread::sleep_for(250ms);
-        continue; // retry
+
+    if (!is_ready()) {
+      WDDLOG("NumStfSendersInPartitionRequest: Scheduler gRPC server is not ready. Retrying...");
+      std::this_thread::sleep_for(250ms);
+      continue; // retry
     }
 
     EDDLOG_GRL(1000, "gRPC request error. code={} message={}", lStatus.error_code(), lStatus.error_message());
     break;
-
-  } while (true);
+  }
 
   return false;
 }
@@ -74,44 +74,69 @@ bool TfSchedulerRpcClient::NumStfSendersInPartitionRequest(std::uint32_t &pNumSt
 
 // rpc TfBuilderConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderConnectionResponse) { }
 bool TfSchedulerRpcClient::TfBuilderConnectionRequest(TfBuilderConfigStatus &pParam, TfBuilderConnectionResponse &pRet /*out*/) {
-  if (!mStub) {
-    EDDLOG_GRL(1000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+  if (!mStub || !is_alive()) {
+    EDDLOG_GRL(1000, "TfBuilderConnectionRequest: no gRPC connection to scheduler");
     return false;
   }
 
   using namespace std::chrono_literals;
-  do {
+  while (is_alive()) {
     ClientContext lContext;
 
     // update timestamp
     updateTimeInformation(*pParam.mutable_info());
 
     auto lStatus = mStub->TfBuilderConnectionRequest(&lContext, pParam, &pRet);
+
     if (lStatus.ok()) {
+
+      switch (pRet.status()) {
+        case TfBuilderConnectionStatus::OK:
+          break;
+        case TfBuilderConnectionStatus::ERROR_DISCOVERY:
+          break;
+        case TfBuilderConnectionStatus::ERROR_SOCKET_COUNT:
+          EDDLOG("TfBuilderConnectionRequest: TfBuilder socket count is not equal to number of StfSenders.");
+          break;
+        case TfBuilderConnectionStatus::ERROR_STF_SENDERS_NOT_READY:
+          break;
+        case TfBuilderConnectionStatus::ERROR_GRPC_STF_SENDER:
+          break;
+        case TfBuilderConnectionStatus::ERROR_GRPC_TF_BUILDER:
+          break;
+        case TfBuilderConnectionStatus::ERROR_STF_SENDER_CONNECTING:
+          break;
+        case TfBuilderConnectionStatus::ERROR_STF_SENDER_EXISTS:
+          EDDLOG("TfBuilderConnectionRequest: TfBuilder with the same id already registered with StfSenders.");
+          break;
+        case TfBuilderConnectionStatus::ERROR_PARTITION_TERMINATING:
+          EDDLOG("TfBuilderConnectionRequest: Partition is terminating.");
+          break;
+        default:
+          EDDLOG("TfBuilderConnectionRequest: Unknown error!");
+          break;
+      }
+
       return true;
     }
 
-    if (lStatus.error_code() == grpc::StatusCode::UNAVAILABLE) {
-      std::this_thread::sleep_for(250ms);
-      continue; // retry
-    }
-
     pRet.Clear();
-  } while (false);
-
+    std::this_thread::sleep_for(500ms);
+  }
 
   return false;
 }
 
 // rpc TfBuilderDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
 bool TfSchedulerRpcClient::TfBuilderDisconnectionRequest(TfBuilderConfigStatus &pParam, StatusResponse &pRet /*out*/) {
-  if (!mStub) {
+  if (!mStub || !is_alive()) {
     EDDLOG_GRL(1000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
     return false;
   }
 
   using namespace std::chrono_literals;
-  do {
+
+  while(is_alive()) {
     ClientContext lContext;
 
     // update timestamp
@@ -122,22 +147,17 @@ bool TfSchedulerRpcClient::TfBuilderDisconnectionRequest(TfBuilderConfigStatus &
       return true;
     }
 
-    if (lStatus.error_code() == grpc::StatusCode::UNAVAILABLE) {
-      std::this_thread::sleep_for(500ms);
-      continue; // retry
-    }
-
     pRet.Clear();
-  } while (false);
-
+    std::this_thread::sleep_for(500ms);
+  }
 
   return false;
 }
 
 // rpc TfBuilderUpdate(TfBuilderUpdateMessage) returns (google.protobuf.Empty) { }
 bool TfSchedulerRpcClient::TfBuilderUpdate(TfBuilderUpdateMessage &pMsg) {
-  if (!mStub) {
-    EDDLOG_GRL(1000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+  if (!mStub || !is_alive()) {
+    EDDLOG_GRL(1000, "TfBuilderUpdate: no gRPC connection to scheduler");
     return false;
   }
 
@@ -154,16 +174,15 @@ bool TfSchedulerRpcClient::TfBuilderUpdate(TfBuilderUpdateMessage &pMsg) {
     return true;
   }
 
-  EDDLOG_GRL(1000, "gRPC: TfBuilderUpdate error. code={} message={}",
-    lStatus.error_code(), lStatus.error_message());
+  EDDLOG_GRL(2000, "gRPC: TfBuilderUpdate error. code={} message={}", lStatus.error_code(), lStatus.error_message());
   return false;
 }
 
 
 // rpc StfSenderStfUpdate(StfSenderStfInfo) returns (SchedulerStfInfoResponse) { }
 bool TfSchedulerRpcClient::StfSenderStfUpdate(StfSenderStfInfo &pMsg, SchedulerStfInfoResponse &pRet) {
-  if (!mStub) {
-    EDDLOG_GRL(1000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+  if (!mStub || !is_alive()) {
+    EDDLOG_GRL(2000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
     return false;
   }
 
@@ -177,8 +196,7 @@ bool TfSchedulerRpcClient::StfSenderStfUpdate(StfSenderStfInfo &pMsg, SchedulerS
     return true;
   }
 
-  EDDLOG_GRL(1000, "gRPC: StfSenderStfUpdate error. code={} message={}",
-    lStatus.error_code(), lStatus.error_message());
+  EDDLOG_GRL(2000, "gRPC: StfSenderStfUpdate error. code={} message={}", lStatus.error_code(), lStatus.error_message());
   return false;
 }
 

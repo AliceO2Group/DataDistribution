@@ -62,10 +62,18 @@ class StfSenderRpcImpl final : public StfSenderRpc::Service
                                 const StfDataRequestMessage* request,
                                 StfDataResponse* response) override;
 
+  // rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
+  ::grpc::Status TerminatePartition(::grpc::ServerContext* context,
+                                const PartitionInfo* request,
+                                PartitionResponse* response) override;
+
   void start(StfSenderOutput *pOutput, const std::string pRpcSrvBindIp, int& lRealPort /*[out]*/);
   void stop();
 
+  bool isTerminateRequested() const { return mTerminateRequested; }
+
  private:
+  bool mTerminateRequested = false;
   std::unique_ptr<Server> mServer = nullptr;
   StfSenderOutput *mOutput = nullptr;
 

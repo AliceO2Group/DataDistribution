@@ -58,9 +58,16 @@ void StfSenderDevice::InitTask()
 
     auto& lStatus = mDiscoveryConfig->status();
     lStatus.mutable_info()->set_type(StfSender);
-    lStatus.mutable_info()->set_process_id(Config::getIdOption(*GetConfig()));
+    lStatus.mutable_info()->set_process_id(Config::getIdOption(StfSender, *GetConfig()));
     lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
-    lStatus.mutable_partition()->set_partition_id(Config::getPartitionOption(*GetConfig()));
+
+    // wait for "partition-id"
+    while (!Config::getPartitionOption(*GetConfig())) {
+      WDDLOG("TfBuilder waiting on 'discovery-partition' config parameter.");
+      std::this_thread::sleep_for(1s);
+    }
+
+    lStatus.mutable_partition()->set_partition_id(*Config::getPartitionOption(*GetConfig()));
     mDiscoveryConfig->write();
   }
 
@@ -94,13 +101,12 @@ void StfSenderDevice::InitTask()
   if (mStandalone && !mFileSink.enabled()) {
     WDDLOG("Running in standalone mode and with STF file sink disabled. Data will be lost.");
   }
-
-  // Info thread
-  mInfoThread = create_thread_member("stfs_info", &StfSenderDevice::InfoThread, this);
 }
 
 void StfSenderDevice::PreRun()
 {
+  mRunning = true;
+
   if (!mStandalone) {
     // Start output handler
     mOutputHandler.start(mDiscoveryConfig);
@@ -126,14 +132,20 @@ void StfSenderDevice::PreRun()
   if (mFileSink.enabled()) {
     mFileSink.start();
   }
+
+  // Info thread
+  mInfoThread = create_thread_member("stfs_info", &StfSenderDevice::InfoThread, this);
+
   // start the receiver thread
   mReceiverThread = create_thread_member("stfs_recv", &StfSenderDevice::StfReceiverThread, this);
 }
 
-void StfSenderDevice::ResetTask()
+void StfSenderDevice::PostRun()
 {
   // Stop the pipeline
   stopPipeline();
+
+  mRunning = false;
 
   // stop the receiver thread
   if (mReceiverThread.joinable()) {
@@ -161,6 +173,11 @@ void StfSenderDevice::ResetTask()
     mInfoThread.join();
   }
 
+  DDDLOG("PostRun() done.");
+}
+
+void StfSenderDevice::ResetTask()
+{
   DDDLOG("ResetTask() done.");
 }
 
@@ -175,12 +192,9 @@ void StfSenderDevice::StfReceiverThread()
   DplToStfAdapter  lStfReceiver;
   std::unique_ptr<SubTimeFrame> lStf;
 
-  // wait for the device to go into RUNNING state
-  WaitForRunningState();
-
   const auto lStfStartTime = hres_clock::now();
 
-  while (IsRunningState()) {
+  while (mRunning) {
     lStf = lStfReceiver.deserialize(lInputChan);
 
     if (!lStf) {
@@ -211,10 +225,7 @@ void StfSenderDevice::StfReceiverThread()
 
 void StfSenderDevice::InfoThread()
 {
-  // wait for the device to go into RUNNING state
-  WaitForRunningState();
-
-  while (IsRunningState()) {
+  while (mRunning) {
     IDDLOG("SubTimeFrame size_mean={} in_frequency_mean={:.4} queued_stf={}",
       mStfSizeSamples.Mean(), mStfTimeSamples.MeanStepFreq(), mNumStfs);
 
@@ -225,8 +236,12 @@ void StfSenderDevice::InfoThread()
 
 bool StfSenderDevice::ConditionalRun()
 {
+  if (mRpcServer.isTerminateRequested()) {
+    IDDLOG_RL(10000, "DataDistribution partition is terminated.");
+    return false; // trigger PostRun()
+  }
   // nothing to do here sleep for awhile
-  std::this_thread::sleep_for(1000ms);
+  std::this_thread::sleep_for(300ms);
   return true;
 }
 }

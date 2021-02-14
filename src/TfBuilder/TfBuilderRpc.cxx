@@ -41,6 +41,7 @@ void TfBuilderRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, int &lReal
 bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize)
 {
   mCurrentTfBufferSize = pBufferSize;
+  mTerminateRequested = false;
 
   // Interact with the scheduler
   if (!mTfSchedulerRpcClient.start(mDiscoveryConfig)) {
@@ -114,9 +115,14 @@ void TfBuilderRpcImpl::UpdateSendingThread()
   DDDLOG("Starting TfBuilder Update sending thread.");
 
   while (mRunning) {
-    std::unique_lock lLock(mUpdateLock);
-    sendTfBuilderUpdate();
-    mUpdateCondition.wait_for(lLock, 500ms);
+    if (!mTerminateRequested) {
+      std::unique_lock lLock(mUpdateLock);
+      sendTfBuilderUpdate();
+      mUpdateCondition.wait_for(lLock, 500ms);
+    } else {
+      stopAcceptingTfs();
+      std::this_thread::sleep_for(1s);
+    }
   }
 
   // send disconnect update
@@ -274,7 +280,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
 ::grpc::Status TfBuilderRpcImpl::BuildTfRequest(::grpc::ServerContext* /*context*/,
                                                 const TfBuildingInformation* request, BuildTfResponse* response)
 {
-  if(!mRunning) {
+  if (!mRunning || mTerminateRequested) {
     response->set_status(BuildTfResponse::ERROR_NOT_RUNNING);
     return ::grpc::Status::OK;
   }
@@ -287,8 +293,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
     std::scoped_lock lLock(mTfIdSizesLock);
 
     if (lTfSize > mCurrentTfBufferSize) {
-      EDDLOG(
-        "Request to build a TimeFrame: Not enough free memory! tf_id={} tf_size={} buffer_size={}",
+      EDDLOG("Request to build a TimeFrame: Not enough free memory! tf_id={} tf_size={} buffer_size={}",
         lTfId,lTfSize, mCurrentTfBufferSize);
 
       response->set_status(BuildTfResponse::ERROR_NOMEM);
@@ -298,6 +303,17 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
 
   // add request to the queue
   mTfBuildRequests->push(*request);
+
+  return ::grpc::Status::OK;
+}
+
+::grpc::Status TfBuilderRpcImpl::TerminatePartition(::grpc::ServerContext* /*context*/,
+  const ::o2::DataDistribution::PartitionInfo* /*request*/, ::o2::DataDistribution::PartitionResponse* response)
+{
+  IDDLOG("TerminatePartition request received.");
+  mTerminateRequested = true;
+
+  response->set_partition_state(PartitionState::PARTITION_TERMINATING);
 
   return ::grpc::Status::OK;
 }

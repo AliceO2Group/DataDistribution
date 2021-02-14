@@ -76,7 +76,7 @@ class StfSenderDevice : public DataDistDevice,
 
  protected:
   void PreRun() final;
-  void PostRun() final {};
+  void PostRun() final;
   bool ConditionalRun() final;
 
   void StfReceiverThread();
@@ -156,6 +156,7 @@ class StfSenderDevice : public DataDistDevice,
   TfSchedulerRpcClient mTfSchedulerRpcClient;
 
   /// Receiver threads
+  bool mRunning = false;
   std::thread mReceiverThread;
 
   /// File sink

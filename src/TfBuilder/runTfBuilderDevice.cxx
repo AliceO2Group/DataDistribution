@@ -72,6 +72,19 @@ int main(int argc, char* argv[])
 
       // Install listener for Logging options
       o2::DataDistribution::impl::DataDistLoggerCtx::HandleFMQOptions(r);
+
+      // Install listener for discovery partition key
+      r.fConfig.Subscribe<std::string>("discovery-partition", [&](const std::string& pKey, std::string pValue) {
+
+        if (pKey == "partition_id" || pKey == "partition-id" || pKey == "environment-id" || pKey == "environment_id") {
+
+          if (r.fConfig.GetProperty<std::string>("discovery-partition") == "") {
+            r.fConfig.SetProperty<std::string>("discovery-partition", pValue);
+            IDDLOG("Config::Subscribe received key-value pair. {}=<{}>", pKey, pValue);
+          }
+        }
+      });
+
       // reset unsupported options
       r.fConfig.SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 16u));
       r.fConfig.SetProperty<float>("rate", 0.f);

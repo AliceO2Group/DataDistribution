@@ -70,6 +70,8 @@ class TfBuilderDevice : public DataDistDevice,
   bool start();
   void stop();
 
+  void PostRun() override final;
+
   void Init() override final;
   void Reset() override final;
 

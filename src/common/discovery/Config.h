@@ -206,43 +206,15 @@ public:
   }
 
   static
-  std::string getPartitionOption(const FairMQProgOptions& pFMQProgOpt)
+  std::optional<std::string> getPartitionOption(const FairMQProgOptions& pFMQProgOpt)
   {
     // check cmdline first
-    {
-      std::string lPartId = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryPartition);
-      if (!lPartId.empty()) {
-        IDDLOG("Parameter <{}> provided on command line. value={}",
-          OptionKeyDiscoveryPartition, lPartId);
-        return lPartId;
-      }
+    std::string lPartId = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryPartition);
+    if (!lPartId.empty()) {
+      IDDLOG("Parameter <{}> provided on command line. value={}", OptionKeyDiscoveryPartition, lPartId);
+      return lPartId;
     }
-
-    // setup for ODC
-    std::promise<std::string> mPartIdPromise;
-    std::future<std::string> mPartIdFuture = mPartIdPromise.get_future();
-
-    pFMQProgOpt.Subscribe<std::string>("o2.datadist", [&](const std::string& pKey, std::string pValue) {
-      IDDLOG("Config::Subscribe received key-value pair <{}>=<{}>", pKey, pValue);
-
-      // partition key for tf builder
-      if (pKey == OptionKeyDiscoveryPartition) {
-        mPartIdPromise.set_value(pValue);
-      } else {
-        EDDLOG("Config::Subscribe unrecognized key value pushed {}={}", pKey, pValue);
-      }
-    });
-
-    // wait for an ODC value
-    mPartIdFuture.wait();
-    const auto lDiscId = mPartIdFuture.get();
-    if (lDiscId.length() == 0) {
-      EDDLOG("Parameter {} provided from ODC. zero length", Config::OptionKeyDiscoveryPartition);
-      throw std::invalid_argument(fmt::format("Invalid ODC parameter <{}>: zero length", Config::OptionKeyDiscoveryPartition));
-    }
-
-    IDDLOG("Parameter {} provided from ODC. value={}", Config::OptionKeyDiscoveryPartition, lDiscId);
-    return lDiscId;
+    return std::nullopt;
   }
 
   Config() = delete;

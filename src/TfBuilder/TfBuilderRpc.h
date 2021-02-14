@@ -78,13 +78,18 @@ public:
 
   StfSenderRpcClientCollection<ConsulTfBuilder>& StfSenderRpcClients() { return mStfSenderRpcClients; }
 
+  bool isTerminateRequested() const { return mTerminateRequested; }
+
   // rpc BuildTfRequest(TfBuildingInformation) returns (BuildTfResponse) { }
   ::grpc::Status BuildTfRequest(::grpc::ServerContext* context, const TfBuildingInformation* request, BuildTfResponse* response) override;
+
+  ::grpc::Status TerminatePartition(::grpc::ServerContext* context, const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response) override;
 
 private:
   static constexpr const std::int64_t sMaxStfRequestsInFlight = 10;
 
   std::atomic_bool mRunning = false;
+  std::atomic_bool mTerminateRequested = false;
 
   std::atomic_bool mAcceptingTfs = false;
   std::mutex mUpdateLock;
