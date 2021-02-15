@@ -127,7 +127,7 @@ public:
     if (pProcType != ProcessType::TfSchedulerService) {
       lDataDistDiscovery.add_options()(
         OptionKeyDiscoveryPartition,
-        boost::program_options::value<std::string>()->default_value("testing-partition"),
+        boost::program_options::value<std::string>()->default_value(""),
         "Specifies partition ID for the DataDistribution discovery.");
     }
 
