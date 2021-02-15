@@ -78,7 +78,11 @@ private:
   static thread_local char* sThisThreadName;
 
   inline void do_vformat(fmt::string_view format, fmt::format_args args) {
-    fmt::vformat_to(mLogMessage, format, args);
+    try {
+      fmt::vformat_to(mLogMessage, format, args);
+    } catch (const fmt::format_error &e) {
+      fmt::format_to(mLogMessage, "FORMAT ERROR: {}. provided_format_string={}", e.what(), format);
+    }
   }
 
 public:
@@ -107,8 +111,8 @@ public:
   {}
 
   template<typename... Args>
-  DataDistLogger(const DataDistSeverity pSeverity, const log_fmq&, const std::string &format, const Args&... pArgs)
-  : DataDistLogger(pSeverity, log_fmt{}, ("[FMQ] " + format).c_str(), pArgs...)
+  DataDistLogger(const DataDistSeverity pSeverity, const log_fmq&, const std::string &pMsg)
+  : DataDistLogger(pSeverity, log_fmt{}, "[FMQ] {}", pMsg)
   {}
 
   template<class... Args>
@@ -269,8 +273,8 @@ private:
   if (DataDistLogger::LogEnabled(severity)) DataDistLogger(severity, DataDistLogger::log_fmt{}, __VA_ARGS__)
 
 // Log with fmt for FMQ messages
-#define DDLOGF_FMQ(severity, ...) \
-  if (DataDistLogger::LogEnabled(severity)) DataDistLogger(severity, DataDistLogger::log_fmq{}, __VA_ARGS__)
+#define DDLOGF_FMQ(severity, msg) \
+  if (DataDistLogger::LogEnabled(severity)) DataDistLogger(severity, DataDistLogger::log_fmq{}, msg)
 
 // Log with streams
 #define DDLOG(severity) \

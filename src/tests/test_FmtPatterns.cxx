@@ -17,6 +17,7 @@
 #include <iostream>
 
 using namespace fmt;
+using namespace o2::DataDistribution;
 
 static const constexpr char* FmtSubSpec = "{:#06x}";
 
@@ -27,4 +28,9 @@ BOOST_AUTO_TEST_CASE(GetNextSeqNameTest)
   BOOST_CHECK("0x0000" == format(FmtSubSpec, 0)); // 32bit
   BOOST_CHECK("0xff00" == format(FmtSubSpec, 0xFF00)); // 32bit
   BOOST_CHECK("0x00ff" == format(FmtSubSpec, 0x00FF)); // 32bit
+
+
+  DataDistLogger(DataDistSeverity::info, DataDistLogger::log_fmq{}, std::string("{}"));
+
+  IDDLOG("Test {} {} {}", 1, 2);
 }
