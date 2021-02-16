@@ -8,7 +8,10 @@ set(EXE_STFS_SOURCES
   runStfSenderDevice
 )
 
-add_executable(StfSender ${EXE_STFS_SOURCES})
+add_library(StfSender_lib OBJECT ${EXE_STFS_SOURCES})
+target_link_libraries(StfSender_lib  base common discovery)
+
+add_executable(StfSender)
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT result)
@@ -18,6 +21,7 @@ endif()
 
 target_link_libraries(StfSender
   PRIVATE
+    StfSender_lib
     base common discovery
 )
 

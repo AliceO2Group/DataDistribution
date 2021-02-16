@@ -22,12 +22,6 @@ set (LIB_COMMON_SOURCES
 
 add_library(common OBJECT ${LIB_COMMON_SOURCES})
 
-include(CheckIPOSupported)
-check_ipo_supported(RESULT result)
-if(result)
-  set_target_properties(common PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-endif()
-
 target_include_directories(common
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

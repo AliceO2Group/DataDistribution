@@ -9,12 +9,6 @@ set (LIB_BASE_SOURCES
 
 add_library(base OBJECT ${LIB_BASE_SOURCES})
 
-include(CheckIPOSupported)
-check_ipo_supported(RESULT result)
-if(result)
-  set_target_properties(base PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-endif()
-
 target_include_directories(base
   PUBLIC
     ${CMAKE_BINARY_DIR}/spdlog/include

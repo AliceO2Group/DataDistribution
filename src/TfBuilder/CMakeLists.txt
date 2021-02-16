@@ -8,7 +8,10 @@ set(EXE_TFB_SOURCES
   runTfBuilderDevice
 )
 
-add_executable(TfBuilder ${EXE_TFB_SOURCES})
+add_library(TfBuilder_lib OBJECT ${EXE_TFB_SOURCES})
+target_link_libraries(TfBuilder_lib base common discovery)
+
+add_executable(TfBuilder)
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT result)
@@ -18,6 +21,7 @@ endif()
 
 target_link_libraries(TfBuilder
   PRIVATE
+    TfBuilder_lib
     base common discovery
 )
 
