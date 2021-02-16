@@ -128,6 +128,8 @@ void TfBuilderDevice::PreRun()
 
 bool TfBuilderDevice::start()
 {
+  mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, 512 << 20 /* config */, dplEnabled());
+
   // start all gRPC clients
   while (!mRpc->start(mTfBufferSize)) {
     // try to reach the scheduler unless we should exit
@@ -141,8 +143,6 @@ bool TfBuilderDevice::start()
 
   // we reached the scheduler instance, initialize everything else
   mRunning = true;
-
-  mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, 512 << 20 /* config */, dplEnabled());
 
   if (!mStandalone && dplEnabled()) {
     auto& lOutputChan = GetChannel(getDplChannelName(), 0);
@@ -180,10 +180,6 @@ void TfBuilderDevice::stop()
     mTfDplAdapter->stop();
   }
 
-  if (mTfBuilder) {
-    mTfBuilder->stop();
-  }
-
   mRunning = false;
   DDDLOG("TfBuilderDevice::stop(): mRunning is false.");
 
@@ -216,6 +212,11 @@ void TfBuilderDevice::stop()
   DDDLOG("TfBuilderDevice::stop(): RPC clients stopped.");
 
   mDiscoveryConfig.reset();
+
+  // memory resource is last to destruct
+  if (mTfBuilder) {
+    mTfBuilder->stop();
+  }
 
   DDDLOG("TfBuilderDevice() stopped... ");
 }
