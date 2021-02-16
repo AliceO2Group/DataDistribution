@@ -35,6 +35,10 @@
 #include <cstdlib>
 #include <unistd.h>
 
+#if defined(__linux__)
+#include <sys/resource.h>
+#endif
+
 class DataHeader;
 class FairMQUnmanagedRegion;
 
@@ -43,6 +47,7 @@ namespace o2
 namespace DataDistribution
 {
 
+static constexpr const char *ENV_NOLOCK = "DATADIST_NO_MLOCK";
 static constexpr const char *ENV_SHM_PATH = "DATADIST_SHM_PATH";
 static constexpr const char *ENV_SHM_DELAY = "DATADIST_SHM_DELAY";
 
@@ -65,15 +70,37 @@ public:
     int lMapFlags = 0;
     std::string lSegmentRoot = "";
 
-    // don't reserve swap space and try to lock the region
-#if defined(MAP_NORESERVE) && defined(MAP_LOCKED)
-    lMapFlags = MAP_NORESERVE | MAP_LOCKED;
+    // don't reserve swap space
+#if defined(MAP_NORESERVE)
+    lMapFlags |= MAP_NORESERVE;
 #endif
+
+    // and try to lock the memory
+#if defined(MAP_LOCKED) && defined(__linux__)
+{
+    struct rlimit lMyLimits;
+    getrlimit(RLIMIT_MEMLOCK, &lMyLimits);
+
+    if (lMyLimits.rlim_cur >= pSize) {
+      lMapFlags |= MAP_LOCKED;
+    } else {
+      if (std::getenv(ENV_NOLOCK)) {
+        WDDLOG("MemoryResource: Memory locking disabled via {} env variable. Not suitable for production.",
+          ENV_NOLOCK);
+      } else {
+        EDDLOG("MemoryResource: Failed to lock the memory region. Increase your memory lock limits (ulimit -l).");
+        EDDLOG("MemoryResource: To run without memory locking define {} env variable. Not suitable for production.",
+          ENV_NOLOCK);
+        throw std::bad_alloc();
+      }
+    }
+}
+#endif
+
     // populate the mapping
 #if defined(MAP_POPULATE)
     lMapFlags |= MAP_POPULATE;
 #endif
-
 
     // try to use different file mapping (hugetlbfs)
     const auto lHugetlbfsPath = std::getenv(ENV_SHM_PATH);
