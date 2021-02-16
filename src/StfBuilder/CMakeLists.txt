@@ -7,7 +7,10 @@ set(EXE_STFB_SOURCES
   runStfBuilderDevice
 )
 
-add_executable(StfBuilder ${EXE_STFB_SOURCES})
+add_library(StfBuilder_lib OBJECT ${EXE_STFB_SOURCES})
+target_link_libraries(StfBuilder_lib base common)
+
+add_executable(StfBuilder)
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT result)
@@ -17,6 +20,7 @@ endif()
 
 target_link_libraries(StfBuilder
   PRIVATE
+    StfBuilder_lib
     base common
 )
 

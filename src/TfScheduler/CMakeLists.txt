@@ -11,7 +11,10 @@ set(EXE_TFS_SOURCES
   runTfScheduler
 )
 
-add_executable(TfScheduler ${EXE_TFS_SOURCES})
+add_library(TfScheduler_lib OBJECT ${EXE_TFS_SOURCES})
+target_link_libraries(TfScheduler_lib  base discovery)
+
+add_executable(TfScheduler)
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT result)
@@ -21,6 +24,7 @@ endif()
 
 target_link_libraries(TfScheduler
   PRIVATE
+    TfScheduler_lib
     base discovery
 )
 
