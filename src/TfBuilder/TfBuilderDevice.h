@@ -122,7 +122,7 @@ class TfBuilderDevice : public DataDistDevice,
   bool dplEnabled() const noexcept { return mDplEnabled; }
 
   /// Memory region singletons
-  std::unique_ptr<MemoryResources> mMemI;
+  std::unique_ptr<SyncMemoryResources> mMemI;
 
   /// Configuration
   std::string mDplChannelName;
