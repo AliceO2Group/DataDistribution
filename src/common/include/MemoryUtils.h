@@ -477,7 +477,7 @@ public:
   explicit MemoryResources(std::shared_ptr<FairMQTransportFactory> pShmTransport)
   : mShmTransport(pShmTransport) { }
 
-  ~MemoryResources() {
+  virtual ~MemoryResources() {
     // make sure to delete regions before dropping the transport
     mHeaderMemRes.reset();
     mDataMemRes.reset();
@@ -520,6 +520,35 @@ public:
 
 private:
   bool mRunning = true;
+};
+
+
+class SyncMemoryResources : public MemoryResources {
+public:
+  SyncMemoryResources() = delete;
+  explicit SyncMemoryResources(std::shared_ptr<FairMQTransportFactory> pShmTransport)
+  : MemoryResources(pShmTransport) { }
+
+  virtual ~SyncMemoryResources() {}
+
+  inline
+  FairMQMessagePtr newHeaderMessage(const std::size_t pSize) {
+    assert(mHeaderMemRes);
+    std::scoped_lock lock(mHdrLock);
+    return mHeaderMemRes->NewFairMQMessage(pSize);
+  }
+
+  inline
+  FairMQMessagePtr newDataMessage(const std::size_t pSize) {
+    assert(mDataMemRes);
+    std::scoped_lock lock(mDataLock);
+    return mDataMemRes->NewFairMQMessage(pSize);
+  }
+
+
+private:
+  std::mutex mHdrLock;
+  std::mutex mDataLock;
 };
 
 }

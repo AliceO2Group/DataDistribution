@@ -46,7 +46,7 @@ TfBuilderDevice::~TfBuilderDevice()
 
 void TfBuilderDevice::Init()
 {
-  mMemI = std::make_unique<MemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
+  mMemI = std::make_unique<SyncMemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
 }
 
 void TfBuilderDevice::Reset()
