@@ -17,6 +17,8 @@
 
 #include <boost/container/pmr/memory_resource.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/icl/interval_map.hpp>
+#include <boost/icl/right_open_interval.hpp>
 
 #include <fairmq/FairMQDevice.h>
 #include <fairmq/FairMQChannel.h>
@@ -39,6 +41,8 @@
 #include <sys/resource.h>
 #endif
 
+namespace icl = boost::icl;
+
 class DataHeader;
 class FairMQUnmanagedRegion;
 
@@ -50,7 +54,6 @@ namespace DataDistribution
 static constexpr const char *ENV_NOLOCK = "DATADIST_NO_MLOCK";
 static constexpr const char *ENV_SHM_PATH = "DATADIST_SHM_PATH";
 static constexpr const char *ENV_SHM_DELAY = "DATADIST_SHM_DELAY";
-
 
 template<size_t ALIGN = 64>
 class RegionAllocatorResource
@@ -135,50 +138,49 @@ public:
       pRegionFlags,
       [this](const std::vector<FairMQRegionBlock>& pBlkVect) {
 
-        static thread_local std::vector<FairMQRegionBlock> lSortedBlks;
+        static thread_local icl::interval_map<std::size_t, std::size_t> lIntMap;
         static thread_local double sMergeRatio = 0.5;
 
-        lSortedBlks = pBlkVect;
-
-        // sort and try to merge regions later
-        std::sort(lSortedBlks.begin(), lSortedBlks.end(), [](FairMQRegionBlock &a, FairMQRegionBlock &b) {
-          return a.ptr < b.ptr;
-        });
-
-        // merge the blocks
-        std::uint64_t lMergedBlocks = 0;
-        for (std::size_t i = 0; i < lSortedBlks.size() - 1; i++ ) {
-          for (std::size_t j = i+1; j < lSortedBlks.size(); j++ ) {
-            if (reinterpret_cast<char*>(lSortedBlks[i].ptr) + align_size_up(lSortedBlks[i].size) == lSortedBlks[j].ptr) {
-              lSortedBlks[i].size = align_size_up(lSortedBlks[i].size) + align_size_up(lSortedBlks[j].size);
-              lSortedBlks[j].ptr = nullptr;
-              lMergedBlocks++;
-            } else {
-              i = j;
-              break;
-            }
-          }
-        }
-
-        // callback to be called when message buffers no longer needed by transports
-        std::scoped_lock lock(mReclaimLock);
-
         std::int64_t lReclaimed = 0;
-        for (const auto &lBlk : lSortedBlks) {
 
-          if (!lBlk.ptr) { // merged
-              continue;
+        lIntMap.clear();
+
+        for (const auto &lInt : pBlkVect) {
+          if (lInt.size == 0) {
+            continue;
           }
 
-          // we can merge with alignied sizes
-          lReclaimed += align_size_up(lBlk.size);
-          reclaimSHMMessage(lBlk.ptr, lBlk.size);
+          lIntMap += std::make_pair(
+            icl::discrete_interval<std::size_t>::right_open(
+              std::size_t(lInt.ptr) , std::size_t(lInt.ptr) + lInt.size), std::size_t(1));
         }
 
-        mFree.fetch_add(lReclaimed, std::memory_order_relaxed);
+        {
+          // callback to be called when message buffers no longer needed by transports
+          std::scoped_lock lock(mReclaimLock);
+
+          for (const auto &lIntMerged : lIntMap) {
+            if (lIntMerged.second > 1) {
+              EDDLOG("CreateUnmanagedRegion reclaim BUG! Multiple overlapping intervals:");
+              for (const auto &i : lIntMap) {
+                EDDLOG("- [{},{}) : count={}", i.first.lower(), i.first.upper(), i.second);
+              }
+
+              continue; // skip the overlapping thing
+            }
+
+            const auto lLen = lIntMerged.first.upper() - lIntMerged.first.lower();
+            lReclaimed += lLen;
+
+            reclaimSHMMessage((void *) lIntMerged.first.lower(), lLen);
+          }
+        }
+
+        mFree += lReclaimed;
 
         // weighted average merge ratio
-        sMergeRatio = sMergeRatio * 0.75 + double(lMergedBlocks) / double(pBlkVect.size()) * 0.25;
+        sMergeRatio = sMergeRatio * 0.75 + double(pBlkVect.size() - lIntMap.iterative_size()) /
+          double(pBlkVect.size()) * 0.25;
         DDLOGF_RL(5000, DataDistSeverity::debug, "Memory segment '{}'::block merging ratio average={:.4}",
           mSegmentName, sMergeRatio);
       },
@@ -195,10 +197,9 @@ public:
     mStart = static_cast<char*>(mRegion->GetData());
     mSegmentSize = mRegion->GetSize();
     mLength = mRegion->GetSize();
+    mFree = mSegmentSize;
 
     memset(mStart, 0xAA, mLength);
-
-    mFree = mSegmentSize;
 
     // Insert delay for testing
     const auto lShmDelay = std::getenv(ENV_SHM_DELAY);
@@ -259,13 +260,6 @@ protected:
 
   void* do_allocate(std::size_t pSize, std::size_t /* pAlign */)
   {
-#if !defined(NDEBUG)
-    static const std::thread::id d_sThisId = std::this_thread::get_id();
-    if (d_sThisId != std::this_thread::get_id()) {
-      DDLOGF_RL(1000, DataDistSeverity::error, "Allocation from RegionAllocatorResource {} is not thread safe",
-        mSegmentName);
-    }
-#endif
 
     if (!mRunning) {
       return nullptr;
@@ -293,7 +287,7 @@ protected:
 
         DDLOGF_RL(1000, DataDistSeverity::warning,
           "RegionAllocatorResource: waiting to allocate a message. region={} alloc={} region_size={} free={} ",
-          mSegmentName, pSize, mRegion->GetSize(), mFree.load(std::memory_order_acquire));
+          mSegmentName, pSize, mRegion->GetSize(), mFree);
         DDLOGF_RL(1000, DataDistSeverity::warning, "Memory region '{}' is too small, or there is a large backpressure.",
           mSegmentName);
 
@@ -307,12 +301,11 @@ protected:
       return nullptr;
     }
 
-    mFree.fetch_sub(pSize, std::memory_order_relaxed);
+    mFree -= pSize;
 
-    // Todo: find a better place for this reporting
     static std::size_t sLogRateLimit = 0;
     if (sLogRateLimit++ % 1024 == 0) {
-      const auto lFree = mFree.load(std::memory_order_acquire);
+      const std::int64_t lFree = mFree;
       DDLOGF_RL(2000, DataDistSeverity::debug, "DataRegionResource {} memory free={} allocated={}",
         mSegmentName, lFree, (mSegmentSize - lFree));
     }
@@ -321,6 +314,7 @@ protected:
   }
 
 private:
+  inline
   void* try_alloc(const std::size_t pSize) {
     if (mLength >= pSize) {
       const auto lObjectPtr = mStart;
@@ -352,23 +346,35 @@ private:
     mStart = nullptr;
     mLength = 0;
 
-    if (mFrees.empty()) {
+    if (mFreeRanges.empty()) {
       return false;
     }
 
-    // find the largest free extent and return it if the size is adequate
-    auto lMaxIter = std::max_element(std::begin(mFrees), std::end(mFrees),
-      [](const auto& l, const auto& r) { return l.second < r.second; });
+    auto lMaxIter = std::max_element(std::begin(mFreeRanges), std::end(mFreeRanges),
+      [](const auto& l, const auto& r) {
+        return (l.first.upper() - l.first.lower()) < (r.first.upper() - r.first.lower());
+      });
 
     // check if the size is adequate
-    if (pSize > lMaxIter->second) {
+    const auto lFoudSize = lMaxIter->first.upper() - lMaxIter->first.lower();
+    if (pSize > lFoudSize) {
+      return false;
+    }
+
+    if (lMaxIter->second > 1) {
+      EDDLOG("RegionAllocator BUG: Overlapping interval found: ptr={:p} length={} overlaps={}",
+        reinterpret_cast<char*>(lMaxIter->first.lower()), lFoudSize, lMaxIter->second);
+
+      // erase this segment
+      mFree -= lFoudSize;
+      mFreeRanges.erase(lMaxIter);
       return false;
     }
 
     // return the extent
-    mStart = const_cast<char*>(lMaxIter->first);
-    mLength = lMaxIter->second;
-    mFrees.erase(lMaxIter);
+    mStart = reinterpret_cast<char*>(lMaxIter->first.lower());
+    mLength = lFoudSize;
+    mFreeRanges.erase(lMaxIter);
 
     {
       // estimated fragmentation
@@ -376,10 +382,10 @@ private:
       static thread_local double sNumFragments = 0.0;
       static thread_local double sFragmentation = 0.0;
 
-      const auto lFree = mFree.load(std::memory_order_acquire);
+      const std::size_t lFree = mFree;
       sFree = sFree * 0.75 + double(lFree) * 0.25;
       sFragmentation = sFragmentation * 0.75 + double(lFree - mLength)/double(lFree) * 0.25;
-      sNumFragments = sNumFragments *0.75 + double(mFrees.size() + 1) * 0.25;
+      sNumFragments = sNumFragments * 0.75 + double(mFreeRanges.iterative_size() + 1) * 0.25;
 
       DDLOGF_RL(5000, DataDistSeverity::debug, "DataRegionResource {} estimated: free={:.4} num_fragments={:.4} "
         "fragmentation={:.4}", mSegmentName, sFree, sNumFragments, sFragmentation);
@@ -393,61 +399,19 @@ private:
     // align up
     pSize = align_size_up(pSize);
 
-    const char *lData = reinterpret_cast<const char*>(pData);
-
-    // push object to the free map. Try to merge nodes
-    const auto lIter = mFrees.lower_bound(lData);
-    bool lInserted = false;
+    mFreeRanges += std::make_pair(icl::discrete_interval<std::size_t>::right_open(
+      reinterpret_cast<std::size_t>(pData), reinterpret_cast<std::size_t>(pData) + pSize),
+      std::size_t(1)
+    );
 
 #if !defined(NDEBUG)
-    if (lIter != mFrees.end()) {
-      if (lIter->first <= lData) {
-        EDDLOG("iter={:p}, data={:p}, Free map:", lIter->first, lData);
-
-        for (const auto &lit : mFrees) {
-          EDDLOG(" iter={:p}, size={}", lit.first, lit.second);
-        }
+    for (const auto &lInt : mFreeRanges) {
+      if (lInt.second > 1) {
+        EDDLOG("RegionAllocator BUG: Overlapping interval found on reclaim: ptr={:p} length={} overlaps={}",
+          reinterpret_cast<char*>(lInt.first.lower()), lInt.first.upper() - lInt.first.lower(), lInt.second);
       }
-      assert(lIter->first > lData); // we cannot have this exact value in the free list
     }
 #endif
-
-    // check if we can merge with the previous
-    if (!mFrees.empty() && lIter != mFrees.begin()) {
-      auto lPrev = std::prev(lIter);
-
-      if ((lPrev->first + lPrev->second) == lData) {
-        lPrev->second += pSize;
-        lInserted = true;
-
-        // check if we also can merge with the next (lIter)
-        if (lIter != mFrees.end()) {
-          if ((lPrev->first + lPrev->second) == lIter->first) {
-            lPrev->second += lIter->second;
-            mFrees.erase(lIter);
-          }
-        }
-      }
-    }
-
-    if (!lInserted) {
-      // insert the new range
-      auto lIt = mFrees.emplace_hint(lIter, lData, pSize);
-
-      if (lIt->second != pSize) {
-        EDDLOG("BUG: RegionAllocatorResource: REPEATED INSERT!!! "
-          " {:p} : {}, original size: {}", lIt->first, pSize, lIt->second);
-      }
-
-      // check if we can merge with the next
-      auto lNextIt = std::next(lIt);
-      if (lNextIt != mFrees.cend()) {
-        if ((lData + pSize) == lNextIt->first) {
-          lIt->second += lNextIt->second;
-          mFrees.erase(lNextIt);
-        }
-      }
-    }
   }
 
   /// fields
@@ -461,12 +425,12 @@ private:
   char *mStart = nullptr;
   std::size_t mLength = 0;
 
-  // two step reclaim to avoid lock contention in the allocation path
-  std::mutex mReclaimLock;
-  std::map<const char*, std::size_t> mFrees; // keep all returned blocks
-
   // free space accounting
   std::atomic_int64_t mFree = 0;
+
+  // two step reclaim to avoid lock contention in the allocation path
+  std::mutex mReclaimLock;
+  icl::interval_map<std::size_t, std::size_t> mFreeRanges;
 };
 
 
