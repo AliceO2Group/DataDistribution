@@ -301,7 +301,7 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
 /// TimeFrameBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-TimeFrameBuilder::TimeFrameBuilder(MemoryResources &pMemRes,
+TimeFrameBuilder::TimeFrameBuilder(SyncMemoryResources &pMemRes,
   const std::size_t pDataSegSize, const std::size_t pHdrSegSize, bool pDplEnabled)
   : mDplEnabled(pDplEnabled), mMemRes(pMemRes)
 {
