@@ -238,7 +238,7 @@ void StfSenderOutput::StfSchedulerThread()
       auto [it, ins] = mScheduledStfMap.try_emplace(lStfId, std::move(lStf));
       if (!ins) {
         (void)it;
-        EDDLOG("StfSchedulerThread: Stf already scheduled! Skipping the duplicate. std_id={}", lStfId);
+        EDDLOG("StfSchedulerThread: Stf already scheduled! Skipping the duplicate. stf_id={}", lStfId);
         // Decrement buffered STF count
         mDevice.stfCountDecFetch();
         lStf.reset();

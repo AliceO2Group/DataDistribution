@@ -22,6 +22,7 @@
 #include <deque>
 #include <new>
 #include <memory>
+#include <algorithm>
 
 namespace o2
 {
@@ -204,10 +205,6 @@ void CoalescedHdrDataSerializer::visit(SubTimeFrame& pStf)
   for (auto& lDataIdentMapIter : pStf.mData) {
     for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
       for (auto& lStfDataIter : lSubSpecMapIter.second) {
-
-        if (lStfDataIter.mData->GetSize() == 0) {
-          EDDLOG("Sending STF data payload with zero size");
-        }
         mHdrs.emplace_back(std::move(lStfDataIter.mHeader));
         mData.emplace_back(std::move(lStfDataIter.mData));
       }
@@ -226,11 +223,11 @@ void CoalescedHdrDataSerializer::serialize(std::unique_ptr<SubTimeFrame>&& pStf)
   pStf->accept(*this);
 
   // coalesce the headers
-  const std::size_t lHdrSize = std::accumulate(mHdrs.begin(), mHdrs.end(), 0u,
+  const std::size_t lHdrSize = std::accumulate(mHdrs.begin(), mHdrs.end(), std::size_t(0),
     [](const std::size_t v, const FairMQMessagePtr&h) { return v + h->GetSize(); }
   );
 
-  const std::size_t lTotalHdrSize = mHdrs.size() * sizeof(header_info) + lHdrSize;
+  const std::size_t lTotalHdrSize = (mHdrs.size() * sizeof(header_info)) + lHdrSize;
 
   DDLOGF_GRL(5000, DataDistSeverity::debug, "CoalescedHdrDataSerializer: headers={} coalesced_size={}",
     mHdrs.size(), lTotalHdrSize);
@@ -248,14 +245,19 @@ void CoalescedHdrDataSerializer::serialize(std::unique_ptr<SubTimeFrame>&& pStf)
   // coalesce all headers into a single message
   for (const auto &lHdr : mHdrs) {
 
-    header_info lHdrInfo = {lHdrOff, lHdr->GetSize() };
+    const header_info lHdrInfo = { lHdrOff, lHdr->GetSize() };
 
     std::memcpy(lFullHdrMsgAddr + lInfoOff, &lHdrInfo, sizeof(header_info));
     std::memcpy(lFullHdrMsgAddr + lHdrOff, reinterpret_cast<const char*>(lHdr->GetData()), lHdrInfo.len);
 
     lInfoOff += sizeof(header_info);
     lHdrOff += lHdrInfo.len;
+
+    assert (lInfoOff <= mHdrs.size() * sizeof(header_info));
+    assert (lHdrOff <= lTotalHdrSize);
   }
+  assert (lInfoOff == mHdrs.size() * sizeof(header_info));
+  assert (lHdrOff == lTotalHdrSize);
 
   // add it to data messages for sending
   mData.emplace_back(std::move(lFullHdrMsg));
@@ -390,6 +392,7 @@ std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize_impl()
     }
 
     lStf->accept(*this);
+
   } catch (std::runtime_error& e) {
     EDDLOG("SubTimeFrame deserialization failed. reason={}", e.what());
     mHdrs.clear();

@@ -79,7 +79,7 @@ class TfBuilderDevice : public DataDistDevice,
   void ResetTask() final;
 
 
-  MemoryResources& MemI() { return *mMemI; }
+  SyncMemoryResources& MemI() { return *mMemI; }
   TimeFrameBuilder& TfBuilderI() const { return *mTfBuilder; }
 
  protected:

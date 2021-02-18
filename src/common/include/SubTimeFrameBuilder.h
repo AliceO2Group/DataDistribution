@@ -145,7 +145,7 @@ class TimeFrameBuilder
 {
  public:
   TimeFrameBuilder() = delete;
-  TimeFrameBuilder(MemoryResources &pMemRes, const std::size_t pDataSegSize, const std::size_t pHdrSegSize,
+  TimeFrameBuilder(SyncMemoryResources &pMemRes, const std::size_t pDataSegSize, const std::size_t pHdrSegSize,
     bool pDplEnabled);
 
   void adaptHeaders(SubTimeFrame *pStf);
@@ -168,7 +168,7 @@ class TimeFrameBuilder
 
   bool mDplEnabled;
 
-  MemoryResources &mMemRes;
+  SyncMemoryResources &mMemRes;
 };
 
 }
