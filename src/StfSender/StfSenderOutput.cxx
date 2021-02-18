@@ -217,11 +217,16 @@ void StfSenderOutput::StfSchedulerThread()
 
     if (mDevice.standalone()) {
       // Do not forward STFs
+      mDevice.stfCountDecFetch();
+      lStf.reset();
       continue;
     }
 
     if (!mDevice.TfSchedRpcCli().is_ready()) {
       EDDLOG_RL(1000, "StfSchedulerThread: TfScheduler gRPC connection is not ready stf_id={}", lStfId);
+      // Decrement buffered STF count
+      mDevice.stfCountDecFetch();
+      lStf.reset();
       continue;
     }
 
@@ -234,6 +239,9 @@ void StfSenderOutput::StfSchedulerThread()
       if (!ins) {
         (void)it;
         EDDLOG("StfSchedulerThread: Stf already scheduled! Skipping the duplicate. std_id={}", lStfId);
+        // Decrement buffered STF count
+        mDevice.stfCountDecFetch();
+        lStf.reset();
         continue;
       }
     }
@@ -251,13 +259,11 @@ void StfSenderOutput::StfSchedulerThread()
       lStfInfo.set_stf_id(lStfId);
       lStfInfo.set_stf_size(lStfSize);
 
-      mDevice.TfSchedRpcCli().StfSenderStfUpdate(lStfInfo, lSchedResponse);
-
-      DDDLOG_RL(5000, "Sent STF announce, stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
+      const auto lSentOK = mDevice.TfSchedRpcCli().StfSenderStfUpdate(lStfInfo, lSchedResponse);
 
       // check if the scheduler rejected the data
-      if (lSchedResponse.status() != SchedulerStfInfoResponse::OK) {
-        IDDLOG_RL(1000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
+      if (!lSentOK || (lSchedResponse.status() != SchedulerStfInfoResponse::OK)) {
+        WDDLOG_RL(1000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
           lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
 
         // remove from the scheduling map
@@ -265,8 +271,12 @@ void StfSenderOutput::StfSchedulerThread()
         if (mScheduledStfMap.erase(lStfId) == 1) {
           // Decrement buffered STF count
           mDevice.stfCountDecFetch();
+          lStf.reset();
         }
+        continue;
       }
+
+      DDDLOG_RL(5000, "Sent STF announce, stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
     }
   }
 
@@ -284,7 +294,7 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     static std::uint64_t sNumDropRequests = 0;
     sNumDropRequests++;
 
-    DDLOGF_GRL(1000, DataDistSeverity::warning, "Scheduler requested drop of an STF. stf_id={} total_drop_req={}",
+    DDLOGF_GRL(1000, DataDistSeverity::warning, "TfScheduler requested drop of an STF. stf_id={} total_drop_req={}",
       pStfId, sNumDropRequests);
 
     pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
