@@ -25,6 +25,7 @@ StfSenderRpcClient::StfSenderRpcClient(const std::string &pEndpoint) {
 
   mChannel = grpc::CreateChannel(pEndpoint, grpc::InsecureChannelCredentials());
   mStub = StfSenderRpc::NewStub(mChannel);
+  mChannel->GetState(true);
 }
 
 bool StfSenderRpcClient::is_ready() const {

@@ -57,6 +57,7 @@ public:
 
     mChannel = grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials());
     mStub = TfSchedulerInstanceRpc::NewStub(mChannel);
+    mChannel->GetState(true);
 
     IDDLOG("Connected to TfSchedulerInstance RPC endpoint={}", lEndpoint);
 
