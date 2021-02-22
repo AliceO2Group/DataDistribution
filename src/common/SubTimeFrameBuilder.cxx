@@ -40,7 +40,7 @@ SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(MemoryResources &pMemRes,
   mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
     "O2HeadersRegion",
     *mMemRes.mShmTransport,
-    std::size_t(256) << 20, /* make configurable */
+    std::size_t(512) << 20, /* good for 5s 3CRU @ 50Gbps, TODO: make configurable */
     mDplEnabled ?
       sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
       sizeof(DataHeader)
