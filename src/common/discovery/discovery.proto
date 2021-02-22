@@ -227,6 +227,9 @@ message BuildTfResponse {
 
 service TfSchedulerInstanceRpc {
 
+  // main heartbeat rpc to be called periodically from other components
+  rpc HeartBeat(BasicInfo) returns (google.protobuf.Empty) { }
+
   // Partition RPCs
   rpc GetPartitionState(PartitionInfo) returns (PartitionResponse) { }
   rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }

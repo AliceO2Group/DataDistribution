@@ -134,6 +134,25 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
   DDDLOG("PartitionMonitorThread: Exiting.");
 }
 
+::grpc::Status TfSchedulerInstanceRpcImpl::HeartBeat(::grpc::ServerContext* /*context*/,
+  const ::o2::DataDistribution::BasicInfo* request, ::google::protobuf::Empty* /*response*/)
+{
+  static std::uint64_t sStfSendersHb = 0;
+  static std::uint64_t sTfBuildersHb = 0;
+
+  if (request) {
+    if (request->type() == ProcessTypePB::StfSender) {
+      sStfSendersHb++;
+    } else if (request->type() == ProcessTypePB::TfBuilder) {
+      sTfBuildersHb++;
+    }
+  }
+
+  DDDLOG_GRL(10000, "HeartBeat: receiving. stfs_count={} tfb_count={}", sStfSendersHb, sTfBuildersHb);
+
+  return Status::OK;
+}
+
 ::grpc::Status TfSchedulerInstanceRpcImpl::GetPartitionState(::grpc::ServerContext* /*context*/,
   const ::o2::DataDistribution::PartitionInfo* /*request*/, ::o2::DataDistribution::PartitionResponse* response)
 {

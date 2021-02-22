@@ -37,6 +37,31 @@ void TfSchedulerRpcClient::updateTimeInformation(BasicInfo &pInfo) {
   pInfo.set_last_update_t(lTimet);
 }
 
+// rpc HeartBeat(BasicInfo) returns (google.protobuf.Empty) { }
+bool TfSchedulerRpcClient::HeartBeat(const BasicInfo &pInfo) {
+  using namespace std::chrono_literals;
+  if (is_alive()) {
+    ClientContext lContext;
+    ::google::protobuf::Empty lRet;
+    // NumStfSendersInPartitionResponse lRet;
+    BasicInfo lInfo = pInfo;
+
+    const auto lStatus = mStub->HeartBeat(&lContext, lInfo, &lRet);
+    if (lStatus.ok()) {
+      return true;
+    }
+
+    if (!is_ready()) {
+      IDDLOG_GRL(1000, "HeartBeat: Scheduler gRPC server is not ready. Retrying...");
+      return false;
+    }
+
+    EDDLOG_GRL(1000, "HeartBeat: gRPC request error. code={} message={}", lStatus.error_code(), lStatus.error_message());
+  }
+
+  return false;
+}
+
 // rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
 bool TfSchedulerRpcClient::NumStfSendersInPartitionRequest(std::uint32_t &pNumStfSenders) {
   if (!mStub || !is_alive()) {

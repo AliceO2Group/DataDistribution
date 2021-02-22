@@ -52,6 +52,8 @@ class TfSchedulerInstanceRpcImpl final : public TfSchedulerInstanceRpc::Service
 
   virtual ~TfSchedulerInstanceRpcImpl() { }
 
+  ::grpc::Status HeartBeat(::grpc::ServerContext* context, const ::o2::DataDistribution::BasicInfo* request, ::google::protobuf::Empty* response) override;
+
   ::grpc::Status GetPartitionState(::grpc::ServerContext* context, const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response) override;
   ::grpc::Status TerminatePartition(::grpc::ServerContext* context, const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response) override;
 
