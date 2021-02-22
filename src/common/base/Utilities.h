@@ -143,6 +143,10 @@ class RunningSamples
   {
     return mSamples.begin() + mCount;
   }
+  void clear() {
+    mCount = 0;
+    mIndex = 0;
+  }
 
  private:
   std::array<T, N> mSamples;

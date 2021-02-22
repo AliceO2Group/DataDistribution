@@ -217,7 +217,7 @@ void StfBuilderDevice::InitTask()
 
   // start a thread for readout process
   if (!I().mFileSource->enabled()) {
-    I().mReadoutInterface->start(1);
+    I().mReadoutInterface->start();
   }
 
   // info thread
