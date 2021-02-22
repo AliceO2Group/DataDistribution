@@ -58,6 +58,7 @@ public:
 
     mChannel = grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials());
     mStub = TfBuilderRpc::NewStub(mChannel);
+    mChannel->GetState(true);
 
     if (is_alive()) {
       IDDLOG("Connected gRPC client to TfBuilder. tf_builder={:s} endpoint={:s}", pTfBuilderId, lEndpoint);
