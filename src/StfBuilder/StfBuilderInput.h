@@ -42,11 +42,11 @@ class StfInputInterface
   {
   }
 
-  void start(const std::size_t pNumBuilders);
+  void start();
   void stop();
 
-  void DataHandlerThread(const unsigned pInputChannelIdx);
-  void StfBuilderThread(const std::size_t pIdx);
+  void DataHandlerThread();
+  void StfBuilderThread();
 
   const RunningSamples<float>& StfTimeSamples() const { return mStfTimeSamples; }
  private:
@@ -59,13 +59,10 @@ class StfInputInterface
 
   RunningSamples<float> mStfTimeSamples;
 
-
-  /// StfBuilding threads
-  /// Start a thread per building slot: updates are distributed with % numBuildingThreads
-  std::size_t mNumBuilders = 1;
-  std::vector<ConcurrentFifo<std::vector<FairMQMessagePtr>>> mBuilderInputQueues;
-  std::vector<SubTimeFrameReadoutBuilder> mStfBuilders;
-  std::vector<std::thread> mBuilderThreads;
+  /// StfBuilding thread and queues
+  std::unique_ptr<ConcurrentFifo<std::vector<FairMQMessagePtr>>> mBuilderInputQueue = nullptr;
+  std::unique_ptr<SubTimeFrameReadoutBuilder> mStfBuilder = nullptr;
+  std::thread mBuilderThread;
 };
 
 }

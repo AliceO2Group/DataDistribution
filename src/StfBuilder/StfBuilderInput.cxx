@@ -31,66 +31,54 @@ namespace o2
 namespace DataDistribution
 {
 
-void StfInputInterface::start(const std::size_t pNumBuilders)
+void StfInputInterface::start()
 {
-  mNumBuilders = pNumBuilders;
+
   mRunning = true;
 
-  mBuilderInputQueues.clear();
-  mBuilderInputQueues.resize(mNumBuilders);
+  mStfTimeSamples.clear();
 
-  // NOTE: create the mStfBuilders first to avid resizing the vector; then threads
-  for (std::size_t i = 0; i < mNumBuilders; i++) {
-    mStfBuilders.emplace_back(mDevice.MemI(), mDevice.dplEnabled());
-  }
-
-  for (std::size_t i = 0; i < mNumBuilders; i++) {
-    mBuilderThreads.emplace_back(create_thread_member("stfb_builder", &StfInputInterface::StfBuilderThread, this, i));
-  }
-
-  mInputThread = create_thread_member("stfb_input", &StfInputInterface::DataHandlerThread, this, 0);
+  mBuilderInputQueue = std::make_unique<ConcurrentFifo<std::vector<FairMQMessagePtr>>>();
+  mStfBuilder = std::make_unique<SubTimeFrameReadoutBuilder>(mDevice.MemI(), mDevice.dplEnabled());
+  mBuilderThread = create_thread_member("stfb_builder", &StfInputInterface::StfBuilderThread, this);
+  mInputThread = create_thread_member("stfb_input", &StfInputInterface::DataHandlerThread, this);
 }
 
 void StfInputInterface::stop()
 {
 mRunning = false;
 
-  for (auto &lBuilder : mStfBuilders) {
-    lBuilder.stop();
-  }
+  mStfBuilder->stop();
+
 
   if (mInputThread.joinable()) {
     mInputThread.join();
   }
 
-  for (auto &lQueue : mBuilderInputQueues) {
-    lQueue.stop();
-  }
+  mBuilderInputQueue->stop();
 
-  for (auto &lBldThread : mBuilderThreads) {
-    if (lBldThread.joinable()) {
-      lBldThread.join();
-    }
+  if (mBuilderThread.joinable()) {
+      mBuilderThread.join();
   }
 
   // mStfBuilders.clear(); // TODO: deal with shm region cleanup
-  mBuilderThreads.clear();
-  mBuilderInputQueues.clear();
+  mBuilderInputQueue.reset();
+  mStfBuilder.reset();
 
   DDDLOG("INPUT INTERFACE: Stopped.");
 }
 
 /// Receiving thread
-void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
+void StfInputInterface::DataHandlerThread()
 {
   constexpr std::uint32_t cInvalidStfId = ~0;
   std::vector<FairMQMessagePtr> lReadoutMsgs;
-  lReadoutMsgs.reserve(1024);
+  lReadoutMsgs.reserve(4096);
   // current TF Id
   std::uint32_t lCurrentStfId = cInvalidStfId;
 
   // Reference to the input channel
-  auto& lInputChan = mDevice.GetChannel(mDevice.getInputChannelName(), pInputChannelIdx);
+  auto& lInputChan = mDevice.GetChannel(mDevice.getInputChannelName());
 
   try {
     while (mRunning) {
@@ -162,18 +150,19 @@ void StfInputInterface::DataHandlerThread(const unsigned pInputChannelIdx)
       // get the current TF id
       lCurrentStfId = lReadoutHdr.mTimeFrameId;
 
-      mBuilderInputQueues[lReadoutHdr.mTimeFrameId % mNumBuilders].push(std::move(lReadoutMsgs));
+      mBuilderInputQueue->push(std::move(lReadoutMsgs));
     }
   } catch (std::runtime_error& e) {
-    EDDLOG("Input channel receive failed. Stopping input thread.");
-    return;
+    if (mRunning) {
+      EDDLOG_RL(1000, "Receive failed on the Input channel. Stopping the input thread. what={}", e.what());
+    }
   }
 
   DDDLOG("Exiting the input thread.");
 }
 
 /// StfBuilding thread
-void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
+void StfInputInterface::StfBuilderThread()
 {
   static constexpr bool cBuildOnTimeout = false;
   using namespace std::chrono_literals;
@@ -185,16 +174,14 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
   lReadoutMsgs.reserve(1U << 20);
 
   // Reference to the input channel
-  assert (mBuilderInputQueues.size() == mNumBuilders);
-  assert (pIdx < mBuilderInputQueues.size());
-  auto &lInputQueue = mBuilderInputQueues[pIdx];
-
+  assert (mBuilderInputQueue);
+  assert (mStfBuilder);
+  // Input queue
+  auto &lInputQueue = *mBuilderInputQueue;
   // Stf builder
-  SubTimeFrameReadoutBuilder &lStfBuilder = mStfBuilders[pIdx];
+  SubTimeFrameReadoutBuilder &lStfBuilder = *mStfBuilder;
 
-  const std::chrono::microseconds cMinWaitTime = 2s;
-  const std::chrono::microseconds cDesiredWaitTime = 2s * mNumBuilders / 3;
-  const auto cStfDataWaitFor = std::max(cMinWaitTime, cDesiredWaitTime);
+  const auto cStfDataWaitFor = 2s;
 
   using hres_clock = std::chrono::high_resolution_clock;
 
@@ -202,6 +189,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
 
   while (mRunning) {
 
+    // Lambda for completing the Stf
     auto finishBuildingCurrentStf = [&](bool pTimeout = false) {
       // Finished: queue the current STF and start a new one
       ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
@@ -233,13 +221,17 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         finishBuildingCurrentStf(cBuildOnTimeout);
       }
       continue;
-    } else if (!mRunning) {
+    } else if (!lRet && !mRunning) {
       break;
+    } else if (lRet && !mRunning) {
+      static thread_local std::uint64_t sAfterStopStfs = 0;
+      sAfterStopStfs++;
+      WDDLOG_RL(1000, "StfBuilderThread: Building STFs after stop signal. after_stop_stf_count={}", sAfterStopStfs);
     }
 
     // must not be empty
     if (lReadoutMsgs.empty()) {
-      EDDLOG("READOUT INTERFACE: empty readout multipart.");
+      EDDLOG_RL(1000, "READOUT INTERFACE: empty readout multipart.");
       continue;
     }
 
@@ -248,17 +240,15 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
 
     // Copy to avoid surprises. The receiving header is not O2 compatible and can be discarded
     ReadoutSubTimeframeHeader lReadoutHdr;
-    // the size is checked on receive
+    // NOTE: the size is checked on receive
     std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
 
     // log only
-    DDLOGF_RL(1000, DataDistSeverity::debug, "READOUT INTERFACE: Received an ReadoutMsg. stf_id={}",
-      lReadoutHdr.mTimeFrameId);
+    DDDLOG_RL(5000, "READOUT INTERFACE: Received an ReadoutMsg. stf_id={}", lReadoutHdr.mTimeFrameId);
 
     // check multipart size
     if (lReadoutMsgs.size() == 1 && !lReadoutHdr.mFlags.mLastTFMessage) {
-      DDLOGF_RL(1000, DataDistSeverity::error,
-        "READOUT INTERFACE: Received only a header message without the STF stop bit set.");
+      EDDLOG_RL(1000, "READOUT INTERFACE: Received only a header message without the STF stop bit set.");
       continue;
     }
 
@@ -269,11 +259,11 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         const auto lLinkId = R.getLinkID();
 
         if (lLinkId != lReadoutHdr.mLinkId) {
-          EDDLOG("READOUT INTERFACE: Update link ID does not match RDH in the data block."
+          EDDLOG_RL(1000, "READOUT INTERFACE: Update link ID does not match RDH in the data block."
             " hdr_link_id={} rdh_link_id={}", lReadoutHdr.mLinkId, lLinkId);
         }
       } catch (RDHReaderException &e) {
-        EDDLOG( e.what());
+        EDDLOG_RL(1000, "READOUT INTERFACE: error while parsing the RDH header. what={}", e.what());
         // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
         continue;
       }
@@ -286,8 +276,10 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
     if (lReadoutHdr.mTimeFrameId != lCurrentStfId) {
       // we expect to be notified about new TFs
       if (lIdInBuilding) {
-        DDLOGF_RL(1000, DataDistSeverity::error, "READOUT INTERFACE: Update with a new TF ID. Stop flag not received "
-          "the current STF. current_id={} new_id={} ", lCurrentStfId, lReadoutHdr.mTimeFrameId);
+        DDLOGF_RL(1000, DataDistSeverity::error, "READOUT INTERFACE: Update with a new STF ID but the"
+          "Stop flag was not received for the current STF. current_id={} new_id={}",
+          lCurrentStfId, lReadoutHdr.mTimeFrameId);
+
         finishBuildingCurrentStf();
       }
       lCurrentStfId = lReadoutHdr.mTimeFrameId;
@@ -303,7 +295,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         lDataOrigin = ReadoutDataUtils::getDataOrigin(R1);
         lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
       } catch (RDHReaderException &e) {
-        EDDLOG("READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
+        EDDLOG_RL(1000, "READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
         // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
         continue;
       }
@@ -336,8 +328,8 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
         }
 
         if (lNewSubSpec != lSubSpecification) {
-          EDDLOG("READOUT INTERFACE: update with mismatched subspecification."
-            " block[0]: {:#06x}, block[{}]: {:#06x}",
+          EDDLOG_RL(10000, "READOUT INTERFACE: Update with mismatched subspecifications."
+            " block[0]_subspec={:#06x}, block[{}]_subspec={:#06x}",
             lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
           // insert
           lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
@@ -350,7 +342,7 @@ void StfInputInterface::StfBuilderThread(const std::size_t pIdx)
       }
 
       if (!lErrorWhileAdding && (lAdded != lReadoutMsgs.size() - 1) ) {
-        EDDLOG("BUG: Not all received HBFrames added to the STF.");
+        EDDLOG_RL(500, "BUG: Not all received HBFrames added to the STF.");
       }
     }
 
