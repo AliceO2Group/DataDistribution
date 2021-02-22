@@ -157,8 +157,13 @@ void StfSenderDevice::PostRun()
     mFileSink.stop();
   }
 
+  // wait the Info thread, before closing mTfSchedulerRpcClient
+  if (mInfoThread.joinable()) {
+    mInfoThread.join();
+  }
+
   if (!mStandalone) {
-    // start the RPC server after output
+    // Stop the RPC server after output
     mRpcServer.stop();
 
     // Stop output handler
@@ -166,11 +171,6 @@ void StfSenderDevice::PostRun()
 
     // Stop the Scheduler RPC client
     mTfSchedulerRpcClient.stop();
-  }
-
-  // wait the Info thread
-  if (mInfoThread.joinable()) {
-    mInfoThread.join();
   }
 
   DDDLOG("PostRun() done.");
@@ -240,8 +240,14 @@ bool StfSenderDevice::ConditionalRun()
     IDDLOG_RL(10000, "DataDistribution partition is terminated.");
     return false; // trigger PostRun()
   }
+
+  if (mRunning && !mStandalone && mDiscoveryConfig) {
+    const auto lInfo = mDiscoveryConfig->status().info();
+    mTfSchedulerRpcClient.HeartBeat(lInfo);
+  }
+
   // nothing to do here sleep for awhile
-  std::this_thread::sleep_for(300ms);
+  std::this_thread::sleep_for(500ms);
   return true;
 }
 }

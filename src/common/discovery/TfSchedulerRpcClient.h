@@ -71,6 +71,9 @@ public:
 
   void updateTimeInformation(BasicInfo &pInfo);
 
+  // rpc HeartBeat(BasicInfo) returns (google.protobuf.Empty) { }
+  bool HeartBeat(const BasicInfo &pInfo);
+
   // rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
   bool NumStfSendersInPartitionRequest(std::uint32_t &pNumStfSenders);
 
