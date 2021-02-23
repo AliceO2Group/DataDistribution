@@ -51,6 +51,8 @@ void InterleavedHdrDataSerializer::visit(SubTimeFrame& pStf)
   }
   std::memcpy(lDataHeaderMsg->GetData(), &gStfDistDataHeader, sizeof(DataHeader));
   reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->firstTForbit = pStf.header().mFirstOrbit;
+  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->runNumber = pStf.header().mRunNumber;
+
   reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->payloadSerializationMethod = gSerializationMethodNone;
 
   auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
@@ -190,6 +192,7 @@ void CoalescedHdrDataSerializer::visit(SubTimeFrame& pStf)
   }
   std::memcpy(lDataHeaderMsg->GetData(), &gStfDistDataHeader, sizeof(DataHeader));
   reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->firstTForbit = pStf.header().mFirstOrbit;
+  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->runNumber = pStf.header().mRunNumber;
   reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->payloadSerializationMethod = gSerializationMethodNone;
 
   auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));

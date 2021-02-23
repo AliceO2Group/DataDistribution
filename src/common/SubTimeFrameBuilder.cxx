@@ -65,14 +65,20 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     mFirstFiltered.clear();
   }
 
-  // TODO: remove when the readout supplies the value
-  try {
-    const auto R = RDHReader(pHbFramesBegin[0]);
-    mStf->updateFirstOrbit(R.getOrbit());
-  } catch (...) {
-    EDDLOG("Error getting RDHReader instace. Not using {} HBFs", pHBFrameLen);
-    return;
+  if (pHdr.mTimeframeOrbitFirst != 0) {
+    mStf->updateFirstOrbit(pHdr.mTimeframeOrbitFirst);
+  } else {
+    WDDLOG_RL(1000, "READOUT INTERFACE: First orbit in TF is not set.");
+    try {
+      const auto R = RDHReader(pHbFramesBegin[0]);
+      mStf->updateFirstOrbit(R.getOrbit());
+    } catch (...) {
+      EDDLOG("Error getting RDHReader instace. Not using {} HBFs", pHBFrameLen);
+      return;
+    }
   }
+
+  mStf->updateRunNumber(pHdr.mRunNumber);
 
   // filter empty trigger
   lRemoveBlocks.clear();
