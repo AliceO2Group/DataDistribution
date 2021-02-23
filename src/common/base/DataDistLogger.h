@@ -287,19 +287,19 @@ private:
 #define EDDLOG(...) DDLOGF(DataDistSeverity::error, __VA_ARGS__)
 
 // Log with fmt using ratelimiting (per thread)
-#define DDLOGF_RL(intervalMs, severity, ...)                                                                          \
-do {                                                                                                                  \
-  static thread_local auto sRateLimit__NoShadow = std::chrono::steady_clock::time_point::min();                       \
-  static thread_local unsigned sRateLimitCnt__NoShadow = 0;                                                           \
-  if (DataDistLogger::LogEnabled(severity) &&                                                                         \
-    (sRateLimit__NoShadow + std::chrono::milliseconds(intervalMs)) < DataDistLogger::sRateLimitLast) {                \
-    o2::DataDistribution::DataDistLogger(severity, o2::DataDistribution::DataDistLogger::log_fmt{}, __VA_ARGS__) <<   \
-      ((sRateLimitCnt__NoShadow > 0) ? fmt::format(" <msgs_suppressed={}>", sRateLimitCnt__NoShadow) : "");           \
-    sRateLimit__NoShadow = DataDistLogger::sRateLimitLast;                                                            \
-    sRateLimitCnt__NoShadow = 0;                                                                                      \
-  } else {                                                                                                            \
-    sRateLimitCnt__NoShadow++;                                                                                        \
-  }                                                                                                                   \
+#define DDLOGF_RL(intervalMs, severity, ...)                                                                           \
+do {                                                                                                                   \
+  static thread_local auto sRateLimit__NoShadow = std::chrono::steady_clock::time_point::min();                        \
+  static thread_local unsigned sRateLimitCnt__NoShadow = 0;                                                            \
+  if (DataDistLogger::LogEnabled(severity) &&                                                                          \
+    (sRateLimit__NoShadow + std::chrono::milliseconds(intervalMs)) < DataDistLogger::sRateLimitLast) {                 \
+    o2::DataDistribution::DataDistLogger(severity, o2::DataDistribution::DataDistLogger::log_fmt{}, __VA_ARGS__) <<    \
+      ((sRateLimitCnt__NoShadow > 0) ? fmt::format(" <msgs_suppressed={}>", sRateLimitCnt__NoShadow) : "");            \
+    sRateLimit__NoShadow = DataDistLogger::sRateLimitLast;                                                             \
+    sRateLimitCnt__NoShadow = 0;                                                                                       \
+  } else {                                                                                                             \
+    sRateLimitCnt__NoShadow++;                                                                                         \
+  }                                                                                                                    \
 } while(0)
 
 
@@ -310,18 +310,18 @@ do {                                                                            
 
 // Log with fmt using ratelimiting (global)
 #define DDLOGF_GRL(intervalMs, severity, ...)                                                                          \
-do {                                                                                                                  \
-  static auto sRateLimit__NoShadow = std::chrono::steady_clock::time_point::min();                       \
-  static unsigned sRateLimitCnt__NoShadow = 0;                                                           \
-  if (DataDistLogger::LogEnabled(severity) &&                                                                         \
-    (sRateLimit__NoShadow + std::chrono::milliseconds(intervalMs)) < DataDistLogger::sRateLimitLast) {                \
-    o2::DataDistribution::DataDistLogger(severity, o2::DataDistribution::DataDistLogger::log_fmt{}, __VA_ARGS__) <<   \
-      ((sRateLimitCnt__NoShadow > 0) ? fmt::format(" <msgs_suppressed={}>", sRateLimitCnt__NoShadow) : "");           \
-    sRateLimit__NoShadow = DataDistLogger::sRateLimitLast;                                                            \
-    sRateLimitCnt__NoShadow = 0;                                                                                      \
-  } else {                                                                                                            \
-    sRateLimitCnt__NoShadow++;                                                                                        \
-  }                                                                                                                   \
+do {                                                                                                                   \
+  static auto sRateLimit__NoShadow = std::chrono::steady_clock::time_point::min();                                     \
+  static unsigned sRateLimitCnt__NoShadow = 0;                                                                         \
+  if (DataDistLogger::LogEnabled(severity) &&                                                                          \
+    (sRateLimit__NoShadow + std::chrono::milliseconds(intervalMs)) < DataDistLogger::sRateLimitLast) {                 \
+    o2::DataDistribution::DataDistLogger(severity, o2::DataDistribution::DataDistLogger::log_fmt{}, __VA_ARGS__) <<    \
+      ((sRateLimitCnt__NoShadow > 0) ? fmt::format(" <msgs_suppressed={}>", sRateLimitCnt__NoShadow) : "");            \
+    sRateLimit__NoShadow = DataDistLogger::sRateLimitLast;                                                             \
+    sRateLimitCnt__NoShadow = 0;                                                                                       \
+  } else {                                                                                                             \
+    sRateLimitCnt__NoShadow++;                                                                                         \
+  }                                                                                                                    \
 } while(0)
 
 
