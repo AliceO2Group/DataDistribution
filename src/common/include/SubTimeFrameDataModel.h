@@ -275,7 +275,6 @@ class SubTimeFrame : public IDataModelObject
     inline void setRunNumber(const std::uint32_t pRunNumber)
     {
       assert(mHeader && mHeader->GetData() != nullptr);
-
       // DataHeader must be first in the stack
       o2hdr::DataHeader *lHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
       lHdr->runNumber = pRunNumber;
@@ -356,6 +355,13 @@ public:
     }
   }
 
+  void updateRunNumber(const std::uint32_t pRunNum) {
+    if (mHeader.mRunNumber != pRunNum) {
+      mHeader.mRunNumber = pRunNum;
+      mUpdated = false;
+    }
+  }
+
 private:
   ///
   /// helper methods
@@ -403,7 +409,7 @@ private:
           }
 
           lDataVector[i].setTfCounter(mHeader.mId);
-          lDataVector[i].setRunNumber(0);
+          lDataVector[i].setRunNumber(mHeader.mRunNumber);
         }
 
         assert(lDataVector.empty() ? true :
