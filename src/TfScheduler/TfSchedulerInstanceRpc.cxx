@@ -74,6 +74,8 @@ void TfSchedulerInstanceRpcImpl::stop()
     mServer->Shutdown();
     mServer.reset(nullptr);
   }
+
+  DDDLOG("Stopped: TfSchedulerInstanceRpc.");
 }
 
 void TfSchedulerInstanceRpcImpl::updatePartitionState(const PartitionState pNewState)

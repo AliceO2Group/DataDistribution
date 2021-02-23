@@ -84,6 +84,7 @@ void TfSchedulerInstanceHandler::stop()
   if (mSchedulerInstanceThread.joinable()) {
     mSchedulerInstanceThread.join();
   }
+  DDDLOG("Stopped: TfSchedulerInstance");
 }
 
 void TfSchedulerInstanceHandler::TfSchedulerInstanceThread()

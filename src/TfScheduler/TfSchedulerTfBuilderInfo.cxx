@@ -121,7 +121,6 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
 {
   using namespace std::chrono_literals;
 
-  DataDistLogger::SetThreadName("TfBuilder::HousekeepingThread");
   DDDLOG("Starting TfBuilderInfo-Housekeeping thread.");
 
   std::vector<std::string> lIdsToErase;
