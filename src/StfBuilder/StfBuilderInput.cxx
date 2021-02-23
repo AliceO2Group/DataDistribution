@@ -173,6 +173,18 @@ void StfInputInterface::StfBuilderThread()
   std::vector<FairMQMessagePtr> lReadoutMsgs;
   lReadoutMsgs.reserve(1U << 20);
 
+  // support FEEID masking
+  std::uint32_t lFeeIdMask = ~std::uint32_t(0); // subspec size
+  const auto lFeeMask = std::getenv("DATADIST_FEE_MASK");
+  if (lFeeMask) {
+    try {
+      lFeeIdMask = std::stoul(lFeeMask, nullptr, 16);
+    } catch(...) {
+      EDDLOG("Cannot convert {} for the FeeID mask.", lFeeMask);
+    }
+  }
+  IDDLOG("StfBuilder: Using {:#06x} as the FeeID mask.", lFeeIdMask);
+
   // Reference to the input channel
   assert (mBuilderInputQueue);
   assert (mStfBuilder);
@@ -328,11 +340,16 @@ void StfInputInterface::StfBuilderThread()
         }
 
         if (lNewSubSpec != lSubSpecification) {
-          EDDLOG_RL(10000, "READOUT INTERFACE: Update with mismatched subspecifications."
+          WDDLOG_RL(10000, "READOUT INTERFACE: Update with mismatched subspecifications."
             " block[0]_subspec={:#06x}, block[{}]_subspec={:#06x}",
             lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
           // insert
-          lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
+          auto lMaskedSubspec = lSubSpecification;
+          if (ReadoutDataUtils::sRawDataSubspectype == ReadoutDataUtils::SubSpecMode::eFeeId) {
+            lMaskedSubspec &= lFeeIdMask;
+          }
+
+          lStfBuilder.addHbFrames(lDataOrigin, lMaskedSubspec, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
           lAdded += (lEndHbf - lStartHbf);
           lStartHbf = lEndHbf;
 
