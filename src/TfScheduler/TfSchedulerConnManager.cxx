@@ -232,7 +232,6 @@ void TfSchedulerConnManager::removeTfBuilder(const std::string &pTfBuilderId)
 
 void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
 {
-
   auto lDropLambda = [&](const std::uint64_t pLamStfId) -> std::uint64_t {
     StfDataRequestMessage lStfRequest;
     StfDataResponse lStfResponse;
@@ -273,7 +272,6 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
     WDDLOG("dropAllStfsAsync: async method failed. Calling synchronously.");
     lDropLambda(pStfId);
   }
-
 }
 
 void TfSchedulerConnManager::StfSenderMonitoringThread()

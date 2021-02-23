@@ -39,13 +39,17 @@ void TfSchedulerStfInfo::SchedulingThread()
   std::vector<std::uint64_t> lStfsToErase;
   lStfsToErase.reserve(1000);
   auto lLastDiscardTime = std::chrono::system_clock::now();
+
   std::uint64_t lNumTfScheds = 0;
+
+  // count how many time an FLP was missing STFs
+  std::map<std::string, std::uint64_t> lStfSenderMissingCnt;
+
+  std::vector<StfInfo> lStfInfos;
 
   while (mRunning) {
 
     {
-      std::vector<StfInfo> lStfInfos;
-
       {
         std::unique_lock lLock(mCompleteStfInfoLock);
 
@@ -112,7 +116,7 @@ void TfSchedulerStfInfo::SchedulingThread()
               WDDLOG("Removing TfBuilder from scheduling. tfb_id={:s}", lTfBuilderId);
 
               lRpcCli.put();
-              mConnManager.dropAllStfsAsync(lTfId);
+              requestDropAll(lTfId);
               mConnManager.removeTfBuilder(lTfBuilderId);
               mTfBuilderInfo.removeReadyTfBuilder(lTfBuilderId);
             }
@@ -122,20 +126,20 @@ void TfSchedulerStfInfo::SchedulingThread()
             WDDLOG("Selected TfBuilder is not currently reachable. TF will be dropped. tfb_id={} tf_id={}",
               lTfBuilderId, lTfId);
 
-            mConnManager.dropAllStfsAsync(lTfId);
+            requestDropAll(lTfId);
             // mConnManager.removeTfBuilder(lTfBuilderId);
             // mTfBuilderInfo.removeReadyTfBuilder(lTfBuilderId);
           }
         } else {
           // No candidate for scheduling
-          mConnManager.dropAllStfsAsync(lTfId);
+          requestDropAll(lTfId);
         }
       }
     }
 
     const auto lNow = std::chrono::system_clock::now();
 
-    if (lNow - lLastDiscardTime  > sStfDiscardTimeout) {
+    if (lNow - lLastDiscardTime > sStfDiscardTimeout) {
       lLastDiscardTime = lNow;
 
       lStfsToErase.clear();
@@ -166,21 +170,23 @@ void TfSchedulerStfInfo::SchedulingThread()
             std::string lMissingIds = boost::algorithm::join(lMissingStfSenders, ", ");
             DDDLOG("Missing STFs from StfSender IDs: {:s}", lMissingIds);
 
+            for (const auto &lStf : lMissingStfSenders) {
+              lStfSenderMissingCnt[lStf]++;
+              DDDLOG("Missing STF ids: stfs_id={} missing_cnt={}", lStf, lStfSenderMissingCnt[lStf]);
+            }
+
             // TODO: more robust reporting needed!
             //       which stfSenders did not send?
 
             lStfsToErase.push_back(lStfId);
+            requestDropAll(lStfId);
           }
-        }
-
-        for (const auto &lStfId : lStfsToErase) {
-          mConnManager.dropAllStfsAsync(lStfId);
-          mStfInfoMap.erase(lStfId);
         }
       }
 
       if (lStfsToErase.size() > 0) {
-        WDDLOG("TFs have been discarded due to incomplete number of STFs. discarded_tf_count={}", lStfsToErase.size());
+        WDDLOG("SchedulingThread: TFs have been discarded due to incomplete number of STFs. discarded_tf_count={}",
+          lStfsToErase.size());
       }
     }
 
@@ -201,6 +207,29 @@ void TfSchedulerStfInfo::SchedulingThread()
   DDDLOG("Exiting StfInfo Scheduling thread.");
 }
 
+void TfSchedulerStfInfo::DropThread()
+{
+
+  while (mRunning) {
+
+    std::tuple<std::uint64_t> lStfToDrop;
+
+    while (mDropQueue.pop(lStfToDrop)) {
+
+      const std::uint64_t lStfId = std::get<0>(lStfToDrop);
+
+      {
+        std::unique_lock lLock(mGlobalStfInfoLock);
+        mStfInfoMap.erase(lStfId);
+      }
+
+      mConnManager.dropAllStfsAsync(lStfId);
+    }
+
+  }
+  DDDLOG("Exiting StfInfo Scheduler stf drop thread.");
+}
+
 void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse)
 {
   static std::uint64_t sLastDropNotRunning = -1;
@@ -208,6 +237,9 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
 
   const auto lNumStfSenders = mDiscoveryConfig->status().stf_sender_count();
   const auto lStfId = pStfInfo.stf_id();
+
+  // catch all response
+  pResponse.set_status(SchedulerStfInfoResponse::DROP_SCHED_DISCARDED);
 
   // Drop not running
   if ((sLastDropNotRunning == lStfId) || !mRunning) {
@@ -217,32 +249,48 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
   }
 
   // DROP When not complete
-  if ((sLastDropIncomplete == lStfId) || (mConnManager.getStfSenderState() == StfSenderState::STF_SENDER_STATE_INCOMPLETE)) {
-    pResponse.set_status(SchedulerStfInfoResponse::DROP_STFS_INCOMPLETE);
+  if ((sLastDropIncomplete == lStfId) || (mConnManager.getStfSenderState() != StfSenderState::STF_SENDER_STATE_OK)) {
     sLastDropIncomplete = lStfId;
+    pResponse.set_status(SchedulerStfInfoResponse::DROP_STFS_INCOMPLETE);
+
+    // drop the remaining of this STFs if we transitioned to running
+    if (mConnManager.getStfSenderState() == StfSenderState::STF_SENDER_STATE_OK) {
+      requestDropAll(lStfId);
+    }
     return;
   }
 
   {
     std::unique_lock lLock(mGlobalStfInfoLock);
 
-    if (lStfId > mLastStfId + 200) {
-      DDDLOG("Received STFid is much larger than the currently processed TF id."
+    if (lStfId > mLastStfId + 220) { // 5s into the future
+      WDDLOG_RL(500, "TfScheduler: Received STFid is much larger than the currently processed TF id."
         " new_stf_id={} current_stf_id={} from_stf_sender={}", lStfId, mLastStfId, pStfInfo.info().process_id());
+
+      // we only accept these if mStfInfoMap is empty. Meaning the run was re-started.
+      if (!mStfInfoMap.empty()) {
+        pResponse.set_status(SchedulerStfInfoResponse::DROP_SCHED_DISCARDED);
+        requestDropAll(lStfId); // drop globally just in case other FLPs have it
+        return;
+      }
     }
 
     // Sanity check for delayed Stf info
     // TODO: define tolerable delay here
     const std::uint64_t lMaxDelayTf = sStfDiscardTimeout.count() * 44;
-    const auto lMinAccept = mLastStfId < lMaxDelayTf ? 0 : mLastStfId - lMaxDelayTf;
+    const std::uint64_t lMinAccept = mLastStfId < lMaxDelayTf ? 0 : (mLastStfId - lMaxDelayTf);
+
+    DDDLOG_GRL(5000, "TfScheduler: Currently accepting time frame ids. start_id={} current_id={}",
+      lMinAccept, mLastStfId);
 
     if ((lStfId < lMinAccept) && (mStfInfoMap.count(lStfId) == 0)) {
-      WDDLOG("Delayed or duplicate STF info. stf_id={} current_stf_id={} from_stf_sender={}",
+      WDDLOG_RL(1000, "TfScheduler: Delayed or duplicate STF info. stf_id={} current_stf_id={} from_stf_sender={}",
         lStfId, mLastStfId, pStfInfo.info().process_id());
 
       // TODO: discarded or scheduled?
-      // pResponse.set_status(SchedulerStfInfoResponse::DROP_SCHED_DISCARDED);
-      // return;
+      pResponse.set_status(SchedulerStfInfoResponse::DROP_SCHED_DISCARDED);
+      requestDropAll(lStfId);
+      return;
     }
 
     mLastStfId = std::max(mLastStfId, lStfId);

@@ -79,10 +79,14 @@ public:
     mRunning = true;
     // Start the scheduling thread
     mSchedulingThread = create_thread_member("sched_sched", &TfSchedulerStfInfo::SchedulingThread, this);
+
+    // Drop thread
+    mDropThread = create_thread_member("sched_drop", &TfSchedulerStfInfo::DropThread, this);
   }
 
   void stop() {
     mRunning = false;
+    mDropQueue.stop();
 
     {
       std::unique_lock lLock(mCompleteStfInfoLock);
@@ -94,12 +98,19 @@ public:
       mSchedulingThread.join();
     }
 
+    if (mDropThread.joinable()) {
+      mDropThread.join();
+    }
+
     // delete all stf information
+    std::unique_lock lLock(mGlobalStfInfoLock);
     mStfInfoMap.clear();
   }
 
   void SchedulingThread();
   void addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse);
+
+  void DropThread();
 
 private:
   /// Discard timeout for incomplete TFs
@@ -118,6 +129,11 @@ private:
   std::atomic_bool mRunning = false;
   std::thread mSchedulingThread;
 
+  /// Drop thread & queue
+  void requestDropAll(const std::uint64_t lStfId) { mDropQueue.push(std::make_tuple(lStfId));  }
+  ConcurrentFifo<std::tuple<std::uint64_t>> mDropQueue;
+  std::thread mDropThread;
+
   /// Stfs global info
   mutable std::mutex mGlobalStfInfoLock;
   std::map<std::uint64_t, std::vector<StfInfo>> mStfInfoMap;
@@ -127,7 +143,6 @@ private:
   mutable std::mutex mCompleteStfInfoLock;
   std::condition_variable mStfScheduleCondition;
   std::deque<std::vector<StfInfo>> mCompleteStfsInfo;
-
 };
 }
 } /* namespace o2::DataDistribution */
