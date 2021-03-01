@@ -85,7 +85,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
 
         // verify the memory estimation is correct
         if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory() ) {
-          DDDLOG("TfBuilder memory estimate is too high. tfb_id={:s} mem_estimate={f}", lTfBuilderId,
+          DDDLOG("TfBuilder memory estimate is too high. tfb_id={:s} mem_estimate={}", lTfBuilderId,
             (double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory())));
         }
 
@@ -97,7 +97,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
         if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory() ) {
 
           DDDLOG("Ignoring TfBuilder info (last_build < last_scheduled). Fixing the estimate ratio. "
-            "tfb_id={:s} new_mem_stimate={f}", lTfBuilderId,
+            "tfb_id={:s} new_mem_stimate={}", lTfBuilderId,
             (double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory())));
 
           lInfo->mEstimatedFreeMemory = pTfBuilderUpdate.free_memory();
