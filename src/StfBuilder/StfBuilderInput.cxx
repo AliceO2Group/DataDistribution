@@ -193,6 +193,22 @@ void StfInputInterface::StfBuilderThread()
   // Stf builder
   SubTimeFrameReadoutBuilder &lStfBuilder = *mStfBuilder;
 
+  // insert and mask the feeid
+  auto lInsertWitFeeIdMasking = [&lStfBuilder, lFeeIdMask] (const header::DataOrigin &pDataOrigin,
+    const header::DataHeader::SubSpecificationType &pSubSpec, const ReadoutSubTimeframeHeader &pRdoHeader,
+    const FairMQParts::iterator pStartHbf, const std::size_t pInsertCnt) {
+
+    // mask the subspecification if the fee mode is used
+    auto lMaskedSubspec = pSubSpec;
+    if (ReadoutDataUtils::SubSpecMode::eFeeId == ReadoutDataUtils::sRawDataSubspectype) {
+      lMaskedSubspec &= lFeeIdMask;
+    }
+
+    lStfBuilder.addHbFrames(pDataOrigin, lMaskedSubspec, pRdoHeader, pStartHbf, pInsertCnt);
+
+    return pInsertCnt;
+  };
+
   const auto cStfDataWaitFor = 2s;
 
   using hres_clock = std::chrono::high_resolution_clock;
@@ -323,8 +339,7 @@ void StfInputInterface::StfBuilderThread()
         if (lEndHbf == lReadoutMsgs.end()) {
           //insert the remaining span
           std::size_t lInsertCnt = (lEndHbf - lStartHbf);
-          lStfBuilder.addHbFrames(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
-          lAdded += lInsertCnt;
+          lAdded += lInsertWitFeeIdMasking(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
           break;
         }
 
@@ -333,7 +348,7 @@ void StfInputInterface::StfBuilderThread()
           const auto Rend = RDHReader(*lEndHbf);
           lNewSubSpec = ReadoutDataUtils::getSubSpecification(Rend);
         } catch (RDHReaderException &e) {
-          EDDLOG(e.what());
+          EDDLOG_RL(1000, e.what());
           // TODO: portion of the ReadoutMsg is discarded. Account and report the data size.
           lErrorWhileAdding = true;
           break;
@@ -344,13 +359,7 @@ void StfInputInterface::StfBuilderThread()
             " block[0]_subspec={:#06x}, block[{}]_subspec={:#06x}",
             lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
           // insert
-          auto lMaskedSubspec = lSubSpecification;
-          if (ReadoutDataUtils::sRawDataSubspectype == ReadoutDataUtils::SubSpecMode::eFeeId) {
-            lMaskedSubspec &= lFeeIdMask;
-          }
-
-          lStfBuilder.addHbFrames(lDataOrigin, lMaskedSubspec, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
-          lAdded += (lEndHbf - lStartHbf);
+          lAdded += lInsertWitFeeIdMasking(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
           lStartHbf = lEndHbf;
 
           lSubSpecification = lNewSubSpec;
