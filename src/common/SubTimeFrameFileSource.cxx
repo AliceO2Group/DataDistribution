@@ -18,8 +18,10 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string/trim.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/process.hpp>
 
 #include <chrono>
 #include <ctime>
@@ -33,12 +35,17 @@ namespace DataDistribution
 
 namespace bpo = boost::program_options;
 namespace bfs = boost::filesystem;
+namespace bp = boost::process;
 
 using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// SubTimeFrameFileSource
 ////////////////////////////////////////////////////////////////////////////////
+
+std::mutex SubTimeFrameFileSource::StfFileMeta::sLiveFilesLock;
+std::map<std::size_t, std::shared_ptr<SubTimeFrameFileSource::StfFileMeta>> SubTimeFrameFileSource::StfFileMeta::mLiveFiles;
+
 
 void SubTimeFrameFileSource::start(MemoryResources &pMemRes, const bool pDplEnabled)
 {
@@ -54,8 +61,9 @@ void SubTimeFrameFileSource::start(MemoryResources &pMemRes, const bool pDplEnab
 
     mRunning = true;
 
-    mInjectThread = create_thread_member("stf_file_inject", &SubTimeFrameFileSource::DataInjectThread, this);
+    mFetchThread = create_thread_member("stf_file_fetch", &SubTimeFrameFileSource::DataFetcherThread, this);
     mSourceThread = create_thread_member("stf_file_read", &SubTimeFrameFileSource::DataHandlerThread, this);
+    mInjectThread = create_thread_member("stf_file_inject", &SubTimeFrameFileSource::DataInjectThread, this);
   }
 }
 
@@ -67,8 +75,14 @@ void SubTimeFrameFileSource::stop()
     mFileBuilder->stop();
   }
 
+  mInputFileQueue.stop();
+
   mReadStfQueue.stop();
   mReadStfQueue.flush();
+
+  if (mFetchThread.joinable()) {
+    mFetchThread.join();
+  }
 
   if (mSourceThread.joinable()) {
     mSourceThread.join();
@@ -76,6 +90,15 @@ void SubTimeFrameFileSource::stop()
 
   if (mInjectThread.joinable()) {
     mInjectThread.join();
+  }
+
+  // make sure we delete the cache
+  if (!mLocalFiles && boost::contains(mCopyDstPath.native(), "dd-tmp-tfs")) {
+    try {
+      bfs::remove_all(mCopyDstPath);
+    } catch (...) {
+      WDDLOG("(Sub)TimeFrame file source: could not remove tf file cache. directory={}", mCopyDstPath.native());
+    }
   }
 }
 
@@ -107,7 +130,16 @@ bpo::options_description SubTimeFrameFileSource::getProgramOptions()
     OptionKeyStfHeadersRegionSize,
     bpo::value<std::uint64_t>()->default_value(256),
     "Size of the memory region for (Sub)TimeFrames O2 headers in MiB. "
-    "Note: make sure the region can fit several (Sub)TimeFrames to avoid deadlocks.");
+    "Note: make sure the region can fit several (Sub)TimeFrames to avoid deadlocks.")(
+    OptionKeyStfFileList,
+    bpo::value<std::string>()->default_value(""),
+    "File name which contains the list of files at remote location, e.g. a list of files on EOS, or a remote server. "
+    "Note: the copy command must be provided.")(
+    OptionKeyStfCopyCmd,
+    bpo::value<std::string>()->default_value(""),
+    "Copy command to be used to fetch remote files. NOTE: Placeholders for source and destination file name "
+    "(?src and ?dst) must be specified. E.g. \"scp user@my-server:?src ?dst\". Source placeholder will be "
+    "substituted with files provided in the file-list option.");
 
   return lSinkDesc;
 }
@@ -119,9 +151,11 @@ std::vector<std::string> SubTimeFrameFileSource::getDataFileList() const
   // Remove side-car files
   auto lRemIt = std::remove_if(lFilesVector.begin(), lFilesVector.end(),
     [](const std::string &lElem) {
-      bool lToRemove =  boost::ends_with(lElem, ".info") || boost::ends_with(lElem, ".sh") || boost::starts_with(lElem, ".");
 
-      DDDLOG("Checking if should remove file: {} ? {}", lElem, (lToRemove ? "yes" : "no"));
+      const auto lFileName = bfs::path(lElem).filename().native();
+
+      bool lToRemove = !boost::ends_with(lFileName, ".tf") || boost::starts_with(lFileName, ".");
+      DDDLOG("Checking if should remove file: {} ? {}", lFileName, (lToRemove ? "yes" : "no"));
       return lToRemove;
     }
   );
@@ -142,16 +176,13 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
   }
 
   mDir = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSourceDir);
-  if (mDir.empty()) {
-    EDDLOG("(Sub)TimeFrame file source directory must be specified.");
-    return false;
-  }
-
-  // make sure directory exists and it is readable
-  bfs::path lDirPath(mDir);
-  if (!bfs::is_directory(lDirPath)) {
-    EDDLOG("(Sub)TimeFrame file source directory does not exist.");
-    return false;
+  if (!mDir.empty()) {
+    // make sure directory exists and it is readable
+    bfs::path lDirPath(mDir);
+    if (!bfs::is_directory(lDirPath)) {
+      EDDLOG("(Sub)TimeFrame file source directory does not exist.");
+      return false;
+    }
   }
 
   mRepeat = pFMQProgOpt.GetValue<bool>(OptionKeyStfSourceRepeat);
@@ -160,9 +191,76 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
   mRegionSizeMB = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSourceRegionSize);
   mHdrRegionSizeMB = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfHeadersRegionSize);
 
-  mFilesVector = getDataFileList();
-  if (mFilesVector.empty()) {
-    EDDLOG("(Sub)TimeFrame directory contains no data files.");
+  mCopyFileList = pFMQProgOpt.GetValue<std::string>(OptionKeyStfFileList);
+  mCopyCmd = pFMQProgOpt.GetValue<std::string>(OptionKeyStfCopyCmd);
+
+  // initialize file fetcher
+  if (!mCopyFileList.empty() && !mCopyCmd.empty()) {
+
+    if (!mDir.empty()) {
+      EDDLOG("(Sub)TimeFrame file source: specifying both the directory, and the file copy options is not supported.");
+      return false;
+    }
+    mLocalFiles = false;
+
+    try {
+      // check copy command
+      if (!boost::contains(mCopyCmd, "?src") || !boost::contains(mCopyCmd, "?dst")) {
+        EDDLOG("(Sub)TimeFrame file source: copy command does not containt ?src and ?dst placeholders.");
+        return false;
+      }
+
+      // check copy file list
+      bfs::path lFileList(mCopyFileList);
+      if (!bfs::is_regular_file(lFileList) || bfs::is_empty(lFileList)) {
+        EDDLOG("(Sub)TimeFrame file source: File list does not exist or empty");
+        return false;
+      }
+
+      // load the file list
+      std::ifstream lCopyFile(mCopyFileList);
+      if (!lCopyFile) {
+        EDDLOG("(Sub)TimeFrame file source: cannot open {}.", mCopyFileList);
+        return false;
+      }
+
+      mFilesVector.clear();
+      std::string lLine;
+      while (std::getline(lCopyFile, lLine)) {
+        boost::algorithm::trim(lLine);
+
+        if (lLine.empty()) {
+          continue;
+        }
+        mFilesVector.emplace_back(lLine);
+      }
+
+      if (mFilesVector.empty()) {
+        EDDLOG("(Sub)TimeFrame file source: no files found in {}.", mCopyFileList);
+        return false;
+      }
+
+      const auto lCopyDstPath = bfs::temp_directory_path() / "dd-tmp-tfs" / bfs::unique_path("%%%%");
+      bfs::create_directories(lCopyDstPath);
+      mCopyDstPath = lCopyDstPath.native();
+      // location of log file
+      mCopyCmdLogFile = (lCopyDstPath / "copy-cmd.log").native();
+
+    } catch (...) {
+      EDDLOG("(Sub)TimeFrame file source: setting up file copy failed. Check the provided options.");
+      return false;
+    }
+  } else if (!mDir.empty()) {
+
+    // Local directory files
+    mLocalFiles = true;
+    mFilesVector = getDataFileList();
+    if (mFilesVector.empty()) {
+      EDDLOG("(Sub)TimeFrame directory contains no data files.");
+      return false;
+    }
+  } else {
+    EDDLOG("(Sub)TimeFrame file source: TF location not specified.");
     return false;
   }
 
@@ -178,7 +276,13 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
 
   // print options
   IDDLOG("(Sub)TimeFrame source :: enabled                 = {}", (mEnabled ? "yes" : "no"));
-  IDDLOG("(Sub)TimeFrame source :: directory               = {}", mDir);
+  IDDLOG("(Sub)TimeFrame source :: file location           = {}", (mLocalFiles ? "local" : "remote"));
+  if (mLocalFiles) {
+    IDDLOG("(Sub)TimeFrame source :: directory               = {}", mDir);
+  } else {
+    IDDLOG("(Sub)TimeFrame source :: file list               = {}", mCopyFileList);
+    IDDLOG("(Sub)TimeFrame source :: copy command            = {}", mCopyCmd);
+  }
   IDDLOG("(Sub)TimeFrame source :: (s)tf load rate         = {}", mLoadRate);
   IDDLOG("(Sub)TimeFrame source :: (s)tf pre reads         = {}", mPreReadStfs);
   IDDLOG("(Sub)TimeFrame source :: repeat data             = {}", mRepeat);
@@ -188,6 +292,138 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
 
   return true;
 }
+
+// Fetch copy files if needed
+void SubTimeFrameFileSource::DataFetcherThread()
+{
+  std::size_t lFileIndex = std::size_t(-1);
+  std::uint64_t lFileErrors = 0;
+  std::uint64_t lTotalFiles = 0;
+
+  while (mRunning && lFileErrors < 10) {
+    if (mInputFileQueue.size() > 4) {
+      std::this_thread::sleep_for(5ms);
+      continue;
+    }
+
+    // get the next list
+    if (lTotalFiles >= mFilesVector.size() && !mRepeat) {
+      IDDLOG("(Sub)TimeFrame source: finished loading all files. Waiting for injecting to complete.");
+      break;
+    }
+
+    // make sure we progress on errors
+    lFileIndex = (lFileIndex + 1) % mFilesVector.size();
+    lTotalFiles++;
+
+    if (mLocalFiles) {
+      // simply forward
+      mInputFileQueue.push(std::make_shared<StfFileMeta>(lFileIndex, mFilesVector[lFileIndex]));
+    } else {
+      // check if the file already exists in the cache
+      auto lExisting = StfFileMeta::getExistingInstance(lFileIndex);
+      if (lExisting) {
+        mInputFileQueue.push(lExisting.value());
+      } else {
+        // run the copy command
+        const auto lDstFileName = mCopyDstPath /
+          ("cache-" + std::to_string(lFileIndex) + "-" + bfs::path(mFilesVector[lFileIndex]).filename().native());
+
+        auto lRealCmd = boost::replace_all_copy(mCopyCmd, "?src", mFilesVector[lFileIndex]);
+        boost::replace_all(lRealCmd, "?dst", lDstFileName.native());
+
+        std::vector<std::string> lCopyParams { "-c", lRealCmd };
+        bp::child lCopyChild(bp::search_path("sh"), lCopyParams, bp::std_err > mCopyCmdLogFile,
+          bp::std_out > mCopyCmdLogFile);
+
+        while (!lCopyChild.wait_for(5s)) {
+          IDDLOG("(Sub)TimeFrame source: waiting for copy command. cmd='{}'", lRealCmd);
+        }
+
+        const auto lSysRet = lCopyChild.exit_code();
+        if (lSysRet != 0) {
+          WDDLOG_RL(1000, "(Sub)TimeFrame source: copy command returned non-zero exit code. cmd='{}' exit_code={}",
+            lRealCmd, lSysRet);
+        }
+
+        if (!bfs::is_regular_file(lDstFileName) || bfs::is_empty(lDstFileName)) {
+          EDDLOG("(Sub)TimeFrame source: copy command failed to fetch the file. stc_file={} dst_file={}.",
+            mFilesVector[lFileIndex], lDstFileName.native());
+          lFileErrors++;
+          continue;
+        }
+
+        auto lNewFile = std::make_shared<StfFileMeta>(lFileIndex, lDstFileName.native(), true /* delete after done */);
+        StfFileMeta::insertExistingInstance(lFileIndex, lNewFile);
+        mInputFileQueue.push(lNewFile);
+      }
+    }
+  }
+
+  // close the file queue to signal the next thread to exit
+  mInputFileQueue.stop();
+  DDDLOG("Exiting file provider thread...");
+}
+
+/// File reading thread
+void SubTimeFrameFileSource::DataHandlerThread()
+{
+  // inject rate
+  const std::chrono::microseconds lIntervalUs(mLoadRate > 0. ? unsigned(1000000. / mLoadRate) : 0);
+
+  while (mRunning) {
+
+    std::shared_ptr<StfFileMeta> lMyFile;
+    if (!mRunning || !mInputFileQueue.pop(lMyFile)) {
+      IDDLOG("(Sub)TimeFrame Source: Finished reading all input files. Exiting...");
+      break;
+    }
+    assert(lMyFile);
+
+    DDDLOG_RL(5000, "(Sub)TimeFrame Source: reading new file={}", lMyFile->mFilePath);
+    auto lFileNameAbs = bfs::path(lMyFile->mFilePath);
+    SubTimeFrameFileReader lStfReader(lFileNameAbs);
+
+    try {
+      // load multiple TF per file
+      while (mRunning) {
+        // read STF from file
+        auto lStfPtr = lStfReader.read(*mFileBuilder);
+
+        if (mRunning && lStfPtr) {
+          // adapt Stf headers for different output channels, native or DPL
+          mFileBuilder->adaptHeaders(lStfPtr.get());
+          if (!mReadStfQueue.push(std::move(lStfPtr))) {
+            break;
+          }
+
+        } else {
+          // bad file?
+          break; // EOF or !running
+        }
+
+        // Limit read-ahead
+        while (mRunning && (mReadStfQueue.size() >= mPreReadStfs)) {
+          std::this_thread::sleep_for(mPaused ? lIntervalUs : (lIntervalUs / 10));
+        }
+      }
+    } catch (...) {
+      EDDLOG("(Sub)TimeFrame Source: error while reading (S)TFs from file. file={} file_idx={}",
+        lMyFile->mFilePath, lMyFile->mIdx);
+    }
+
+    // make sure we release the file first befor put call
+    const auto lIdx = lMyFile->mIdx;
+    lMyFile.reset();
+    StfFileMeta::putExistingInstance(lIdx);
+  }
+
+  // notify the injection thread to stop
+  mReadStfQueue.stop();
+
+  DDDLOG("Exiting file source data load thread...");
+}
+
 
 /// STF injecting thread
 void SubTimeFrameFileSource::DataInjectThread()
@@ -244,67 +480,7 @@ void SubTimeFrameFileSource::DataInjectThread()
 
   mPipelineI.close(mPipelineStageOut);
 
-  IDDLOG("Exiting file source inject thread...");
-}
-
-/// File reading thread
-void SubTimeFrameFileSource::DataHandlerThread()
-{
-  // inject rate
-  const std::chrono::microseconds lIntervalUs(mLoadRate > 0. ? unsigned(1000000. / mLoadRate) : 0);
-  // Load the sorted list of StfFiles if empty
-  if (mFilesVector.empty()) {
-    mFilesVector = getDataFileList();
-  }
-
-  while (mRunning) {
-
-    if (mFilesVector.empty()) {
-      EDDLOG("(Sub)TimeFrame directory contains no data files.");
-      break;
-    }
-
-    for (const auto &lFileName : mFilesVector) {
-      if (!mRunning) {
-        break; // stop looping over files
-      }
-
-      auto lFileNameAbs = bfs::path(mDir) / bfs::path(lFileName);
-      SubTimeFrameFileReader lStfReader(lFileNameAbs);
-
-      while (mRunning) {
-        // read STF from file
-        auto lStfPtr = lStfReader.read(*mFileBuilder);
-
-        if (mRunning && lStfPtr) {
-          // adapt Stf headers for different output channels, native or DPL
-          mFileBuilder->adaptHeaders(lStfPtr.get());
-          if (!mReadStfQueue.push(std::move(lStfPtr))) {
-            break;
-          }
-
-        } else {
-          // bad file?
-          break; // EOF or !running
-        }
-
-        // Limit read-ahead
-        while (mRunning && (mReadStfQueue.size() >= mPreReadStfs)) {
-          std::this_thread::sleep_for(mPaused ? lIntervalUs : (lIntervalUs / 10));
-        }
-      }
-    }
-
-    if (!mRepeat) {
-      IDDLOG("(Sub)TimeFrame Source: Finished reading all input files. Exiting...");
-      break;
-    }
-  }
-
-  // notify the injection thread to stop
-  mReadStfQueue.stop();
-
-  IDDLOG("Exiting file source data load thread...");
+  DDDLOG("Exiting file source inject thread...");
 }
 
 }
