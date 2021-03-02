@@ -20,6 +20,7 @@
 #include "DataDistLogger.h"
 
 #include <boost/program_options/options_description.hpp>
+#include <boost/filesystem.hpp>
 
 #include <fstream>
 #include <vector>
@@ -41,6 +42,57 @@ class SubTimeFrameFileSource
 {
   using stf_pipeline = IFifoPipeline<std::unique_ptr<SubTimeFrame>>;
 
+  struct StfFileMeta {
+    static std::mutex sLiveFilesLock;
+    static std::map<std::size_t, std::shared_ptr<StfFileMeta>> mLiveFiles;
+
+    static std::optional<std::shared_ptr<StfFileMeta>> getExistingInstance(const std::size_t pIdx) {
+      std::scoped_lock lLock(sLiveFilesLock);
+      if (mLiveFiles.count(pIdx) == 1) {
+        return mLiveFiles[pIdx];
+      }
+
+      return std::nullopt;
+    }
+
+    static void insertExistingInstance(const std::size_t pIdx, std::shared_ptr<StfFileMeta> pFile) {
+      std::scoped_lock lLock(sLiveFilesLock);
+      assert (mLiveFiles.count(pIdx) == 0);
+      mLiveFiles[pIdx] = pFile;
+    }
+
+    static void putExistingInstance(const std::size_t pIdx) {
+      std::scoped_lock lLock(sLiveFilesLock);
+
+      // The cache will not have an entry for local files
+      // assert( mLiveFiles.count(pIdx) == 1 );
+
+      if (mLiveFiles.count(pIdx) == 1) {
+        if (mLiveFiles[pIdx].use_count() == 1) {
+          mLiveFiles.erase(pIdx);
+        }
+      }
+    }
+
+    StfFileMeta() = delete;
+    StfFileMeta(const std::size_t pIdx, const std::string &pPath, bool pDelete = false)
+    : mFilePath(pPath), mIdx(pIdx), mDeleteMe(pDelete) { }
+
+    StfFileMeta(const StfFileMeta &) = delete;
+
+    ~StfFileMeta() {
+      if (mDeleteMe) {
+        try {
+          boost::filesystem::remove(mFilePath);
+        } catch(...) { }
+      }
+    }
+
+    std::string mFilePath;
+    std::size_t mIdx;
+    bool mDeleteMe;
+  };
+
  public:
   static constexpr const char* OptionKeyStfSourceEnable = "data-source-enable";
   static constexpr const char* OptionKeyStfSourceDir = "data-source-dir";
@@ -49,6 +101,9 @@ class SubTimeFrameFileSource
   static constexpr const char* OptionKeyStfSourceRepeat = "data-source-repeat";
   static constexpr const char* OptionKeyStfSourceRegionSize = "data-source-regionsize";
   static constexpr const char* OptionKeyStfHeadersRegionSize = "data-source-headersize";
+
+  static constexpr const char* OptionKeyStfFileList = "data-source-file-list";
+  static constexpr const char* OptionKeyStfCopyCmd = "data-source-copy-cmd";
 
 
   static bpo::options_description getProgramOptions();
@@ -78,6 +133,7 @@ class SubTimeFrameFileSource
   void resume() { mPaused = false; }
   void stop();
 
+  void DataFetcherThread();
   void DataHandlerThread();
   void DataInjectThread();
 
@@ -87,12 +143,22 @@ class SubTimeFrameFileSource
   unsigned mPipelineStageOut;
   std::unique_ptr<SubTimeFrameFileBuilder> mFileBuilder;
 
+  /// File feed pipe
+  ConcurrentFifo<std::shared_ptr<StfFileMeta>> mInputFileQueue;
+
   /// Configuration
   bool mEnabled = false;
   bool mDplEnabled = false;
   std::string mDir;
   std::vector<std::string> mFilesVector;
   bool mRepeat = false;
+  bool mLocalFiles = true;
+
+  std::string mCopyFileList;
+  std::string mCopyCmd;
+  std::string mCopyCmdLogFile;
+  boost::filesystem::path mCopyDstPath;
+
   double mLoadRate = 1.f;
   std::uint32_t mPreReadStfs = 1;
   std::size_t mRegionSizeMB = 1024; /* 1GB in MiB */
@@ -102,6 +168,8 @@ class SubTimeFrameFileSource
   std::atomic_bool mRunning = false;
   std::atomic_bool mPaused = false;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mReadStfQueue;
+
+  std::thread mFetchThread;
   std::thread mSourceThread;
   std::thread mInjectThread;
 };

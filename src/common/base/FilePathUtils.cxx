@@ -127,9 +127,9 @@ std::vector<std::string> FilePathUtils::getAllFiles(const std::string& pDir)
 
   for (auto& entry : boost::make_iterator_range(fsb::directory_iterator(pDir), {})) {
 
-    const std::string lBaseName = entry.path().filename().string();
+    const std::string lFileName = entry.path().native();
     if (is_regular_file(entry.path())) {
-      lFileNames.push_back(lBaseName);
+      lFileNames.push_back(lFileName);
     }
   }
 

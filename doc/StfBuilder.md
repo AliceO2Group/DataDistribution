@@ -29,15 +29,8 @@ to files, before they are sent out.
 :   Log severity level: trace, debug, info, state, warn, error, fatal, nolog.
     The default value of this parameter is '*debug*'.
 
-**--verbosity** level
-:   Log verbosity level: veryhigh, high, medium, low.
-    The default value of this parameter is '*medium*'.
-
-**--color** arg
-:   Log color (true/false). The default value of this parameter is '*1*'.
-
-**--print-options** [arg]
-:   Print options.  The default value of this parameter is '*1*'.
+**--severity-infologger** arg (=warning)
+:   Minimum severity to send to InfoLoggerD.
 
 
 ## FairMQ device options
@@ -152,6 +145,9 @@ to files, before they are sent out.
 **--data-source-rate** arg (=1.0)
 :   Rate of injecting new (Sub)TimeFrames (approximate). Use -1 to inject as fast as possible. (float)
 
+**--data-source-preread** arg (=1)
+:   Number of pre-read (Sub)TimeFrames prepared for sending. Must be greater or equal to 1.
+
 **--data-source-repeat**
 :   If enabled, repeatedly inject (Sub)TimeFrames into the chain.
 
@@ -159,11 +155,23 @@ to files, before they are sent out.
 :   Size of the memory region for (Sub)TimeFrames data in MiB. Note: make sure the
     region can fit several (Sub)TimeFrames to avoid deadlocks.
 
+**--data-source-headersize** arg (=512)
+:   Size of the memory region for (Sub)TimeFrames O2 headers in MiB. Note: make
+    sure the region can fit several (Sub)TimeFrames to avoid deadlocks.
+
+**--data-source-file-list** arg
+:   File name which contains the list of files at remote location, e.g. a list of
+    files on EOS, or a remote server. Note: copy-cmd parameter must be provided.
+
+**--data-source-copy-cmd** arg
+:   Copy command to be used to fetch remote files. NOTE: Placeholders for source
+    and destination file name (?src and ?dst) must be specified.
+    E.g. "scp user@my-server:?src ?dst".
+    Source placeholder will be substituted with files provided by the file-list option.
+
 # NOTES
 
 To enable zero-copy operation using shared memory, make sure the parameter **--transport** is set
 to '*shmem*' and that all input and output channels are of '*shmem*' type as well. Also, consider
 setting the **--io-threads** parameter to a value equal to, or lower than, the number of CPU cores
 on your system.
-
-

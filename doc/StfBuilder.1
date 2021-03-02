@@ -32,21 +32,8 @@ The default value of this parameter is \[aq]\f[I]debug\f[]\[aq].
 .RS
 .RE
 .TP
-.B \f[B]\-\-verbosity\f[] level
-Log verbosity level: veryhigh, high, medium, low.
-The default value of this parameter is \[aq]\f[I]medium\f[]\[aq].
-.RS
-.RE
-.TP
-.B \f[B]\-\-color\f[] arg
-Log color (true/false).
-The default value of this parameter is \[aq]\f[I]1\f[]\[aq].
-.RS
-.RE
-.TP
-.B \f[B]\-\-print\-options\f[] [arg]
-Print options.
-The default value of this parameter is \[aq]\f[I]1\f[]\[aq].
+.B \f[B]\-\-severity\-infologger\f[] arg (=warning)
+Minimum severity to send to InfoLoggerD.
 .RS
 .RE
 .SS FairMQ device options
@@ -219,6 +206,12 @@ Use \-1 to inject as fast as possible.
 .RS
 .RE
 .TP
+.B \f[B]\-\-data\-source\-preread\f[] arg (=1)
+Number of pre\-read (Sub)TimeFrames prepared for sending.
+Must be greater or equal to 1.
+.RS
+.RE
+.TP
 .B \f[B]\-\-data\-source\-repeat\f[]
 If enabled, repeatedly inject (Sub)TimeFrames into the chain.
 .RS
@@ -228,6 +221,31 @@ If enabled, repeatedly inject (Sub)TimeFrames into the chain.
 Size of the memory region for (Sub)TimeFrames data in MiB.
 Note: make sure the region can fit several (Sub)TimeFrames to avoid
 deadlocks.
+.RS
+.RE
+.TP
+.B \f[B]\-\-data\-source\-headersize\f[] arg (=512)
+Size of the memory region for (Sub)TimeFrames O2 headers in MiB.
+Note: make sure the region can fit several (Sub)TimeFrames to avoid
+deadlocks.
+.RS
+.RE
+.TP
+.B \f[B]\-\-data\-source\-file\-list\f[] arg
+File name which contains the list of files at remote location, e.g.
+a list of files on EOS, or a remote server.
+Note: copy\-cmd parameter must be provided.
+.RS
+.RE
+.TP
+.B \f[B]\-\-data\-source\-copy\-cmd\f[] arg
+Copy command to be used to fetch remote files.
+NOTE: Placeholders for source and destination file name (?src and ?dst)
+must be specified.
+E.g.
+"scp user\@my\-server:?src ?dst".
+Source placeholder will be substituted with files provided by the
+file\-list option.
 .RS
 .RE
 .SH NOTES
