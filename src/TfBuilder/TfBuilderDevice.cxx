@@ -18,6 +18,7 @@
 
 #include <ConfigConsul.h>
 #include <SubTimeFrameDPL.h>
+#include <Framework/SourceInfoHeader.h>
 
 #include <chrono>
 #include <thread>
@@ -298,6 +299,29 @@ void TfBuilderDevice::TfForwardThread()
     // TODO: move this close to the output channel send to have more precise accounting of free memory
     //       or, get the memory status directly from shm region
     mRpc->recordTfForwarded(lTfId);
+  }
+
+  // leaving the output thread, send end of the stream info
+  if (!mStandalone && dplEnabled()) {
+    o2::framework::SourceInfoHeader lDplExitHdr;
+    lDplExitHdr.state = o2::framework::InputChannelState::Completed;
+    auto lDoneStack = o2::header::Stack(
+      o2::header::DataHeader(o2::header::gDataDescriptionInfo, o2::header::gDataOriginAny, 0, 0),
+      o2::framework::DataProcessingHeader(),
+      lDplExitHdr
+    );
+
+    // Send a multipart
+    auto& lOutputChan = GetChannel(getDplChannelName(), 0);
+    FairMQParts lCompletedMsg;
+    auto lNoFree = [](void*, void*) { /* stack */ };
+    lCompletedMsg.AddPart(lOutputChan.NewMessage(lDoneStack.data(), lDoneStack.size(), lNoFree));
+    lCompletedMsg.AddPart(lOutputChan.NewMessage());
+    lOutputChan.Send(lCompletedMsg);
+
+    IDDLOG("Source Completed message sent to DPL.");
+    // NOTE: no guarantees this will be sent out
+    std::this_thread::sleep_for(2s);
   }
 
   IDDLOG("Exiting TF forwarding thread.");
