@@ -369,7 +369,7 @@ void StfBuilderDevice::StfOutputThread()
     lCompletedMsg.AddPart(lOutputChan.NewMessage());
     lOutputChan.Send(lCompletedMsg);
 
-    IDDLOG("Sent Source Completed message to DPL.");
+    IDDLOG("Source Completed message sent to DPL.");
     // NOTE: no guarantees this will be sent out
     std::this_thread::sleep_for(2s);
   }
