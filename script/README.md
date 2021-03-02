@@ -45,3 +45,10 @@ o2-dpl-raw-proxy -b --dataspec "B:TPC/RAWDATA" --channel-config "name=readout-pr
 ```
 
 Make sure that only a single instance of the proxy is started.
+
+
+
+## Tunable options
+
+  - `DATADIST_FEE_MASK=0xffff`  Apply the mask if StfBuilder is configured to use the FeeID field as a O2::Subspecification (O2::Subspec = (RDH::FeeID & DATADIST_FEE_MASK))
+
