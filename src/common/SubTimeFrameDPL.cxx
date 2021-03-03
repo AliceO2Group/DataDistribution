@@ -65,29 +65,29 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
     mMessages.emplace_back(std::move(lDataMsg));
   }
 
-  for (auto& lDataIdentMapIter : pStf.mData) {
+  // Send data in lexicographical order of DataIdentifier + subSpecification
+  // for easier binary comparison
+  std::vector<EquipmentIdentifier> lEquipIds = pStf.getEquipmentIdentifiers();
+  std::sort(std::begin(lEquipIds), std::end(lEquipIds));
 
-    auto &lSubSpecDataMap = lDataIdentMapIter.second;
+  for (const auto& lEquip : lEquipIds) {
 
-    for (auto& lSubSpecMapIter : lSubSpecDataMap) {
+    auto& lHBFrameVector = pStf.mData.at(lEquip).at(lEquip.mSubSpecification);
 
-      auto & lHBFrameVector = lSubSpecMapIter.second;
+    for (std::size_t i = 0; i < lHBFrameVector.size(); i++) {
 
-      for (uint64_t i = 0; i < lHBFrameVector.size(); i++) {
+      // O2 messages belonging to a single STF:
+      //  - DataProcessingHeader::startTime == STF ID
+      //  - DataHeader(origin, description, subspecification) can repeat
+      //  - DataHeader(origin, description, subspecification, splitPayloadIndex) is unique
 
-        // O2 messages belonging to a single STF:
-        //  - DataProcessingHeader::startTime == STF ID
-        //  - DataHeader(origin, description, subspecification) can repeat
-        //  - DataHeader(origin, description, subspecification, splitPayloadIndex) is unique
+      assert(lHBFrameVector[i].getDataHeader().splitPayloadIndex == i);
+      assert(lHBFrameVector[i].getDataHeader().splitPayloadParts == lHBFrameVector.size());
 
-        assert(lHBFrameVector[i].getDataHeader().splitPayloadIndex == i);
-        assert(lHBFrameVector[i].getDataHeader().splitPayloadParts == lHBFrameVector.size());
-
-        mMessages.emplace_back(std::move(lHBFrameVector[i].mHeader));
-        mMessages.emplace_back(std::move(lHBFrameVector[i].mData));
-      }
-      lHBFrameVector.clear();
+      mMessages.emplace_back(std::move(lHBFrameVector[i].mHeader));
+      mMessages.emplace_back(std::move(lHBFrameVector[i].mData));
     }
+    lHBFrameVector.clear();
   }
 }
 
