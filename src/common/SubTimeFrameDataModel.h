@@ -230,6 +230,10 @@ class SubTimeFrame : public IDataModelObject
 
   struct StfData {
 
+    StfData() = delete;
+    StfData(std::unique_ptr<FairMQMessage> &&pHdr, std::unique_ptr<FairMQMessage> &&pData)
+    : mHeader(std::move(pHdr)), mData(std::move(pData)) { }
+
     std::unique_ptr<FairMQMessage> mHeader;
     std::unique_ptr<FairMQMessage> mData;
 
@@ -371,7 +375,7 @@ private:
     const o2hdr::DataIdentifier lDataId = impl::getDataIdentifier(pDataHeader);
     auto& lDataVector = mData[lDataId][pDataHeader.subSpecification];
 
-    lDataVector.emplace_back(std::move(pStfData));
+    lDataVector.push_back(std::move(pStfData));
     mUpdated = false;
   }
 

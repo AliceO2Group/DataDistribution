@@ -56,7 +56,7 @@ std::vector<EquipmentIdentifier> SubTimeFrame::getEquipmentIdentifiers() const
 
   for (const auto& lDataIdentMapIter : mData) {
     for (const auto& lSubSpecMapIter : lDataIdentMapIter.second) {
-      lKeys.emplace_back(EquipmentIdentifier(lDataIdentMapIter.first, lSubSpecMapIter.first));
+      lKeys.emplace_back(lDataIdentMapIter.first, lSubSpecMapIter.first);
     }
   }
 

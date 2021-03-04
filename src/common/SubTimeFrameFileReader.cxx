@@ -310,11 +310,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
       EDDLOG("Error getting RDHReader instace. Not setting firstOrbit for file data");
     }
 
-    mStfData.emplace_back(
-      SubTimeFrame::StfData{
-        std::move(lHdrStackMsg),
-        std::move(lDataMsg) }
-    );
+    mStfData.emplace_back(std::move(lHdrStackMsg), std::move(lDataMsg));
 
     // update the counter
     lLeftToRead -= (lDataHeaderStackSize + lDataSize);

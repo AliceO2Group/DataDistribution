@@ -138,7 +138,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
         const auto lNow = std::chrono::system_clock::now();
         const auto lTimeDiff = std::chrono::abs(lNow - lInfo->mUpdateLocalTime);
         if (lTimeDiff >= sTfBuilderDiscardTimeout) {
-          lIdsToErase.emplace_back(lInfo->mTfBuilderUpdate.info().process_id());
+          lIdsToErase.push_back(lInfo->mTfBuilderUpdate.info().process_id());
         }
 
         DDDLOG("TfBuilder information: tfb_id={:s} free_memory={:d} num_buffered_tfs={:d}",

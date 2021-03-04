@@ -117,7 +117,7 @@ void CruLinkEmulator::linkReadoutThread()
               std::memcpy(lRdh+12, &lEquipment, sizeof(std::uint32_t));
             }
 
-            linkO2Data.mLinkRawData.emplace_back(CruDmaPacket{
+            linkO2Data.mLinkRawData.push_back(CruDmaPacket{
               mMemHandler->getDataRegion(),
               sp.mDataVirtualAddress + (d * mDmaChunkSize),        // Valid data DMA Chunk <superpage offset + length>
               mDmaChunkSize /* - (rand() % (mDmaChunkSize / 10))*/ // This should be taken from desc->mRawDataSize (filled by the CRU)

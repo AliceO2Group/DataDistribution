@@ -92,7 +92,7 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
     lSocket.set_idx(lSocketIdx);
     lSocket.set_endpoint(lAddress);
 
-    mStfSenderChannels.emplace_back(std::move(lNewChannel));
+    mStfSenderChannels.push_back(std::move(lNewChannel));
   }
 
   if (pConfig->write()) {
@@ -274,7 +274,7 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
       // Push the STF into the merger queue
       std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
 
-      mStfMergeMap[lTfId].emplace_back(std::move(lStf));
+      mStfMergeMap[lTfId].push_back(std::move(lStf));
       mStfCount++;
 
       if (mStfMergeMap[lTfId].size() == mNumStfSenders) {

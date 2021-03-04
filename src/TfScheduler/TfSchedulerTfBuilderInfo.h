@@ -98,7 +98,7 @@ class TfSchedulerTfBuilderInfo
   void addReadyTfBuilder(std::shared_ptr<TfBuilderInfo> pInfo)
   {
     std::scoped_lock lLock(mReadyInfoLock);
-    mReadyTfBuilders.emplace_back(std::move(pInfo));
+    mReadyTfBuilders.push_back(std::move(pInfo));
   }
 
   void removeReadyTfBuilder(const std::string &pId)
@@ -159,7 +159,7 @@ class TfSchedulerTfBuilderInfo
     mReadyTfBuilders.erase(lIt);
 
     lTfBuilder->mEstimatedFreeMemory -= lTfEstSize;
-    mReadyTfBuilders.emplace_back(std::move(lTfBuilder));
+    mReadyTfBuilders.push_back(std::move(lTfBuilder));
 
     return true;
   }

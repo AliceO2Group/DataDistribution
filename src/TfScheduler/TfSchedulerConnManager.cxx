@@ -168,7 +168,7 @@ bool TfSchedulerConnManager::requestTfBuildersTerminate() {
 
   for (auto &lTfBuilder : mTfBuilderRpcClients) {
     if (!lTfBuilder.second.mClient->TerminatePartition()) {
-      lFailedRpcsForDeletion.emplace_back(lTfBuilder.first);
+      lFailedRpcsForDeletion.push_back(lTfBuilder.first);
     }
   }
 
@@ -187,7 +187,7 @@ bool TfSchedulerConnManager::requestStfSendersTerminate() {
 
   for (auto &lStfSender : mStfSenderRpcClients) {
     if (!lStfSender.second->TerminatePartition()) {
-      lFailedRpcsForDeletion.emplace_back(lStfSender.first);
+      lFailedRpcsForDeletion.push_back(lStfSender.first);
     }
   }
 
@@ -266,7 +266,7 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
     auto lFeature = std::async(std::launch::async, lDropLambda, pStfId);
 
     std::scoped_lock lLock(mStfDropFuturesLock);
-    mStfDropFutures.emplace_back(std::move(lFeature));
+    mStfDropFutures.push_back(std::move(lFeature));
 
   } catch (std::exception &) {
     WDDLOG("dropAllStfsAsync: async method failed. Calling synchronously.");
