@@ -317,7 +317,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
 
       {
         std::unique_lock lLockComplete(mCompleteStfInfoLock);
-        mCompleteStfsInfo.emplace_back(std::move(lInfo.mapped()));
+        mCompleteStfsInfo.push_back(std::move(lInfo.mapped()));
       }
 
       mStfScheduleCondition.notify_one();

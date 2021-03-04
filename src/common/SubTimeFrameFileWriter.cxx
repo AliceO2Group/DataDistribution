@@ -162,7 +162,7 @@ void SubTimeFrameFileWriter::visit(const SubTimeFrame& pStf)
 
     for (const auto& lData : lEquipDataVec) {
       // NOTE: get only pointers to <hdr, data> struct
-      mStfData.emplace_back(&lData);
+      mStfData.push_back(&lData);
       // account the size
       // NOTE: only take data header. if DPL is enabled the header stack will already have the processing header
       const auto lHdrDataSize = sizeof(DataHeader) + lData.mData->GetSize();

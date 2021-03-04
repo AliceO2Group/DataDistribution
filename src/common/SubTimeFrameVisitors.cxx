@@ -62,19 +62,19 @@ void InterleavedHdrDataSerializer::visit(SubTimeFrame& pStf)
   }
   std::memcpy(lDataMsg->GetData(), &pStf.header(), sizeof(SubTimeFrame::Header));
 
-  mMessages.emplace_back(std::move(lDataHeaderMsg));
-  mMessages.emplace_back(std::move(lDataMsg));
+  mMessages.push_back(std::move(lDataHeaderMsg));
+  mMessages.push_back(std::move(lDataMsg));
 
   for (auto& lDataIdentMapIter : pStf.mData) {
     for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
       for (auto& lStfDataIter : lSubSpecMapIter.second) {
-        mMessages.emplace_back(std::move(lStfDataIter.mHeader));
+        mMessages.push_back(std::move(lStfDataIter.mHeader));
 
         if (lStfDataIter.mData->GetSize() == 0) {
           EDDLOG("Sending STF data payload with zero size");
         }
 
-        mMessages.emplace_back(std::move(lStfDataIter.mData));
+        mMessages.push_back(std::move(lStfDataIter.mData));
       }
     }
   }
@@ -202,14 +202,14 @@ void CoalescedHdrDataSerializer::visit(SubTimeFrame& pStf)
   }
   std::memcpy(lDataMsg->GetData(), &pStf.header(), sizeof(SubTimeFrame::Header));
 
-  mHdrs.emplace_back(std::move(lDataHeaderMsg));
-  mHdrs.emplace_back(std::move(lDataMsg));
+  mHdrs.push_back(std::move(lDataHeaderMsg));
+  mHdrs.push_back(std::move(lDataMsg));
 
   for (auto& lDataIdentMapIter : pStf.mData) {
     for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
       for (auto& lStfDataIter : lSubSpecMapIter.second) {
-        mHdrs.emplace_back(std::move(lStfDataIter.mHeader));
-        mData.emplace_back(std::move(lStfDataIter.mData));
+        mHdrs.push_back(std::move(lStfDataIter.mHeader));
+        mData.push_back(std::move(lStfDataIter.mData));
       }
     }
   }
@@ -263,7 +263,7 @@ void CoalescedHdrDataSerializer::serialize(std::unique_ptr<SubTimeFrame>&& pStf)
   assert (lHdrOff == lTotalHdrSize);
 
   // add it to data messages for sending
-  mData.emplace_back(std::move(lFullHdrMsg));
+  mData.push_back(std::move(lFullHdrMsg));
   mHdrs.clear();
 
   // send the data + coslesced headers
@@ -391,7 +391,7 @@ std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize_impl()
       lInfoOff += sizeof(CoalescedHdrDataSerializer::header_info);
       lHdrOff += lHdrInfo.len;
 
-      mHdrs.emplace_back(std::move(lNewHdr));
+      mHdrs.push_back(std::move(lNewHdr));
     }
 
     lStf->accept(*this);

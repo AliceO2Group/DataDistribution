@@ -61,8 +61,8 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
     }
     std::memcpy(lDataMsg->GetData(), &pStf.header(), sizeof(SubTimeFrame::Header));
 
-    mMessages.emplace_back(std::move(lDataHeaderMsg));
-    mMessages.emplace_back(std::move(lDataMsg));
+    mMessages.push_back(std::move(lDataHeaderMsg));
+    mMessages.push_back(std::move(lDataMsg));
   }
 
   // Send data in lexicographical order of DataIdentifier + subSpecification
@@ -84,8 +84,8 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
       assert(lHBFrameVector[i].getDataHeader().splitPayloadIndex == i);
       assert(lHBFrameVector[i].getDataHeader().splitPayloadParts == lHBFrameVector.size());
 
-      mMessages.emplace_back(std::move(lHBFrameVector[i].mHeader));
-      mMessages.emplace_back(std::move(lHBFrameVector[i].mData));
+      mMessages.push_back(std::move(lHBFrameVector[i].mHeader));
+      mMessages.push_back(std::move(lHBFrameVector[i].mData));
     }
     lHBFrameVector.clear();
   }

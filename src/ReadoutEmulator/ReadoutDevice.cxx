@@ -72,8 +72,10 @@ void ReadoutDevice::InitTask()
   mCruMemoryHandler->init(mDataRegion.get(), mSuperpageSize);
 
   mCruLinks.clear();
-  for (unsigned e = 0; e < mCruLinkCount; e++)
-    mCruLinks.push_back(std::make_unique<CruLinkEmulator>(mCruMemoryHandler, mLinkIdOffset + e, mCruLinkBitsPerS, mDmaChunkSize));
+  for (unsigned e = 0; e < mCruLinkCount; e++) {
+    mCruLinks.push_back(std::make_unique<CruLinkEmulator>(mCruMemoryHandler, mLinkIdOffset + e,
+      mCruLinkBitsPerS, mDmaChunkSize));
+  }
 }
 
 void ReadoutDevice::PreRun()
@@ -165,7 +167,7 @@ void ReadoutDevice::SendingThread()
     mDataBlockMsgs.reserve(lCruLinkData.mLinkRawData.size());
 
     // create messages for the header
-    mDataBlockMsgs.emplace_back(lOutputChan.NewMessage(sizeof(ReadoutSubTimeframeHeader)));
+    mDataBlockMsgs.push_back(lOutputChan.NewMessage(sizeof(ReadoutSubTimeframeHeader)));
     std::memcpy(mDataBlockMsgs.front()->GetData(), &lHBFHeader, sizeof(ReadoutSubTimeframeHeader));
 
     // create messages for the data
@@ -174,7 +176,7 @@ void ReadoutDevice::SendingThread()
       mCruMemoryHandler->get_data_buffer(lDmaChunk.mDataPtr, lDmaChunk.mDataSize);
 
       // create a message out of unmanaged region
-      mDataBlockMsgs.emplace_back(lOutputChan.NewMessage(mDataRegion, lDmaChunk.mDataPtr, lDmaChunk.mDataSize));
+      mDataBlockMsgs.push_back(lOutputChan.NewMessage(mDataRegion, lDmaChunk.mDataPtr, lDmaChunk.mDataSize));
     }
 
     lOutputChan.Send(mDataBlockMsgs);

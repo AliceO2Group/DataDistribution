@@ -232,7 +232,7 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
         if (lLine.empty()) {
           continue;
         }
-        mFilesVector.emplace_back(lLine);
+        mFilesVector.push_back(std::move(lLine));
       }
 
       if (mFilesVector.empty()) {

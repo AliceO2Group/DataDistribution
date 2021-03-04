@@ -149,7 +149,7 @@ struct SubTimeFrameFileDataIndex {
                      const std::uint64_t pOffset,
                      const std::uint64_t pSize)
   {
-    mDataIndex.emplace_back(DataIndexElem(pEqDataId, pCnt, pOffset, pSize));
+    mDataIndex.emplace_back(pEqDataId, pCnt, pOffset, pSize);
   }
 
   std::uint64_t getSizeInFile() const

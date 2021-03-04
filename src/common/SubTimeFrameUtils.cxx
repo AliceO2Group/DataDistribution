@@ -44,7 +44,7 @@ void DataIdentifierSplitter::visit(SubTimeFrame& pStf)
       if (lIden.dataOrigin == mDataIdentifier.dataOrigin) {
         // use the equipment identifier of the object
         mSubTimeFrame->mData[lIden] = std::move(lKeyData.second);
-        lToErase.emplace_back(lIden);
+        lToErase.push_back(lIden);
       }
     }
   } else {
@@ -56,7 +56,7 @@ void DataIdentifierSplitter::visit(SubTimeFrame& pStf)
       if (lIden == mDataIdentifier) {
         // use the equipment identifier of the object
         mSubTimeFrame->mData[lIden] = std::move(lKeyData.second);
-        lToErase.emplace_back(lIden);
+        lToErase.push_back(lIden);
       }
     }
   }
