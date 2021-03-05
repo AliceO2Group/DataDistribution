@@ -274,6 +274,27 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
     return false;
   }
 
+  {
+    const auto lTfFilesVar = getenv("DATADIST_FILE_READ_COUNT");
+    if (lTfFilesVar) {
+      try {
+        const auto lTfFilesNum = std::stol(lTfFilesVar);
+        if (lTfFilesNum == 0) {
+          WDDLOG("(Sub)TimeFrame source: DATADIST_FILE_READ_COUNT must be greater than 0.");
+          return false;
+        }
+
+        mRepeat = true;
+        mNumFiles = lTfFilesNum;
+        WDDLOG("(Sub)TimeFrame source: DATADIST_FILE_READ_COUNT is set to {}.", lTfFilesNum);
+
+      } catch (...) {
+        EDDLOG("(Sub)TimeFrame source: DATADIST_FILE_READ_COUNT must be greater than 0. DATADIST_FILE_READ_COUNT={}",
+          lTfFilesVar);
+      }
+    }
+  }
+
   // print options
   IDDLOG("(Sub)TimeFrame source :: enabled                 = {}", (mEnabled ? "yes" : "no"));
   IDDLOG("(Sub)TimeFrame source :: file location           = {}", (mLocalFiles ? "local" : "remote"));
@@ -286,7 +307,7 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
   IDDLOG("(Sub)TimeFrame source :: (s)tf load rate         = {}", mLoadRate);
   IDDLOG("(Sub)TimeFrame source :: (s)tf pre reads         = {}", mPreReadStfs);
   IDDLOG("(Sub)TimeFrame source :: repeat data             = {}", mRepeat);
-  IDDLOG("(Sub)TimeFrame source :: num files               = {}", mFilesVector.size());
+  IDDLOG("(Sub)TimeFrame source :: num files in dataset    = {}", mFilesVector.size());
   IDDLOG("(Sub)TimeFrame source :: data region size(MiB)   = {}", mRegionSizeMB);
   IDDLOG("(Sub)TimeFrame source :: header region size(MiB) = {}", mHdrRegionSizeMB);
 
@@ -299,6 +320,7 @@ void SubTimeFrameFileSource::DataFetcherThread()
   std::size_t lFileIndex = std::size_t(-1);
   std::uint64_t lFileErrors = 0;
   std::uint64_t lTotalFiles = 0;
+  std::uint64_t lTotalSuccessfulFiles = 0;
 
   while (mRunning && lFileErrors < 10) {
     if (mInputFileQueue.size() > 4) {
@@ -357,6 +379,14 @@ void SubTimeFrameFileSource::DataFetcherThread()
         StfFileMeta::insertExistingInstance(lFileIndex, lNewFile);
         mInputFileQueue.push(lNewFile);
       }
+    }
+
+    lTotalSuccessfulFiles++;
+
+    // check if we are done because of DATADIST_FILE_READ_COUNT
+    if (mNumFiles > 0 && lTotalSuccessfulFiles == mNumFiles) {
+      IDDLOG("(Sub)TimeFrame source: finished loading all files. DATADIST_FILE_READ_COUNT={}", mNumFiles);
+      break;
     }
   }
 

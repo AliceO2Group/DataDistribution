@@ -152,6 +152,7 @@ class SubTimeFrameFileSource
   std::string mDir;
   std::vector<std::string> mFilesVector;
   bool mRepeat = false;
+  std::size_t mNumFiles = 0;
   bool mLocalFiles = true;
 
   std::string mCopyFileList;

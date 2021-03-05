@@ -48,7 +48,8 @@ Make sure that only a single instance of the proxy is started.
 
 
 
-## Tunable options
+## Environment variables (advanced or temporary options)
 
   - `DATADIST_FEE_MASK=0xffff`  Apply the mask if StfBuilder is configured to use the FeeID field as a O2::Subspecification (O2::Subspec = (RDH::FeeID & DATADIST_FEE_MASK))
 
+  - `DATADIST_FILE_READ_COUNT=N`     Terminate after injecting set number of TF files. Data set will be repeated if necessary. Number of TimeFrames will be `DATADIST_FILE_READ_COUNT x Number of TFs per file`.
