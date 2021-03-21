@@ -35,19 +35,56 @@ SubTimeFrame::SubTimeFrame(uint64_t pStfId)
 {
 }
 
-std::uint64_t SubTimeFrame::getDataSize() const
+void SubTimeFrame::updateStf() const
 {
-  std::uint64_t lDataSize = std::uint64_t(0);
-
-  for (const auto& lDataIdentMapIter : mData) {
-    for (const auto& lSubSpecMapIter : lDataIdentMapIter.second) {
-      for (const auto& lStfDataIter : lSubSpecMapIter.second) {
-        lDataSize += lStfDataIter.mData->GetSize();
-      }
-    }
+  if (mDataUpdated) {
+    return;
   }
 
-  return lDataSize;
+  // recalculate data size
+  mDataSize = 0;
+
+  // Update data block indexes
+  for (auto &lIdentSubSpecVect : mData) {
+    StfSubSpecMap &lSubSpecMap = lIdentSubSpecVect.second;
+
+    for (auto &lSubSpecDataVector : lSubSpecMap) {
+      StfDataVector &lDataVector = lSubSpecDataVector.second;
+
+      const auto lTotalCount = lDataVector.size();
+      for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
+        lDataVector[i].setPayloadIndex(i, lTotalCount);
+
+        // update first orbit if not present in the data (old tf files)
+        // update tfCounter: TODO: incrementing always for looping of the same data
+        // update runNumber: TODO: zero for now.
+        if (mHeader.mFirstOrbit != std::numeric_limits<std::uint32_t>::max()) {
+          lDataVector[i].setFirstOrbit(mHeader.mFirstOrbit);
+        }
+
+        lDataVector[i].setTfCounter(mHeader.mId);
+        lDataVector[i].setRunNumber(mHeader.mRunNumber);
+
+        // sum up only data size
+        mDataSize += lDataVector[i].mData->GetSize();
+      }
+
+      assert(lDataVector.empty() ? true :
+        lDataVector.front().getDataHeader().splitPayloadIndex == 0
+      );
+      assert(lDataVector.empty() ? true :
+        lDataVector.back().getDataHeader().splitPayloadIndex == (lTotalCount - 1)
+      );
+      assert(lDataVector.empty() ? true :
+        lDataVector.front().getDataHeader().splitPayloadParts == lTotalCount
+      );
+      assert(lDataVector.empty() ? true :
+        lDataVector.front().getDataHeader().splitPayloadParts ==
+        lDataVector.back().getDataHeader().splitPayloadParts
+      );
+    }
+  }
+  mDataUpdated = true;
 }
 
 std::vector<EquipmentIdentifier> SubTimeFrame::getEquipmentIdentifiers() const

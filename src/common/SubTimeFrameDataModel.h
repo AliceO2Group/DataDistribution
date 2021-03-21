@@ -308,8 +308,8 @@ class SubTimeFrame : public IDataModelObject
   // adopt all data from a
   void mergeStf(std::unique_ptr<SubTimeFrame> pStf);
 
-  // get data size (excluding o2 headers)
-  std::uint64_t getDataSize() const;
+  // get data size (not including o2 headers)
+  std::uint64_t getDataSize() const { updateStf(); return mDataSize; }
 
   std::vector<EquipmentIdentifier> getEquipmentIdentifiers() const;
 
@@ -326,13 +326,13 @@ class SubTimeFrame : public IDataModelObject
   const Header& header() const { return mHeader; }
   TimeFrameIdType id() const { return mHeader.mId; }
 
-  void updateStf() { updateStf(mData); }
-
-  void clear() { mData.clear(); mUpdated = false; }
+  void clear() { mData.clear(); mDataUpdated = false; }
+  // NOTE: method declared const to work with const visitors, manipulated fields are mutable
+  void updateStf() const;
 
  protected:
-  void accept(ISubTimeFrameVisitor& v) override { updateStf(mData); v.visit(*this); }
-  void accept(ISubTimeFrameConstVisitor& v) const override { updateStf(mData); v.visit(*this); }
+  void accept(ISubTimeFrameVisitor& v) override { updateStf(); v.visit(*this); }
+  void accept(ISubTimeFrameConstVisitor& v) const override { updateStf(); v.visit(*this); }
 
  private:
 
@@ -345,24 +345,25 @@ class SubTimeFrame : public IDataModelObject
   ///
   Header mHeader;
   mutable StfDataIdentMap mData;
+  mutable std::uint64_t mDataSize = 0;
 
   ///
-  /// internal
+  /// internal: do lazy accounting. Must be invalidated every time StubTimeFrame is changed
   ///
-  mutable bool mUpdated = false;
+  mutable bool mDataUpdated = false;
 
 public:
   void updateFirstOrbit(const std::uint32_t pOrbit) {
     if (pOrbit < mHeader.mFirstOrbit) {
       mHeader.mFirstOrbit = pOrbit;
-      mUpdated = false;
+     mDataUpdated = false;
     }
   }
 
   void updateRunNumber(const std::uint32_t pRunNum) {
     if (mHeader.mRunNumber != pRunNum) {
       mHeader.mRunNumber = pRunNum;
-      mUpdated = false;
+     mDataUpdated = false;
     }
   }
 
@@ -376,62 +377,13 @@ private:
     auto& lDataVector = mData[lDataId][pDataHeader.subSpecification];
 
     lDataVector.push_back(std::move(pStfData));
-    mUpdated = false;
+   mDataUpdated = false;
   }
 
   inline void addStfData(StfData&& pStfData)
   {
     const o2hdr::DataHeader &lDataHeader = pStfData.getDataHeader();
     addStfData(lDataHeader, std::move(pStfData));
-  }
-
-  // NOTE: method declared const to work with const visitors, manipulated fields are mutable
-  inline void updateStf(StfDataIdentMap &pData) const
-  {
-    if (mUpdated) {
-      return;
-    }
-
-    // Update data block indexes
-    for (auto &lIdentSubSpecVect : pData) {
-      StfSubSpecMap &lSubSpecMap = lIdentSubSpecVect.second;
-
-      for (auto &lSubSpecDataVector : lSubSpecMap) {
-        StfDataVector &lDataVector = lSubSpecDataVector.second;
-
-        const auto lTotalCount = lDataVector.size();
-        for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
-          lDataVector[i].setPayloadIndex(i, lTotalCount);
-        }
-
-        // update first orbit if not present in the data (old tf files)
-        // update tfCounter: TODO: incrementing always for looping of the same data
-        // update runNumber: TODO: zero for now.
-        for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
-          if (mHeader.mFirstOrbit != std::numeric_limits<std::uint32_t>::max()) {
-            lDataVector[i].setFirstOrbit(mHeader.mFirstOrbit);
-          }
-
-          lDataVector[i].setTfCounter(mHeader.mId);
-          lDataVector[i].setRunNumber(mHeader.mRunNumber);
-        }
-
-        assert(lDataVector.empty() ? true :
-          lDataVector.front().getDataHeader().splitPayloadIndex == 0
-        );
-        assert(lDataVector.empty() ? true :
-          lDataVector.back().getDataHeader().splitPayloadIndex == (lTotalCount - 1)
-        );
-        assert(lDataVector.empty() ? true :
-          lDataVector.front().getDataHeader().splitPayloadParts == lTotalCount
-        );
-        assert(lDataVector.empty() ? true :
-          lDataVector.front().getDataHeader().splitPayloadParts ==
-          lDataVector.back().getDataHeader().splitPayloadParts
-        );
-      }
-    }
-    mUpdated = true;
   }
 
 };
