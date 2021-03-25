@@ -119,14 +119,15 @@ void TfBuilderDevice::InitTask()
       IDDLOG("Not sending to DPL.");
     }
   }
+
+  // start the task
+  if (!start()) {
+    mShouldExit = true;
+  }
 }
 
 void TfBuilderDevice::PreRun()
 {
-  if (!start()) {
-    mShouldExit = true;
-  }
-
   // update running state
   auto& lStatus = mDiscoveryConfig->status();
   lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
@@ -251,7 +252,6 @@ bool TfBuilderDevice::ConditionalRun()
     // mRunning = false;
     return false;
   }
-
   // nothing to do here sleep for awhile
   std::this_thread::sleep_for(250ms);
   return true;
