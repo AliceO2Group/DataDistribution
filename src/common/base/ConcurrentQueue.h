@@ -145,6 +145,23 @@ class ConcurrentContainerImpl
     return true;
   }
 
+  std::optional<T> pop()
+  {
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    while (mImpl->mContainer.empty() && mImpl->mRunning) {
+      mImpl->mCond.wait(lLock);
+    }
+
+    if (!mImpl->mRunning && mImpl->mContainer.empty()) {
+      return std::nullopt;
+    }
+
+    assert(!mImpl->mContainer.empty());
+    auto d = std::make_optional<T>(std::move(mImpl->mContainer.front()));
+    mImpl->mContainer.pop_front();
+    return d;
+  }
+
   bool pop_wait_for(T& d, const std::chrono::microseconds &us)
   {
     const auto lWaitUntil = std::chrono::system_clock::now() + us;

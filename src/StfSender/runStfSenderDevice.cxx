@@ -45,11 +45,7 @@ int main(int argc, char* argv[])
         "Name of the input STF channel")(
         o2::DataDistribution::StfSenderDevice::OptionKeyStandalone,
         bpo::bool_switch()->default_value(false),
-        "Standalone operation. SubTimeFrames will not be forwarded to other processes.")(
-        o2::DataDistribution::StfSenderDevice::OptionKeyMaxBufferedStfs,
-        bpo::value<std::int64_t>()->default_value(-1),
-        "Maximum number of buffered SubTimeFrames before starting to drop data. "
-        "Unlimited: -1.");
+        "Standalone operation. SubTimeFrames will not be forwarded to other processes.");
 
       r.fConfig.AddToCmdLineOptions(lStfSenderOptions);
 

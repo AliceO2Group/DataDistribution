@@ -54,8 +54,6 @@ class StfSenderDevice : public DataDistDevice,
  public:
   static constexpr const char* OptionKeyInputChannelName = "input-channel-name";
   static constexpr const char* OptionKeyStandalone = "stand-alone";
-  static constexpr const char* OptionKeyMaxBufferedStfs = "max-buffered-stfs";
-  static constexpr const char* OptionKeyGui = "gui";
 
   /// Default constructor
   StfSenderDevice();
@@ -65,10 +63,6 @@ class StfSenderDevice : public DataDistDevice,
 
   void InitTask() final;
   void ResetTask() final;
-
-  std::int64_t stfCountIncFetch() { return ++mNumStfs; }
-  std::int64_t stfCountDecFetch() { return --mNumStfs; }
-  std::int64_t stfCountFetch() const { return mNumStfs; }
 
   bool standalone() const { return mStandalone; }
 
@@ -84,29 +78,16 @@ class StfSenderDevice : public DataDistDevice,
   unsigned getNextPipelineStage(unsigned pStage) final
   {
     StfSenderPipeline lNextStage = eInvalidStage;
-
-    assert(mNumStfs >= 0);
-
     switch (pStage) {
       case eReceiverOut:
       /*  case eFileSinkOut: */
       {
-        const auto lNumStfs = stfCountIncFetch();
-        if (mPipelineLimit && (lNumStfs > mMaxStfsInPipeline)) {
-          stfCountDecFetch();
-          lNextStage = eNullIn;
-          break;
-        }
-
         if (mFileSink.enabled()) {
-          // NOTE: if we are sending this stf, Inc will happen in eFileSinkOut
-          stfCountDecFetch();
           lNextStage = eFileSinkIn;
           break;
         }
 
         if (mStandalone) {
-          stfCountDecFetch();
           lNextStage = eNullIn;
           break;
         }
@@ -116,16 +97,7 @@ class StfSenderDevice : public DataDistDevice,
       }
       case eFileSinkOut:
       {
-        const auto lNumStfs = stfCountIncFetch();
-
         if (mStandalone) {
-          stfCountDecFetch();
-          lNextStage = eNullIn;
-          break;
-        }
-
-        if (mPipelineLimit && (lNumStfs > mMaxStfsInPipeline)) {
-          stfCountDecFetch();
           lNextStage = eNullIn;
           break;
         }
@@ -145,9 +117,6 @@ class StfSenderDevice : public DataDistDevice,
   /// Configuration
   std::string mInputChannelName;
   bool mStandalone;
-  std::int64_t mMaxStfsInPipeline;
-  std::uint32_t mMaxConcurrentSends;
-  bool mPipelineLimit;
 
   /// Discovery configuration
   std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
@@ -167,9 +136,6 @@ class StfSenderDevice : public DataDistDevice,
 
   /// RPC service
   StfSenderRpcImpl mRpcServer;
-
-  /// number of STFs in the process
-  std::atomic_int64_t mNumStfs{ 0 };
 
   /// Info thread
   void InfoThread();

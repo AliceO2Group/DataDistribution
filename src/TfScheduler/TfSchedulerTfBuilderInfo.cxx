@@ -49,7 +49,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
     std::scoped_lock lLock(mGlobalInfoLock);
 
     // check if should remove
-    if (pTfBuilderUpdate.state() == TfBuilderUpdateMessage::NOT_RUNNING) {
+    if (BasicInfo::NOT_RUNNING == pTfBuilderUpdate.info().process_state()) {
 
       const auto &lTfIter = mGlobalInfo.find(lTfBuilderId);
       if (lTfIter != mGlobalInfo.end()) {
@@ -66,7 +66,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
       // new info, insert it
       mGlobalInfo.try_emplace(
         lTfBuilderId,
-          std::make_shared<TfBuilderInfo>(lLocalTime, pTfBuilderUpdate)
+        std::make_shared<TfBuilderInfo>(lLocalTime, pTfBuilderUpdate)
       );
       addReadyTfBuilder(mGlobalInfo.at(lTfBuilderId));
 
@@ -106,14 +106,63 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
           // NOTE: there is a "race" between notifying the EPN to build and updating last_scheduled_tf_id
           // in our record. Thus, this codepath is possible, and we should update the est memory since we
           // hold the lock
-          lInfo->mEstimatedFreeMemory = std::min(
-            lInfo->mEstimatedFreeMemory.load(),
-            pTfBuilderUpdate.free_memory()
-          );
+          lInfo->mEstimatedFreeMemory = std::min(lInfo->mEstimatedFreeMemory, pTfBuilderUpdate.free_memory());
         }
       }
     }
   } // mGlobalInfoLock unlock
+}
+
+bool TfSchedulerTfBuilderInfo::findTfBuilderForTf(const std::uint64_t pSize, std::string& pTfBuilderId /*out*/)
+{
+  static std::atomic_uint64_t sNoTfBuilderAvailable = 0;
+  static std::atomic_uint64_t sNoMemoryAvailable = 0;
+
+  // NOTE: we will overestimate memory requirement by a factor, until TfBuilder updates
+  //       us with the actual size.
+  const std::uint64_t lTfEstSize = pSize * (sTfSizeOverestimatePercent + 100) / 100;
+
+  std::scoped_lock lLock(mReadyInfoLock);
+
+  uint64_t lMaxMem = 0;
+  auto lIt = mReadyTfBuilders.begin();
+  for (; lIt != mReadyTfBuilders.end(); ++lIt) {
+    lMaxMem = std::max(lMaxMem, (*lIt)->mEstimatedFreeMemory);
+    if ((*lIt)->mEstimatedFreeMemory >= lTfEstSize) {
+      break;
+    }
+  }
+
+  // TfBuilder not found?
+  if ( lIt == mReadyTfBuilders.end() ) {
+    if (mReadyTfBuilders.empty()) {
+      ++sNoTfBuilderAvailable;
+      WDDLOG_RL(1000, "FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={}",
+        sNoTfBuilderAvailable);
+    } else {
+      ++sNoMemoryAvailable;
+      WDDLOG_RL(1000, "FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={} tf_size={} ready_tfb={}",
+        sNoMemoryAvailable, lTfEstSize, mReadyTfBuilders.size());
+    }
+    return false;
+  }
+
+  // reposition the selected StfBuilder to the end of the list
+  auto lTfBuilder = std::move(*lIt);
+
+  assert (lTfBuilder->mEstimatedFreeMemory >= lTfEstSize);
+
+  // copy the string out
+  assert (!lTfBuilder->id().empty());
+  pTfBuilderId = lTfBuilder->id();
+
+  // deque erase reverse_iterator
+  mReadyTfBuilders.erase(lIt);
+
+  lTfBuilder->mEstimatedFreeMemory -= lTfEstSize;
+  mReadyTfBuilders.push_back(std::move(lTfBuilder));
+
+  return true;
 }
 
 void TfSchedulerTfBuilderInfo::HousekeepingThread()
@@ -125,7 +174,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
   std::vector<std::string> lIdsToErase;
 
   while (mRunning) {
-    std::this_thread::sleep_for(1000ms);
+    std::this_thread::sleep_for(2000ms);
 
     {
       std::scoped_lock lLock(mGlobalInfoLock);

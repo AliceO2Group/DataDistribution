@@ -271,14 +271,47 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
     WDDLOG_GRL(1000, "dropAllStfsAsync: async method failed. Calling synchronously. stf_id={}", pStfId);
     lDropLambda(pStfId);
   }
+  mStfDropFuturesCV.notify_one();
+}
+
+void TfSchedulerConnManager::DropWaitThread()
+{
+  DDDLOG("Starting DropWaitThread thread.");
+  std::vector<std::uint64_t> lDroppedStfs;
+  std::uint64_t lDroppedTotal = 0;
+
+  while (mRunning) {
+    // wait for drop futures
+    {
+      std::unique_lock lLock(mStfDropFuturesLock);
+      mStfDropFuturesCV.wait_for(lLock, 1s);
+      if (mStfDropFutures.empty()) {
+        continue;
+      }
+
+      for (auto lFutureIt = mStfDropFutures.begin(); lFutureIt != mStfDropFutures.end(); lFutureIt++) {
+        if (std::future_status::ready == lFutureIt->wait_for(0s)) {
+          assert (lFutureIt->valid());
+          lDroppedStfs.push_back(lFutureIt->get());
+          lFutureIt = mStfDropFutures.erase(lFutureIt);
+        }
+      }
+    }
+
+    sort(lDroppedStfs.begin(), lDroppedStfs.end());
+    for (auto &lDroppedId : lDroppedStfs) {
+      lDroppedTotal++;
+      DDDLOG_GRL(2000, "Dropped SubTimeFrame (cannot schedule). stf_id={} total={}", lDroppedId, lDroppedTotal);
+    }
+    lDroppedStfs.clear();
+  }
+
+  DDDLOG("Exiting DropWaitThread thread.");
 }
 
 void TfSchedulerConnManager::StfSenderMonitoringThread()
 {
   DDDLOG("Starting StfSender gRPC Monitoring thread.");
-  std::uint64_t lDroppedTotal = 0;
-
-  std::vector<std::uint64_t> lDroppedStfs;
 
   while (mRunning) {
     std::chrono::milliseconds lSleep = 1000ms;
@@ -293,27 +326,6 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
       lSleep = 250ms;
     } else {
       mStfSenderState = STF_SENDER_STATE_OK;
-    }
-
-    // wait for drop futures
-    {
-      {
-        std::scoped_lock lLock(mStfDropFuturesLock);
-        for (auto lFutureIt = mStfDropFutures.begin(); lFutureIt != mStfDropFutures.end(); lFutureIt++) {
-          if (std::future_status::ready == lFutureIt->wait_for(0s)) {
-            assert (lFutureIt->valid());
-            lDroppedStfs.push_back(lFutureIt->get());
-            lFutureIt = mStfDropFutures.erase(lFutureIt);
-          }
-        }
-      }
-
-      sort(lDroppedStfs.begin(), lDroppedStfs.end());
-      for (auto &lDroppedId : lDroppedStfs) {
-        lDroppedTotal++;
-        DDDLOG_GRL(2000, "Dropped SubTimeFrame (cannot schedule). stf_id={} total={}", lDroppedId, lDroppedTotal);
-      }
-      lDroppedStfs.clear();
     }
 
     std::this_thread::sleep_for(lSleep);

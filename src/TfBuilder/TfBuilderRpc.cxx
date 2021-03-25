@@ -66,8 +66,9 @@ bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize)
 
 void TfBuilderRpcImpl::stop()
 {
-  stopAcceptingTfs();
   mRunning = false;
+
+  stopAcceptingTfs();
 
   if (mUpdateThread.joinable()) {
     mUpdateThread.join();
@@ -190,19 +191,14 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
   *lUpdate.mutable_info() = lStatus.info();
   *lUpdate.mutable_partition() = lStatus.partition();
 
-  if (mAcceptingTfs) {
-    lUpdate.set_state(TfBuilderUpdateMessage::RUNNING);
+  lUpdate.mutable_info()->set_process_state(mAcceptingTfs ? BasicInfo::RUNNING : BasicInfo::NOT_RUNNING);
 
+  {
     std::scoped_lock lLock(mTfIdSizesLock);
 
-    lUpdate.set_last_built_tf_id(mLastBuiltTfId);
     lUpdate.set_free_memory(mCurrentTfBufferSize);
     lUpdate.set_num_buffered_tfs(mNumBufferedTfs);
-  } else {
-    lUpdate.set_state(TfBuilderUpdateMessage::NOT_RUNNING);
-
-    std::scoped_lock lLock(mTfIdSizesLock);
-    lUpdate.set_free_memory(mCurrentTfBufferSize);
+    lUpdate.set_last_built_tf_id(mLastBuiltTfId);
   }
 
   sUpdateCnt++;

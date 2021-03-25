@@ -31,26 +31,31 @@ enum ProcessTypePB {
   TfSchedulerInstance = 5;
 }
 
-
 message BasicInfo {
-  ProcessTypePB type = 1;
-  string process_id = 2;
-  string ip_address = 3;
-  string last_update = 4;
-  uint64 last_update_t = 5;
+  enum ProcessState {
+    IGNORE__          = 0;
+    RUNNING           = 1;
+    NOT_RUNNING       = 2;
+  }
+
+  ProcessTypePB     type              = 1;
+  string            process_id        = 2;
+  string            ip_address        = 3;
+  string            last_update       = 4;
+  uint64            last_update_t     = 5;
+  ProcessState      process_state     = 6;
 }
 
 message PartitionInfo {
-  string environment_id = 1;
+  string environment_id     = 1;
   // AliECS environment ID (required)
-  string partition_id = 2;
+  string partition_id       = 2;
   // Partition ID. (required)
 }
 
 message TfSchedulerServiceConfigStatus {
-  BasicInfo   info = 1;
-
-  uint32      number_instances = 2;
+  BasicInfo   info                  = 1;
+  uint32      number_instances      = 2;
 }
 
 message TfSchedulerInstanceConfigStatus {
@@ -171,48 +176,50 @@ message NumStfSendersInPartitionResponse {
 }
 
 message TfBuilderUpdateMessage {
-  enum TfBuilderState {
-    RUNNING           = 0;
-    NOT_RUNNING       = 1;
-  }
-
   BasicInfo           info                = 1;
   PartitionInfo       partition           = 2;
 
-  TfBuilderState      state               = 3;
-
-  uint64              last_built_tf_id    = 4;
-  uint64              free_memory         = 5;
-  uint32              num_buffered_tfs    = 6;
+  uint64              last_built_tf_id    = 3;
+  uint64              free_memory         = 4;
+  uint32              num_buffered_tfs    = 5;
 }
 
+message StfSenderInfo {
+  uint64              buffer_size         = 1;
+  uint64              buffer_used         = 2;
+  uint32              num_buffered_stfs   = 3;
+}
 
 message StfSenderStfInfo {
-  BasicInfo           info            = 1;
-  PartitionInfo       partition       = 2;
+  BasicInfo           info             = 1;
+  PartitionInfo       partition        = 2;
 
   uint64              stf_id           = 3;
   uint64              stf_size         = 4;
+
+  StfSenderInfo       stfs_info        = 5;
 }
 
 message SchedulerStfInfoResponse {
   enum StfInfoStatus {
-    OK                        = 0;
-    DROP_NOT_RUNNING          = 1;
-    DROP_RESOURCES            = 2; // not able to schedule
-    DROP_SCHED_DISCARDED      = 3; // scheduler already processed that tf
-    DROP_STFS_INCOMPLETE      = 4; // all StfSenders are not reachable
+    IGNORE__                  = 0;
+    OK                        = 1;
+    DROP_NOT_RUNNING          = 2;
+    DROP_RESOURCES            = 3; // not able to schedule
+    DROP_SCHED_DISCARDED      = 4; // scheduler already processed that tf
+    DROP_STFS_INCOMPLETE      = 5; // all StfSenders are not reachable
+    DROP_STFS_BUFFER_FULL     = 6; // buffers on StfSender are full
   }
 
   StfInfoStatus  status = 1;
 }
 
 message TfBuildingInformation {
-  uint64                       tf_id          = 1;
-  uint64                       tf_size        = 2;
+  uint64                       tf_id      = 1;
+  uint64                       tf_size    = 2;
 
-  // flp ID - STF size mappting
-  map<string, uint64> stf_size_map            = 3;
+  // flp ID - STF size mapping
+  map<string, uint64> stf_size_map        = 3;
 }
 
 message BuildTfResponse {

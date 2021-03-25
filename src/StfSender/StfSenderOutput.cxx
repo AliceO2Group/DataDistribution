@@ -35,22 +35,40 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
   assert(pDiscoveryConfig);
   mDiscoveryConfig = pDiscoveryConfig;
 
-  std::scoped_lock lLock(mOutputMapLock);
+  { // TODO: remove me
+    const auto lStfsBuffSizeVar = getenv("DATADIST_STFS_BUFFER_SIZE");
+    if (lStfsBuffSizeVar) {
+      try {
+        auto lBuffSize = std::stoull(lStfsBuffSizeVar);
+        lBuffSize = std::max(lBuffSize, (8ULL << 30));
+        lBuffSize = std::min(lBuffSize, (48ULL << 30));
+
+        WDDLOG("StfSender buffer size override. size={}", lBuffSize);
+        mBufferSize = lBuffSize;
+      } catch (...) {
+        EDDLOG("StfSender buffer size override failed. DATADIST_STFS_BUFFER_SIZE={}", lStfsBuffSizeVar);
+      }
+    }
+  }
+
+  // create stf drop thread
+  mStfDropThread = create_thread_member("stfs_drop", &StfSenderOutput::StfDropThread, this);
 
   // create scheduler thread
   mSchedulerThread = create_thread_member("stfs_sched", &StfSenderOutput::StfSchedulerThread, this);
-
-  if (mDevice.standalone()) {
-    return;
-  }
 }
 
 void StfSenderOutput::stop()
 {
   // stop the scheduler: on pipeline interrupt
-
   if (mSchedulerThread.joinable()) {
     mSchedulerThread.join();
+  }
+
+  // stop the drop queue
+  mDropQueue.stop();
+  if (mStfDropThread.joinable()) {
+    mStfDropThread.join();
   }
 
   if (mDevice.standalone()) {
@@ -59,7 +77,6 @@ void StfSenderOutput::stop()
 
   // signal threads to stop
   for (auto& lIdOutputIt : mOutputMap) {
-    lIdOutputIt.second.mRunning->store(false);
     lIdOutputIt.second.mStfQueue->stop();
   }
 
@@ -82,7 +99,7 @@ bool StfSenderOutput::running() const
 }
 
 StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::string &pTfBuilderId,
-                                                                const std::string &pEndpoint)
+                                                                 const std::string &pEndpoint)
 {
   // Check if connection already exists
   {
@@ -102,12 +119,13 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
 
   auto lNewChannel = std::make_unique<FairMQChannel>(
     lChanName ,              // name
-    "pair",                  // type
+    "push",                  // type
     "connect",               // method
-    pEndpoint,               // address (TODO: this should only ever be ib interface)
+    pEndpoint,               // address (TODO: this should only ever be the IB interface)
     transportFactory
   );
 
+  lNewChannel->UpdateSndBufSize(10);
   lNewChannel->Init();
   lNewChannel->UpdateRateLogging(1); // log each second
 
@@ -135,8 +153,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
         std::move(lNewChannel),
         std::make_unique<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>>(),
         // Note: this thread will try to access this same map. The MapLock will prevent races
-        create_thread_member(tname, &StfSenderOutput::DataHandlerThread, this, pTfBuilderId),
-        std::make_unique<std::atomic_bool>(true) // running
+        create_thread_member(tname, &StfSenderOutput::DataHandlerThread, this, pTfBuilderId)
       }
     );
   }
@@ -179,7 +196,6 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
 
   // stop and teardown everything
   IDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending thread. tfb_id={}", pTfBuilderId);
-  lOutputObj.mRunning->store(false);
   lOutputObj.mStfQueue->stop();
   if (lOutputObj.mThread.joinable()) {
     lOutputObj.mThread.join();
@@ -198,84 +214,75 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
   return true;
 }
 
-
 void StfSenderOutput::StfSchedulerThread()
 {
-  IDDLOG("StfSchedulerThread: Starting.");
-  // queue the Stf to the appropriate EPN queue
+  DDDLOG("StfSchedulerThread: Starting.");
+  // Notifies the scheduler about stfs
   std::unique_ptr<SubTimeFrame> lStf;
 
-  // wait for the device to go into RUNNING state
-  mDevice.WaitForRunningState();
-
   while ((lStf = mDevice.dequeue(eSenderIn)) != nullptr) {
-
-    // take a ref for later use
-    SubTimeFrame &lStfRef = *lStf;
-    const auto lStfId = lStfRef.header().mId;
-    const auto lStfSize = lStfRef.getDataSize();
+    const auto lStfId = lStf->header().mId;
+    const auto lStfSize = lStf->getDataSize();
 
     if (mDevice.standalone()) {
-      // Do not forward STFs
-      mDevice.stfCountDecFetch();
-      lStf.reset();
       continue;
     }
 
     if (!mDevice.TfSchedRpcCli().is_ready()) {
       EDDLOG_RL(1000, "StfSchedulerThread: TfScheduler gRPC connection is not ready stf_id={}", lStfId);
-      // Decrement buffered STF count
-      mDevice.stfCountDecFetch();
-      lStf.reset();
       continue;
     }
 
     DDDLOG_RL(5000, "StfSchedulerThread: scheduling stf_id={}", lStfId);
 
+    StfSenderStfInfo lStfInfo;
+    SchedulerStfInfoResponse lSchedResponse;
+
     // move the stf into triage map (before notifying the scheduler to avoid races)
     {
       std::scoped_lock lLock(mScheduledStfMapLock);
+
       auto [it, ins] = mScheduledStfMap.try_emplace(lStfId, std::move(lStf));
       if (!ins) {
         (void)it;
-        EDDLOG("StfSchedulerThread: Stf already scheduled! Skipping the duplicate. stf_id={}", lStfId);
-        // Decrement buffered STF count
-        mDevice.stfCountDecFetch();
-        lStf.reset();
+        EDDLOG_RL(500, "StfSchedulerThread: Stf already scheduled! Skipping the duplicate. stf_id={}", lStfId);
         continue;
       }
+
+      // update buffer size
+      mCounters.mBufferedStfSize += lStfSize;
+      mCounters.mBufferedStfCnt += 1;
+
+      // send current state of the buffers
+      lStfInfo.mutable_stfs_info()->set_buffer_size(mBufferSize);
+      lStfInfo.mutable_stfs_info()->set_buffer_used(mCounters.mBufferedStfSize);
+      lStfInfo.mutable_stfs_info()->set_num_buffered_stfs(mCounters.mBufferedStfCnt);
     }
 
     // Send STF info to scheduler
     {
       const auto &lStatus = mDiscoveryConfig->status();
-
-      StfSenderStfInfo lStfInfo;
-      SchedulerStfInfoResponse lSchedResponse;
-
-      *lStfInfo.mutable_info() = lStatus.info();
-      *lStfInfo.mutable_partition() = lStatus.partition();
-
+      lStfInfo.mutable_info()->CopyFrom(lStatus.info());
+      lStfInfo.mutable_partition()->CopyFrom(lStatus.partition());
       lStfInfo.set_stf_id(lStfId);
       lStfInfo.set_stf_size(lStfSize);
 
       const auto lSentOK = mDevice.TfSchedRpcCli().StfSenderStfUpdate(lStfInfo, lSchedResponse);
-
       // check if the scheduler rejected the data
       if (!lSentOK || (lSchedResponse.status() != SchedulerStfInfoResponse::OK)) {
-        WDDLOG_RL(1000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
-          lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
-
-        // remove from the scheduling map
-        std::scoped_lock lLock(mScheduledStfMapLock);
-        if (mScheduledStfMap.erase(lStfId) == 1) {
-          // Decrement buffered STF count
-          mDevice.stfCountDecFetch();
-          lStf.reset();
+        {
+          std::scoped_lock lLock(mScheduledStfMapLock);
+          // find the stf in the map and erase it
+          const auto lStfIter = mScheduledStfMap.find(lStfId);
+          if (lStfIter != mScheduledStfMap.end()) {
+            mDropQueue.push(std::move(lStfIter->second));
+            mScheduledStfMap.erase(lStfIter);
+          }
         }
-        continue;
-      }
 
+        WDDLOG_RL(5000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
+          lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
+      }
       DDDLOG_RL(5000, "Sent STF announce, stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
     }
   }
@@ -286,41 +293,49 @@ void StfSenderOutput::StfSchedulerThread()
 void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::string &pTfBuilderId, StfDataResponse &pRes)
 {
   assert(!pTfBuilderId.empty());
-
   std::scoped_lock lLock(mOutputMapLock, mScheduledStfMapLock);
+
+  const auto lStfIter = mScheduledStfMap.find(pStfId);
+  // verify we have the STF: we can have
+  if (lStfIter == mScheduledStfMap.end()) {
+    if (pTfBuilderId != "-1") {
+      pRes.set_status(StfDataResponse::DATA_DROPPED_UNKNOWN);
+      EDDLOG_GRL(1000, "sendStfToTfBuilder: TfBuilder requested non-existing STF. stf_id={}", pStfId);
+    } else {
+      pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
+    }
+    return;
+  }
 
   // check if it is drop request from the scheduler
   if (pTfBuilderId == "-1") {
-    static std::uint64_t sNumDropRequests = 0;
-    sNumDropRequests++;
-
-    DDLOGF_GRL(1000, DataDistSeverity::warning, "TfScheduler requested drop of an STF. stf_id={} total_drop_req={}",
-      pStfId, sNumDropRequests);
-
     pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
-    if (mScheduledStfMap.erase(pStfId) == 1) {
-      // Decrement buffered STF count
-      mDevice.stfCountDecFetch();
-    }
+    mDropQueue.push(std::move(lStfIter->second));
+    mScheduledStfMap.erase(lStfIter);
     return;
   } else {
-    auto lStfIter = mScheduledStfMap.find(pStfId);
-    if (lStfIter == mScheduledStfMap.end()) {
-      pRes.set_status(StfDataResponse::DATA_DROPPED_UNKNOWN);
-      return;
-    }
-
     auto lTfBuilderIter = mOutputMap.find(pTfBuilderId);
     if (lTfBuilderIter == mOutputMap.end()) {
       pRes.set_status(StfDataResponse::TF_BUILDER_UNKNOWN);
+      mDropQueue.push(std::move(lStfIter->second));
+      mScheduledStfMap.erase(lStfIter);
+      EDDLOG_GRL(1000, "sendStfToTfBuilder: TfBuilder not known to StfSender. tfb_id={}", pTfBuilderId);
       return;
     }
 
-    // all is well, schedule the stf and cleanup
-    lTfBuilderIter->second.mStfQueue->push(std::move(lStfIter->second));
-    mScheduledStfMap.erase(lStfIter);
-
+    // all is well, schedule the stf and cleanup.
+    // we clean the buffer when data is sent
     pRes.set_status(StfDataResponse::OK);
+
+    mCounters.mBufferedStfSizeSending += lStfIter->second->getDataSize();
+    mCounters.mBufferedStfCntSending += 1;
+
+    auto lStfNode = mScheduledStfMap.extract(lStfIter);
+    lTfBuilderIter->second.mStfQueue->push(std::move(lStfNode.mapped()));
+
+    if (lTfBuilderIter->second.mStfQueue->size() > 50) {
+      WDDLOG_RL(1000, "SendToTfBuilder: STF queue backlog. queue_size={}", lTfBuilderIter->second.mStfQueue->size());
+    }
   }
 }
 
@@ -331,7 +346,6 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
 
   FairMQChannel *lOutputChan = nullptr;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> *lInputStfQueue = nullptr;
-  std::atomic_bool *lRunning = nullptr;
   {
     // get the thread data. MapLock prevents races on the map operation
     std::scoped_lock lLock(mOutputMapLock);
@@ -339,48 +353,82 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
 
     lOutputChan = lOutData.mChannel.get();
     lInputStfQueue = lOutData.mStfQueue.get();
-    lRunning = lOutData.mRunning.get();
   }
   assert(lOutputChan != nullptr && lOutputChan->IsValid());
   assert(lInputStfQueue != nullptr && lInputStfQueue->is_running());
-  assert(lRunning != nullptr && (lRunning->load() == true));
-
-  CoalescedHdrDataSerializer lStfSerializer(*lOutputChan);
 
   std::uint64_t lNumSentStfs = 0;
 
-  while (lRunning->load()) {
-    std::unique_ptr<SubTimeFrame> lStf;
+  CoalescedHdrDataSerializer lStfSerializer(*lOutputChan);
+  std::optional<std::unique_ptr<SubTimeFrame>> lStfOpt;
 
-    if (!lInputStfQueue->pop(lStf)) {
-      IDDLOG("StfSenderOutput[{}]: STF queue drained. Exiting.", pTfBuilderId);
-      break;
-    }
+  while ((lStfOpt = lInputStfQueue->pop()) != std::nullopt) {
+    std::unique_ptr<SubTimeFrame> lStf = std::move(lStfOpt.value());
+    lStfOpt.reset();
 
-    lNumSentStfs++;
-    DDLOGF_RL(2000, DataDistSeverity::debug, "Sending an STF to TfBuilder. stf_id={} tfb_id={} total_sent_stf={}",
-      lStf->header().mId, pTfBuilderId, lNumSentStfs);
+    const auto lStfSize = lStf->getDataSize();
+
+    DDDLOG_GRL(5000, "Sending an STF to TfBuilder. stf_id={} tfb_id={} stf_size={} total_sent_stf={}",
+      lStf->header().mId, pTfBuilderId, lStfSize, lNumSentStfs);
 
     try {
       lStfSerializer.serialize(std::move(lStf));
     } catch (std::exception &e) {
-
       if (mDevice.IsRunningState()){
         EDDLOG("StfSenderOutput[{}]: exception on send, what={}", pTfBuilderId, e.what());
       } else {
         IDDLOG("StfSenderOutput[{}](NOT RUNNING): exception on send. what={}", pTfBuilderId, e.what());
       }
-
       break;
     }
 
+    // update buffer status
+    lNumSentStfs += 1;
 
-    // Decrement buffered STF count
-    mDevice.stfCountDecFetch();
+    {
+      std::scoped_lock lLock(mScheduledStfMapLock);
+      mCounters.mBufferedStfSize -= lStfSize;
+      mCounters.mBufferedStfCnt -= 1;
+      mCounters.mBufferedStfSizeSending -= lStfSize;
+      mCounters.mBufferedStfCntSending -= 1;
 
+      if (mCounters.mBufferedStfCntSending > 100) {
+        DDDLOG_RL(2000, "DataHandlerThread: Number of buffered STFs. tfb_id={} num_stfs={} num_stf_total={} size_stf_total={}",
+          pTfBuilderId, lInputStfQueue->size(), mCounters.mBufferedStfCntSending, mCounters.mBufferedStfSizeSending);
+      }
+    }
   }
 
   IDDLOG("Exiting StfSenderOutput[{}]", pTfBuilderId);
+}
+
+/// Sending thread
+void StfSenderOutput::StfDropThread()
+{
+  DDDLOG("Starting DataDropThread thread.");
+  std::uint64_t lNumDroppedStfs = 0;
+  std::optional<std::unique_ptr<SubTimeFrame>> lStfOpt;
+
+  while ((lStfOpt = mDropQueue.pop()) != std::nullopt) {
+    std::unique_ptr<SubTimeFrame> lStf = std::move(lStfOpt.value());
+    lStfOpt.reset();
+    const auto lStfSize = lStf->getDataSize();
+
+    DDDLOG_GRL(5000, "Dropping an STF. stf_id={} stf_size={} total_dropped_stf={}", lStf->header().mId,
+      lStfSize, lNumDroppedStfs);
+
+    // delete the data
+    lStf.reset();
+    // update buffer status
+    lNumDroppedStfs += 1;
+    {
+      std::scoped_lock lLock(mScheduledStfMapLock);
+      mCounters.mBufferedStfSize -= lStfSize;
+      mCounters.mBufferedStfCnt -= 1;
+    }
+  }
+
+  DDDLOG("Exiting DataDropThread thread");
 }
 
 }

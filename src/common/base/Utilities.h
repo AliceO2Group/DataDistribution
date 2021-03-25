@@ -24,6 +24,8 @@
 #include <array>
 #include <numeric>
 
+#include <boost/dynamic_bitset.hpp>
+
 namespace o2
 {
 namespace DataDistribution
@@ -148,10 +150,72 @@ class RunningSamples
     mIndex = 0;
   }
 
- private:
+private:
   std::array<T, N> mSamples;
   std::size_t mIndex = 0;
   std::size_t mCount = 0;
+};
+
+
+class EventRecorder {
+public:
+  EventRecorder() = delete;
+  EventRecorder(const std::size_t pInitSize) {
+    mRecords.resize(pInitSize);
+  }
+
+  inline
+  bool SetEvent(const std::uint64_t pEvt, const bool pVal = true) {
+    bool lRet = false;
+    if (mFirstEvent == std::uint64_t(-1)) {
+      mFirstEvent = pEvt;
+    }
+
+    if (pEvt < mFirstEvent) {
+      return false;
+    }
+
+    const auto lIdx = pEvt - mFirstEvent;
+    manageSize(lIdx);
+
+    lRet = mRecords[lIdx];
+    mRecords[lIdx] = pVal;
+
+    return (lRet != pVal);
+  }
+
+  inline
+  bool GetEvent(const std::uint64_t pEvt) {
+    if (mFirstEvent == std::uint64_t(-1)) {
+      return false; // no recorded events
+    }
+    if (pEvt < mFirstEvent) {
+      return false; // not recorded
+    }
+    const auto lIdx = pEvt - mFirstEvent;
+    if (mRecords.size() <= lIdx) {
+      return false; // beyond records
+    }
+
+    return mRecords[lIdx];
+  }
+
+  void reset() {
+    mFirstEvent = std::uint64_t(-1);
+    mRecords.reset();
+  }
+
+private:
+  std::uint64_t mFirstEvent = std::uint64_t(-1);
+  boost::dynamic_bitset<std::uint64_t> mRecords;
+
+  inline
+  void manageSize(const std::uint64_t pIdx) {
+    if (mRecords.size() <= pIdx) {
+      const auto lNewSize = (pIdx + 3) * 4 / 3;
+      mRecords.resize(lNewSize);
+    }
+  }
 };
 
 }

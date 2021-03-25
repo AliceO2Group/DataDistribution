@@ -70,14 +70,24 @@ class TfSchedulerConnManager
     // start gRPC client monitoring thread
     mStfSenderMonitoringThread = create_thread_member("sched_stfs_mon",
       &TfSchedulerConnManager::StfSenderMonitoringThread, this);
+
+    // start async future wit thread
+    mDropFutureWaitThread = create_thread_member("sched_await",
+      &TfSchedulerConnManager::DropWaitThread, this);
+
     return true;
   }
 
   void stop() {
     mRunning = false;
+    mStfDropFuturesCV.notify_one();
 
     if (mStfSenderMonitoringThread.joinable()) {
       mStfSenderMonitoringThread.join();
+    }
+
+    if (mDropFutureWaitThread.joinable()) {
+      mDropFutureWaitThread.join();
     }
 
     // delete all rpc clients
@@ -97,6 +107,7 @@ class TfSchedulerConnManager
   }
 
   void StfSenderMonitoringThread();
+  void DropWaitThread();
 
   /// Partition RPCs
   bool requestTfBuildersTerminate();
@@ -152,6 +163,7 @@ private:
   /// Scheduler threads
   bool mRunning = false;
   std::thread mStfSenderMonitoringThread;
+  std::thread mDropFutureWaitThread;
 
   /// StfSender RPC-client channels
   std::recursive_mutex mStfSenderClientsLock;
@@ -160,8 +172,9 @@ private:
   TfBuilderRpcClientCollection<ConsulTfSchedulerInstance> mTfBuilderRpcClients;
 
   /// futures for async operation
-  std::recursive_mutex mStfDropFuturesLock;
-  std::list<std::future<std::uint64_t>> mStfDropFutures;
+  std::mutex mStfDropFuturesLock;
+    std::condition_variable_any mStfDropFuturesCV;
+    std::list<std::future<std::uint64_t>> mStfDropFutures;
 };
 }
 } /* namespace o2::DataDistribution */
