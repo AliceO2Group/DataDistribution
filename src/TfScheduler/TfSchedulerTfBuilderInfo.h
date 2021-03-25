@@ -41,9 +41,8 @@ using namespace std::chrono_literals;
 struct TfBuilderInfo {
   std::chrono::system_clock::time_point mUpdateLocalTime;
   TfBuilderUpdateMessage mTfBuilderUpdate;
-  std::atomic_uint64_t mLastScheduledTf = 0;
-
-  std::atomic_uint64_t mEstimatedFreeMemory;
+  std::uint64_t mLastScheduledTf = 0;
+  std::uint64_t mEstimatedFreeMemory;
 
   TfBuilderInfo() = delete;
 
@@ -86,9 +85,15 @@ class TfSchedulerTfBuilderInfo
       mHousekeepingThread.join();
     }
 
-    // delete all info
-    mGlobalInfo.clear();
-    mReadyTfBuilders.clear();
+    {
+      std::scoped_lock lLock(mGlobalInfoLock);
+      // delete all info
+      mGlobalInfo.clear();
+    }
+    {
+      std::scoped_lock lLock(mReadyInfoLock);
+      mReadyTfBuilders.clear();
+    }
   }
 
   void HousekeepingThread();
@@ -113,60 +118,11 @@ class TfSchedulerTfBuilderInfo
     }
   }
 
-  bool findTfBuilderForTf(const std::uint64_t pSize, std::string& pTfBuilderId /*out*/)
-  {
-
-    static std::atomic_uint64_t sNoTfBuilderAvailable = 0;
-    static std::atomic_uint64_t sNoMemoryAvailable = 0;
-
-    // NOTE: we will overestimate memory requirement by a factor, until TfBuilder updates
-    //       us with the actual size.
-    const auto lTfEstSize = pSize * (sTfSizeOverestimatePercent + 100) / 100;
-
-    std::scoped_lock lLock(mReadyInfoLock);
-
-    auto lIt = mReadyTfBuilders.begin();
-    for (; lIt != mReadyTfBuilders.end(); ++lIt) {
-      if ((*lIt)->mEstimatedFreeMemory >= lTfEstSize) {
-        break;
-      }
-    }
-
-    // TfBuilder not found?
-    if ( lIt == mReadyTfBuilders.end() ) {
-      if (mReadyTfBuilders.empty()) {
-        ++sNoTfBuilderAvailable;
-        DDLOGF_RL(1000, DataDistSeverity::warning, "FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={}",
-          sNoTfBuilderAvailable);
-      } else {
-        ++sNoMemoryAvailable;
-        DDLOGF_RL(1000, DataDistSeverity::warning, "FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={}",
-          sNoMemoryAvailable);
-      }
-      return false;
-    }
-
-    // reposition the selected StfBuilder to the end of the list
-    auto lTfBuilder = std::move(*lIt);
-
-    assert (lTfBuilder->mEstimatedFreeMemory >= lTfEstSize);
-
-    // copy the string out
-    assert (!lTfBuilder->id().empty());
-    pTfBuilderId = lTfBuilder->id();
-
-    // deque erase reverse_iterator
-    mReadyTfBuilders.erase(lIt);
-
-    lTfBuilder->mEstimatedFreeMemory -= lTfEstSize;
-    mReadyTfBuilders.push_back(std::move(lTfBuilder));
-
-    return true;
-  }
+  bool findTfBuilderForTf(const std::uint64_t pSize, std::string& pTfBuilderId /*out*/);
 
   bool markTfBuilderWithTfId(const std::string& pTfBuilderId, const std::uint64_t pTfIf)
   {
-    std::scoped_lock lLock(mGlobalInfoLock);
+    std::scoped_lock lLock(mGlobalInfoLock, mReadyInfoLock);
     if (mGlobalInfo.count(pTfBuilderId) > 0) {
       mGlobalInfo[pTfBuilderId]->mLastScheduledTf = pTfIf;
       return true;
@@ -176,7 +132,7 @@ class TfSchedulerTfBuilderInfo
 
 private:
   /// Overestimation of actual size for TF building
-  static constexpr std::uint64_t sTfSizeOverestimatePercent = 20;
+  static constexpr std::uint64_t sTfSizeOverestimatePercent = std::uint64_t(10);
 
   /// Discard timeout for non-complete TFs
   static constexpr auto sTfBuilderDiscardTimeout = 5s;
@@ -190,11 +146,11 @@ private:
 
   /// TfSender global info
   mutable std::recursive_mutex mGlobalInfoLock;
-  std::unordered_map<std::string, std::shared_ptr<TfBuilderInfo>> mGlobalInfo;
+    std::unordered_map<std::string, std::shared_ptr<TfBuilderInfo>> mGlobalInfo;
 
   /// List of TfBuilders with available resources
   mutable std::recursive_mutex mReadyInfoLock;
-  std::deque<std::shared_ptr<TfBuilderInfo>> mReadyTfBuilders;
+    std::deque<std::shared_ptr<TfBuilderInfo>> mReadyTfBuilders;
 };
 
 }

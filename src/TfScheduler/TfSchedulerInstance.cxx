@@ -37,6 +37,7 @@ TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
   auto &lStatus = mDiscoveryConfig->status();
 
   lStatus.mutable_info()->set_type(TfSchedulerInstance);
+  lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
   lStatus.mutable_info()->set_process_id(pProcessId);
   lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*pDev.GetConfig()));
   lStatus.mutable_partition()->set_partition_id(mPartitionInfo.mPartitionId);

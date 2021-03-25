@@ -41,12 +41,12 @@ namespace DataDistribution
 using namespace std::chrono_literals;
 
 struct StfInfo {
-  std::chrono::system_clock::time_point mUpdateLocalTime;
+  std::chrono::steady_clock::time_point mUpdateLocalTime;
   StfSenderStfInfo mStfInfo;
   bool mIsScheduled = false;
 
   StfInfo() = delete;
-  StfInfo(std::chrono::system_clock::time_point pUpdateLocalTime, const StfSenderStfInfo &pStfInfo)
+  StfInfo(const std::chrono::steady_clock::time_point pUpdateLocalTime, const StfSenderStfInfo &pStfInfo)
   : mUpdateLocalTime(pUpdateLocalTime),
     mStfInfo(pStfInfo)
   {
@@ -66,10 +66,10 @@ public:
                      TfSchedulerTfBuilderInfo &pTfBuilderInfo)
   : mDiscoveryConfig(pDiscoveryConfig),
     mConnManager(pConnManager),
-    mTfBuilderInfo(pTfBuilderInfo)
-  {
-
-  }
+    mTfBuilderInfo(pTfBuilderInfo),
+    mDroppedStfs(24ULL * 3600 * 88), // 1h of running ~ 1MiB size
+    mBuiltTfs(24ULL * 3600 * 88)
+  { }
 
   ~TfSchedulerStfInfo() { }
 
@@ -77,25 +77,28 @@ public:
     mStfInfoMap.clear();
 
     mRunning = true;
-    // Start the scheduling thread
+    // Start the scheduling threads
     mSchedulingThread = create_thread_member("sched_sched", &TfSchedulerStfInfo::SchedulingThread, this);
-
-    // Drop thread
+    mStaleStfThread = create_thread_member("stale_drop", &TfSchedulerStfInfo::StaleCleanupThread, this);
+    mWatermarkThread = create_thread_member("wmark", &TfSchedulerStfInfo::HighWatermarkThread, this);
     mDropThread = create_thread_member("sched_drop", &TfSchedulerStfInfo::DropThread, this);
   }
 
   void stop() {
     mRunning = false;
     mDropQueue.stop();
-
-    {
-      std::unique_lock lLock(mCompleteStfInfoLock);
-      mCompleteStfsInfo.clear();
-      mStfScheduleCondition.notify_all();
-    }
+    mCompleteStfsInfoQueue.stop();
 
     if (mSchedulingThread.joinable()) {
       mSchedulingThread.join();
+    }
+
+    if (mStaleStfThread.joinable()) {
+      mStaleStfThread.join();
+    }
+
+    if (mWatermarkThread.joinable()) {
+      mWatermarkThread.join();
     }
 
     if (mDropThread.joinable()) {
@@ -107,14 +110,19 @@ public:
     mStfInfoMap.clear();
   }
 
-  void SchedulingThread();
   void addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse);
 
+  void SchedulingThread();
+  void StaleCleanupThread();
+  void HighWatermarkThread();
   void DropThread();
+
 
 private:
   /// Discard timeout for incomplete TFs
   static constexpr auto sStfDiscardTimeout = 10s;
+
+  std::atomic_bool mRunning = false;
 
   /// Discovery configuration
   std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;
@@ -125,24 +133,45 @@ private:
   /// Collect information on TfBuilders
   TfSchedulerTfBuilderInfo &mTfBuilderInfo;
 
-  /// Housekeeping thread
-  std::atomic_bool mRunning = false;
-  std::thread mSchedulingThread;
-
   /// Drop thread & queue
-  void requestDropAll(const std::uint64_t lStfId) { mDropQueue.push(std::make_tuple(lStfId));  }
   ConcurrentFifo<std::tuple<std::uint64_t>> mDropQueue;
   std::thread mDropThread;
 
   /// Stfs global info
   mutable std::mutex mGlobalStfInfoLock;
-  std::map<std::uint64_t, std::vector<StfInfo>> mStfInfoMap;
-  std::uint64_t mLastStfId = 0;
+    std::condition_variable mMemWatermarkCondition;
+    std::map<std::uint64_t, std::vector<StfInfo>> mStfInfoMap;
+    std::map<std::string, StfSenderInfo> mStfSenderInfoMap;
+    std::uint64_t mLastStfId = 0;
+    std::uint64_t mMaxCompletedTfId = 0;
+    EventRecorder mDroppedStfs;
+    EventRecorder mBuiltTfs;
 
-  /// Stfs for scheduling
-  mutable std::mutex mCompleteStfInfoLock;
-  std::condition_variable mStfScheduleCondition;
-  std::deque<std::vector<StfInfo>> mCompleteStfsInfo;
+    inline void requestDropAllFromUpdate(const std::uint64_t lStfId) {
+      assert (mDroppedStfs.GetEvent(lStfId) == false);
+      mDroppedStfs.SetEvent(lStfId);
+      mStfInfoMap.erase(lStfId);
+      mDropQueue.push(std::make_tuple(lStfId));
+    }
+
+    inline void requestDropAllFromSchedule(const std::uint64_t lStfId) {
+      std::scoped_lock lLock(mGlobalStfInfoLock);
+      if (mDroppedStfs.GetEvent(lStfId) == false) {
+        mDroppedStfs.SetEvent(lStfId);
+        mStfInfoMap.erase(lStfId);
+        mDropQueue.push(std::make_tuple(lStfId)); // TODO: add REASON
+      }
+    }
+
+  /// scheduling thread & queue
+  ConcurrentFifo<std::vector<StfInfo>> mCompleteStfsInfoQueue;
+  std::thread mSchedulingThread;
+
+  /// memory watermark thread
+  std::thread mWatermarkThread;
+
+  /// stale cleanup thread
+  std::thread mStaleStfThread;
 };
 }
 } /* namespace o2::DataDistribution */

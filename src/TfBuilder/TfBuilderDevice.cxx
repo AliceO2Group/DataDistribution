@@ -71,6 +71,7 @@ void TfBuilderDevice::InitTask()
 
     auto &lStatus =  mDiscoveryConfig->status();
     lStatus.mutable_info()->set_type(TfBuilder);
+    lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
     lStatus.mutable_info()->set_process_id(Config::getIdOption(TfBuilder, *GetConfig()));
     lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
 
@@ -125,6 +126,11 @@ void TfBuilderDevice::PreRun()
   if (!start()) {
     mShouldExit = true;
   }
+
+  // update running state
+  auto& lStatus = mDiscoveryConfig->status();
+  lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
+  mDiscoveryConfig->write();
 }
 
 bool TfBuilderDevice::start()
@@ -231,7 +237,11 @@ void TfBuilderDevice::ResetTask()
 // Get here when ConditionalRun returns false
 void TfBuilderDevice::PostRun()
 {
-  stop();
+  // update running state
+  auto& lStatus = mDiscoveryConfig->status();
+  lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
+  mDiscoveryConfig->write();
+
   DDDLOG("PostRun()");
 }
 

@@ -65,7 +65,7 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 
     auto lNewChannel = std::make_unique<FairMQChannel>(
       "stf_sender_chan_" + std::to_string(lSocketIdx) ,  // name
-      "pair",               // type
+      "pull",               // type
       "bind",               // method
       lAddress,             // address (TODO: this should only ever be ib interface)
       transportFactory

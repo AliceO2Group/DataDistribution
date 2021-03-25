@@ -50,7 +50,6 @@ void StfSenderDevice::InitTask()
 
   mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
-  mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
 
   if (!mStandalone) {
     // Discovery
@@ -58,6 +57,7 @@ void StfSenderDevice::InitTask()
 
     auto& lStatus = mDiscoveryConfig->status();
     lStatus.mutable_info()->set_type(StfSender);
+    lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
     lStatus.mutable_info()->set_process_id(Config::getIdOption(StfSender, *GetConfig()));
     lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
 
@@ -76,20 +76,6 @@ void StfSenderDevice::InitTask()
   } catch (...) {
     EDDLOG("Requested input channel is not configured. input_chan={}", mInputChannelName);
     std::this_thread::sleep_for(1s); exit(-1);
-  }
-
-  // Buffering limitation
-  if (mMaxStfsInPipeline > 0) {
-    if (mMaxStfsInPipeline < 4) {
-      mMaxStfsInPipeline = 4;
-      IDDLOG("Max buffered SubTimeFrames limit increased to {}.", mMaxStfsInPipeline);
-    }
-    mPipelineLimit = true;
-    WDDLOG("Max buffered SubTimeFrames limit is set to {}. Consider increasing it if data loss occurs.",
-      mMaxStfsInPipeline);
-  } else {
-    mPipelineLimit = false;
-    IDDLOG("Not imposing limits on number of buffered SubTimeFrames. Possibility of creating back-pressure.");
   }
 
   // File sink
@@ -138,10 +124,20 @@ void StfSenderDevice::PreRun()
 
   // start the receiver thread
   mReceiverThread = create_thread_member("stfs_recv", &StfSenderDevice::StfReceiverThread, this);
+
+  // update running state
+  auto& lStatus = mDiscoveryConfig->status();
+  lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
+  mDiscoveryConfig->write();
 }
 
 void StfSenderDevice::PostRun()
 {
+  // update running state
+  auto& lStatus = mDiscoveryConfig->status();
+  lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
+  mDiscoveryConfig->write();
+
   // Stop the pipeline
   stopPipeline();
 
@@ -196,7 +192,7 @@ void StfSenderDevice::StfReceiverThread()
 
   while (mRunning) {
     try {
-    lStf = lStfReceiver.deserialize(lInputChan);
+      lStf = lStfReceiver.deserialize(lInputChan);
     } catch (const std::exception &e) {
       EDDLOG_RL(5000, "StfSender: received STF cannot be deserialized. what={}", e.what());
       continue;
@@ -234,8 +230,15 @@ void StfSenderDevice::StfReceiverThread()
 void StfSenderDevice::InfoThread()
 {
   while (mRunning) {
-    IDDLOG("SubTimeFrame size_mean={} in_frequency_mean={:.4} queued_stf={}",
-      mStfSizeSamples.Mean(), mStfTimeSamples.MeanStepFreq(), mNumStfs);
+    IDDLOG("StfSender: SubTimeFrame size_mean={} in_frequency_mean={:.4}",
+      mStfSizeSamples.Mean(), mStfTimeSamples.MeanStepFreq());
+    if (!standalone()) {
+      const auto lCounters = mOutputHandler.getCounters();
+
+      IDDLOG("StfSender: SubTimeFrame queued_stf_num={} queued_stf_size={} sending_stf_num={} sending_stf_size={} ",
+          lCounters.mBufferedStfCnt, lCounters.mBufferedStfSize,
+          lCounters.mBufferedStfCntSending, lCounters.mBufferedStfSizeSending);
+    }
 
     std::this_thread::sleep_for(2s);
   }
@@ -258,5 +261,6 @@ bool StfSenderDevice::ConditionalRun()
   std::this_thread::sleep_for(500ms);
   return true;
 }
+
 }
 } /* namespace o2::DataDistribution */

@@ -33,6 +33,15 @@ class StfSenderDevice;
 class StfSenderOutput
 {
  public:
+  struct StdSenderOutputCounters {
+    // buffer state
+    std::uint64_t mBufferedStfSize = 0;
+    std::uint32_t mBufferedStfCnt = 0;
+    // buffered in sending
+    std::uint64_t mBufferedStfSizeSending = 0;
+    std::uint32_t mBufferedStfCntSending = 0;
+  };
+
   StfSenderOutput() = delete;
   StfSenderOutput(StfSenderDevice& pStfSenderDev)
     : mDevice(pStfSenderDev)
@@ -45,6 +54,7 @@ class StfSenderOutput
   bool running() const;
 
   void StfSchedulerThread();
+  void StfDropThread();
   void DataHandlerThread(const std::string pTfBuilderId);
 
   /// RPC requests
@@ -53,6 +63,11 @@ class StfSenderOutput
   bool disconnectTfBuilder(const std::string &pTfBuilderId, const std::string &lEndpoint);
 
   void sendStfToTfBuilder(const std::uint64_t pStfId, const std::string &pTfBuilderId, StfDataResponse &pRes);
+
+  StdSenderOutputCounters getCounters() {
+    std::scoped_lock lLock(mScheduledStfMapLock);
+    return mCounters;
+  }
 
  private:
   /// Ref to the main SubTimeBuilder O2 device
@@ -64,7 +79,8 @@ class StfSenderOutput
   /// Scheduler threads
   std::thread mSchedulerThread;
   std::mutex mScheduledStfMapLock;
-  std::map<std::uint64_t, std::unique_ptr<SubTimeFrame>> mScheduledStfMap;
+    std::map<std::uint64_t, std::unique_ptr<SubTimeFrame>> mScheduledStfMap;
+    StdSenderOutputCounters mCounters;
 
   /// Threads for output channels (to EPNs)
   struct OutputChannelObjects {
@@ -72,14 +88,15 @@ class StfSenderOutput
     std::unique_ptr<FairMQChannel> mChannel;
     std::unique_ptr<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>> mStfQueue;
     std::thread mThread;
-
-    std::unique_ptr<std::atomic_bool> mRunning;
   };
+
   mutable std::mutex mOutputMapLock;
-  std::map<std::string, OutputChannelObjects> mOutputMap;
+    std::map<std::string, OutputChannelObjects> mOutputMap;
 
-
-
+  // Buffer mainenance
+  std::uint64_t mBufferSize = std::uint64_t(32) << 30;
+  ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mDropQueue;
+  std::thread mStfDropThread;
 };
 }
 } /* namespace o2::DataDistribution */
