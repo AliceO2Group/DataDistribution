@@ -245,17 +245,16 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
       auto lStatus = lStfSenderRpcCli->StfDataRequest(lStfRequest, lStfResponse);
       if (!lStatus.ok()) {
         // gRPC problem... continue asking for other
-        WDDLOG("StfSender gRPC connection error. stfs_id={} code={} error={}",
+        WDDLOG_GRL(1000, "StfSender gRPC connection error. stfs_id={} code={} error={}",
           lStfSenderId, lStatus.error_code(), lStatus.error_message());
       }
 
       if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_TIMEOUT) {
-        WDDLOG("StfSender dropped an STF before notification from the TfScheduler. "
-          "Check the StfSender buffer state. stfs_id={} stf_id={}",
-          lStfSenderId, pLamStfId);
+        WDDLOG_GRL(1000, "StfSender dropped an STF before notification from the TfScheduler. "
+          "Check the StfSender buffer state. stfs_id={} stf_id={}", lStfSenderId, pLamStfId);
       } else if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_UNKNOWN) {
-        WDDLOG("StfSender dropped an STF for unknown reason. Check the StfSender buffer state. stfs_id={} stf_id={}",
-          lStfSenderId, pLamStfId);
+        WDDLOG_GRL(1000, "StfSender dropped an STF for unknown reason. "
+          "Check the StfSender buffer state. stfs_id={} stf_id={}", lStfSenderId, pLamStfId);
       }
     }
 
@@ -269,7 +268,7 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
     mStfDropFutures.push_back(std::move(lFeature));
 
   } catch (std::exception &) {
-    WDDLOG("dropAllStfsAsync: async method failed. Calling synchronously.");
+    WDDLOG_GRL(1000, "dropAllStfsAsync: async method failed. Calling synchronously. stf_id={}", pStfId);
     lDropLambda(pStfId);
   }
 }
@@ -322,7 +321,6 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
 
   DDDLOG("Exiting StfSender RPC Monitoring thread.");
 }
-
 
 }
 } /* o2::DataDistribution */

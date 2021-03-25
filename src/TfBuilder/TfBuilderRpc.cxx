@@ -37,7 +37,6 @@ void TfBuilderRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, int &lReal
   IDDLOG("gRPC server is started. server_ep={}:{}", pRpcSrvBindIp, lRealPort);
 }
 
-
 bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize)
 {
   mCurrentTfBufferSize = pBufferSize;
@@ -153,9 +152,8 @@ void TfBuilderRpcImpl::StfRequestThread()
     }
 
     lNumTfRequests++;
-    DDLOGF_RL(1000, DataDistSeverity::debug, "Requesting SubTimeFrame. stf_id={} tf_size={} total_requests={}",
+    DDDLOG_RL(1000, "Requesting SubTimeFrame. stf_id={} tf_size={} total_requests={}",
       mTfInfo.tf_id(), mTfInfo.tf_size(), lNumTfRequests);
-
 
     for (auto &lStfDataIter : mTfInfo.stf_size_map()) {
       const auto &lStfSenderId = lStfDataIter.first;
@@ -180,7 +178,6 @@ void TfBuilderRpcImpl::StfRequestThread()
 
   // send disconnect update
   assert (!mRunning);
-
   DDDLOG("Exiting Stf requesting thread.");
 }
 
@@ -209,11 +206,11 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
   }
 
   sUpdateCnt++;
-  DDLOGF_RL(5000, DataDistSeverity::debug, "Sending TfBuilder update. accepting={} total={}", mAcceptingTfs, sUpdateCnt);
+  DDDLOG_RL(5000, "Sending TfBuilder update. accepting={} total={}", mAcceptingTfs, sUpdateCnt);
 
   auto lRet = mTfSchedulerRpcClient.TfBuilderUpdate(lUpdate);
   if (!lRet) {
-    DDLOGF_RL(1000, DataDistSeverity::error, "Sending TfBuilder status update failed.");
+    EDDLOG_RL(1000, "Sending TfBuilder status update failed.");
   }
   return lRet;
 }

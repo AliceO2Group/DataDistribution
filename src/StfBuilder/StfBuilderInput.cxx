@@ -90,7 +90,7 @@ void StfInputInterface::DataHandlerThread()
       // receive readout messages
       const auto lRet = lInputChan.Receive(lReadoutMsgs);
       if (lRet < 0 && mRunning) {
-        DDLOGF_RL(1000, DataDistSeverity::warning, "READOUT INTERFACE: Receive failed . err={}", std::to_string(lRet));
+        WDDLOG_RL(1000, "READOUT INTERFACE: Receive failed . err={}", std::to_string(lRet));
         continue;
       } else if (lRet < 0 && !mRunning) {
         break; // should exit
@@ -103,18 +103,18 @@ void StfInputInterface::DataHandlerThread()
 
       // Copy to avoid surprises. The receiving header is not O2 compatible and can be discarded
       if (lReadoutMsgs[0]->GetSize() != sizeof(ReadoutSubTimeframeHeader)) {
-        DDLOGF_RL(1000, DataDistSeverity::error,
-          "READOUT INTERFACE: incompatible readout header received. Make sure to use compatible readout.exe version."
-          " received_size={} expected_size={}", lReadoutMsgs[0]->GetSize(), sizeof(ReadoutSubTimeframeHeader));
+        EDDLOG_RL(1000, "READOUT INTERFACE: incompatible readout header received. "
+          "Make sure to use compatible readout.exe version. received_size={} expected_size={}",
+          lReadoutMsgs[0]->GetSize(), sizeof(ReadoutSubTimeframeHeader));
         continue;
       }
       std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
 
       // check the readout header version
       if (lReadoutHdr.mVersion != sReadoutInterfaceVersion) {
-        DDLOGF_RL(1000, DataDistSeverity::error, "READOUT INTERFACE: Unsupported readout interface version. "
-          "Make sure to use compatible readout.exe version. "
-          "received={} expected={}", lReadoutHdr.mVersion, sReadoutInterfaceVersion);
+        EDDLOG_RL(1000, "READOUT INTERFACE: Unsupported readout interface version. "
+          "Make sure to use compatible readout.exe version. received={} expected={}",
+          lReadoutHdr.mVersion, sReadoutInterfaceVersion);
         continue;
       }
 
@@ -125,14 +125,15 @@ void StfInputInterface::DataHandlerThread()
 
         // backward jump
         if (lReadoutHdr.mTimeFrameId < lCurrentStfId) {
+          sNumNonContIncStfs++;
           std::stringstream lErrMsg;
           lErrMsg << "READOUT INTERFACE: "
               "TF ID decreased! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
               "readout.exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
               "Total occurrences: " << sNumNonContIncStfs;
 
-          DDLOGF_RL(200, DataDistSeverity::error, lErrMsg.str());
-          DDDLOG( lErrMsg.str());
+          EDDLOG_RL(200, lErrMsg.str());
+          DDDLOG(lErrMsg.str());
 
           // TODO: accout for lost data
           continue;
@@ -140,9 +141,9 @@ void StfInputInterface::DataHandlerThread()
 
         // forward jump
         if (lReadoutHdr.mTimeFrameId > (lCurrentStfId + 1)) {
-          DDLOGF_RL(200, DataDistSeverity::warning, "READOUT INTERFACE: "
-            "TF ID non-contiguous increase! ({}) -> ({}). Total occurrences: {}", lCurrentStfId,
-            lReadoutHdr.mTimeFrameId, sNumNonContDecStfs);
+          sNumNonContDecStfs++;
+          WDDLOG_RL(200, "READOUT INTERFACE: TF ID non-contiguous increase! ({}) -> ({}). Total occurrences: {}",
+            lCurrentStfId, lReadoutHdr.mTimeFrameId, sNumNonContDecStfs);
         }
         // we keep the data since this might be a legitimate jump
       }
@@ -304,10 +305,8 @@ void StfInputInterface::StfBuilderThread()
     if (lReadoutHdr.mTimeFrameId != lCurrentStfId) {
       // we expect to be notified about new TFs
       if (lIdInBuilding) {
-        DDLOGF_RL(1000, DataDistSeverity::error, "READOUT INTERFACE: Update with a new STF ID but the"
-          "Stop flag was not received for the current STF. current_id={} new_id={}",
-          lCurrentStfId, lReadoutHdr.mTimeFrameId);
-
+        EDDLOG_RL(1000, "READOUT INTERFACE: Update with a new STF ID but the Stop flag was not set for the current STF."
+          " current_id={} new_id={}", lCurrentStfId, lReadoutHdr.mTimeFrameId);
         finishBuildingCurrentStf();
       }
       lCurrentStfId = lReadoutHdr.mTimeFrameId;

@@ -195,7 +195,15 @@ void StfSenderDevice::StfReceiverThread()
   const auto lStfStartTime = hres_clock::now();
 
   while (mRunning) {
+    try {
     lStf = lStfReceiver.deserialize(lInputChan);
+    } catch (const std::exception &e) {
+      EDDLOG_RL(5000, "StfSender: received STF cannot be deserialized. what={}", e.what());
+      continue;
+    } catch (...) {
+      EDDLOG_RL(5000, "StfSender: received STF cannot be deserialized. what=UNKNOWN");
+      continue;
+    }
 
     if (!lStf) {
       std::this_thread::sleep_for(10ms);
@@ -208,12 +216,12 @@ void StfSenderDevice::StfReceiverThread()
     }
 
     ++lReceivedStfs;
-    DDLOGF_RL(5000, DataDistSeverity::debug, "StfSender received total of {} STFs.", lReceivedStfs);
+    DDDLOG_RL(5000, "StfSender received total of {} STFs.", lReceivedStfs);
 
     // get data size
     mStfSizeSamples.Fill(lStf->getDataSize());
 
-    DDLOGF_RL(2000, DataDistSeverity::info, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
+    IDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
     queue(eReceiverOut, std::move(lStf));

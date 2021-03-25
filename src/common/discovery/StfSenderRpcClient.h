@@ -150,7 +150,7 @@ public:
       );
     }
 
-    DDLOGF_RL(1000, DataDistSeverity::info, "gRPC: Connected to {} out of {} StfSender{}.",
+    IDDLOG_RL(1000, "gRPC: Connected to {} out of {} StfSender{}",
       mClients.size(), lNumStfSenders, lNumStfSenders > 1 ? "s" : "");
 
     if (mClients.size() != lNumStfSenders) {

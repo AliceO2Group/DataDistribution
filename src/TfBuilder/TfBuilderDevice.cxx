@@ -272,8 +272,7 @@ void TfBuilderDevice::TfForwardThread()
     if (!mStandalone) {
       try {
         lTfOutCnt++;
-        DDLOGF_RL(1000, DataDistSeverity::info,
-          "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={:d}",
+        IDDLOG_RL(1000, "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={:d}",
           lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), lTfOutCnt);
 
         if (dplEnabled()) {

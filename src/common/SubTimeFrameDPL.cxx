@@ -333,9 +333,7 @@ std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQChannel& pChan)
   }
 
   if (ret < 0) {
-    DDLOGF_RL(1000, DataDistSeverity::error, "STF receive failed err={} errno={} error={}", ret, errno,
-      std::string(strerror(errno)));
-
+    EDDLOG_RL(1000, "STF receive failed err={} errno={} error={}", ret, errno, std::string(strerror(errno)));
     mMessages.clear();
     return nullptr;
   }

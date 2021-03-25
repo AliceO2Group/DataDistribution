@@ -504,7 +504,7 @@ void SubTimeFrameFileSource::DataInjectThread()
       auto lWaitTime = std::clamp((lSecNext - lSecSinceStart) * 3. / 5., 0.001, 0.5);
       std::this_thread::sleep_for(std::chrono::duration<double>(lWaitTime));
     }
-    DDLOGF_RL(2000, DataDistSeverity::debug, "SubTimeFrameFileSource prepared_tfs={} inject_rate={:.4f}",
+    DDDLOG_RL(2000, "SubTimeFrameFileSource prepared_tfs={} inject_rate={:.4f}",
       mReadStfQueue.size(), sNumSentStfs / getElapsedTime());
   }
 

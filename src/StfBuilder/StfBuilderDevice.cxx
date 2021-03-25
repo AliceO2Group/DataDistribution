@@ -297,7 +297,7 @@ void StfBuilderDevice::StfOutputThread()
     // decrement the stf counter
     I().mNumStfs--;
 
-    DDLOGF_RL(2000, DataDistSeverity::debug, "Sending an STF out. stf_id={} stf_size={} unique_equipments={}",
+    DDDLOG_RL(2000, "Sending an STF out. stf_id={} stf_size={} unique_equipments={}",
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
     // get data size sample

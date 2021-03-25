@@ -78,7 +78,7 @@ bool TfSchedulerDevice::ConditionalRun()
   if (!mSchedInstance) {
     // check for new requests
     PartitionRequest lNewPartitionRequest;
-    DDLOGF_RL(5000, DataDistSeverity::debug, "Checking for new partition creation requests.");
+    DDDLOG_RL(5000, "Checking for new partition creation requests.");
     if (mDiscoveryConfig->getNewPartitionRequest(lNewPartitionRequest)) {
       // new request
       IDDLOG("Request for starting a new partition. partition={}", lNewPartitionRequest.mPartitionId);

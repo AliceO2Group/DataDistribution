@@ -97,8 +97,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
         if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory() ) {
 
           DDDLOG("Ignoring TfBuilder info (last_build < last_scheduled). Fixing the estimate ratio. "
-            "tfb_id={:s} new_mem_stimate={}", lTfBuilderId,
-            (double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory())));
+            "tfb_id={:s} new_mem_estimate={}", lTfBuilderId, pTfBuilderUpdate.free_memory());
 
           lInfo->mEstimatedFreeMemory = pTfBuilderUpdate.free_memory();
 
