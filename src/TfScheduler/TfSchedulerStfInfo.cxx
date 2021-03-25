@@ -78,8 +78,7 @@ void TfSchedulerStfInfo::SchedulingThread()
         std::string lTfBuilderId;
         if (mTfBuilderInfo.findTfBuilderForTf(lTfSize, lTfBuilderId /*out*/) ) {
           lNumTfScheds++;
-          DDLOGF_RL(1000, DataDistSeverity::debug, "Scheduling new TF. tf_id={} tfb_id={} total={}",
-            lTfId, lTfBuilderId, lNumTfScheds);
+      DDDLOG_RL(1000, "Scheduling new TF. tf_id={} tfb_id={} total={}", lTfId, lTfBuilderId, lNumTfScheds);
 
           assert (!lTfBuilderId.empty());
           // Notify TfBuilder to build the TF

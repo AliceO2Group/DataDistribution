@@ -104,7 +104,6 @@ void StfSenderRpcImpl::stop()
                                 StfDataResponse* response)
 {
   mOutput->sendStfToTfBuilder(request->stf_id(), request->tf_builder_id(), *response/*out*/);
-
   return Status::OK;
 }
 
@@ -115,9 +114,7 @@ void StfSenderRpcImpl::stop()
   DDDLOG("TerminatePartition request received.");
   // TODO: verify partition id
   response->set_partition_state(PartitionState::PARTITION_TERMINATING);
-
   mTerminateRequested = true;
-
   return Status::OK;
 }
 

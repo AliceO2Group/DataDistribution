@@ -181,8 +181,7 @@ public:
         // weighted average merge ratio
         sMergeRatio = sMergeRatio * 0.75 + double(pBlkVect.size() - lIntMap.iterative_size()) /
           double(pBlkVect.size()) * 0.25;
-        DDLOGF_RL(5000, DataDistSeverity::debug, "Memory segment '{}'::block merging ratio average={:.4}",
-          mSegmentName, sMergeRatio);
+        DDDLOG_RL(5000, "Memory segment '{}'::block merging ratio average={:.4}", mSegmentName, sMergeRatio);
       },
       lSegmentRoot.c_str(),
       lMapFlags
@@ -284,13 +283,9 @@ protected:
 
       if (!lRet) {
         using namespace std::chrono_literals;
-
-        DDLOGF_RL(1000, DataDistSeverity::warning,
-          "RegionAllocatorResource: waiting to allocate a message. region={} alloc={} region_size={} free={} ",
+        WDDLOG_RL(1000, "RegionAllocatorResource: waiting to allocate a message. region={} alloc={} region_size={} free={}",
           mSegmentName, pSize, mRegion->GetSize(), mFree);
-        DDLOGF_RL(1000, DataDistSeverity::warning, "Memory region '{}' is too small, or there is a large backpressure.",
-          mSegmentName);
-
+        WDDLOG_RL(1000, "Memory region '{}' is too small, or there is a large backpressure.", mSegmentName);
         std::this_thread::sleep_for(5ms);
       }
     }
@@ -306,8 +301,7 @@ protected:
     static std::size_t sLogRateLimit = 0;
     if (sLogRateLimit++ % 1024 == 0) {
       const std::int64_t lFree = mFree;
-      DDLOGF_RL(2000, DataDistSeverity::debug, "DataRegionResource {} memory free={} allocated={}",
-        mSegmentName, lFree, (mSegmentSize - lFree));
+      DDDLOG_RL(2000, "DataRegionResource {} memory free={} allocated={}", mSegmentName, lFree, (mSegmentSize - lFree));
     }
 
     return lRet;
@@ -387,8 +381,8 @@ private:
       sFragmentation = sFragmentation * 0.75 + double(lFree - mLength)/double(lFree) * 0.25;
       sNumFragments = sNumFragments * 0.75 + double(mFreeRanges.iterative_size() + 1) * 0.25;
 
-      DDLOGF_RL(5000, DataDistSeverity::debug, "DataRegionResource {} estimated: free={:.4} num_fragments={:.4} "
-        "fragmentation={:.4}", mSegmentName, sFree, sNumFragments, sFragmentation);
+      DDDLOG_RL(5000, "DataRegionResource {} estimated: free={:.4} num_fragments={:.4} fragmentation={:.4}",
+        mSegmentName, sFree, sNumFragments, sFragmentation);
     }
 
     return true;

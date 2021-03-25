@@ -147,9 +147,9 @@ Stack SubTimeFrameFileReader::getHeaderStack(std::size_t &pOrigsize)
     if (lBaseOfDH->headerVersion == 1 || lBaseOfDH->headerVersion == 2) {
       /* nothing to do for the upgrade */
     } else {
-      DDLOGF_RL(1000, DataDistSeverity::error, "FileReader: DataHeader v{} read from file is not upgraded to "
-        "the current version {}", lBaseOfDH->headerVersion, DataHeader::sVersion);
-      DDLOGF_RL(1000, DataDistSeverity::error, "Try using a newer version of DataDistribution or file a BUG");
+      EDDLOG_RL(1000, "FileReader: DataHeader v{} read from file is not upgraded to the current version {}",
+        lBaseOfDH->headerVersion, DataHeader::sVersion);
+      EDDLOG_RL(1000, "Try using a newer version of DataDistribution or file a BUG");
     }
 
     if (lBaseOfDH->size() == lStackSize) {
@@ -224,7 +224,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
 
   // check there's enough data in the file
   if ((lTfStartPosition + lStfSizeInFile) > this->size()) {
-    DDLOGF_RL(200, DataDistSeverity::warning, "Not enough data in file for this TF. Required: {}, available: {}",
+    WDDLOG_RL(200, "Not enough data in file for this TF. Required: {}, available: {}",
       lStfSizeInFile, (this->size() - lTfStartPosition));
     mFileMap.close();
     return nullptr;
@@ -280,7 +280,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
 
     auto lHdrStackMsg = pFileBuilder.newHeaderMessage(lDataHeaderStack, lStf->id());
     if (!lHdrStackMsg) {
-      DDLOGF_RL(1000, DataDistSeverity::info, "Header memory resource stopped. Exiting.");
+      DDDLOG_RL(1000, "Header memory resource stopped. Exiting.");
       mFileMap.close();
       return nullptr;
     }

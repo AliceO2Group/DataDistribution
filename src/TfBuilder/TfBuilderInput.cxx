@@ -268,7 +268,7 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
 
     const TimeFrameIdType lTfId = lStf->header().mId;
 
-    DDLOGF_RL(5000, DataDistSeverity::debug, "Received STF. flp_idx={} stf_id={} total={}", pFlpIndex, lTfId, lNumStfs);
+    DDDLOG_RL(5000, "Received STF. flp_idx={} stf_id={} total={}", pFlpIndex, lTfId, lNumStfs);
 
     {
       // Push the STF into the merger queue
@@ -334,7 +334,7 @@ void TfBuilderInput::StfMergerThread()
       }
 
       lNumBuiltTfs++;
-      DDLOGF_RL(500, DataDistSeverity::debug, "Building of TF completed. tf_id={:d} duration_ms={} total_tf={:d}",
+      DDDLOG_RL(1000, "Building of TF completed. tf_id={:d} duration_ms={} total_tf={:d}",
         lStfId, lBuildDurationMs.count(), lNumBuiltTfs);
 
       // remove consumed STFs from the merge queue

@@ -133,104 +133,106 @@ public:
   }
 
   ~DataDistLogger() {
-    switch(mSeverity) {
-      case DataDistSeverity::fatal:
-        if (StdoutEnabled(mSeverity)) {
-          I().critical(std::string_view(mLogMessage.begin(), mLogMessage.size()));
-        }
+    try {
+      switch(mSeverity) {
+        case DataDistSeverity::fatal:
+          if (StdoutEnabled(mSeverity)) {
+            I().critical(std::string_view(mLogMessage.begin(), mLogMessage.size()));
+          }
 
-        if (InfoLogEnabled(mSeverity)) {
-          sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-            std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Fatal,
-            std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
-          ));
-        }
-        break;
-      case DataDistSeverity::error:
-        if (StdoutEnabled(mSeverity)) {
-          I().error(std::string_view(mLogMessage.begin(), mLogMessage.size()));
-        }
+          if (InfoLogEnabled(mSeverity)) {
+            sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
+              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Fatal,
+              std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
+            ));
+          }
+          break;
+        case DataDistSeverity::error:
+          if (StdoutEnabled(mSeverity)) {
+            I().error(std::string_view(mLogMessage.begin(), mLogMessage.size()));
+          }
 
-        if (InfoLogEnabled(mSeverity)) {
-          sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-            std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Error,
-            std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
-          ));
-        }
+          if (InfoLogEnabled(mSeverity)) {
+            sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
+              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Error,
+              std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
+            ));
+          }
 
-        break;
-      case DataDistSeverity::warn:
-        if (StdoutEnabled(mSeverity)) {
-          I().warn(std::string_view(mLogMessage.begin(), mLogMessage.size()));
-        }
+          break;
+        case DataDistSeverity::warn:
+          if (StdoutEnabled(mSeverity)) {
+            I().warn(std::string_view(mLogMessage.begin(), mLogMessage.size()));
+          }
 
-        if (InfoLogEnabled(mSeverity)) {
-          sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-            std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Warning,
-            std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
-          ));
-        }
+          if (InfoLogEnabled(mSeverity)) {
+            sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
+              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Warning,
+              std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
+            ));
+          }
 
-        break;
-      case DataDistSeverity::state:
-        if (StdoutEnabled(mSeverity)) {
-          I().info("[STATE]" + std::string(mLogMessage.begin(), mLogMessage.end()));
-        }
+          break;
+        case DataDistSeverity::state:
+          if (StdoutEnabled(mSeverity)) {
+            I().info("[STATE]" + std::string(mLogMessage.begin(), mLogMessage.end()));
+          }
 
-        if (InfoLogEnabled(mSeverity)) {
-          sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-            std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Info,
-            std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
-          ));
-        }
+          if (InfoLogEnabled(mSeverity)) {
+            sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
+              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Info,
+              std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
+            ));
+          }
 
-        break;
-      case DataDistSeverity::info:
-        if (StdoutEnabled(mSeverity)) {
-          I().info(std::string_view(mLogMessage.begin(), mLogMessage.size()));
-        }
+          break;
+        case DataDistSeverity::info:
+          if (StdoutEnabled(mSeverity)) {
+            I().info(std::string_view(mLogMessage.begin(), mLogMessage.size()));
+          }
 
-        if (InfoLogEnabled(mSeverity)) {
-          sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-            std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Info,
-            std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
-          ));
-        }
+          if (InfoLogEnabled(mSeverity)) {
+            sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
+              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Info,
+              std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
+            ));
+          }
 
-        break;
-      case DataDistSeverity::debug:
-        if (StdoutEnabled(mSeverity)) {
-          I().debug(std::string_view(mLogMessage.begin(), mLogMessage.size()));
-        }
+          break;
+        case DataDistSeverity::debug:
+          if (StdoutEnabled(mSeverity)) {
+            I().debug(std::string_view(mLogMessage.begin(), mLogMessage.size()));
+          }
 
-        if (InfoLogEnabled(mSeverity)) {
-          sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-            std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Debug,
-            std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
-          ));
-        }
+          if (InfoLogEnabled(mSeverity)) {
+            sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
+              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Debug,
+              std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
+            ));
+          }
 
-        break;
-      case DataDistSeverity::trace:
-        if (StdoutEnabled(mSeverity)) {
-          I().trace(std::string_view(mLogMessage.begin(), mLogMessage.size()));
-        }
+          break;
+        case DataDistSeverity::trace:
+          if (StdoutEnabled(mSeverity)) {
+            I().trace(std::string_view(mLogMessage.begin(), mLogMessage.size()));
+          }
 
-        if (InfoLogEnabled(mSeverity)) {
-          sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-            std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Debug,
-            std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
-          ));
-        }
+          if (InfoLogEnabled(mSeverity)) {
+            sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
+              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Debug,
+              std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
+            ));
+          }
 
-        break;
+          break;
 
-      default:
-        if (StdoutEnabled(mSeverity)) {
-          I().info("[???] " + std::string(mLogMessage.begin(), mLogMessage.end()));
-        }
-        break;
-    }
+        default:
+          if (StdoutEnabled(mSeverity)) {
+            I().info("[???] " + std::string(mLogMessage.begin(), mLogMessage.end()));
+          }
+          break;
+      }
+    } catch (const std::exception &e) { std::cerr << "Logging exception what=" << e.what() << std::endl; }
   }
 
   template<typename T>

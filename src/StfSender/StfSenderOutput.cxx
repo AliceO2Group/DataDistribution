@@ -126,7 +126,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
     std::scoped_lock lLock(mOutputMapLock);
 
     char tname[128];
-    fmt::format_to(tname, "stfs_out_{}", mOutputMap.size());
+    fmt::format(tname, "to_{}", pTfBuilderId);
 
     mOutputMap.try_emplace(
       pTfBuilderId,
