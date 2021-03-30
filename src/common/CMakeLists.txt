@@ -5,6 +5,7 @@
 
 add_subdirectory(base)
 add_subdirectory(discovery)
+add_subdirectory(fmqtools)
 
 set (LIB_COMMON_SOURCES
   ReadoutDataModel

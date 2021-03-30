@@ -2,22 +2,20 @@
 # @brief  DataDistribution base stuff: Logging, etc...
 
 #-------------------------------------------------------------------------------
-set (LIB_BASE_SOURCES
-  DataDistLogger
-  FilePathUtils
+set (LIB_FMQTOOLS_SOURCES
+  FmqUtilities
 )
 
-add_library(base OBJECT ${LIB_BASE_SOURCES})
+add_library(fmqtools OBJECT ${LIB_FMQTOOLS_SOURCES})
 
-target_include_directories(base
+
+target_include_directories(fmqtools
   PUBLIC
-    ${CMAKE_BINARY_DIR}/spdlog/include
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(base
   PUBLIC
-    spdlog::spdlog
-    Boost::filesystem
-    AliceO2::InfoLogger
+    FairLogger::FairLogger
+    FairMQ::FairMQ
 )

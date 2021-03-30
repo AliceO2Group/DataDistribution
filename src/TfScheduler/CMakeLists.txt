@@ -12,7 +12,7 @@ set(EXE_TFS_SOURCES
 )
 
 add_library(TfScheduler_lib OBJECT ${EXE_TFS_SOURCES})
-target_link_libraries(TfScheduler_lib  base discovery)
+target_link_libraries(TfScheduler_lib  base fmqtools discovery)
 
 add_executable(TfScheduler)
 
@@ -25,7 +25,7 @@ endif()
 target_link_libraries(TfScheduler
   PRIVATE
     TfScheduler_lib
-    base discovery
+    base fmqtools discovery
 )
 
 install(TARGETS TfScheduler RUNTIME DESTINATION bin)

@@ -12,6 +12,7 @@
 #include "StfSenderDevice.h"
 #include <SubTimeFrameFileSink.h>
 #include <Config.h>
+#include <FmqUtilities.h>
 
 #include <options/FairMQProgOptions.h>
 
@@ -65,7 +66,7 @@ int main(int argc, char* argv[])
       // });
 
       // Install listener for Logging options
-      o2::DataDistribution::impl::DataDistLoggerCtx::HandleFMQOptions(r);
+      fmqtools::HandleFMQOptions(r);
 
       // Install listener for discovery partition key
       r.fConfig.Subscribe<std::string>("discovery-partition", [&](const std::string& pKey, std::string pValue) {

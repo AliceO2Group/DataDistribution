@@ -43,6 +43,8 @@ DataDistSeverity DataDistLogger::sConfigSeverity = DataDistSeverity::debug;
 // Keep the desired InfoLogger Severity level
 bool DataDistLogger::sInfologgerEnabled = false;
 DataDistSeverity DataDistLogger::sInfologgerSeverity = DataDistSeverity::nolog;
+std::uint64_t DataDistLogger::sRunNumber = 0;
+std::string DataDistLogger::sRunNumberStr = "";
 
 
 // this is a static object that will interpose early into FairLogger
