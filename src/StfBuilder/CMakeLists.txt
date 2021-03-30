@@ -8,7 +8,7 @@ set(EXE_STFB_SOURCES
 )
 
 add_library(StfBuilder_lib OBJECT ${EXE_STFB_SOURCES})
-target_link_libraries(StfBuilder_lib base common)
+target_link_libraries(StfBuilder_lib base fmqtools common)
 
 add_executable(StfBuilder)
 
@@ -21,7 +21,7 @@ endif()
 target_link_libraries(StfBuilder
   PRIVATE
     StfBuilder_lib
-    base common
+    base fmqtools common
 )
 
 install(TARGETS StfBuilder RUNTIME DESTINATION bin)

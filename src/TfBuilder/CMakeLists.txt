@@ -9,7 +9,7 @@ set(EXE_TFB_SOURCES
 )
 
 add_library(TfBuilder_lib OBJECT ${EXE_TFB_SOURCES})
-target_link_libraries(TfBuilder_lib base common discovery)
+target_link_libraries(TfBuilder_lib base fmqtools common discovery)
 
 add_executable(TfBuilder)
 
@@ -22,7 +22,7 @@ endif()
 target_link_libraries(TfBuilder
   PRIVATE
     TfBuilder_lib
-    base common discovery
+    base fmqtools common discovery
 )
 
 install(TARGETS TfBuilder RUNTIME DESTINATION bin)

@@ -25,16 +25,13 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 
 #include <fairlogger/Logger.h>
-#include <fairmq/DeviceRunner.h>
-#include <options/FairMQProgOptions.h>
+// #include <fairmq/DeviceRunner.h>
+// #include <options/FairMQProgOptions.h>
 
 #include <InfoLogger/InfoLogger.hxx>
-
 #include <boost/program_options/options_description.hpp>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using DataDistSeverity = fair::Severity;
@@ -51,6 +48,8 @@ public:
   static DataDistSeverity sInfologgerSeverity;
   static std::string sInfoLoggerFacility;
   static bool sInfologgerEnabled;
+  static std::uint64_t sRunNumber;
+  static std::string sRunNumberStr;
 
   static spdlog::logger& I() {
     static std::shared_ptr<spdlog::logger> sTheLogger = nullptr;
@@ -399,81 +398,7 @@ struct DataDistLoggerCtx {
     }
   }
 
-  // react to FMQ program options
-  static void HandleFMQOptions(fair::mq::DeviceRunner &pFMQRunner) {
 
-    fair::mq::ProgOptions& lFMQConfig = pFMQRunner.fConfig;
-
-    try {
-      pFMQRunner.UnsubscribeFromConfigChange();
-    } catch(...) { }
-
-    // disable fairlogger file backend
-    lFMQConfig.SetProperty<std::string>("file-severity", "nolog");
-    lFMQConfig.SetProperty<std::string>("log-to-file", "");
-
-    auto lSetSeverity = [](const std::string &pSevKey, const std::string &pSevVal) {
-      // we never allow FairMQ console or file backends!
-      fair::Logger::SetFileSeverity(DataDistSeverity::nolog);
-      fair::Logger::SetConsoleSeverity(fair::Severity::nolog);
-
-      if (pSevKey == "severity") {
-        fair::Logger::SetConsoleSeverity(fair::Severity::nolog);
-
-        // set the DD log console severity
-        if (fair::Logger::fSeverityMap.count(pSevVal)) {
-          const auto newLevel = fair::Logger::fSeverityMap.at(pSevVal);
-          if (newLevel == fair::Severity::nolog) {
-            DataDistLogger::sConfigSeverity = fair::Severity::fatal;
-          } else {
-            DataDistLogger::sConfigSeverity = newLevel;
-          }
-        }
-
-      } else if (pSevKey == "severity-infologger") {
-        // check the InfoLogger mode. Only infoLoggerD is supported.
-        if(!checkInfoLoggerOptions()) {
-          WDDLOG("DataDistLogger: Invalid INFOLOGGER_MODE. Ignoring severity-infologger={}",
-            pSevVal);
-          DataDistLogger::sInfologgerSeverity = DataDistSeverity::nolog;
-          DataDistLogger::sInfologgerEnabled = false;
-          return;
-        }
-
-        // set the InfoLogger log severity
-        if (fair::Logger::fSeverityMap.count(pSevVal)) {
-          const auto newLevel = fair::Logger::fSeverityMap.at(pSevVal);
-          if (newLevel == fair::Severity::nolog) {
-            DataDistLogger::sInfologgerSeverity = fair::Severity::fatal;
-            DataDistLogger::sInfologgerEnabled = false;
-          } else {
-            DataDistLogger::sInfologgerSeverity = newLevel;
-            DataDistLogger::sInfologgerEnabled = true;
-            impl::DataDistLoggerCtx::InitInfoLogger();
-          }
-        }
-
-      } else if (pSevKey == "severity-file") {
-          EDDLOG("DataDistLogger: FMQ File logger is not supported.");
-      }
-    };
-
-    // subscribe to notifications
-    lFMQConfig.Subscribe<std::string>("dd-log-config", [&](const std::string& key, const std::string& val) {
-
-      try {
-        pFMQRunner.UnsubscribeFromConfigChange();
-      } catch(...) { }
-
-      lSetSeverity(key, val);
-    });
-
-    // read and apply the current value
-    lSetSeverity("severity", lFMQConfig.GetProperty<std::string>("severity"));
-
-    // read and apply the current value
-    lSetSeverity("severity-infologger", lFMQConfig.GetProperty<std::string>("severity-infologger"));
-  }
 
   // InfoLogger Options
   static boost::program_options::options_description getProgramOptions() {
@@ -489,38 +414,6 @@ struct DataDistLoggerCtx {
     return lInfoLoggerOpts;
   };
 
-private:
-
-  // check the InfoLogger mode. Only infoLoggerD is supported.
-  static inline bool checkInfoLoggerOptions() {
-
-    DDDLOG("DataDistLogger: Checking INFOLOGGER_MODE variable");
-
-    const char *cMode = getenv("INFOLOGGER_MODE");
-
-    if (cMode == nullptr) {
-      IDDLOG("DataDistLogger: INFOLOGGER_MODE backend is not set.");
-      return false;
-    }
-
-    const std::string cModeStr = std::string(cMode);
-
-    if (cModeStr.length() == 0) {
-      WDDLOG("DataDistLogger: INFOLOGGER_MODE variable is empty.");
-      return false;
-    }
-
-    if (cModeStr != "infoLoggerD") {
-      EDDLOG("DataDistLogger: INFOLOGGER_MODE mode is not supported "
-        "(only infoLoggerD mode). INFOLOGGER_MODE={}", cModeStr);
-      return false;
-    }
-
-    IDDLOG("DataDistLogger: enabling InfoLogger in infoLoggerD mode.");
-
-    return true;
-  }
-
 static inline void InitInfoLogger() {
   if (!DataDistLogger::sInfologgerEnabled) {
     return;
@@ -531,14 +424,18 @@ static inline void InitInfoLogger() {
   AliceO2::InfoLogger::InfoLoggerContext lInfoLoggerCtx;
   lInfoLoggerCtx.setField(AliceO2::InfoLogger::InfoLoggerContext::FieldName::Facility,
     DataDistLogger::sInfoLoggerFacility);
+  lInfoLoggerCtx.setField(AliceO2::InfoLogger::InfoLoggerContext::FieldName::Run,
+    DataDistLogger::sRunNumberStr);
+
   lIlogger.setContext(lInfoLoggerCtx);
 
   DDDLOG("DataDistLogger: infoLoggerD settings are updated.");
 }
+
 };
 
 }
-}
+
 } /* o2::DataDistribution */
 
 #endif /* DATADIST_LOGGER_H_ */

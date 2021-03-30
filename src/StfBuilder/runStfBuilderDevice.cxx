@@ -16,6 +16,7 @@
 
 #include <SubTimeFrameFileSink.h>
 #include <SubTimeFrameFileSource.h>
+#include <FmqUtilities.h>
 
 #include <fairmq/DeviceRunner.h>
 
@@ -96,7 +97,7 @@ int main(int argc, char* argv[])
       // });
 
       // Install listener for Logging options
-      o2::DataDistribution::impl::DataDistLoggerCtx::HandleFMQOptions(r);
+      fmqtools::HandleFMQOptions(r);
       // reset unsupported options
       r.fConfig.SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 16u));
       r.fConfig.SetProperty<float>("rate", 0.f);
