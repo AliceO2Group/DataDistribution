@@ -132,6 +132,8 @@ void TfBuilderDevice::PreRun()
   auto& lStatus = mDiscoveryConfig->status();
   lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
   mDiscoveryConfig->write();
+
+  IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 
 bool TfBuilderDevice::start()
@@ -243,7 +245,7 @@ void TfBuilderDevice::PostRun()
   lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
   mDiscoveryConfig->write();
 
-  DDDLOG("PostRun()");
+  IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 
 bool TfBuilderDevice::ConditionalRun()

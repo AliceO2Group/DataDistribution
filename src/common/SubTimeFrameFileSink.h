@@ -89,6 +89,7 @@ class SubTimeFrameFileSink
 
   /// Configuration
   bool mEnabled = false;
+  bool mRunning = false;
   std::string mRootDir;
   std::string mCurrentDir;
   std::string mFileNamePattern;

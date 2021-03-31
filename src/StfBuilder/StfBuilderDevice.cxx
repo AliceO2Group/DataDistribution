@@ -140,6 +140,8 @@ void StfBuilderDevice::InitTask()
     std::this_thread::sleep_for(1s); exit(-1);
   }
 
+  I().mRunning = true;
+
   // make sure we have detector if not using files
   if (!I().mFileSource->enabled()) {
     if ((ReadoutDataUtils::sRdhVersion < ReadoutDataUtils::RdhVersion::eRdhVer6) &&
@@ -223,7 +225,7 @@ void StfBuilderDevice::InitTask()
   // info thread
   I().mInfoThread = create_thread_member("stfb_info", &StfBuilderDevice::InfoThread, this);
 
-  IDDLOG("PreRun() done... ");
+  IDDLOG("InitTask() done... ");
 }
 
 void StfBuilderDevice::ResetTask()
@@ -268,9 +270,6 @@ void StfBuilderDevice::ResetTask()
 
 void StfBuilderDevice::StfOutputThread()
 {
-  // wait for the device to go into RUNNING state
-  WaitForRunningState();
-
   std::unique_ptr<InterleavedHdrDataSerializer> lStfSerializer;
   std::unique_ptr<StfToDplAdapter> lStfDplAdapter;
 
@@ -286,13 +285,14 @@ void StfBuilderDevice::StfOutputThread()
     }
   }
 
-  while (IsReadyOrRunningState()) {
+  while (I().mRunning) {
     using hres_clock = std::chrono::high_resolution_clock;
 
     // Get a STF ready for sending
     std::unique_ptr<SubTimeFrame> lStf = dequeue(eStfSendIn);
-    if (!lStf)
+    if (!lStf) {
       break;
+    }
 
     // decrement the stf counter
     I().mNumStfs--;
@@ -382,10 +382,7 @@ void StfBuilderDevice::StfOutputThread()
 
 void StfBuilderDevice::InfoThread()
 {
-  // wait for the device to go into RUNNING state
-  WaitForRunningState();
-
-  while (IsReadyOrRunningState()) {
+  while (I().mRunning) {
 
     std::this_thread::sleep_for(2s);
 
@@ -449,8 +446,6 @@ bpo::options_description StfBuilderDevice::getStfBuildingProgramOptions() {
 
   return lStfBuildingOptions;
 }
-
-
 
 o2::header::DataOrigin StfBuilderDevice::getDataOriginFromOption(const std::string pArg)
 {
