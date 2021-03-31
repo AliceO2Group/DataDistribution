@@ -20,14 +20,15 @@
 #include <ConfigConsul.h>
 
 #include <Utilities.h>
+#include <FmqUtilities.h>
+
+#include <fairmq/ProgOptionsFwd.h>
 
 #include <vector>
 #include <map>
 #include <thread>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 class ConsulConfig;
@@ -64,7 +65,7 @@ class TfSchedulerInstanceHandler
   TfSchedulerInstanceRpcImpl mRpcServer;
 
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_TF_SCHEDULER_INSTANCE_H_ */

@@ -13,7 +13,10 @@
 
 #include "SubTimeFrameFileSink.h"
 #include "FilePathUtils.h"
+#include "FmqUtilities.h"
 #include "DataDistLogger.h"
+
+#include <fairmq/ProgOptions.h>
 
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/program_options/options_description.hpp>

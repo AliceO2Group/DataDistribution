@@ -31,6 +31,7 @@ target_include_directories(common
 target_link_libraries(common
   PUBLIC
     base
+    fmqtools
     Boost::iostreams
     FairMQ::FairMQ
     AliceO2::Headers

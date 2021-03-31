@@ -22,6 +22,7 @@
 #include <SubTimeFrameFileSource.h>
 #include <ConcurrentQueue.h>
 #include <Utilities.h>
+#include <FmqUtilities.h>
 
 #include <deque>
 #include <memory>

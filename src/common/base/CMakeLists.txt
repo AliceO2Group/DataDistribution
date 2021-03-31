@@ -20,4 +20,5 @@ target_link_libraries(base
     spdlog::spdlog
     Boost::filesystem
     AliceO2::InfoLogger
+    FairLogger::FairLogger
 )
