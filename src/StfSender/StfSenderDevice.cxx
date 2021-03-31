@@ -138,9 +138,11 @@ void StfSenderDevice::InitTask()
 void StfSenderDevice::PreRun()
 {
   // update running state
-  auto& lStatus = I().mDiscoveryConfig->status();
-  lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
-  I().mDiscoveryConfig->write();
+  if (!standalone() && I().mDiscoveryConfig) {
+    auto& lStatus = I().mDiscoveryConfig->status();
+    lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
+    I().mDiscoveryConfig->write();
+  }
 
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
@@ -148,9 +150,11 @@ void StfSenderDevice::PreRun()
 void StfSenderDevice::PostRun()
 {
   // update running state
-  auto& lStatus = I().mDiscoveryConfig->status();
-  lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
-  I().mDiscoveryConfig->write();
+  if (!standalone() && I().mDiscoveryConfig) {
+    auto& lStatus = I().mDiscoveryConfig->status();
+    lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
+    I().mDiscoveryConfig->write();
+  }
 
   IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
