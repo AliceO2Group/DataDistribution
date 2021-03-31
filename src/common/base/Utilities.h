@@ -14,8 +14,6 @@
 #ifndef ALICEO2_DATADIST_UTILITIES_H_
 #define ALICEO2_DATADIST_UTILITIES_H_
 
-#include <fairmq/FairMQDevice.h>
-
 #include <type_traits>
 #include <memory>
 #include <thread>
@@ -26,9 +24,7 @@
 
 #include <boost/dynamic_bitset.hpp>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 template <class F, class ... Args>
@@ -41,26 +37,6 @@ std::thread create_thread_member(const char* name, F&& f, Args&&... args) {
     fun(args...);
   });
 }
-
-class DataDistDevice : public FairMQDevice {
-
-public:
-
-  void WaitForRunningState() const {
-    while (GetCurrentState() < fair::mq::State::Running) {
-      using namespace std::chrono_literals;
-      std::this_thread::sleep_for(20ms);
-    }
-  }
-
-  bool IsRunningState() const {
-    return (GetCurrentState() == fair::mq::State::Running);
-  }
-
-  bool IsReadyOrRunningState() const {
-    return ((GetCurrentState() == fair::mq::State::Running) || (GetCurrentState() == fair::mq::State::Ready));
-  }
-};
 
 template <
   typename T,
@@ -218,7 +194,6 @@ private:
   }
 };
 
-}
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_DATADIST_UTILITIES_H_ */

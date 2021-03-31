@@ -21,6 +21,8 @@
 
 #include <Headers/DataHeader.h>
 
+#include <fairmq/ProgOptionsFwd.h>
+
 #include <boost/program_options/options_description.hpp>
 #include <boost/filesystem.hpp>
 #include <fstream>
@@ -32,6 +34,8 @@ namespace DataDistribution
 {
 
 namespace bpo = boost::program_options;
+
+class DataDistDevice;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// SubTimeFrameFileSink

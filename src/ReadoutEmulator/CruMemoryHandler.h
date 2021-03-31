@@ -16,6 +16,8 @@
 
 #include "Headers/DataHeader.h"
 
+#include <fairmq/FairMQUnmanagedRegion.h>
+
 #include <stack>
 #include <map>
 #include <vector>
@@ -30,9 +32,7 @@
 
 class FairMQUnmanagedRegion;
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace o2::header;
@@ -145,7 +145,7 @@ class CruMemoryHandler
   /// output data queue
   ConcurrentFifo<ReadoutLinkO2Data> mO2LinkDataQueue;
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_CRU_MEMORY_HANDLER_H_ */

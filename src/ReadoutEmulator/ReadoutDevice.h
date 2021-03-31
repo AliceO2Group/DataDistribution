@@ -15,14 +15,13 @@
 
 #include <ReadoutDataModel.h>
 #include <Utilities.h>
+#include <FmqUtilities.h>
 
 #include <memory>
 #include <deque>
 #include <condition_variable>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 class ReadoutDevice : public DataDistDevice
@@ -84,7 +83,7 @@ class ReadoutDevice : public DataDistDevice
 
   RunningSamples<uint64_t, 8192> mFreeSuperpagesSamples;
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_READOUT_EMULATOR_DEVICE_H_ */

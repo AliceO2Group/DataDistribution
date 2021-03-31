@@ -14,8 +14,9 @@ target_include_directories(fmqtools
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(base
+target_link_libraries(fmqtools
   PUBLIC
     FairLogger::FairLogger
     FairMQ::FairMQ
+    base
 )

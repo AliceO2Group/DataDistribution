@@ -19,6 +19,7 @@
 #include <ConfigConsul.h>
 
 #include <Utilities.h>
+#include <FmqUtilities.h>
 
 #include <thread>
 
