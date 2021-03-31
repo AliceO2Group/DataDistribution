@@ -61,19 +61,24 @@ class StfSenderDevice : public DataDistDevice,
   /// Default destructor
   ~StfSenderDevice() override;
 
-  void InitTask() final;
-  void ResetTask() final;
+  bool standalone() const { return I().mStandalone; }
+  bool running() const  { return I().mRunning; }
 
-  bool standalone() const { return mStandalone; }
-
-  TfSchedulerRpcClient& TfSchedRpcCli() { return mTfSchedulerRpcClient; }
+  TfSchedulerRpcClient& TfSchedRpcCli() { return I().mTfSchedulerRpcClient; }
 
  protected:
-  void PreRun() final;
-  void PostRun() final;
-  bool ConditionalRun() final;
+  virtual void Init() override final;
+  virtual void Reset() override final;
+
+  virtual void InitTask() override final;
+  virtual void ResetTask() override final;
+
+  virtual void PreRun() final;
+  virtual void PostRun() final;
+  virtual bool ConditionalRun() final;
 
   void StfReceiverThread();
+  void InfoThread();
 
   unsigned getNextPipelineStage(unsigned pStage) final
   {
@@ -82,12 +87,12 @@ class StfSenderDevice : public DataDistDevice,
       case eReceiverOut:
       /*  case eFileSinkOut: */
       {
-        if (mFileSink.enabled()) {
+        if (I().mFileSink->enabled()) {
           lNextStage = eFileSinkIn;
           break;
         }
 
-        if (mStandalone) {
+        if (standalone()) {
           lNextStage = eNullIn;
           break;
         }
@@ -97,7 +102,7 @@ class StfSenderDevice : public DataDistDevice,
       }
       case eFileSinkOut:
       {
-        if (mStandalone) {
+        if (standalone()) {
           lNextStage = eNullIn;
           break;
         }
@@ -114,34 +119,42 @@ class StfSenderDevice : public DataDistDevice,
     return lNextStage;
   }
 
-  /// Configuration
-  std::string mInputChannelName;
-  bool mStandalone;
+  struct StfSenderInstance {
 
-  /// Discovery configuration
-  std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
+    /// Configuration
+    std::string mInputChannelName;
+    bool mStandalone = false;
 
-  /// Scheculer RPC client
-  TfSchedulerRpcClient mTfSchedulerRpcClient;
+    /// Discovery configuration
+    std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
 
-  /// Receiver threads
-  bool mRunning = false;
-  std::thread mReceiverThread;
+    /// Scheculer RPC client
+    TfSchedulerRpcClient mTfSchedulerRpcClient;
 
-  /// File sink
-  SubTimeFrameFileSink mFileSink;
+    /// Receiver threads
+    bool mRunning = false;
+    std::thread mReceiverThread;
 
-  /// Output stage handler
-  StfSenderOutput mOutputHandler;
+    /// File sink
+    std::unique_ptr<SubTimeFrameFileSink> mFileSink;
 
-  /// RPC service
-  StfSenderRpcImpl mRpcServer;
+    /// Output stage handler
+    std::unique_ptr<StfSenderOutput> mOutputHandler;
 
-  /// Info thread
-  void InfoThread();
-  std::thread mInfoThread;
-  RunningSamples<uint64_t> mStfSizeSamples;
-  RunningSamples<float> mStfTimeSamples;
+    /// RPC service
+    StfSenderRpcImpl mRpcServer;
+
+    /// Info thread
+    std::thread mInfoThread;
+    RunningSamples<uint64_t> mStfSizeSamples;
+    RunningSamples<float> mStfTimeSamples;
+  };
+
+  std::unique_ptr<StfSenderInstance> mI;
+  const StfSenderInstance& I() const { return *mI; }
+
+public:
+  StfSenderInstance& I() { return *mI; }
 };
 }
 } /* namespace o2::DataDistribution */

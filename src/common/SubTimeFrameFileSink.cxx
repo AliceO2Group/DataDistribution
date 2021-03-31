@@ -38,12 +38,16 @@ namespace bpo = boost::program_options;
 void SubTimeFrameFileSink::start()
 {
   if (enabled()) {
+    mRunning = true;
     mSinkThread = create_thread_member("stf_sink", &SubTimeFrameFileSink::DataHandlerThread, this, 0);
   }
+  DDDLOG("SubTimeFrameFileSink started");
 }
 
 void SubTimeFrameFileSink::stop()
 {
+  mRunning = false;
+
   if (mSinkThread.joinable()) {
     mSinkThread.join();
   }
@@ -164,10 +168,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 
   bool lDisableWriting = false; // set if we encounter error while writing to file
 
-  // wait for running
-  mDeviceI.WaitForRunningState();
-
-  while (mDeviceI.IsRunningState()) {
+  while (mRunning) {
     // Get the next STF
     std::unique_ptr<SubTimeFrame> lStf = mPipelineI.dequeue(mPipelineStageIn);
     if (!lStf) {

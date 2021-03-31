@@ -113,6 +113,8 @@ class StfBuilderDevice : public DataDistDevice,
       IDDLOG("Restarting file source.");
     }
     I().mRestartRateCounter = true;
+
+    IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
   }
   virtual void PostRun() override final {
     I().mPaused = true;
@@ -120,6 +122,8 @@ class StfBuilderDevice : public DataDistDevice,
       I().mFileSource->pause();
       IDDLOG("Pausing file source.");
     }
+
+    IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
   }
 
   bool tryPopOldestStfs()
@@ -207,7 +211,7 @@ class StfBuilderDevice : public DataDistDevice,
 
     /// Internal threads
     std::thread mOutputThread;
-    std::atomic_bool mRunning = true;
+    std::atomic_bool mRunning = false;
     std::atomic_bool mPaused = false;
 
     /// File sink
