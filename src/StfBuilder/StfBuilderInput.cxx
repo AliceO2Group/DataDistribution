@@ -104,7 +104,7 @@ void StfInputInterface::DataHandlerThread()
       // Copy to avoid surprises. The receiving header is not O2 compatible and can be discarded
       if (lReadoutMsgs[0]->GetSize() != sizeof(ReadoutSubTimeframeHeader)) {
         EDDLOG_RL(1000, "READOUT INTERFACE: incompatible readout header received. "
-          "Make sure to use compatible readout.exe version. received_size={} expected_size={}",
+          "Make sure to use compatible o2-readout-exe version. received_size={} expected_size={}",
           lReadoutMsgs[0]->GetSize(), sizeof(ReadoutSubTimeframeHeader));
         continue;
       }
@@ -113,7 +113,7 @@ void StfInputInterface::DataHandlerThread()
       // check the readout header version
       if (lReadoutHdr.mVersion != sReadoutInterfaceVersion) {
         EDDLOG_RL(1000, "READOUT INTERFACE: Unsupported readout interface version. "
-          "Make sure to use compatible readout.exe version. received={} expected={}",
+          "Make sure to use compatible o2-readout-exe version. received={} expected={}",
           lReadoutHdr.mVersion, sReadoutInterfaceVersion);
         continue;
       }
@@ -129,7 +129,7 @@ void StfInputInterface::DataHandlerThread()
           std::stringstream lErrMsg;
           lErrMsg << "READOUT INTERFACE: "
               "TF ID decreased! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
-              "readout.exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
+              "o2-readout-exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
               "Total occurrences: " << sNumNonContIncStfs;
 
           EDDLOG_RL(200, lErrMsg.str());
