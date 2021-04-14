@@ -21,25 +21,25 @@ namespace o2::DataDistribution::fmqtools {
 
 static bool checkInfoLoggerOptions() {
 
-  DDDLOG("DataDistLogger: Checking INFOLOGGER_MODE variable");
+  DDDLOG("DataDistLogger: Checking O2_INFOLOGGER_MODE variable");
 
-  const char *cMode = getenv("INFOLOGGER_MODE");
+  const char *cMode = getenv("O2_INFOLOGGER_MODE");
 
   if (cMode == nullptr) {
-      IDDLOG("DataDistLogger: INFOLOGGER_MODE backend is not set.");
+      IDDLOG("DataDistLogger: O2_INFOLOGGER_MODE backend is not set.");
       return false;
   }
 
   const std::string cModeStr = std::string(cMode);
 
   if (cModeStr.length() == 0) {
-      WDDLOG("DataDistLogger: INFOLOGGER_MODE variable is empty.");
+      WDDLOG("DataDistLogger: O2_INFOLOGGER_MODE variable is empty.");
       return false;
   }
 
   if (cModeStr != "infoLoggerD") {
-      EDDLOG("DataDistLogger: INFOLOGGER_MODE mode is not supported "
-      "(only infoLoggerD mode). INFOLOGGER_MODE={}", cModeStr);
+      EDDLOG("DataDistLogger: O2_INFOLOGGER_MODE mode is not supported "
+      "(only infoLoggerD mode). O2_INFOLOGGER_MODE={}", cModeStr);
       return false;
   }
 
@@ -69,7 +69,7 @@ static void handleSeverity(const std::string &pOptKey, const std::string &pOptVa
   } else if (pOptKey == "severity-infologger") {
     // check the InfoLogger mode. Only infoLoggerD is supported.
     if(!checkInfoLoggerOptions()) {
-      WDDLOG("DataDistLogger: Invalid INFOLOGGER_MODE. Ignoring severity-infologger={}",
+      WDDLOG("DataDistLogger: Invalid O2_INFOLOGGER_MODE. Ignoring severity-infologger={}",
         pOptVal);
       DataDistLogger::sInfologgerSeverity = DataDistSeverity::nolog;
       DataDistLogger::sInfologgerEnabled = false;
