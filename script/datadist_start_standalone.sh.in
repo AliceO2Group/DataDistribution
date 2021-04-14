@@ -11,8 +11,8 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Run FLP-EPN chain',
                                  formatter_class=lambda prog: argparse.HelpFormatter(prog,max_help_position=40, width=120))
-parser.add_argument('--readout', dest='readout', required=False, action='store_true', help='Use readout.exe data source in emulation mode')
-parser.add_argument('--readout_cfg',required=False, default='', action='store', help='Optional configuration file for readout.exe')
+parser.add_argument('--readout', dest='readout', required=False, action='store_true', help='Use o2-readout-exe data source in emulation mode')
+parser.add_argument('--readout_cfg',required=False, default='', action='store', help='Optional configuration file for o2-readout-exe')
 
 parser.add_argument('--tmux', required=False, action='store_true', help='Run in tmux CC mode')
 
@@ -77,13 +77,13 @@ if [[ "$EMU" == "emu" ]]; then
   READOUT_PARAM="--link-id-offset 0  --id readout-0 --session default"
 
 else
-  if ! [ -x "$(command -v readout.exe)" ]; then
-    echo "ERROR: Make sure readout.exe is installed (and the Readout module is loaded)"
+  if ! [ -x "$(command -v o2-readout-exe)" ]; then
+    echo "ERROR: Make sure o2-readout-exe is installed (and the Readout module is loaded)"
     exit -1
   fi
 
-  echo "Using readout.exe in emulation mode. Configuration is read from $readoutConfig"
-  READOUT="readout.exe"
+  echo "Using o2-readout-exe in emulation mode. Configuration is read from $readoutConfig"
+  READOUT="o2-readout-exe"
 
 
   if [[ ! -z $READOUT_CFG ]]; then

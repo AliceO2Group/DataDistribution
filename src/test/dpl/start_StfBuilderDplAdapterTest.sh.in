@@ -11,7 +11,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Run StfBuilder-DPL chain',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--no-gui', dest='nogui', required=False, action='store_true', help='Show GUI')
-parser.add_argument('--readout', dest='readout', required=False, action='store_true', help='Use Readout.exe data source.')
+parser.add_argument('--readout', dest='readout', required=False, action='store_true', help='Use o2-readout-exe data source.')
 
 parser.add_argument('-f', '--flp', required=False, default=1, action='store', type=int, help='Number of FLP instances (1,2,3)')
 parser.add_argument('-n', '--equip', required=False, default=1, action='store', type=int, help='Number data producer equipment per FLP chain')
@@ -63,12 +63,12 @@ if [[ "$EMU" == "emu" ]]; then
   READOUT+=" --io-threads $IO_THREADS"
   READOUT+=" --link-id-offset 0"
 else
-  echo "Using readout.exe in emulation mode. Configuration is read from $readoutConfig"
+  echo "Using o2-readout-exe in emulation mode. Configuration is read from $readoutConfig"
   echo "Make sure the Readout is installed or the Readout module is loaded."
   echo "Only 1 FLP chain can be emulated when using the readout source."
   FLP_CNT=1
 
-  READOUT="readout.exe"
+  READOUT="o2-readout-exe"
   READOUT+=" file://$readoutConfig"
 fi
 

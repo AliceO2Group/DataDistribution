@@ -194,7 +194,7 @@ void StfBuilderDevice::InitTask()
       try {
         GetChannel(I().mInputChannelName);
       } catch(std::exception &) {
-        EDDLOG("Input channel not configured (from readout.exe) and not running with file source enabled.");
+        EDDLOG("Input channel not configured (from o2-readout-exe) and not running with file source enabled.");
         std::this_thread::sleep_for(1s); exit(-1);
       }
     }
