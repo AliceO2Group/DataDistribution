@@ -11,7 +11,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Run FLP-EPN chain (for testing only)',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--readout', dest='readout', required=False, action='store_true', help='Use readout.exe data source in emulation mode.')
+parser.add_argument('--readout', dest='readout', required=False, action='store_true', help='Use o2-readout-exe data source in emulation mode.')
 
 parser.add_argument('--tmux', required=False, action='store_true', help='Run in tmux CC mode')
 parser.add_argument('--no-gui', dest='nogui', required=False, action='store_true', help='Show GUI')
@@ -104,12 +104,12 @@ if [[ "$EMU" == "emu" ]]; then
   READOUT_PARAM_1="--link-id-offset 1000 --id readout-1 --session flp-s1"
   READOUT_PARAM_2="--link-id-offset 2000 --id readout-2 --session flp-s2"
 else
-  echo "Using readout.exe in emulation mode. Configuration is read from $readoutConfig"
+  echo "Using o2-readout-exe in emulation mode. Configuration is read from $readoutConfig"
   echo "Make sure the Readout is installed or the Readout module is loaded."
   echo "Only 1 FLP chain can be emulated when using the readout source."
   FLP_CNT=1
 
-  READOUT="readout.exe"
+  READOUT="o2-readout-exe"
   READOUT+=" file://$readoutConfig"
 
   READOUT_PARAM_0=""

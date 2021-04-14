@@ -11,7 +11,7 @@
     <property id="sender-stf-channel" />
 
     <decltask id="Readout"> <!-- Readout -->
-        <exe reachable="true">$READOUT_ROOT/bin/readout.exe file://$DATADISTRIBUTION_ROOT/bin/config/readout_emu.cfg</exe>
+        <exe reachable="true">$READOUT_ROOT/bin/o2-readout-exe file://$DATADISTRIBUTION_ROOT/bin/config/readout_emu.cfg</exe>
     </decltask>
 
     <decltask id="SubTimeFrameBuilder"> <!-- SubTimeFrameBuilder to run with Readout -->

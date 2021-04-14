@@ -12,8 +12,8 @@ NOTE: Emulated chain ends with StfSender. Data is never sent to TfBuilder!
 
 ### Emulated readout data run
 
-To use `readout.exe` as the CRU emulator:
-  - Make sure the Readout module is loaded in the environment (or the `readout.exe` executable exists in the PATH).
+To use `o2-readout-exe` as the CRU emulator:
+  - Make sure the Readout module is loaded in the environment (or the `o2-readout-exe` executable exists in the PATH).
   - pass `--readout` parameter
 
 ### Replaying recorded (Sub)TimeFrame data and DPL gateway configuration
@@ -23,7 +23,7 @@ To use `readout.exe` as the CRU emulator:
 
 
 FMQDevice channel configuration is in the file `script/datadist_standalone_chain.json`.
-If using the CRU emulation mode of the `readout.exe` process, configuration of the emulator equipment is read from `readout_cfg/readout_emu.cfg`.
+If using the CRU emulation mode of the `o2-readout-exe` process, configuration of the emulator equipment is read from `readout_cfg/readout_emu.cfg`.
 
 `StfBuilder` component is used to read and inject previously recorded SubTimeFrames or TimeFrames (same file and data structure).
 
@@ -33,7 +33,7 @@ If using the CRU emulation mode of the `readout.exe` process, configuration of t
 ```
 # adapt the configuration file path!
 
-readout.exe file:///$HOME/alice/sw/slc7_x86-64/DataDistribution/latest/config/readout_emu.cfg
+o2-readout-exe file:///$HOME/alice/sw/slc7_x86-64/DataDistribution/latest/config/readout_emu.cfg
 ```
 
 ```
