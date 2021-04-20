@@ -75,6 +75,7 @@ class SubTimeFrameFileSink
   }
 
   bool loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt);
+  bool makeDirectory();
 
   bool enabled() const { return mEnabled; }
 

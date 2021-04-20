@@ -144,6 +144,11 @@ void StfSenderDevice::PreRun()
     I().mDiscoveryConfig->write();
   }
 
+  // make directory for file sink
+  if (I().mFileSink) {
+    I().mFileSink->makeDirectory();
+  }
+
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 

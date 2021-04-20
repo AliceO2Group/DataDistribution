@@ -133,6 +133,9 @@ void TfBuilderDevice::PreRun()
   lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
   mDiscoveryConfig->write();
 
+  // make directory for file sink
+  mFileSink.makeDirectory();
+
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 

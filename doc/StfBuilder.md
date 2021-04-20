@@ -117,8 +117,8 @@ to files, before they are sent out.
     Note: A new directory will be created here for all files of the current run.
 
 **--data-sink-file-name** pattern
-:   Specifies file name pattern: %n - file index, %D - date, %T - time.
-    The default value of this parameter is '*%i.tf*'.
+:   Specifies file name pattern: %n - file index, %r - run number, %i - starting (S)TF id, %D - date, %T - time.
+    The default value of this parameter is 'run%r_tf%i.tf'.
 
 **--data-sink-max-stfs-per-file** num
 :   Limit the number of (Sub)TimeFrames per file.s
