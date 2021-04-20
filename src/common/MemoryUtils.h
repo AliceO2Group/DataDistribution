@@ -172,7 +172,10 @@ public:
             const auto lLen = lIntMerged.first.upper() - lIntMerged.first.lower();
             lReclaimed += lLen;
 
-            reclaimSHMMessage((void *) lIntMerged.first.lower(), lLen);
+            // zero and reclaim
+            void *lStart = (void *) lIntMerged.first.lower();
+            memset(lStart, 0x00, lLen);
+            reclaimSHMMessage(lStart, lLen);
           }
         }
 
@@ -198,7 +201,7 @@ public:
     mLength = mRegion->GetSize();
     mFree = mSegmentSize;
 
-    memset(mStart, 0xAA, mLength);
+    memset(mStart, 0x00, mLength);
 
     // Insert delay for testing
     const auto lShmDelay = std::getenv(ENV_SHM_DELAY);
@@ -249,6 +252,8 @@ public:
     mRunning = false;
   }
 
+  std::size_t free() const { return mFree; }
+
 protected:
   // NOTE: we align sizes of returned messages, but keep the exact size for allocation
   //       otherwise the shm messages would be larger than requested
@@ -297,11 +302,12 @@ protected:
     }
 
     mFree -= pSize;
+    assert (mFree > 0);
 
-    static std::size_t sLogRateLimit = 0;
+    static thread_local std::size_t sLogRateLimit = 0;
     if (sLogRateLimit++ % 1024 == 0) {
       const std::int64_t lFree = mFree;
-      DDDLOG_RL(2000, "DataRegionResource {} memory free={} allocated={}", mSegmentName, lFree, (mSegmentSize - lFree));
+      DDDLOG_GRL(2000, "DataRegionResource {} memory free={} allocated={}", mSegmentName, lFree, (mSegmentSize - lFree));
     }
 
     return lRet;
@@ -361,6 +367,7 @@ private:
 
       // erase this segment
       mFree -= lFoudSize;
+      assert (mFree > 0);
       mFreeRanges.erase(lMaxIter);
       return false;
     }
@@ -381,14 +388,14 @@ private:
       sFragmentation = sFragmentation * 0.75 + double(lFree - mLength)/double(lFree) * 0.25;
       sNumFragments = sNumFragments * 0.75 + double(mFreeRanges.iterative_size() + 1) * 0.25;
 
-      DDDLOG_RL(5000, "DataRegionResource {} estimated: free={:.4} num_fragments={:.4} fragmentation={:.4}",
+      DDDLOG_GRL(5000, "DataRegionResource {} estimated: free={:.4} num_fragments={:.4} fragmentation={:.4}",
         mSegmentName, sFree, sNumFragments, sFragmentation);
     }
 
     return true;
   }
 
-  void reclaimSHMMessage(void* pData, size_t pSize)
+  void reclaimSHMMessage(const void* pData, size_t pSize)
   {
     // align up
     pSize = align_size_up(pSize);
@@ -470,6 +477,9 @@ public:
     }
   }
 
+  inline std::size_t freeHeader() const { return mHeaderMemRes ? mHeaderMemRes->free() : std::size_t(0);  }
+  inline std::size_t freeData() const { return mHeaderMemRes ? mDataMemRes->free() : std::size_t(0);  }
+
   std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
   std::unique_ptr<RegionAllocatorResource<64>> mDataMemRes;
 
@@ -502,7 +512,6 @@ public:
     std::scoped_lock lock(mDataLock);
     return mDataMemRes->NewFairMQMessage(pSize);
   }
-
 
 private:
   std::mutex mHdrLock;
