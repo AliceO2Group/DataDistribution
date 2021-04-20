@@ -145,7 +145,13 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
   }
   pConfig->write();
 
+
+  // Start all the threads
   mState = RUNNING;
+
+  // Start the deserialize thread
+  mReceivedData.start();
+  mStfDeserThread = create_thread_member("tfb_deser", &TfBuilderInput::StfDeserializingThread, this);
 
   // Start the merger
   {
@@ -218,6 +224,12 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
   mStfSenderChannels.clear();
   IDDLOG("TfBuilderInput::stop: All input channels are closed.");
 
+  //Wait for deserializer thread
+  mReceivedData.stop();
+  if (mStfDeserThread.joinable()) {
+    mStfDeserThread.join();
+  }
+
   // Make sure the merger stopped
   {
     DDDLOG("TfBuilderInput::stop: Stopping the STF merger thread.");
@@ -254,27 +266,61 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
   // Reference to the input channel
   auto& lInputChan = *mStfSenderChannels[pFlpIndex];
 
+  while (mState == RUNNING) {
+    std::unique_ptr<std::vector<FairMQMessagePtr>> lStfData = std::make_unique<std::vector<FairMQMessagePtr>>();
+
+    const std::int64_t ret = lInputChan.Receive(*lStfData, 1000 /* ms */);
+    // timeout ?
+    if (ret == -2) {
+      continue;
+    }
+
+    if (ret < 0) {
+      IDDLOG_GRL(1000, "STF receive failed err={} errno={} error={}", ret, errno, std::string(strerror(errno)));
+      continue;
+    }
+
+    // send to deserializer thread so that we can keep receiving
+    mReceivedData.push(std::move(lStfData));
+    lNumStfs++;
+  }
+
+  IDDLOG("Exiting input thread [{}]", pFlpIndex);
+}
+
+/// FMQ->STF thread
+void TfBuilderInput::StfDeserializingThread()
+{
+  std::uint64_t lNumStfs = 0;
   // Deserialization object
   CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
 
   while (mState == RUNNING) {
-    // receive a STF
-    std::unique_ptr<SubTimeFrame> lStf = lStfReceiver.deserialize(lInputChan);
-    if (!lStf) {
-     // timeout
-     continue;
+
+    auto lData = mReceivedData.pop();
+    if (lData == std::nullopt) {
+      continue;
     }
+    auto &lStfInfo = lData.value();
+
+    assert (lStfInfo.mRecvStfdata);
+
+    // try to deserialize
+    lStfInfo.mStf = lStfReceiver.deserialize(*lStfInfo.mRecvStfdata);
+    if (!lStfInfo.mStf) {
+      continue;
+    }
+
+    const TimeFrameIdType lTfId = lStfInfo.mStf->header().mId;
     lNumStfs++;
 
-    const TimeFrameIdType lTfId = lStf->header().mId;
-
-    DDDLOG_RL(5000, "Received STF. flp_idx={} stf_id={} total={}", pFlpIndex, lTfId, lNumStfs);
+    DDDLOG_RL(5000, "Deserialized STF. stf_id={} total={}", lTfId, lNumStfs);
 
     {
       // Push the STF into the merger queue
       std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
 
-      mStfMergeMap[lTfId].push_back(std::move(lStf));
+      mStfMergeMap[lTfId].push_back(std::move(lStfInfo));
       mStfCount++;
 
       if (mStfMergeMap[lTfId].size() == mNumStfSenders) {
@@ -284,7 +330,7 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
     }
   }
 
-  IDDLOG("Exiting input thread [{}]", pFlpIndex);
+  IDDLOG("Exiting stf deserializer thread.");
 }
 
 /// STF->TF Merger thread

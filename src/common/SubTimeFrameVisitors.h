@@ -123,7 +123,7 @@ class CoalescedHdrDataDeserializer : public ISubTimeFrameVisitor
   virtual ~CoalescedHdrDataDeserializer() = default;
 
   std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan);
-  std::unique_ptr<SubTimeFrame> deserialize(FairMQParts& pMsgs);
+  std::unique_ptr<SubTimeFrame> deserialize(std::vector<FairMQMessagePtr>& pMsgs);
 
  protected:
   std::unique_ptr<SubTimeFrame> deserialize_impl();
