@@ -63,7 +63,7 @@ class SubTimeFrameFileWriter : public ISubTimeFrameConstVisitor
   //   - provide a new, larger, buffer
   //   - always write less than 1024B at a time (hard limit in libstdc++)
   //
-  static constexpr std::streamsize sBuffSize = 256ul << 10; // 256 kiB
+  static constexpr std::streamsize sBuffSize = 1ul << 20; // 1 MiB
   static constexpr std::streamsize sChunkSize = 512;
   std::ofstream mFile;
 

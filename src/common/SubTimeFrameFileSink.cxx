@@ -27,9 +27,7 @@
 #include <iostream>
 #include <iomanip>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 namespace bpo = boost::program_options;
@@ -69,8 +67,8 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
     "Specifies a destination directory where (Sub)TimeFrames are to be written. "
     "Note: A new directory will be created here for all output files.")(
     OptionKeyStfSinkFileName,
-    bpo::value<std::string>()->default_value("%i.tf"),
-    "Specifies file name pattern: %n - file index, %i - starting (S)TF id, %D - date, %T - time.")(
+    bpo::value<std::string>()->default_value("run%r_tf%i.tf"),
+    "Specifies file name pattern: %n - file index, %r - run number, %i - starting (S)TF id, %D - date, %T - time.")(
     OptionKeyStfSinkStfsPerFile,
     bpo::value<std::uint64_t>()->default_value(1),
     "Specifies number of (Sub)TimeFrames per file. Default: 1")(
@@ -87,15 +85,18 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
   return lSinkDesc;
 }
 
-
 bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt)
 {
   mEnabled = pFMQProgOpt.GetValue<bool>(OptionKeyStfSinkEnable);
 
   IDDLOG("(Sub)TimeFrame file sink is {}", (mEnabled ? "enabled." : "disabled."));
 
-  if (!mEnabled)
+  if (!mEnabled) {
     return true;
+  }
+
+  // set enabled to false until all tests pass
+  mEnabled = false;
 
   mRootDir = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSinkDir);
   if (mRootDir.length() == 0) {
@@ -117,12 +118,7 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
     return false;
   }
 
-  // make a session directory
-  mCurrentDir = (bfs::path(mRootDir) / FilePathUtils::getDataDirName(mRootDir)).string();
-  if (!bfs::create_directory(mCurrentDir)) {
-    EDDLOG("Directory for (Sub)TimeFrame file sink cannot be created. path={}", mCurrentDir);
-    return false;
-  }
+  mEnabled = true;
 
   // print options
   IDDLOG("(Sub)TimeFrame Sink :: enabled       = {:s}", (mEnabled ? "yes" : "no"));
@@ -131,7 +127,29 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   IDDLOG("(Sub)TimeFrame Sink :: stfs per file = {:s}", (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" ));
   IDDLOG("(Sub)TimeFrame Sink :: max file size = {:d}", mFileSize);
   IDDLOG("(Sub)TimeFrame Sink :: sidecar files = {:s}", (mSidecar ? "yes" : "no"));
-  IDDLOG("(Sub)TimeFrame Sink :: write dir     = {:s}", mCurrentDir);
+  return mEnabled;
+}
+
+bool SubTimeFrameFileSink::makeDirectory()
+{
+  namespace bfs = boost::filesystem;
+
+  if (!enabled()) {
+    return true;
+  }
+
+  fmt::memory_buffer lDir;
+  fmt::format_to(lDir, "run{}_{}", ("0" + DataDistLogger::sRunNumberStr), FilePathUtils::getDataDirName(mRootDir));
+  mCurrentDir = (bfs::path(mRootDir) / bfs::path(lDir.data())).string();
+
+  // make the run directory
+  if (!bfs::create_directory(mCurrentDir)) {
+    EDDLOG("Directory for (Sub)TimeFrame file sink cannot be created. Disabling file sink. path={}", mCurrentDir);
+    mEnabled = false;
+    return false;
+  }
+
+  IDDLOG("(Sub)TimeFrame Sink :: write dir={:s}", mCurrentDir);
 
   return true;
 }
@@ -144,17 +162,27 @@ std::string SubTimeFrameFileSink::newStfFileName(const std::uint64_t pStfId) con
 
   std::string lFileName = mFileNamePattern;
 
+  // file index
   std::stringstream lIdxString;
   lIdxString << std::dec << std::setw(8) << std::setfill('0') << mCurrentFileIdx;
   boost::replace_all(lFileName, "%n", lIdxString.str());
 
+  // run id
+  std::stringstream lRunString;
+  const auto lWidth = std::max(std::size_t(8), DataDistLogger::sRunNumberStr.size());
+  lRunString << std::dec << std::setw(lWidth) << std::setfill('0') << DataDistLogger::sRunNumber;
+  boost::replace_all(lFileName, "%r", lRunString.str());
+
+  // stf id
   std::stringstream lStfIdString;
   lStfIdString << std::dec << std::setw(8) << std::setfill('0') << pStfId;
   boost::replace_all(lFileName, "%i", lStfIdString.str());
 
+  // date
   strftime(lTimeBuf, sizeof(lTimeBuf), "%F", localtime(&lNow));
   boost::replace_all(lFileName, "%D", lTimeBuf);
 
+  // time
   strftime(lTimeBuf, sizeof(lTimeBuf), "%H_%M_%S", localtime(&lNow));
   boost::replace_all(lFileName, "%T", lTimeBuf);
 
@@ -169,8 +197,6 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 
   std::string lCurrentFileName;
 
-  bool lDisableWriting = false; // set if we encounter error while writing to file
-
   while (mRunning) {
     // Get the next STF
     std::unique_ptr<SubTimeFrame> lStf = mPipelineI.dequeue(mPipelineStageIn);
@@ -179,7 +205,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       break;
     }
 
-    if (!lDisableWriting) {
+    if (mEnabled) {
       do {
         // make sure Stf is updated before writing
         lStf->updateStf();
@@ -194,7 +220,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
             mStfWriter = std::make_unique<SubTimeFrameFileWriter>(
               bfs::path(mCurrentDir) / bfs::path(lCurrentFileName), mSidecar);
           } catch (...) {
-            lDisableWriting = true;
+            mEnabled = false;
             break;
           }
             mCurrentFileIdx++;
@@ -206,7 +232,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
           lCurrentFileSize = mStfWriter->size();
         } else {
           mStfWriter.reset();
-          lDisableWriting = true;
+          mEnabled = false;
           break;
         }
 
@@ -218,7 +244,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
         }
       } while(0);
 
-      if (lDisableWriting) {
+      if (!mEnabled) {
         EDDLOG("(Sub)TimeFrame file sink: error while writing to file {}", lCurrentFileName);
         EDDLOG("(Sub)TimeFrame file sink: disabling file sink");
       }
@@ -232,5 +258,4 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
   DDDLOG("Exiting file sink thread [{}]", pIdx);
 }
 
-}
 } /* o2::DataDistribution */

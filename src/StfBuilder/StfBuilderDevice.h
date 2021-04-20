@@ -115,6 +115,11 @@ class StfBuilderDevice : public DataDistDevice,
     }
     I().mRestartRateCounter = true;
 
+    // make directory for file sink
+    if (I().mFileSink) {
+      I().mFileSink->makeDirectory();
+    }
+
     IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
   }
   virtual void PostRun() override final {
