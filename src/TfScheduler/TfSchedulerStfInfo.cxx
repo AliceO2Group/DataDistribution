@@ -166,7 +166,14 @@ void TfSchedulerStfInfo::StaleCleanupThread()
         auto lStfId = lStfIdInfo.first;
         auto &lStfInfoVec = lStfIdInfo.second;
 
-        assert(!lStfInfoVec.empty());
+        if (lStfInfoVec.empty()) { // this should not happen
+          EDDLOG_RL(1000, "Discarding TimeFrame with no STF updates. stf_id={} received={} expected={}",
+            lStfId, lStfInfoVec.size(), lNumStfSenders);
+
+          lStfsToErase.push_back(lStfId);
+          requestDropAllLocked(lStfId);
+          continue;
+        }
 
         // check reap
         const auto &lLastStfInfo = lStfInfoVec.back();
@@ -191,7 +198,7 @@ void TfSchedulerStfInfo::StaleCleanupThread()
           }
 
           lStfsToErase.push_back(lStfId);
-          requestDropAllFromUpdate(lStfId);
+          requestDropAllLocked(lStfId);
         }
       }
     }
@@ -303,11 +310,11 @@ void TfSchedulerStfInfo::HighWatermarkThread()
       // make sure the info is regenerated fresh after clearing
       mStfSenderInfoMap.clear();
 
+      // note: must drop while the map is locked
+      for (const auto lStfId :lStfsToDrop) {
+        requestDropAllLocked(lStfId); // this will remove the element from mStfInfoMap
+      }
     }// unlock mGlobalStfInfoLock
-
-    for (const auto lStfId :lStfsToDrop) {
-      requestDropAllFromUpdate(lStfId); // this will remove the element from mStfInfoMap
-    }
 
     if (lStfsToDropSize > 0) {
       IDDLOG("HighWatermark: cleared dropped STFs from StfSender. stfs_id={} num_stfs_dropped={} dropped_size={}",
@@ -377,13 +384,13 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
     // Drop not running
     if (!mRunning) {
       pResponse.set_status(SchedulerStfInfoResponse::DROP_NOT_RUNNING);
-      requestDropAllFromUpdate(lStfId);
+      requestDropAllLocked(lStfId);
       return;
     }
     // DROP When stfsenders are not complete
     if (mConnManager.getStfSenderState() != StfSenderState::STF_SENDER_STATE_OK) {
       pResponse.set_status(SchedulerStfInfoResponse::DROP_STFS_INCOMPLETE);
-      requestDropAllFromUpdate(lStfId);
+      requestDropAllLocked(lStfId);
       return;
     }
 
@@ -399,7 +406,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
       WDDLOG_GRL(1000, "addStfInfo: stfs buffer full, dropping stf. stfs_id={} buffer_used={} buffer_size={}",
         pStfInfo.info().process_id(), lUsedBuffer, lTotalBuffer);
       pResponse.set_status(SchedulerStfInfoResponse::DROP_STFS_BUFFER_FULL);
-      requestDropAllFromUpdate(lStfId);
+      requestDropAllLocked(lStfId);
       return;
     }
 
@@ -422,7 +429,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
         lStfId, mLastStfId, pStfInfo.info().process_id());
 
       pResponse.set_status(SchedulerStfInfoResponse::DROP_SCHED_DISCARDED);
-      requestDropAllFromUpdate(lStfId);
+      requestDropAllLocked(lStfId);
       return;
     }
 

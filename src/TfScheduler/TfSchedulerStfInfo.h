@@ -147,7 +147,7 @@ private:
     EventRecorder mDroppedStfs;
     EventRecorder mBuiltTfs;
 
-    inline void requestDropAllFromUpdate(const std::uint64_t lStfId) {
+    inline void requestDropAllLocked(const std::uint64_t lStfId) {
       assert (mDroppedStfs.GetEvent(lStfId) == false);
       mDroppedStfs.SetEvent(lStfId);
       mStfInfoMap.erase(lStfId);
@@ -156,11 +156,12 @@ private:
 
     inline void requestDropAllFromSchedule(const std::uint64_t lStfId) {
       std::scoped_lock lLock(mGlobalStfInfoLock);
-      if (mDroppedStfs.GetEvent(lStfId) == false) {
-        mDroppedStfs.SetEvent(lStfId);
-        mStfInfoMap.erase(lStfId);
-        mDropQueue.push(std::make_tuple(lStfId)); // TODO: add REASON
+      if (mDroppedStfs.GetEvent(lStfId) != false) {
+        EDDLOG_RL(1000, "Request for dripping of already discarded TF. tf_id={}", lStfId);
       }
+      mDroppedStfs.SetEvent(lStfId);
+      mStfInfoMap.erase(lStfId);
+      mDropQueue.push(std::make_tuple(lStfId)); // TODO: add REASON
     }
 
   /// scheduling thread & queue
