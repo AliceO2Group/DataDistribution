@@ -50,6 +50,7 @@ class TfBuilderInput
   void stop(std::shared_ptr<ConsulTfBuilder> pConfig);
 
   void DataHandlerThread(const std::uint32_t pFlpIndex);
+  void StfDeserializingThread();
   void StfMergerThread();
 
  private:
@@ -71,23 +72,28 @@ class TfBuilderInput
   /// Threads for input channels (per FLP)
   std::map<std::string, std::thread> mInputThreads;
 
-  /// STF Merger
-  std::thread mStfMergerThread;
-  std::mutex mStfMergerQueueLock;
-  std::condition_variable mStfMergerCondition;
-
+  /// Deserializing thread
   struct ReceivedStfMeta {
     std::chrono::time_point<std::chrono::system_clock> mTimeReceived;
+    std::unique_ptr<std::vector<FairMQMessagePtr>> mRecvStfdata;
     std::unique_ptr<SubTimeFrame> mStf;
 
-    ReceivedStfMeta(std::unique_ptr<SubTimeFrame>&& pStf)
+    ReceivedStfMeta(std::unique_ptr<std::vector<FairMQMessagePtr>> &&pRecvStfdata)
     : mTimeReceived(std::chrono::system_clock::now()),
-      mStf(std::move(pStf))
+      mRecvStfdata(std::move(pRecvStfdata)),
+      mStf(nullptr)
     {}
   };
 
-  std::map<TimeFrameIdType, std::vector<ReceivedStfMeta>> mStfMergeMap;
-  std::uint64_t mStfCount = 0;
+  ConcurrentQueue<ReceivedStfMeta> mReceivedData;
+  std::thread mStfDeserThread;
+
+  /// STF Merger
+  std::thread mStfMergerThread;
+  std::mutex mStfMergerQueueLock;
+    std::condition_variable mStfMergerCondition;
+    std::map<TimeFrameIdType, std::vector<ReceivedStfMeta>> mStfMergeMap;
+    std::uint64_t mStfCount = 0;
 
   /// Output pipeline stage
   unsigned mOutStage;

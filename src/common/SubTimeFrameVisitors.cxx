@@ -329,13 +329,13 @@ std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize(FairMQCh
   return deserialize_impl();
 }
 
-std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize(FairMQParts& pMsgs)
+std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize(std::vector<FairMQMessagePtr>& pMsgs)
 {
   mHdrs.clear();
   mData.clear();
 
-  swap(mData, pMsgs.fParts);
-  pMsgs.fParts.clear();
+  swap(mData, pMsgs);
+  pMsgs.clear();
 
   return deserialize_impl();
 }
