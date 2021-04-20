@@ -89,7 +89,7 @@ void TfBuilderDevice::InitTask()
       return;
     }
 
-    mRpc = std::make_shared<TfBuilderRpcImpl>(mDiscoveryConfig);
+    mRpc = std::make_shared<TfBuilderRpcImpl>(mDiscoveryConfig, *mMemI);
     mFlpInputHandler = std::make_unique<TfBuilderInput>(*this, mRpc, eTfBuilderOut);
   }
 
