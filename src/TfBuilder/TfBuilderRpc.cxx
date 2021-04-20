@@ -14,6 +14,7 @@
 #include "TfBuilderRpc.h"
 #include <grpcpp/grpcpp.h>
 
+#include <MemoryUtils.h>
 #include <DataDistLogger.h>
 
 #include <condition_variable>
@@ -196,7 +197,9 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
   {
     std::scoped_lock lLock(mTfIdSizesLock);
 
-    lUpdate.set_free_memory(mCurrentTfBufferSize);
+    const std::uint64_t lFreeMem = std::min(std::size_t(mCurrentTfBufferSize), mMemI.freeData());
+
+    lUpdate.set_free_memory(lFreeMem);
     lUpdate.set_num_buffered_tfs(mNumBufferedTfs);
     lUpdate.set_last_built_tf_id(mLastBuiltTfId);
   }

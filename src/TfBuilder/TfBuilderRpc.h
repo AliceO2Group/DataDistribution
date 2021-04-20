@@ -43,11 +43,14 @@ using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
 
+class SyncMemoryResources;
+
 class TfBuilderRpcImpl final : public TfBuilderRpc::Service
 {
 public:
-  TfBuilderRpcImpl(std::shared_ptr<ConsulTfBuilder> pDiscoveryConfig)
-  : mDiscoveryConfig(pDiscoveryConfig),
+  TfBuilderRpcImpl(std::shared_ptr<ConsulTfBuilder> pDiscoveryConfig, SyncMemoryResources &pMemI)
+  : mMemI(pMemI),
+    mDiscoveryConfig(pDiscoveryConfig),
     mStfSenderRpcClients(mDiscoveryConfig)
   { }
 
@@ -86,8 +89,6 @@ public:
   ::grpc::Status TerminatePartition(::grpc::ServerContext* context, const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response) override;
 
 private:
-  static constexpr const std::int64_t sMaxStfRequestsInFlight = 10;
-
   std::atomic_bool mRunning = false;
   std::atomic_bool mTerminateRequested = false;
 
@@ -101,6 +102,9 @@ private:
   // Stf request thread
   // std::condition_variable mNewRequestCondition;
   std::thread mStfRequestThread;
+
+  /// TfBuilder Memory Resource
+  SyncMemoryResources &mMemI;
 
   /// Discovery configuration
   std::shared_ptr<ConsulTfBuilder> mDiscoveryConfig;
