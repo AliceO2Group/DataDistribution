@@ -108,6 +108,11 @@ class StfBuilderDevice : public DataDistDevice,
 
   // stop/restart file source
   virtual void PreRun() override final {
+
+    if (I().mReadoutInterface) {
+      I().mReadoutInterface->setRunningState(true);
+    }
+
     I().mPaused = false;
     if (I().mFileSource) {
       I().mFileSource->resume();
@@ -123,6 +128,11 @@ class StfBuilderDevice : public DataDistDevice,
     IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
   }
   virtual void PostRun() override final {
+
+    if (I().mReadoutInterface) {
+      I().mReadoutInterface->setRunningState(false);
+    }
+
     I().mPaused = true;
     if (I().mFileSource) {
       I().mFileSource->pause();

@@ -318,6 +318,12 @@ class SubTimeFrame : public IDataModelObject
     std::uint32_t mFirstOrbit = std::numeric_limits<std::uint32_t>::max();
     std::uint32_t mRunNumber = 0;
 
+    enum Origin {
+      eReadout = 1,
+      eFile,
+      eNull
+    } mOrigin = eNull;
+
     Header() = default;
     explicit Header(TimeFrameIdType pId)
     : mId(pId) { }
@@ -325,6 +331,8 @@ class SubTimeFrame : public IDataModelObject
 
   const Header& header() const { return mHeader; }
   TimeFrameIdType id() const { return mHeader.mId; }
+  Header::Origin origin() const { return mHeader.mOrigin; }
+  void setOrigin(const Header::Origin pOrig) { mHeader.mOrigin = pOrig; }
 
   void clear() { mData.clear(); mDataUpdated = false; }
   // NOTE: method declared const to work with const visitors, manipulated fields are mutable

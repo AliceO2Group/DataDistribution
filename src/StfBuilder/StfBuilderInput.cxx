@@ -26,9 +26,7 @@
 #include <chrono>
 #include <sstream>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 void StfInputInterface::start()
@@ -38,8 +36,11 @@ void StfInputInterface::start()
 
   mStfTimeSamples.clear();
 
+  mSeqStfQueue.start();
   mBuilderInputQueue = std::make_unique<ConcurrentFifo<std::vector<FairMQMessagePtr>>>();
   mStfBuilder = std::make_unique<SubTimeFrameReadoutBuilder>(mDevice.MemI(), mDevice.dplEnabled());
+
+  mStfSeqThread = create_thread_member("stfb_seq", &StfInputInterface::StfSequencerThread, this);
   mBuilderThread = create_thread_member("stfb_builder", &StfInputInterface::StfBuilderThread, this);
   mInputThread = create_thread_member("stfb_input", &StfInputInterface::DataHandlerThread, this);
 }
@@ -59,6 +60,11 @@ mRunning = false;
 
   if (mBuilderThread.joinable()) {
       mBuilderThread.join();
+  }
+
+  mSeqStfQueue.stop();
+  if (mStfSeqThread.joinable()) {
+    mStfSeqThread.join();
   }
 
   // mStfBuilders.clear(); // TODO: deal with shm region cleanup
@@ -230,7 +236,7 @@ void StfInputInterface::StfBuilderThread()
             (*lStf)->header().mId, (*lStf)->getDataSize());
         }
 
-        mDevice.queue(eStfBuilderOut, std::move(*lStf));
+        mSeqStfQueue.push(std::move(*lStf));
 
         { // MON: data of a new STF received, get the freq and new start time
           std::chrono::duration<double> lTimeSinceStart = hres_clock::now() - lStartSec;
@@ -380,5 +386,67 @@ void StfInputInterface::StfBuilderThread()
   DDDLOG("Exiting StfBuilder thread.");
 }
 
+void StfInputInterface::StfSequencerThread()
+{
+  static constexpr std::uint64_t sMaxMissingStfsForSeq = 2ull * 11234 / 256; // 1 seconds of STFs
+
+  std::uint64_t lLastStfId = -std::uint64_t(1);
+
+  while (mRunning) {
+    auto lStf = mSeqStfQueue.pop_wait_for(std::chrono::microseconds(500000));
+
+    if (lStf == std::nullopt || !mAcceptingData) {
+      continue;
+    }
+
+    // have data, check the sequence
+    if (lStf) {
+      const auto lCurrId = (*lStf)->id();
+      (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eReadout);
+
+      if ((lLastStfId != -std::uint64_t(1)) && lCurrId <= lLastStfId) {
+        EDDLOG_RL(500, "READOUT_INTERFACE: Repeated STF will be rejected. previous_stf_id={} current_stf_id={}",
+          lLastStfId, lCurrId);
+
+        // reject this STF.
+        continue;
+      }
+
+      if ((lLastStfId + 1) == lCurrId) {
+        lLastStfId = lCurrId;
+        mDevice.queue(eStfBuilderOut, std::move(*lStf));
+        continue;
+      }
+
+      // there are missing STFs
+      const auto lMissingIdStart = lLastStfId + 1;
+      const auto lMissingCnt = lCurrId - lMissingIdStart;
+
+      if (lMissingCnt < sMaxMissingStfsForSeq) {
+        WDDLOG_RL(1000, "READOUT_INTERFACE: Creating empty (missing) STFs. last_stf_id={} num_missing={}",
+          lLastStfId, lMissingCnt);
+        // create the missing ones and continue
+        for (std::uint64_t lStfIdIdx = lMissingIdStart; lStfIdIdx < lCurrId; lStfIdIdx++) {
+          // TODO: insert null TFs
+          auto lEmptyStf = std::make_unique<SubTimeFrame>(lStfIdIdx);
+          (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eNull);
+          mDevice.queue(eStfBuilderOut, std::move(lEmptyStf));
+        }
+      } else {
+        WDDLOG_RL(1000, "READOUT_INTERFACE: Large STF gap. current_stf_id={} num_missing={}", lCurrId, lMissingCnt);
+      }
+
+      // insert the actual stf
+      lLastStfId = lCurrId;
+      mDevice.queue(eStfBuilderOut, std::move(*lStf));
+      continue;
+    }
+
+    // TODO: handle timeout
+  }
+
+  DDDLOG("Exiting StfSequencerThread thread.");
 }
-}
+
+
+} /* namespace o2::DataDistribution */

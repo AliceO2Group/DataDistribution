@@ -30,6 +30,10 @@ BOOST_AUTO_TEST_CASE(GetNextSeqNameTest)
   BOOST_CHECK("0x00ff" == format(FmtSubSpec, 0x00FF)); // 32bit
 
 
+
+  BOOST_CHECK("0001" == format("{:04}", 1)); // leading zeroes
+
+
   DataDistLogger(DataDistSeverity::info, DataDistLogger::log_fmq{}, std::string("{}"));
 
   IDDLOG("Test {} {} {}", 1, 2);
