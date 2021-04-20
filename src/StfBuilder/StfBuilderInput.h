@@ -45,8 +45,11 @@ class StfInputInterface
   void start();
   void stop();
 
+  void setRunningState(bool pRunning) { mAcceptingData = pRunning; }
+
   void DataHandlerThread();
   void StfBuilderThread();
+  void StfSequencerThread();
 
   const RunningSamples<float>& StfTimeSamples() const { return mStfTimeSamples; }
  private:
@@ -54,7 +57,8 @@ class StfInputInterface
   StfBuilderDevice& mDevice;
 
   /// Thread for the input channel
-  std::atomic_bool mRunning = false;
+  bool mRunning = false;
+  bool mAcceptingData = false;
   std::thread mInputThread;
 
   RunningSamples<float> mStfTimeSamples;
@@ -63,6 +67,10 @@ class StfInputInterface
   std::unique_ptr<ConcurrentFifo<std::vector<FairMQMessagePtr>>> mBuilderInputQueue = nullptr;
   std::unique_ptr<SubTimeFrameReadoutBuilder> mStfBuilder = nullptr;
   std::thread mBuilderThread;
+
+  /// StfSequencer thread
+  ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mSeqStfQueue;
+  std::thread mStfSeqThread;
 };
 
 }
