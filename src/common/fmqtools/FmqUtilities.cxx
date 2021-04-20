@@ -16,6 +16,8 @@
 #include <fairmq/FairMQDevice.h>
 #include <fairmq/DeviceRunner.h>
 
+#include<boost/algorithm/string.hpp>
+
 
 namespace o2::DataDistribution::fmqtools {
 
@@ -97,7 +99,20 @@ static auto handleRunNumber(const std::string &pOptKey, const std::string &pOptV
 {
   if (pOptKey == "runNumber") {
     IDDLOG("NEW RUN NUMBER. run_number={}", pOptVal);
+
     DataDistLogger::sRunNumberStr = pOptVal;
+    boost::algorithm::trim(DataDistLogger::sRunNumberStr);
+    while (DataDistLogger::sRunNumberStr.size() > 1 && boost::algorithm::starts_with(DataDistLogger::sRunNumberStr, "0") ) {
+      boost::algorithm::erase_first(DataDistLogger::sRunNumberStr, "0");
+    }
+
+    try {
+      DataDistLogger::sRunNumber = boost::lexical_cast<std::uint64_t>(DataDistLogger::sRunNumberStr);
+    } catch( boost::bad_lexical_cast const &e) {
+      DataDistLogger::sRunNumber = -1;
+      EDDLOG("NEW RUN NUMBER is not numeric. run_number_str={} what={}", DataDistLogger::sRunNumberStr, e.what());
+    }
+
     impl::DataDistLoggerCtx::InitInfoLogger();
   }
 }
