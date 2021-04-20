@@ -60,6 +60,14 @@ class ConcurrentContainerImpl
     mImpl->mCond.notify_all();
   }
 
+  void start()
+  {
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    mImpl->mContainer.clear();
+    mImpl->mRunning = true;
+    mImpl->mCond.notify_all();
+  }
+
   std::size_t flush()
   {
     std::unique_lock<std::mutex> lLock(mImpl->mLock);
@@ -183,6 +191,28 @@ class ConcurrentContainerImpl
     return try_pop(d);
   }
 
+  std::optional<T> pop_wait_for(const std::chrono::microseconds &us)
+  {
+    const auto lWaitUntil = std::chrono::system_clock::now() + us;
+
+    std::unique_lock<std::mutex> lLock(mImpl->mLock);
+    if (mImpl->mContainer.empty() && (mImpl->mRunning)) {
+      // wait until timeout is reached, or the queue has new elements
+      while (mImpl->mRunning && (mImpl->mCond.wait_until(lLock, lWaitUntil) != std::cv_status::timeout)) {
+        if (!mImpl->mContainer.empty()) {
+          break;
+        }
+      }
+    }
+
+    if (!mImpl->mContainer.empty()) {
+      auto d = std::make_optional<T>(std::move(mImpl->mContainer.front()));
+      mImpl->mContainer.pop_front();
+      return d;
+    }
+
+    return std::nullopt;
+  }
 
   template <class OutputIt>
   std::size_t pop_n(const unsigned long pCnt, OutputIt pDstIter)
