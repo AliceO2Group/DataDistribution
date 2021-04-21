@@ -95,10 +95,21 @@ void StfInputInterface::DataHandlerThread()
 
       // receive readout messages
       const auto lRet = lInputChan.Receive(lReadoutMsgs);
-      if (lRet < 0 && mRunning) {
+      if (lRet < 0 && !mAcceptingData) { // NOT in FMQ:running state
+        continue;
+      }
+
+      if (lRet >= 0 && !mAcceptingData) {
+        WDDLOG_RL(1000, "READOUT INTERFACE: Receive data but we are not in FMQ:RUNNING state.");
+        continue;
+      }
+
+      if (lRet < 0 && mRunning && mAcceptingData) {
         WDDLOG_RL(1000, "READOUT INTERFACE: Receive failed . err={}", std::to_string(lRet));
         continue;
       }
+
+      assert (lRet >= 0 && mAcceptingData);
 
       if (lReadoutMsgs.empty()) {
         // nothing received?
