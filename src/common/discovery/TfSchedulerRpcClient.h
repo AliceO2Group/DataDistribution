@@ -24,9 +24,7 @@
 #include <map>
 #include <thread>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using grpc::Server;
@@ -49,7 +47,7 @@ public:
 
     mTfSchedulerConf.Clear();
     if (!pConfig->getTfSchedulerConfig(lPartitionId, mTfSchedulerConf)) {
-      IDDLOG("TfScheduler instance configuration not found.");
+      IDDLOG_RL(1000, "TfScheduler instance configuration not found.");
       return false;
     }
 
@@ -107,8 +105,6 @@ private:
   std::shared_ptr<grpc::Channel> mChannel;
 };
 
-
-}
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_DATADIST_TFSCHEDULER_RPC_CLIENT_H_ */
