@@ -502,6 +502,9 @@ o2::header::DataOrigin StfBuilderDevice::getDataOriginFromOption(const std::stri
   else if (lDetStr == "ZDC") {
     return o2::header::gDataOriginZDC;
   }
+  else if (lDetStr == "TST") {
+    return o2::header::gDataOriginTST;
+  }
 
   return o2::header::gDataOriginInvalid;
 }
