@@ -30,8 +30,7 @@ namespace o2::DataDistribution
 using namespace std::chrono_literals;
 
 StfSenderDevice::StfSenderDevice()
-  : DataDistDevice(),
-    IFifoPipeline(ePipelineSize)
+  : DataDistDevice()
 {
 }
 
@@ -44,18 +43,19 @@ void StfSenderDevice::Init()
   DDDLOG("StfSenderDevice::Init()");
   mI = std::make_unique<StfSenderInstance>();
 
-  I().mFileSink = std::make_unique<SubTimeFrameFileSink>(*this, *this, eFileSinkIn, eFileSinkOut);
-  I().mOutputHandler = std::make_unique<StfSenderOutput>(*this);
+  I().mFileSink = std::make_unique<SubTimeFrameFileSink>(*this, *mI, eFileSinkIn, eFileSinkOut);
+  I().mOutputHandler = std::make_unique<StfSenderOutput>(*this, *mI);
 }
 
 void StfSenderDevice::Reset()
 {
   DDDLOG("StfBuilderDevice::Reset()");
   // clear all Stfs from the pipeline before the transport is deleted
-  stopPipeline();
-  clearPipeline();
-
-  mI.reset();
+  if (mI) {
+    I().stopPipeline();
+    I().clearPipeline();
+    mI.reset();
+  }
 }
 
 void StfSenderDevice::InitTask()
@@ -167,7 +167,8 @@ void StfSenderDevice::PostRun()
 void StfSenderDevice::ResetTask()
 {
   // Stop the pipeline
-  stopPipeline();
+  I().stopPipeline();
+  I().clearPipeline();
 
   I().mRunning = false;
 
@@ -243,7 +244,7 @@ void StfSenderDevice::StfReceiverThread()
     IDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
-    queue(eReceiverOut, std::move(lStf));
+    I().queue(eReceiverOut, std::move(lStf));
   }
 
   IDDLOG("StfSender received total of {} STFs.", lReceivedStfs);

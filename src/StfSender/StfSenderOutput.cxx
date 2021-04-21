@@ -23,9 +23,7 @@
 #include <condition_variable>
 #include <stdexcept>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -220,7 +218,7 @@ void StfSenderOutput::StfSchedulerThread()
   // Notifies the scheduler about stfs
   std::unique_ptr<SubTimeFrame> lStf;
 
-  while ((lStf = mDevice.dequeue(eSenderIn)) != nullptr) {
+  while ((lStf = mPipelineI.dequeue(eSenderIn)) != nullptr) {
     const auto lStfId = lStf->header().mId;
     const auto lStfSize = lStf->getDataSize();
 
@@ -431,5 +429,4 @@ void StfSenderOutput::StfDropThread()
   DDDLOG("Exiting DataDropThread thread");
 }
 
-}
 } /* o2::DataDistribution */
