@@ -29,9 +29,7 @@
 #include <mutex>
 #include <condition_variable>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 class ConsulConfig;
@@ -49,8 +47,7 @@ enum StfSenderPipeline {
   eInvalidStage = -1,
 };
 
-class StfSenderDevice : public DataDistDevice,
-                        public IFifoPipeline<std::unique_ptr<SubTimeFrame>>
+class StfSenderDevice : public DataDistDevice
 {
  public:
   static constexpr const char* OptionKeyInputChannelName = "input-channel-name";
@@ -81,46 +78,10 @@ class StfSenderDevice : public DataDistDevice,
   void StfReceiverThread();
   void InfoThread();
 
-  unsigned getNextPipelineStage(unsigned pStage) final
-  {
-    StfSenderPipeline lNextStage = eInvalidStage;
-    switch (pStage) {
-      case eReceiverOut:
-      /*  case eFileSinkOut: */
-      {
-        if (I().mFileSink->enabled()) {
-          lNextStage = eFileSinkIn;
-          break;
-        }
+  struct StfSenderInstance : public IFifoPipeline<std::unique_ptr<SubTimeFrame>> {
 
-        if (standalone()) {
-          lNextStage = eNullIn;
-          break;
-        }
-
-        lNextStage = eSenderIn;
-        break;
-      }
-      case eFileSinkOut:
-      {
-        if (standalone()) {
-          lNextStage = eNullIn;
-          break;
-        }
-
-        lNextStage = eSenderIn;
-        break;
-      }
-
-      default:
-        throw std::runtime_error("pipeline error");
-    }
-
-    assert(lNextStage >= eFileSinkIn && lNextStage <= eNullIn);
-    return lNextStage;
-  }
-
-  struct StfSenderInstance {
+    StfSenderInstance()
+    : IFifoPipeline(ePipelineSize) {}
 
     /// Configuration
     std::string mInputChannelName;
@@ -149,6 +110,45 @@ class StfSenderDevice : public DataDistDevice,
     std::thread mInfoThread;
     RunningSamples<uint64_t> mStfSizeSamples;
     RunningSamples<float> mStfTimeSamples;
+
+    unsigned getNextPipelineStage(unsigned pStage) final
+    {
+      StfSenderPipeline lNextStage = eInvalidStage;
+      switch (pStage) {
+        case eReceiverOut:
+        /*  case eFileSinkOut: */
+        {
+          if (mFileSink->enabled()) {
+            lNextStage = eFileSinkIn;
+            break;
+          }
+
+          if (mStandalone) {
+            lNextStage = eNullIn;
+            break;
+          }
+
+          lNextStage = eSenderIn;
+          break;
+        }
+        case eFileSinkOut:
+        {
+          if (mStandalone) {
+            lNextStage = eNullIn;
+            break;
+          }
+
+          lNextStage = eSenderIn;
+          break;
+        }
+
+        default:
+          throw std::runtime_error("pipeline error");
+      }
+
+      assert(lNextStage >= eFileSinkIn && lNextStage <= eNullIn);
+      return lNextStage;
+    }
   };
 
   std::unique_ptr<StfSenderInstance> mI;
@@ -157,7 +157,7 @@ class StfSenderDevice : public DataDistDevice,
 public:
   StfSenderInstance& I() { return *mI; }
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_STF_SENDER_DEVICE_H_ */

@@ -23,16 +23,16 @@
 #include <map>
 #include <thread>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 class StfSenderDevice;
 
 class StfSenderOutput
 {
- public:
+  using stf_pipeline = IFifoPipeline<std::unique_ptr<SubTimeFrame>>;
+
+public:
   struct StdSenderOutputCounters {
     // buffer state
     std::uint64_t mBufferedStfSize = 0;
@@ -43,8 +43,9 @@ class StfSenderOutput
   };
 
   StfSenderOutput() = delete;
-  StfSenderOutput(StfSenderDevice& pStfSenderDev)
-    : mDevice(pStfSenderDev)
+  StfSenderOutput(StfSenderDevice &pStfSenderDev, stf_pipeline &pPipelineI)
+    : mDevice(pStfSenderDev),
+      mPipelineI(pPipelineI)
   {
   }
 
@@ -72,6 +73,7 @@ class StfSenderOutput
  private:
   /// Ref to the main SubTimeBuilder O2 device
   StfSenderDevice& mDevice;
+  stf_pipeline &mPipelineI;
 
   /// Discovery configuration
   std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
@@ -98,7 +100,7 @@ class StfSenderOutput
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mDropQueue;
   std::thread mStfDropThread;
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_STF_SENDER_OUTPUT_H_ */
