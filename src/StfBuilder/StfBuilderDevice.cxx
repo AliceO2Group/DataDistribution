@@ -29,9 +29,7 @@
 #include <exception>
 #include <boost/algorithm/string.hpp>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -39,8 +37,7 @@ using namespace std::chrono_literals;
 constexpr int StfBuilderDevice::gStfOutputChanId;
 
 StfBuilderDevice::StfBuilderDevice()
-  : DataDistDevice(),
-    IFifoPipeline(eStfPipelineSize)
+  : DataDistDevice()
 {
 }
 
@@ -53,10 +50,13 @@ StfBuilderDevice::~StfBuilderDevice()
   if (!sResetDeviceCalled) {
     EDDLOG("StfBuilderDevice::Reset() was not called. Performing cleanup");
     // clear all Stfs from the pipeline before the transport is deleted
-    stopPipeline();
-    clearPipeline();
+    if (mI) {
+      I().stopPipeline();
+      I().clearPipeline();
+      mI.reset();
+    }
 
-    mI.reset();
+
     mMemI.reset();
   }
 }
@@ -67,17 +67,17 @@ void StfBuilderDevice::Init()
   mI = std::make_unique<StfBuilderInstance>();
   mMemI = std::make_unique<MemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
 
-  I().mFileSource = std::make_unique<SubTimeFrameFileSource>(*this, eStfFileSourceOut);
+  I().mFileSource = std::make_unique<SubTimeFrameFileSource>(*mI, eStfFileSourceOut);
   I().mReadoutInterface = std::make_unique<StfInputInterface>(*this);
-  I().mFileSink = std::make_unique<SubTimeFrameFileSink>(*this, *this, eStfFileSinkIn, eStfFileSinkOut);
+  I().mFileSink = std::make_unique<SubTimeFrameFileSink>(*this, *mI, eStfFileSinkIn, eStfFileSinkOut);
 }
 
 void StfBuilderDevice::Reset()
 {
   DDDLOG("StfBuilderDevice::Reset()");
   // clear all Stfs from the pipeline before the transport is deleted
-  stopPipeline();
-  clearPipeline();
+  I().stopPipeline();
+  I().clearPipeline();
 
   mI.reset();
   mMemI.reset();
@@ -236,8 +236,8 @@ void StfBuilderDevice::ResetTask()
   I().mRunning = false;
 
   // Stop the pipeline
-  stopPipeline();
-  clearPipeline();
+  I().stopPipeline();
+  I().clearPipeline();
 
   // NOTE: everything with threads goes below
   // signal and wait for the output thread
@@ -289,7 +289,7 @@ void StfBuilderDevice::StfOutputThread()
     using hres_clock = std::chrono::high_resolution_clock;
 
     // Get a STF ready for sending
-    std::unique_ptr<SubTimeFrame> lStf = dequeue(eStfSendIn);
+    std::unique_ptr<SubTimeFrame> lStf = I().dequeue(eStfSendIn);
     if (!lStf) {
       break;
     }
@@ -506,6 +506,4 @@ o2::header::DataOrigin StfBuilderDevice::getDataOriginFromOption(const std::stri
   return o2::header::gDataOriginInvalid;
 }
 
-
-}
 } /* namespace o2::DataDistribution */

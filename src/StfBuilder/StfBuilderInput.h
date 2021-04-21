@@ -23,24 +23,22 @@
 #include <thread>
 #include <vector>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 class StfBuilderDevice;
 
 class StfInputInterface
 {
- public:
+
+public:
   static constexpr uint8_t sReadoutInterfaceVersion = 2;
 
   StfInputInterface() = delete;
-  StfInputInterface(StfBuilderDevice& pStfBuilderDev)
+  StfInputInterface(StfBuilderDevice &pStfBuilderDev)
     : mDevice(pStfBuilderDev),
       mStfTimeSamples()
-  {
-  }
+  { }
 
   void start();
   void stop();
@@ -54,7 +52,7 @@ class StfInputInterface
   const RunningSamples<float>& StfTimeSamples() const { return mStfTimeSamples; }
  private:
   /// Main SubTimeBuilder O2 device
-  StfBuilderDevice& mDevice;
+  StfBuilderDevice &mDevice;
 
   /// Thread for the input channel
   bool mRunning = false;
@@ -73,7 +71,6 @@ class StfInputInterface
   std::thread mStfSeqThread;
 };
 
-}
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_STFBUILDER_INPUT_H_ */

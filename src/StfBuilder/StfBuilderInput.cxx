@@ -98,8 +98,6 @@ void StfInputInterface::DataHandlerThread()
       if (lRet < 0 && mRunning) {
         WDDLOG_RL(1000, "READOUT INTERFACE: Receive failed . err={}", std::to_string(lRet));
         continue;
-      } else if (lRet < 0 && !mRunning) {
-        break; // should exit
       }
 
       if (lReadoutMsgs.empty()) {
@@ -414,7 +412,7 @@ void StfInputInterface::StfSequencerThread()
 
       if ((lLastStfId + 1) == lCurrId) {
         lLastStfId = lCurrId;
-        mDevice.queue(eStfBuilderOut, std::move(*lStf));
+        mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
         continue;
       }
 
@@ -430,7 +428,7 @@ void StfInputInterface::StfSequencerThread()
           // TODO: insert null TFs
           auto lEmptyStf = std::make_unique<SubTimeFrame>(lStfIdIdx);
           (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eNull);
-          mDevice.queue(eStfBuilderOut, std::move(lEmptyStf));
+          mDevice.I().queue(eStfBuilderOut, std::move(lEmptyStf));
         }
       } else {
         WDDLOG_RL(1000, "READOUT_INTERFACE: Large STF gap. current_stf_id={} num_missing={}", lCurrId, lMissingCnt);
@@ -438,7 +436,7 @@ void StfInputInterface::StfSequencerThread()
 
       // insert the actual stf
       lLastStfId = lCurrId;
-      mDevice.queue(eStfBuilderOut, std::move(*lStf));
+      mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
       continue;
     }
 
