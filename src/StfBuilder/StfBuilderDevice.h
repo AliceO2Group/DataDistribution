@@ -55,8 +55,7 @@ enum StfBuilderPipeline {
   eStfInvalidStage = -1,
 };
 
-class StfBuilderDevice : public DataDistDevice,
-                         public IFifoPipeline<std::unique_ptr<SubTimeFrame>>
+class StfBuilderDevice : public DataDistDevice
 {
  public:
   constexpr static int gStfOutputChanId = 0;
@@ -142,75 +141,14 @@ class StfBuilderDevice : public DataDistDevice,
     IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
   }
 
-  bool tryPopOldestStfs()
-  {
-    // try to drop one STF starting from back-end queues
-    if (this->try_pop(eStfSendIn)) {
-      return true;
-    }
-
-    if (this->try_pop(eStfFileSinkIn)) {
-      return true;
-    }
-
-    return false;
-  }
-
-  unsigned getNextPipelineStage(unsigned pStage) final
-  {
-    StfBuilderPipeline lNextStage = eStfInvalidStage;
-
-    switch (pStage) {
-      case eStfBuilderOut:
-      /* case eStfFileSourceOut: */
-      {
-        I().mNumStfs++;
-
-        if (I().mPipelineLimit && (I().mNumStfs >= I().mMaxStfsInPipeline)) {
-
-          // DROP policy in StfBuilder is to keep most current STFs. This will ensure that all
-          // StfBuilders have the same set of STFs ready for distribution
-
-          WDDLOG_RL(500, "Dropping oldest STF due to reaching the maximum number of buffered "
-            "STFs in the process ({}). Consider increasing the limit, or reducing the input data rate.",
-            I().mMaxStfsInPipeline);
-
-          if (tryPopOldestStfs()) {
-            I().mNumStfs--;
-          }
-        }
-
-        if (I().mFileSink->enabled()) {
-          I().mNumStfs--;
-          lNextStage = eStfFileSinkIn;
-        } else {
-          lNextStage = eStfSendIn;
-        }
-        break;
-      }
-      case eStfFileSinkOut:
-      {
-        I().mNumStfs++;
-        lNextStage = eStfSendIn;
-        break;
-      }
-      default:
-        throw std::runtime_error("pipeline error");
-    }
-
-    if (!(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn)) {
-      EDDLOG("Stage error! next_stage={}", lNextStage);
-    }
-
-    assert(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn);
-
-    return lNextStage;
-  }
-
   void StfOutputThread();
   void InfoThread();
 
-  struct StfBuilderInstance {
+  struct StfBuilderInstance : public IFifoPipeline<std::unique_ptr<SubTimeFrame>> {
+
+    StfBuilderInstance()
+    : IFifoPipeline(eStfPipelineSize) {}
+
     /// config
     std::string mInputChannelName;
     std::string mOutputChannelName;
@@ -244,6 +182,72 @@ class StfBuilderDevice : public DataDistDevice,
     std::uint64_t mSentOutStfs = 0; // used to calculate the rate (pause/resume)
     double mSentOutRate = 0.;
     bool mRestartRateCounter = true;
+
+
+    bool tryPopOldestStfs()
+    {
+      // try to drop one STF starting from back-end queues
+      if (this->try_pop(eStfSendIn)) {
+        return true;
+      }
+
+      if (this->try_pop(eStfFileSinkIn)) {
+        return true;
+      }
+
+      return false;
+    }
+
+    unsigned getNextPipelineStage(unsigned pStage)
+    {
+    StfBuilderPipeline lNextStage = eStfInvalidStage;
+
+    switch (pStage) {
+      case eStfBuilderOut:
+      /* case eStfFileSourceOut: */
+      {
+        mNumStfs++;
+
+        if (mPipelineLimit && (mNumStfs >= mMaxStfsInPipeline)) {
+
+          // DROP policy in StfBuilder is to keep most current STFs. This will ensure that all
+          // StfBuilders have the same set of STFs ready for distribution
+
+          WDDLOG_RL(500, "Dropping oldest STF due to reaching the maximum number of buffered "
+            "STFs in the process ({}). Consider increasing the limit, or reducing the input data rate.",
+            mMaxStfsInPipeline);
+
+          if (tryPopOldestStfs()) {
+            mNumStfs--;
+          }
+        }
+
+        if (mFileSink->enabled()) {
+          mNumStfs--;
+          lNextStage = eStfFileSinkIn;
+        } else {
+          lNextStage = eStfSendIn;
+        }
+        break;
+      }
+      case eStfFileSinkOut:
+      {
+        mNumStfs++;
+        lNextStage = eStfSendIn;
+        break;
+      }
+      default:
+        throw std::runtime_error("pipeline error");
+    }
+
+    if (!(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn)) {
+      EDDLOG("Stage error! next_stage={}", lNextStage);
+    }
+
+    assert(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn);
+
+    return lNextStage;
+  }
   };
 
   std::unique_ptr<StfBuilderInstance> mI;
