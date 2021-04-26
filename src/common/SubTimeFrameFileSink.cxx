@@ -140,7 +140,7 @@ bool SubTimeFrameFileSink::makeDirectory()
 
   fmt::memory_buffer lDir;
   fmt::format_to(lDir, "run{}_{}", ("0" + DataDistLogger::sRunNumberStr), FilePathUtils::getDataDirName(mRootDir));
-  mCurrentDir = (bfs::path(mRootDir) / bfs::path(lDir.data())).string();
+  mCurrentDir = (bfs::path(mRootDir) / bfs::path(lDir.begin(), lDir.end())).string();
 
   // make the run directory
   if (!bfs::create_directory(mCurrentDir)) {
