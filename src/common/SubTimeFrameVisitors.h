@@ -64,7 +64,7 @@ class InterleavedHdrDataDeserializer : public ISubTimeFrameVisitor
   InterleavedHdrDataDeserializer() = default;
   virtual ~InterleavedHdrDataDeserializer() = default;
 
-  std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan);
+  std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan, bool pLogError = false);
   std::unique_ptr<SubTimeFrame> deserialize(FairMQParts& pMsgs);
 
  protected:
@@ -122,7 +122,7 @@ class CoalescedHdrDataDeserializer : public ISubTimeFrameVisitor
   : mTfBld(pTfBld) { }
   virtual ~CoalescedHdrDataDeserializer() = default;
 
-  std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan);
+  std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan, bool pLogError = false);
   std::unique_ptr<SubTimeFrame> deserialize(std::vector<FairMQMessagePtr>& pMsgs);
 
  protected:

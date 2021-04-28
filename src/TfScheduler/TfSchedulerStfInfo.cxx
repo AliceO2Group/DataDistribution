@@ -138,7 +138,6 @@ void TfSchedulerStfInfo::StaleCleanupThread()
   const auto lNumStfSenders = mDiscoveryConfig->status().stf_sender_count();
   const std::set<std::string> lStfSenderIdSet = mConnManager.getStfSenderSet();
   std::vector<std::uint64_t> lStfsToErase;
-  lStfsToErase.reserve(1000);
   auto lLastDiscardTime = std::chrono::steady_clock::now();
 
   // count how many time an FLP was missing STFs
@@ -147,15 +146,8 @@ void TfSchedulerStfInfo::StaleCleanupThread()
   std::vector<StfInfo> lStfInfos;
 
   while (mRunning) {
-    std::this_thread::sleep_for(2s);
-
-    const auto lNow = std::chrono::steady_clock::now();
-
-    if (lNow - lLastDiscardTime < sStfDiscardTimeout) {
-      continue;
-    }
-
-    lLastDiscardTime = lNow;
+    std::this_thread::sleep_for(std::chrono::seconds(sStfDiscardTimeout));
+    lLastDiscardTime = std::chrono::steady_clock::now();
 
     lStfsToErase.clear();
     {
@@ -171,13 +163,12 @@ void TfSchedulerStfInfo::StaleCleanupThread()
             lStfId, lStfInfoVec.size(), lNumStfSenders);
 
           lStfsToErase.push_back(lStfId);
-          requestDropAllLocked(lStfId);
           continue;
         }
 
         // check reap
         const auto &lLastStfInfo = lStfInfoVec.back();
-        const auto lTimeDiff = std::chrono::abs(lLastStfInfo.mUpdateLocalTime - lNow);
+        const auto lTimeDiff = std::chrono::abs(lLastStfInfo.mUpdateLocalTime - lLastDiscardTime);
         if (lTimeDiff > sStfDiscardTimeout) {
           WDDLOG_RL(1000, "Discarding incomplete SubTimeFrame. stf_id={} received={} expected={}",
             lStfId, lStfInfoVec.size(), lNumStfSenders);
@@ -194,18 +185,28 @@ void TfSchedulerStfInfo::StaleCleanupThread()
 
           for (const auto &lStf : lMissingStfSenders) {
             lStfSenderMissingCnt[lStf]++;
-            DDDLOG("Missing STF ids: stfs_id={} missing_cnt={}", lStf, lStfSenderMissingCnt[lStf]);
           }
 
           lStfsToErase.push_back(lStfId);
-          requestDropAllLocked(lStfId);
         }
+      }
+
+      // drop outside of the main iteration loop
+      for(const auto &lStfIdToDrop : lStfsToErase) {
+        requestDropAllLocked(lStfIdToDrop);
       }
     }
 
     if (lStfsToErase.size() > 0) {
       WDDLOG("SchedulingThread: TFs have been discarded due to incomplete number of STFs. discarded_tf_count={}",
         lStfsToErase.size());
+
+      for (const auto &lStfSenderCnt : lStfSenderMissingCnt) {
+        if (lStfSenderCnt.second > 0) {
+          DDDLOG("StfSender with missing ids: stfsender_id={} missing_cnt={}",
+            lStfSenderCnt.first, lStfSenderCnt.second);
+        }
+      }
     }
   }
 
