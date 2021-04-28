@@ -24,9 +24,7 @@
 #include <memory>
 #include <algorithm>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace o2::header;
@@ -126,22 +124,42 @@ void InterleavedHdrDataDeserializer::visit(SubTimeFrame& pStf)
   }
 }
 
-std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize(FairMQChannel& pChan)
+std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize(FairMQChannel& pChan, bool pLogError)
 {
-  const std::int64_t ret = pChan.Receive(mMessages, 500 /* ms */);
+  mMessages.clear();
+  const std::int64_t lRet = pChan.Receive(mMessages, 500 /* ms */);
 
-  // timeout ?
-  if (ret == -2) {
-     return nullptr;
+  switch (lRet) {
+    case static_cast<std::int64_t>(fair::mq::TransferCode::timeout):
+      mMessages.clear();
+      return nullptr;
+      break;
+    case static_cast<std::int64_t>(fair::mq::TransferCode::interrupted):
+      if (pLogError) {
+        IDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::interrupted");
+      }
+      mMessages.clear();
+      return nullptr;
+      break;
+    case static_cast<std::int64_t>(fair::mq::TransferCode::error):
+      EDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::error err={} errno={} error={}",
+        int(lRet), errno, std::string(strerror(errno)));
+      mMessages.clear();
+      return nullptr;
+      break;
+    default: // data or zero
+      if (lRet > 0) {
+        return deserialize_impl();
+      } else {
+        WDDLOG_RL(1000, "STF receive failed. what=zero_size");
+        mMessages.clear();
+        return nullptr;
+      }
+      break;
   }
 
-  if (ret < 0) {
-    EDDLOG_RL(1000, "STF receive failed err={} errno={} error={}", ret, errno, std::string(strerror(errno)));
-    mMessages.clear();
-    return nullptr;
-  }
-
-  return deserialize_impl();
+  assert (false);
+  return nullptr;
 }
 
 std::unique_ptr<SubTimeFrame> InterleavedHdrDataDeserializer::deserialize(FairMQParts& pMsgs)
@@ -305,28 +323,44 @@ void CoalescedHdrDataDeserializer::visit(SubTimeFrame& pStf)
   }
 }
 
-std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize(FairMQChannel& pChan)
+std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize(FairMQChannel& pChan, bool pLogError)
 {
   mHdrs.clear();
   mData.clear();
 
-  const std::int64_t ret = pChan.Receive(mData, 500 /* ms */);
+  const std::int64_t lRet = pChan.Receive(mData, 500 /* ms */);
 
-  // timeout ?
-  if (ret == -2) {
-    mData.clear();
-    return nullptr;
+  switch (lRet) {
+    case static_cast<std::int64_t>(fair::mq::TransferCode::timeout):
+      mData.clear();
+      return nullptr;
+      break;
+    case static_cast<std::int64_t>(fair::mq::TransferCode::interrupted):
+      if (pLogError) {
+        IDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::interrupted");
+      }
+      mData.clear();
+      return nullptr;
+      break;
+    case static_cast<std::int64_t>(fair::mq::TransferCode::error):
+      EDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::error err={} errno={} error={}",
+        int(lRet), errno, std::string(strerror(errno)));
+      mData.clear();
+      return nullptr;
+      break;
+    default: // data or zero
+      if (lRet > 0) {
+        return deserialize_impl();
+      } else {
+        WDDLOG_RL(1000, "STF receive failed. what=zero_size");
+        mData.clear();
+        return nullptr;
+      }
+      break;
   }
 
-  if (ret < 0) {
-    DDLOGF_GRL(1000, DataDistSeverity::error, "STF receive failed err={} errno={} error={}", ret, errno,
-      std::string(strerror(errno)));
-
-    mData.clear();
-    return nullptr;
-  }
-
-  return deserialize_impl();
+  assert (false);
+  return nullptr;
 }
 
 std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize(std::vector<FairMQMessagePtr>& pMsgs)
@@ -413,5 +447,4 @@ std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize_impl()
   return lStf;
 }
 
-}
 } /* o2::DataDistribution */

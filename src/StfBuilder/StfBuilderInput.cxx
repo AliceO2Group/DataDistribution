@@ -77,6 +77,7 @@ mRunning = false;
 /// Receiving thread
 void StfInputInterface::DataHandlerThread()
 {
+  using namespace std::chrono_literals;
   constexpr std::uint32_t cInvalidStfId = ~0;
   std::vector<FairMQMessagePtr> lReadoutMsgs;
   lReadoutMsgs.reserve(4096);
@@ -94,18 +95,33 @@ void StfInputInterface::DataHandlerThread()
       lReadoutMsgs.clear();
 
       // receive readout messages
-      const auto lRet = lInputChan.Receive(lReadoutMsgs);
-      if (lRet < 0 && !mAcceptingData) { // NOT in FMQ:running state
+      const std::int64_t lRet = lInputChan.Receive(lReadoutMsgs);
+
+      // timeout ok
+      if (lRet == static_cast<int64_t>(fair::mq::TransferCode::timeout)) {
         continue;
       }
 
-      if (lRet >= 0 && !mAcceptingData) {
-        WDDLOG_RL(1000, "READOUT INTERFACE: Receive data but we are not in FMQ:RUNNING state.");
+      // interrupted
+      if (lRet == static_cast<int64_t>(fair::mq::TransferCode::interrupted)) {
+        if (mAcceptingData) {
+          IDDLOG_RL(1000, "READOUT INTERFACE: Receive failed. FMQ state interrupted.");
+        }
+        std::this_thread::sleep_for(10ms);
         continue;
       }
 
-      if (lRet < 0 && mRunning && mAcceptingData) {
-        WDDLOG_RL(1000, "READOUT INTERFACE: Receive failed . err={}", std::to_string(lRet));
+      // not in running state
+      if (lRet > 0 && !mAcceptingData) {
+        WDDLOG_RL(1000, "READOUT INTERFACE: Discarding received data because we are not in the FMQ:RUNNING state.");
+        continue;
+      }
+
+      // error
+      if (lRet == static_cast<int64_t>(fair::mq::TransferCode::error)) {
+        EDDLOG_RL(1000, "READOUT INTERFACE: Receive failed. fmq_error={} errno={} error={}",
+          lRet, errno, std::string(strerror(errno)));
+        std::this_thread::sleep_for(10ms);
         continue;
       }
 
@@ -180,8 +196,9 @@ void StfInputInterface::DataHandlerThread()
 /// StfBuilding thread
 void StfInputInterface::StfBuilderThread()
 {
-  static constexpr bool cBuildOnTimeout = false;
   using namespace std::chrono_literals;
+
+  static constexpr bool cBuildOnTimeout = false;
   // current TF Id
   constexpr std::uint32_t cInvalidStfId = ~0;
   std::uint32_t lCurrentStfId = cInvalidStfId;
@@ -397,12 +414,12 @@ void StfInputInterface::StfBuilderThread()
 
 void StfInputInterface::StfSequencerThread()
 {
-  static constexpr std::uint64_t sMaxMissingStfsForSeq = 2ull * 11234 / 256; // 1 seconds of STFs
+  using namespace std::chrono_literals;
 
-  std::uint64_t lLastStfId = -std::uint64_t(1);
+  static constexpr std::uint64_t sMaxMissingStfsForSeq = 2ull * 11234 / 256; // 2 seconds of STFs
 
   while (mRunning) {
-    auto lStf = mSeqStfQueue.pop_wait_for(std::chrono::microseconds(500000));
+    auto lStf = mSeqStfQueue.pop_wait_for(500ms);
 
     if (lStf == std::nullopt || !mAcceptingData) {
       continue;

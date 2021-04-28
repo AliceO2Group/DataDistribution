@@ -18,9 +18,7 @@
 #include <Framework/DataProcessingHeader.h>
 #include <Headers/Stack.h>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace o2::header;
@@ -322,24 +320,42 @@ std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQParts& pMsgs)
   return deserialize_impl();
 }
 
-std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQChannel& pChan)
+std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQChannel& pChan, bool pLogError)
 {
   mMessages.clear();
-  const std::int64_t ret = pChan.Receive(mMessages, 500 /* ms */);
+  const std::int64_t lRet = pChan.Receive(mMessages, 500 /* ms */);
 
-  // timeout ?
-  if (ret == -2) {
-    return nullptr;
+  switch (lRet) {
+    case static_cast<std::int64_t>(fair::mq::TransferCode::timeout):
+      mMessages.clear();
+      return nullptr;
+      break;
+    case static_cast<std::int64_t>(fair::mq::TransferCode::interrupted):
+      if (pLogError) {
+        IDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::interrupted");
+      }
+      mMessages.clear();
+      return nullptr;
+      break;
+    case static_cast<std::int64_t>(fair::mq::TransferCode::error):
+      EDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::error err={} errno={} error={}",
+        int(lRet), errno, std::string(strerror(errno)));
+      mMessages.clear();
+      return nullptr;
+      break;
+    default: // data or zero
+      if (lRet > 0) {
+        return deserialize_impl();
+      } else {
+        WDDLOG_RL(1000, "STF receive failed. what=zero_size");
+        mMessages.clear();
+        return nullptr;
+      }
+      break;
   }
 
-  if (ret < 0) {
-    EDDLOG_RL(1000, "STF receive failed err={} errno={} error={}", ret, errno, std::string(strerror(errno)));
-    mMessages.clear();
-    return nullptr;
-  }
-
-  return deserialize_impl();
+  assert (false);
+  return nullptr;
 }
 
-}
 } /* o2::DataDistribution */

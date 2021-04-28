@@ -19,9 +19,7 @@
 
 #include <Headers/DataHeader.h>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -65,7 +63,7 @@ class DplToStfAdapter : public ISubTimeFrameVisitor
   DplToStfAdapter() = default;
   virtual ~DplToStfAdapter() = default;
 
-  std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan);
+  std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan, bool logError = false);
   std::unique_ptr<SubTimeFrame> deserialize(FairMQParts& pMsgs);
 
  protected:
@@ -76,7 +74,6 @@ class DplToStfAdapter : public ISubTimeFrameVisitor
   std::vector<FairMQMessagePtr> mMessages;
 };
 
-}
 } /* o2::DataDistribution */
 
 #endif /* ALICEO2_SUBTIMEFRAME_DPL_H_ */
