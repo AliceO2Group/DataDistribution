@@ -61,6 +61,7 @@ class StfSenderDevice : public DataDistDevice
 
   bool standalone() const { return I().mStandalone; }
   bool running() const  { return I().mRunning; }
+  bool acceptingData() const { return I().mAcceptingData; }
 
   TfSchedulerRpcClient& TfSchedRpcCli() { return I().mTfSchedulerRpcClient; }
 
@@ -95,6 +96,7 @@ class StfSenderDevice : public DataDistDevice
 
     /// Receiver threads
     bool mRunning = false;
+    bool mAcceptingData = false;
     std::thread mReceiverThread;
 
     /// File sink
