@@ -31,7 +31,6 @@ namespace o2::DataDistribution
 
 void StfInputInterface::start()
 {
-
   mRunning = true;
 
   mStfTimeSamples.clear();
@@ -430,49 +429,48 @@ void StfInputInterface::StfSequencerThread()
       const auto lCurrId = (*lStf)->id();
       (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eReadout);
 
-      if ((lLastStfId != -std::uint64_t(1)) && lCurrId <= lLastStfId) {
+      if (lCurrId <= mLastSeqStfId) {
         EDDLOG_RL(500, "READOUT_INTERFACE: Repeated STF will be rejected. previous_stf_id={} current_stf_id={}",
-          lLastStfId, lCurrId);
-
+          mLastSeqStfId, lCurrId);
         // reject this STF.
         continue;
       }
 
-      if ((lLastStfId + 1) == lCurrId) {
-        lLastStfId = lCurrId;
+      // expected next stf
+      if ((mLastSeqStfId + 1) == lCurrId) {
+        mLastSeqStfId = lCurrId;
         mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
         continue;
       }
 
       // there are missing STFs
-      const auto lMissingIdStart = lLastStfId + 1;
+      const auto lMissingIdStart = mLastSeqStfId + 1;
       const auto lMissingCnt = lCurrId - lMissingIdStart;
 
       if (lMissingCnt < sMaxMissingStfsForSeq) {
-        WDDLOG_RL(1000, "READOUT_INTERFACE: Creating empty (missing) STFs. last_stf_id={} num_missing={}",
-          lLastStfId, lMissingCnt);
+        WDDLOG_RL(1000, "READOUT_INTERFACE: Creating empty (missing) STFs. previous_stf_id={} num_missing={}",
+          mLastSeqStfId, lMissingCnt);
         // create the missing ones and continue
         for (std::uint64_t lStfIdIdx = lMissingIdStart; lStfIdIdx < lCurrId; lStfIdIdx++) {
-          // TODO: insert null TFs
           auto lEmptyStf = std::make_unique<SubTimeFrame>(lStfIdIdx);
           (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eNull);
           mDevice.I().queue(eStfBuilderOut, std::move(lEmptyStf));
         }
       } else {
-        WDDLOG_RL(1000, "READOUT_INTERFACE: Large STF gap. current_stf_id={} num_missing={}", lCurrId, lMissingCnt);
+        WDDLOG_RL(1000, "READOUT_INTERFACE: Large STF gap. previous_stf_id={} current_stf_id={} num_missing={}",
+          mLastSeqStfId, lCurrId, lMissingCnt);
       }
 
       // insert the actual stf
-      lLastStfId = lCurrId;
+      mLastSeqStfId = lCurrId;
       mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
       continue;
     }
 
-    // TODO: handle timeout
+    // TODO: handle timeouts
   }
 
   DDDLOG("Exiting StfSequencerThread thread.");
 }
-
 
 } /* namespace o2::DataDistribution */

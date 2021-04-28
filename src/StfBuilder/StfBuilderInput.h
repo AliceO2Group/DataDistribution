@@ -43,7 +43,10 @@ public:
   void start();
   void stop();
 
-  void setRunningState(bool pRunning) { mAcceptingData = pRunning; }
+  void setRunningState(bool pRunning) {
+    mLastSeqStfId = 0;
+    mAcceptingData = pRunning;
+  }
 
   void DataHandlerThread();
   void StfBuilderThread();
@@ -68,6 +71,7 @@ public:
 
   /// StfSequencer thread
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mSeqStfQueue;
+  std::uint64_t mLastSeqStfId = 0;
   std::thread mStfSeqThread;
 };
 

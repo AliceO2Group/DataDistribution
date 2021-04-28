@@ -149,11 +149,17 @@ void StfSenderDevice::PreRun()
     I().mFileSink->makeDirectory();
   }
 
+  // start accepting data
+  I().mAcceptingData = true;
+
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 
 void StfSenderDevice::PostRun()
 {
+  // stop accepting data
+  I().mAcceptingData = false;
+
   // update running state
   if (!standalone() && I().mDiscoveryConfig) {
     auto& lStatus = I().mDiscoveryConfig->status();
@@ -216,12 +222,19 @@ void StfSenderDevice::StfReceiverThread()
 
   while (running()) {
     try {
-      lStf = lStfReceiver.deserialize(lInputChan);
+      lStf = lStfReceiver.deserialize(lInputChan, acceptingData());
     } catch (const std::exception &e) {
       EDDLOG_RL(5000, "StfSender: received STF cannot be deserialized. what={}", e.what());
       continue;
     } catch (...) {
       EDDLOG_RL(5000, "StfSender: received STF cannot be deserialized. what=UNKNOWN");
+      continue;
+    }
+
+    if (!acceptingData()) {
+      if (lStf) {
+        WDDLOG_RL(1000, "StfSender: received STF but not in the running state.");
+      }
       continue;
     }
 
