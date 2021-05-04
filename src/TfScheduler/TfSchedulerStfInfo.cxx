@@ -451,19 +451,14 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
     // check if complete
     if (lStfIdVector.size() == lNumStfSenders) {
       { // check duration
-        const std::chrono::steady_clock::duration lTfSchedDur = lStfIdVector.rbegin()->mUpdateLocalTime -
+        const std::chrono::duration<double, std::milli> lTfSchedDur = lStfIdVector.rbegin()->mUpdateLocalTime -
           lStfIdVector.begin()->mUpdateLocalTime;
 
-        sCompleteTfDurAvg += (lTfSchedDur / 10 - sCompleteTfDurAvg / 10);
+        sCompleteTfDurAvg += (lTfSchedDur / 16 - sCompleteTfDurAvg / 16);
+        sCompleteTfDurMax = std::max(lTfSchedDur, sCompleteTfDurMax);
 
-        const auto lDurAboveAvg = lTfSchedDur - sCompleteTfDurAvg;
-
-        if (lDurAboveAvg > std::chrono::steady_clock::duration(0) && lDurAboveAvg > sCompleteTfDurMax) {
-          sCompleteTfDurMax = lDurAboveAvg;
-        }
-
-        DDDLOG_GRL(2000, "STFUpdateComplete: collected {} STFs. mean_dur_ms={} max_dur_ms={}",
-          lNumStfSenders, lDurAboveAvg.count(), sCompleteTfDurMax.count());
+        DDDLOG_GRL(1000, "STFUpdateComplete: collected {} STFs. current_dur_ms={:.3} mean_dur_ms={:.3} max_dur_ms={:.3}",
+          lNumStfSenders, lTfSchedDur.count(), sCompleteTfDurAvg.count(), sCompleteTfDurMax.count());
       }
 
       auto lInfoNode = mStfInfoMap.extract(lStfId);
