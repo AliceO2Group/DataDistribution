@@ -35,7 +35,8 @@ using namespace std::chrono_literals;
 bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 {
   // make max number of listening channels for the partition
-  auto transportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq");
+  mDevice.GetConfig()->SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 32u));
+  auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
 
   auto &lStatus = pConfig->status();
 
@@ -68,7 +69,7 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
       "pull",               // type
       "bind",               // method
       lAddress,             // address (TODO: this should only ever be ib interface)
-      transportFactory
+      lTransportFactory
     );
 
     lNewChannel->Init();
@@ -167,12 +168,12 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
   assert(mInputThreads.size() == 0);
 
   for (auto &[lSocketIdx, lStfSenderId] : lConnResult.connection_map()) {
-    char tname[128];
-    fmt::format_to(tname, "tfb_input_{}", lSocketIdx);
+    char lThreadName[128];
+    std::snprintf(lThreadName, 127, "tfb_in_%03u", (unsigned)lSocketIdx);
 
     mInputThreads.try_emplace(
       lStfSenderId,
-      create_thread_member(tname, &TfBuilderInput::DataHandlerThread, this, lSocketIdx)
+      create_thread_member(lThreadName, &TfBuilderInput::DataHandlerThread, this, lSocketIdx)
     );
   }
 

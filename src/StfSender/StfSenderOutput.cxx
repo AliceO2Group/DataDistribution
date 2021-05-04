@@ -49,6 +49,10 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
     }
   }
 
+  // create a socket and connect
+  mDevice.GetConfig()->SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 20u));
+  mZMQTransportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
+
   // create stf drop thread
   mStfDropThread = create_thread_member("stfs_drop", &StfSenderOutput::StfDropThread, this);
 
@@ -105,12 +109,9 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
 
     if (mOutputMap.count(pTfBuilderId) > 0) {
       WDDLOG("StfSenderOutput::connectTfBuilder: TfBuilder is already connected. tfb_id={}", pTfBuilderId);
-      return eEXISTS; // TODO: ERRORCODE
+      return eEXISTS;
     }
   }
-
-  // create a socket and connect
-  auto transportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq");
 
   auto lChanName = "tf_builder_" + pTfBuilderId;
   std::replace(lChanName.begin(), lChanName.end(),'.', '_');
@@ -120,12 +121,11 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
     "push",                  // type
     "connect",               // method
     pEndpoint,               // address (TODO: this should only ever be the IB interface)
-    transportFactory
+    mZMQTransportFactory
   );
 
-  lNewChannel->UpdateSndBufSize(10);
+  lNewChannel->UpdateSndBufSize(2);
   lNewChannel->Init();
-  lNewChannel->UpdateRateLogging(1); // log each second
 
   if (!lNewChannel->Validate()) {
     EDDLOG("Channel validation failed when connecting. tfb_id={} ep={}", pTfBuilderId, pEndpoint);
@@ -141,8 +141,8 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
   {
     std::scoped_lock lLock(mOutputMapLock);
 
-    char tname[128];
-    fmt::format(tname, "to_{}", pTfBuilderId);
+    char lThreadName[128];
+    std::snprintf(lThreadName, 127, "to_%s", pTfBuilderId.c_str());
 
     mOutputMap.try_emplace(
       pTfBuilderId,
@@ -151,7 +151,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
         std::move(lNewChannel),
         std::make_unique<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>>(),
         // Note: this thread will try to access this same map. The MapLock will prevent races
-        create_thread_member(tname, &StfSenderOutput::DataHandlerThread, this, pTfBuilderId)
+        create_thread_member(lThreadName, &StfSenderOutput::DataHandlerThread, this, pTfBuilderId)
       }
     );
   }

@@ -119,7 +119,6 @@ fi
 
 STF_BUILDER="StfBuilder"
 STF_BUILDER+=" --transport shmem"
-STF_BUILDER+=" --shm-monitor true"
 STF_BUILDER+=" --mq-config $chainConfig"
 STF_BUILDER+=" $CHECKRDH"
 STF_BUILDER+=" --io-threads $IO_THREADS"
@@ -145,20 +144,12 @@ fi
 STF_SENDER="StfSender"
 STF_SENDER+=" --discovery-net-if=$FLP_NETIF"
 STF_SENDER+=" --discovery-partition=$PARTITION"
-STF_SENDER+=" --transport shmem"
-STF_SENDER+=" --shm-monitor true"
 STF_SENDER+=" --mq-config $chainConfig"
-STF_SENDER+=" --io-threads $IO_THREADS"
 
 TF_BUILDER="TfBuilder"
 TF_BUILDER+=" --discovery-net-if=$EPN_NETIF"
 TF_BUILDER+=" --discovery-partition=$PARTITION"
-TF_BUILDER+=" --transport shmem"
-TF_BUILDER+=" --shm-monitor true"
 TF_BUILDER+=" --mq-config $chainConfig"
-TF_BUILDER+=" --flp-count $FLP_CNT"
-TF_BUILDER+=" $GUI"
-TF_BUILDER+=" --io-threads $IO_THREADS"
 
 if [[ ! -z $TF_BUILDER_DPL_CHAN ]]; then
   TF_BUILDER+=" --dpl-channel-name=$TF_BUILDER_DPL_CHAN"
