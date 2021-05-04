@@ -89,7 +89,7 @@ int main(int argc, char* argv[])
       });
 
       // reset unsupported options
-      r.fConfig.SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 16u));
+      r.fConfig.SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 4u));
       r.fConfig.SetProperty<float>("rate", 0.f);
       r.fConfig.SetProperty<bool>("shm-throw-bad-alloc", false);
       r.fConfig.SetProperty<std::string>("transport", std::string("shmem"));

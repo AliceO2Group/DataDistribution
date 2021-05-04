@@ -29,12 +29,19 @@ namespace o2::DataDistribution
 
 template <class F, class ... Args>
 std::thread create_thread_member(const char* name, F&& f, Args&&... args) {
+  (void) name;
   return std::thread([=]{
 #if defined(__linux__)
-    pthread_setname_np(pthread_self(), name);
+    const char *lName = strdup(name);
+    pthread_setname_np(pthread_self(), lName);
 #endif
+    // run the function
     auto fun = std::mem_fn(f);
     fun(args...);
+
+#if defined(__linux__)
+    free((void*)lName);
+#endif
   });
 }
 
