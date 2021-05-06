@@ -47,11 +47,11 @@ void InterleavedHdrDataSerializer::visit(SubTimeFrame& pStf)
     EDDLOG("Allocation error: Stf DataHeader. size={}", sizeof(DataHeader));
     throw std::bad_alloc();
   }
-  std::memcpy(lDataHeaderMsg->GetData(), &gStfDistDataHeader, sizeof(DataHeader));
-  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->firstTForbit = pStf.header().mFirstOrbit;
-  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->runNumber = pStf.header().mRunNumber;
-
-  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->payloadSerializationMethod = gSerializationMethodNone;
+  DataHeader *lHdrPtr = reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData());
+  std::memcpy(lHdrPtr, &gStfDistDataHeader, sizeof(DataHeader));
+  lHdrPtr->firstTForbit = pStf.header().mFirstOrbit;
+  lHdrPtr->runNumber = pStf.header().mRunNumber;
+  lHdrPtr->payloadSerializationMethod = gSerializationMethodNone;
 
   auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
   if (!lDataMsg) {
@@ -206,10 +206,12 @@ void CoalescedHdrDataSerializer::visit(SubTimeFrame& pStf)
     EDDLOG("Allocation error: Stf DataHeader. size={}", sizeof(DataHeader));
     throw std::bad_alloc();
   }
-  std::memcpy(lDataHeaderMsg->GetData(), &gStfDistDataHeader, sizeof(DataHeader));
-  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->firstTForbit = pStf.header().mFirstOrbit;
-  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->runNumber = pStf.header().mRunNumber;
-  reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData())->payloadSerializationMethod = gSerializationMethodNone;
+
+  DataHeader *lHdrPtr = reinterpret_cast<DataHeader*>(lDataHeaderMsg->GetData());
+  std::memcpy(lHdrPtr, &gStfDistDataHeader, sizeof(DataHeader));
+  lHdrPtr->firstTForbit = pStf.header().mFirstOrbit;
+  lHdrPtr->runNumber = pStf.header().mRunNumber;
+  lHdrPtr->payloadSerializationMethod = gSerializationMethodNone;
 
   auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
   if (!lDataMsg) {
@@ -417,8 +419,7 @@ std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize_impl()
         throw std::runtime_error("CoalescedHdrDataDeserializer::Deserializing failed");
       }
 
-      auto lNewHdr = mTfBld.newHeaderMessage(lHdrInfo.len);
-      std::memcpy(lNewHdr->GetData(), lFullHdrMsgAddr + lHdrOff, lHdrInfo.len);
+      auto lNewHdr = mTfBld.newHeaderMessage(lFullHdrMsgAddr + lHdrOff, lHdrInfo.len);
 
       lInfoOff += sizeof(CoalescedHdrDataSerializer::header_info);
       lHdrOff += lHdrInfo.len;

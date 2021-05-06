@@ -243,18 +243,34 @@ class SubTimeFrame : public IDataModelObject
       return *reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
     }
 
+    inline void setPayloadIndex_TfCounter_RunNumber(
+      const o2hdr::DataHeader::SplitPayloadIndexType pIdx,
+      const o2hdr::DataHeader::SplitPayloadPartsType pTotal,
+      const std::uint32_t pTfCounter,
+      const std::uint32_t pFirstOrbit
+      )
+    {
+      assert(mHeader && mHeader->GetData() != nullptr);
+      assert(pIdx < pTotal);
+
+      // DataHeader must be first in the stack
+      o2hdr::DataHeader *lDataHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
+      lDataHdr->splitPayloadIndex = pIdx;
+      lDataHdr->splitPayloadParts = pTotal;
+      lDataHdr->tfCounter = pTfCounter;
+      lDataHdr->firstTForbit = pFirstOrbit;
+    }
+
     inline void setPayloadIndex(const o2hdr::DataHeader::SplitPayloadIndexType pIdx,
       const o2hdr::DataHeader::SplitPayloadPartsType pTotal)
     {
       assert(mHeader && mHeader->GetData() != nullptr);
       assert(pIdx < pTotal);
 
-      o2hdr::DataHeader lDataHdr;
       // DataHeader must be first in the stack
-      std::memcpy(&lDataHdr, mHeader->GetData(), sizeof(o2hdr::DataHeader));
-      lDataHdr.splitPayloadIndex = pIdx;
-      lDataHdr.splitPayloadParts = pTotal;
-      std::memcpy(mHeader->GetData(), &lDataHdr, sizeof(o2hdr::DataHeader));
+      o2hdr::DataHeader *lDataHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
+      lDataHdr->splitPayloadIndex = pIdx;
+      lDataHdr->splitPayloadParts = pTotal;
     }
 
     inline void setFirstOrbit(const std::uint32_t pFirstOrbit)
@@ -265,23 +281,6 @@ class SubTimeFrame : public IDataModelObject
       // DataHeader must be first in the stack
       o2hdr::DataHeader *lHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
       lHdr->firstTForbit = pFirstOrbit;
-    }
-
-    inline void setTfCounter(const std::uint32_t pTfCounter)
-    {
-      assert(mHeader && mHeader->GetData() != nullptr);
-
-      // DataHeader must be first in the stack
-      o2hdr::DataHeader *lHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
-      lHdr->tfCounter = pTfCounter;
-    }
-
-    inline void setRunNumber(const std::uint32_t pRunNumber)
-    {
-      assert(mHeader && mHeader->GetData() != nullptr);
-      // DataHeader must be first in the stack
-      o2hdr::DataHeader *lHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
-      lHdr->runNumber = pRunNumber;
     }
   };
 

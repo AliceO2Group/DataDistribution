@@ -199,17 +199,11 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
         o2::framework::DataProcessingHeader{mStf->header().mId}
       );
 
-      lHdrMsg = mMemRes.newHeaderMessage(lStack.size());
-      if (lHdrMsg) {
-        std::memcpy(lHdrMsg->GetData(), lStack.data(), lStack.size());
-      }
+      lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
     } else {
       auto lHdrMsgStack = Stack(lDataHdr);
 
-      lHdrMsg = mMemRes.newHeaderMessage(lHdrMsgStack.size());
-      if (lHdrMsg) {
-        std::memcpy(lHdrMsg->GetData(), lHdrMsgStack.data(), lHdrMsgStack.size());
-      }
+      lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lHdrMsgStack.data()), lHdrMsgStack.size());
     }
 
     if (!lHdrMsg) {
@@ -289,11 +283,8 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
               o2::framework::DataProcessingHeader{pStf->header().mId}
             );
 
-            lStfDataIter.mHeader = mMemRes.newHeaderMessage(lStack.size());
-            if (lStfDataIter.mHeader) {
-              assert(lStfDataIter.mHeader->GetSize() > sizeof (DataHeader));
-              std::memcpy(lStfDataIter.mHeader->GetData(), lStack.data(), lStack.size());
-            } else {
+            lStfDataIter.mHeader = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+            if (!lStfDataIter.mHeader) {
               return;
             }
           }
@@ -377,12 +368,8 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
               o2::framework::DataProcessingHeader{pStf->header().mId}
             );
 
-            lStfDataIter.mHeader = newHeaderMessage(lStack.size());
-
-            if (lStfDataIter.mHeader) {
-              assert(lStfDataIter.mHeader->GetSize() >= sizeof (DataHeader));
-              std::memcpy(lStfDataIter.mHeader->GetData(), lStack.data(), lStack.size());
-            } else {
+            lStfDataIter.mHeader = newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+            if (!lStfDataIter.mHeader) {
               return;
             }
           }
@@ -403,10 +390,8 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
           {
             const auto &lHeaderMsg = lStfDataIter.mHeader;
             if (lHeaderMsg->GetType() != fair::mq::Transport::SHM) {
-              auto lNewHdr = newHeaderMessage(lHeaderMsg->GetSize());
-              if (lNewHdr) {
-                std::memcpy(lNewHdr->GetData(), lHeaderMsg->GetData(), lHeaderMsg->GetSize());
-              } else {
+              auto lNewHdr = newHeaderMessage(reinterpret_cast<char*>(lHeaderMsg->GetData()), lHeaderMsg->GetSize());
+              if (!lNewHdr) {
                 return;
               }
               lStfDataIter.mHeader.swap(lNewHdr);

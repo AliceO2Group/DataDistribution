@@ -46,9 +46,7 @@ namespace icl = boost::icl;
 class DataHeader;
 class FairMQUnmanagedRegion;
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 static constexpr const char *ENV_NOLOCK = "DATADIST_NO_MLOCK";
@@ -240,6 +238,17 @@ public:
   }
 
   inline
+  std::unique_ptr<FairMQMessage> NewFairMQMessage(const char *pData, const std::size_t pSize) {
+    auto* lMem = do_allocate(pSize, ALIGN);
+    if (lMem) {
+      std::memcpy(lMem, pData, pSize);
+      return mTransport.CreateMessage(mRegion, lMem, pSize);
+    } else {
+      return nullptr;
+    }
+  }
+
+  inline
   std::unique_ptr<FairMQMessage> NewFairMQMessageFromPtr(void *pPtr, const std::size_t pSize) {
     assert(pPtr >= static_cast<char*>(mRegion->GetData()));
     assert(static_cast<char*>(pPtr)+pSize <= static_cast<char*>(mRegion->GetData()) + mRegion->GetSize());
@@ -264,7 +273,6 @@ protected:
 
   void* do_allocate(std::size_t pSize, std::size_t /* pAlign */)
   {
-
     if (!mRunning) {
       return nullptr;
     }
@@ -450,9 +458,9 @@ public:
   }
 
   inline
-  FairMQMessagePtr newHeaderMessage(const std::size_t pSize) {
+  FairMQMessagePtr newHeaderMessage(const char *pData, const std::size_t pSize) {
     assert(mHeaderMemRes);
-    return mHeaderMemRes->NewFairMQMessage(pSize);
+    return mHeaderMemRes->NewFairMQMessage(pData, pSize);
   }
 
   inline
@@ -500,10 +508,10 @@ public:
   virtual ~SyncMemoryResources() {}
 
   inline
-  FairMQMessagePtr newHeaderMessage(const std::size_t pSize) {
+  FairMQMessagePtr newHeaderMessage(const char *pData, const std::size_t pSize) {
     assert(mHeaderMemRes);
     std::scoped_lock lock(mHdrLock);
-    return mHeaderMemRes->NewFairMQMessage(pSize);
+    return mHeaderMemRes->NewFairMQMessage(pData, pSize);
   }
 
   inline
@@ -518,7 +526,6 @@ private:
   std::mutex mDataLock;
 };
 
-}
 } /* o2::DataDistribution */
 
 #endif /* DATADIST_MEMORY_UTILS_H_ */
