@@ -53,17 +53,14 @@ void SubTimeFrame::updateStf() const
 
       const auto lTotalCount = lDataVector.size();
       for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
-        lDataVector[i].setPayloadIndex(i, lTotalCount);
+
+        lDataVector[i].setPayloadIndex_TfCounter_RunNumber(i, lTotalCount, mHeader.mId, mHeader.mRunNumber);
 
         // update first orbit if not present in the data (old tf files)
-        // update tfCounter: TODO: incrementing always for looping of the same data
-        // update runNumber: TODO: zero for now.
+        // update tfCounter
         if (mHeader.mFirstOrbit != std::numeric_limits<std::uint32_t>::max()) {
           lDataVector[i].setFirstOrbit(mHeader.mFirstOrbit);
         }
-
-        lDataVector[i].setTfCounter(mHeader.mId);
-        lDataVector[i].setRunNumber(mHeader.mRunNumber);
 
         // sum up only data size
         mDataSize += lDataVector[i].mData->GetSize();
@@ -109,7 +106,7 @@ void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf)
 
   for (const auto& lId : pStf->getEquipmentIdentifiers()) {
     if (lUnionSet.emplace(lId).second == false /* not inserted */) {
-      EDDLOG("Merging STFs error: Equipment already present: fee={}", lId.info());
+      EDDLOG_RL(1000, "Merging STFs error: Equipment already present: fee={}", lId.info());
     }
   }
 

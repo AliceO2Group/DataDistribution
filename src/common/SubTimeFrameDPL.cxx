@@ -232,6 +232,8 @@ static const o2::header::DataHeader gStfDistDataHeader(
 
 void DplToStfAdapter::visit(SubTimeFrame& pStf)
 {
+  bool lStfHeaderFound = false;
+
   if (mMessages.size() < 2) {
     // stf meta messages must be present
     EDDLOG("DPL interface: expected at least 2 messages received={}", mMessages.size());
@@ -256,33 +258,29 @@ void DplToStfAdapter::visit(SubTimeFrame& pStf)
     auto& lHdrMsg = mMessages[i + 0];
     auto& lDataMsg = mMessages[i + 1];
 
-    const DataHeader* lStfDataHdr = o2::header::get<DataHeader*>(lHdrMsg->GetData(), lHdrMsg->GetSize());
-
-    if (!lStfDataHdr) {
-      EDDLOG("DPL interface: cannot find DataHeader in header stack");
-      mMessages.clear();
-      pStf.clear();
-      throw std::runtime_error("SubTimeFrame::Header::DataHeader");
-    }
-
-    // check if StfHeader
-    if (gStfDistDataHeader == *lStfDataHdr) {
-
-      if (sizeof(SubTimeFrame::Header) != lDataMsg->GetSize()) {
-        EDDLOG("DPL interface: Stf Header size does not match expected={} received={}",
-          sizeof(SubTimeFrame::Header), lDataMsg->GetSize());
-
+    if (!lStfHeaderFound && (sizeof(SubTimeFrame::Header) == lDataMsg->GetSize())) {
+      // this is too slow to do here
+      // const DataHeader* lStfDataHdr = o2::header::get<DataHeader*>(lHdrMsg->GetData(), lHdrMsg->GetSize());
+      // NOTE: DataHeader MUST be at position 0
+      const DataHeader* lStfDataHdr = reinterpret_cast<o2::header::DataHeader*>(lHdrMsg->GetData());
+      if (lHdrMsg->GetSize() < sizeof(o2::header::DataHeader)) {
+        EDDLOG("DPL interface: cannot find DataHeader in header stack");
         mMessages.clear();
         pStf.clear();
-        throw std::runtime_error("SubTimeFrame::Header::SizeError");
+        throw std::runtime_error("SubTimeFrame::Header::DataHeader");
       }
 
-      std::memcpy(&pStf.mHeader, lDataMsg->GetData(), sizeof(SubTimeFrame::Header));
-    } else {
-      // add the data to the STF
-
-      pStf.addStfData({ std::move(lHdrMsg), std::move(lDataMsg) });
+      // check if StfHeader
+      if (gDataDescSubTimeFrame == lStfDataHdr->dataDescription) {
+        // copy the contents
+        std::memcpy(&pStf.mHeader, lDataMsg->GetData(), sizeof(SubTimeFrame::Header));
+        lStfHeaderFound = true;
+        continue;
+      }
     }
+
+    // add the data to the STF
+    pStf.addStfData({ std::move(lHdrMsg), std::move(lDataMsg) });
   }
 }
 

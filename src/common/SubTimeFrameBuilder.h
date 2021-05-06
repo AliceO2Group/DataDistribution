@@ -104,18 +104,15 @@ class SubTimeFrameFileBuilder
         o2::framework::DataProcessingHeader{pTfId}
       );
 
-      lMsg = mMemRes.newHeaderMessage(lStack.size());
+      lMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
       if (!lMsg) {
         return nullptr;
       }
-      std::memcpy(lMsg->GetData(), lStack.data(), lStack.size());
-
     } else {
-      lMsg = mMemRes.newHeaderMessage(pIncomingStack.size());
+      lMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(pIncomingStack.data()), pIncomingStack.size());
       if (!lMsg) {
         return nullptr;
       }
-      std::memcpy(lMsg->GetData(), pIncomingStack.data(), pIncomingStack.size());
     }
 
     return lMsg;
@@ -151,8 +148,8 @@ class TimeFrameBuilder
   void adaptHeaders(SubTimeFrame *pStf);
 
   inline
-  FairMQMessagePtr newHeaderMessage(const std::size_t pSize) {
-    return mMemRes.newHeaderMessage(pSize);
+  FairMQMessagePtr newHeaderMessage(const char *pData, const std::size_t pSize) {
+    return mMemRes.newHeaderMessage(pData, pSize);
   }
 
   inline
