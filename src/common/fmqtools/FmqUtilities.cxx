@@ -124,7 +124,6 @@ void HandleFMQOptions(fair::mq::DeviceRunner &pFMQRunner)
 
   // disable fairlogger file backend
   lFMQConfig.SetProperty<std::string>("file-severity", "nolog");
-  lFMQConfig.SetProperty<std::string>("log-to-file", "");
 
   try {
     pFMQRunner.UnsubscribeFromConfigChange();
