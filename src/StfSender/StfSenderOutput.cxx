@@ -236,6 +236,12 @@ void StfSenderOutput::StfSchedulerThread()
     StfSenderStfInfo lStfInfo;
     SchedulerStfInfoResponse lSchedResponse;
 
+    const auto &lStatus = mDiscoveryConfig->status();
+    lStfInfo.mutable_info()->CopyFrom(lStatus.info());
+    lStfInfo.mutable_partition()->CopyFrom(lStatus.partition());
+    lStfInfo.set_stf_id(lStfId);
+    lStfInfo.set_stf_size(lStfSize);
+
     // move the stf into triage map (before notifying the scheduler to avoid races)
     {
       std::scoped_lock lLock(mScheduledStfMapLock);
@@ -248,27 +254,21 @@ void StfSenderOutput::StfSchedulerThread()
       }
 
       // update buffer size
-      mCounters.mBufferedStfSize += lStfSize;
-      mCounters.mBufferedStfCnt += 1;
+      mCounters.mBuffered.mSize += lStfSize;
+      mCounters.mBuffered.mCnt += 1;
 
       // send current state of the buffers
       lStfInfo.mutable_stfs_info()->set_buffer_size(mBufferSize);
-      lStfInfo.mutable_stfs_info()->set_buffer_used(mCounters.mBufferedStfSize);
-      lStfInfo.mutable_stfs_info()->set_num_buffered_stfs(mCounters.mBufferedStfCnt);
+      lStfInfo.mutable_stfs_info()->set_buffer_used(mCounters.mBuffered.mSize);
+      lStfInfo.mutable_stfs_info()->set_num_buffered_stfs(mCounters.mBuffered.mCnt);
     }
 
     // Send STF info to scheduler
     {
-      const auto &lStatus = mDiscoveryConfig->status();
-      lStfInfo.mutable_info()->CopyFrom(lStatus.info());
-      lStfInfo.mutable_partition()->CopyFrom(lStatus.partition());
-      lStfInfo.set_stf_id(lStfId);
-      lStfInfo.set_stf_size(lStfSize);
-
       const auto lSentOK = mDevice.TfSchedRpcCli().StfSenderStfUpdate(lStfInfo, lSchedResponse);
       // check if the scheduler rejected the data
       if (!lSentOK || (lSchedResponse.status() != SchedulerStfInfoResponse::OK)) {
-        {
+        { // drop the stf
           std::scoped_lock lLock(mScheduledStfMapLock);
           // find the stf in the map and erase it
           const auto lStfIter = mScheduledStfMap.find(lStfId);
@@ -278,8 +278,8 @@ void StfSenderOutput::StfSchedulerThread()
           }
         }
 
-        WDDLOG_RL(5000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
-          lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
+      WDDLOG_RL(5000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
+        lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
       }
       DDDLOG_RL(5000, "Sent STF announce, stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
     }
@@ -325,8 +325,8 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     // we clean the buffer when data is sent
     pRes.set_status(StfDataResponse::OK);
 
-    mCounters.mBufferedStfSizeSending += lStfIter->second->getDataSize();
-    mCounters.mBufferedStfCntSending += 1;
+    mCounters.mInSending.mSize += lStfIter->second->getDataSize();
+    mCounters.mInSending.mCnt += 1;
 
     auto lStfNode = mScheduledStfMap.extract(lStfIter);
     lTfBuilderIter->second.mStfQueue->push(std::move(lStfNode.mapped()));
@@ -385,14 +385,14 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
 
     {
       std::scoped_lock lLock(mScheduledStfMapLock);
-      mCounters.mBufferedStfSize -= lStfSize;
-      mCounters.mBufferedStfCnt -= 1;
-      mCounters.mBufferedStfSizeSending -= lStfSize;
-      mCounters.mBufferedStfCntSending -= 1;
+      mCounters.mBuffered.mSize -= lStfSize;
+      mCounters.mBuffered.mCnt -= 1;
+      mCounters.mInSending.mSize -= lStfSize;
+      mCounters.mInSending.mCnt -= 1;
 
-      if (mCounters.mBufferedStfCntSending > 100) {
+      if (mCounters.mInSending.mCnt > 100) {
         DDDLOG_RL(2000, "DataHandlerThread: Number of buffered STFs. tfb_id={} num_stfs={} num_stf_total={} size_stf_total={}",
-          pTfBuilderId, lInputStfQueue->size(), mCounters.mBufferedStfCntSending, mCounters.mBufferedStfSizeSending);
+          pTfBuilderId, lInputStfQueue->size(), mCounters.mInSending.mCnt, mCounters.mInSending.mSize);
       }
     }
   }
@@ -405,11 +405,13 @@ void StfSenderOutput::StfDropThread()
 {
   DDDLOG("Starting DataDropThread thread.");
   std::uint64_t lNumDroppedStfs = 0;
-  std::optional<std::unique_ptr<SubTimeFrame>> lStfOpt;
 
-  while ((lStfOpt = mDropQueue.pop()) != std::nullopt) {
-    std::unique_ptr<SubTimeFrame> lStf = std::move(lStfOpt.value());
-    lStfOpt.reset();
+  while (true) {
+    std::unique_ptr<SubTimeFrame> lStf;
+    if (!mDropQueue.pop(lStf)) {
+      break;
+    }
+
     const auto lStfSize = lStf->getDataSize();
 
     DDDLOG_GRL(5000, "Dropping an STF. stf_id={} stf_size={} total_dropped_stf={}", lStf->header().mId,
@@ -421,8 +423,8 @@ void StfSenderOutput::StfDropThread()
     lNumDroppedStfs += 1;
     {
       std::scoped_lock lLock(mScheduledStfMapLock);
-      mCounters.mBufferedStfSize -= lStfSize;
-      mCounters.mBufferedStfCnt -= 1;
+      mCounters.mBuffered.mSize -= lStfSize;
+      mCounters.mBuffered.mCnt -= 1;
     }
   }
 
