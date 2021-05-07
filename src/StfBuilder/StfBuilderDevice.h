@@ -112,7 +112,7 @@ class StfBuilderDevice : public DataDistDevice
       I().mReadoutInterface->setRunningState(true);
     }
 
-    I().mPaused = false;
+    I().mState.mPaused = false;
     if (I().mFileSource) {
       I().mFileSource->resume();
       IDDLOG("Restarting file source.");
@@ -132,7 +132,7 @@ class StfBuilderDevice : public DataDistDevice
       I().mReadoutInterface->setRunningState(false);
     }
 
-    I().mPaused = true;
+    I().mState.mPaused = true;
     if (I().mFileSource) {
       I().mFileSource->pause();
       IDDLOG("Pausing file source.");
@@ -161,12 +161,16 @@ class StfBuilderDevice : public DataDistDevice
 
     /// Input Interface handler
     std::unique_ptr<StfInputInterface> mReadoutInterface;
-    std::atomic_int64_t mNumStfs{ 0 };
+    struct alignas(64) {
+      std::atomic_int64_t mNumStfs{ 0 };
+    } mCounters;
 
     /// Internal threads
     std::thread mOutputThread;
-    std::atomic_bool mRunning = false;
-    std::atomic_bool mPaused = false;
+    struct alignas(64) {
+      std::atomic_bool mRunning = false;
+      std::atomic_bool mPaused = false;
+    } mState;
 
     /// File sink
     std::unique_ptr<SubTimeFrameFileSink> mFileSink;
@@ -206,9 +210,9 @@ class StfBuilderDevice : public DataDistDevice
       case eStfBuilderOut:
       /* case eStfFileSourceOut: */
       {
-        mNumStfs++;
+        mCounters.mNumStfs++;
 
-        if (mPipelineLimit && (mNumStfs >= mMaxStfsInPipeline)) {
+        if (mPipelineLimit && (mCounters.mNumStfs >= mMaxStfsInPipeline)) {
 
           // DROP policy in StfBuilder is to keep most current STFs. This will ensure that all
           // StfBuilders have the same set of STFs ready for distribution
@@ -218,12 +222,12 @@ class StfBuilderDevice : public DataDistDevice
             mMaxStfsInPipeline);
 
           if (tryPopOldestStfs()) {
-            mNumStfs--;
+            mCounters.mNumStfs--;
           }
         }
 
         if (mFileSink->enabled()) {
-          mNumStfs--;
+          mCounters.mNumStfs--;
           lNextStage = eStfFileSinkIn;
         } else {
           lNextStage = eStfSendIn;
@@ -232,7 +236,7 @@ class StfBuilderDevice : public DataDistDevice
       }
       case eStfFileSinkOut:
       {
-        mNumStfs++;
+        mCounters.mNumStfs++;
         lNextStage = eStfSendIn;
         break;
       }
