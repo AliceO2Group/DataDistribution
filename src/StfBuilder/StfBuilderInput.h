@@ -36,8 +36,7 @@ public:
 
   StfInputInterface() = delete;
   StfInputInterface(StfBuilderDevice &pStfBuilderDev)
-    : mDevice(pStfBuilderDev),
-      mStfTimeSamples()
+    : mDevice(pStfBuilderDev)
   { }
 
   void start();
@@ -52,7 +51,7 @@ public:
   void StfBuilderThread();
   void StfSequencerThread();
 
-  const RunningSamples<float>& StfTimeSamples() const { return mStfTimeSamples; }
+  double StfTimeMean() const { return mStfTimeMean; }
  private:
   /// Main SubTimeBuilder O2 device
   StfBuilderDevice &mDevice;
@@ -62,7 +61,7 @@ public:
   bool mAcceptingData = false;
   std::thread mInputThread;
 
-  RunningSamples<float> mStfTimeSamples;
+  double mStfTimeMean = 1.0;
 
   /// StfBuilding thread and queues
   std::unique_ptr<ConcurrentFifo<std::vector<FairMQMessagePtr>>> mBuilderInputQueue = nullptr;

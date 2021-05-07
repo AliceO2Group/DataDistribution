@@ -18,7 +18,6 @@
 
 #include<boost/algorithm/string.hpp>
 
-
 namespace o2::DataDistribution::fmqtools {
 
 static bool checkInfoLoggerOptions() {
@@ -142,6 +141,5 @@ void HandleFMQOptions(fair::mq::DeviceRunner &pFMQRunner)
   // set a degfault run number
   handleRunNumber("runNumber", "0");
 }
-
 
 }
