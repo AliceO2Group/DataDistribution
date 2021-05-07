@@ -301,7 +301,7 @@ void StfBuilderDevice::StfOutputThread()
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
     // get data size sample
-    I().mStfSizeSamples.Fill(lStf->getDataSize());
+    I().mStfSizeMean += (lStf->getDataSize()/64 - I().mStfSizeMean/64);
 
     if (!isStandalone()) {
       const auto lSendStartTime = hres_clock::now();
@@ -339,7 +339,7 @@ void StfBuilderDevice::StfOutputThread()
       const auto lNow = hres_clock::now();
       const double lTimeMs = std::max(1e-6, std::chrono::duration<double, std::milli>(lNow - lSendStartTime).count());
       I().mSentOutRate = double(I().mSentOutStfs) / std::chrono::duration<double>(lNow - sStartOfStfSending).count();
-      I().mStfDataTimeSamples.Fill(lTimeMs);
+      I().mStfDataTimeSamples += (lTimeMs / 100.0 - I().mStfDataTimeSamples / 100.0);
     }
 
     // check if we should exit:
@@ -390,9 +390,9 @@ void StfBuilderDevice::InfoThread()
       continue;
     }
 
-    IDDLOG("SubTimeFrame size_mean={} frequency_mean={} sending_time_ms_mean={} queued_stf={}",
-      I().mStfSizeSamples.Mean(), I().mReadoutInterface->StfTimeSamples().MeanStepFreq(),
-      I().mStfDataTimeSamples.Mean(), I().mNumStfs);
+    IDDLOG("SubTimeFrame size_mean={} frequency_mean={:.4} sending_time_ms_mean={:.4} queued_stf={}",
+      I().mStfSizeMean, (1.0 / I().mReadoutInterface->StfTimeMean()),
+      I().mStfDataTimeSamples, I().mNumStfs);
     IDDLOG("SubTimeFrame sent_total={} rate={:.4}", I().mSentOutStfsTotal, I().mSentOutRate);
   }
 

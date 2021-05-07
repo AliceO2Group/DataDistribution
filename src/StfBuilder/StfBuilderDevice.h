@@ -176,11 +176,11 @@ class StfBuilderDevice : public DataDistDevice
 
     /// Info thread
     std::thread mInfoThread;
-    RunningSamples<uint64_t> mStfSizeSamples;
-    RunningSamples<float> mStfDataTimeSamples;
+    uint64_t mStfSizeMean;
+    double mStfDataTimeSamples;
     std::uint64_t mSentOutStfsTotal = 0;
     std::uint64_t mSentOutStfs = 0; // used to calculate the rate (pause/resume)
-    double mSentOutRate = 0.;
+    double mSentOutRate = 0.0;
     bool mRestartRateCounter = true;
 
 

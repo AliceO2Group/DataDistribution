@@ -33,8 +33,6 @@ void StfInputInterface::start()
 {
   mRunning = true;
 
-  mStfTimeSamples.clear();
-
   mSeqStfQueue.start();
   mBuilderInputQueue = std::make_unique<ConcurrentFifo<std::vector<FairMQMessagePtr>>>();
   mStfBuilder = std::make_unique<SubTimeFrameReadoutBuilder>(mDevice.MemI(), mDevice.dplEnabled());
@@ -245,7 +243,7 @@ void StfInputInterface::StfBuilderThread()
 
   using hres_clock = std::chrono::high_resolution_clock;
 
-  const std::chrono::time_point<hres_clock, std::chrono::duration<double>> lStartSec = hres_clock::now();
+  std::chrono::time_point<hres_clock, std::chrono::duration<double>> lStartSec = hres_clock::now();
 
   while (mRunning) {
 
@@ -254,7 +252,7 @@ void StfInputInterface::StfBuilderThread()
       // Finished: queue the current STF and start a new one
       ReadoutDataUtils::sFirstSeenHBOrbitCnt = 0;
 
-      if (auto lStf = lStfBuilder.getStf()) {
+      if (auto lStf = lStfBuilder.getStf(); lStf.has_value()) {
         // start the new STF
         if (pTimeout) {
           WDDLOG("READOUT INTERFACE: finishing STF on a timeout. stf_id={} size={}",
@@ -262,11 +260,14 @@ void StfInputInterface::StfBuilderThread()
         }
 
         mSeqStfQueue.push(std::move(*lStf));
-
         { // MON: data of a new STF received, get the freq and new start time
-          std::chrono::duration<double> lTimeSinceStart = hres_clock::now() - lStartSec;
-          mStfTimeSamples.Fill((float)lTimeSinceStart.count());
+          auto lNow = hres_clock::now();
+          std::chrono::duration<double> lTimeDiff = lNow - lStartSec;
+          lStartSec = lNow;
+          mStfTimeMean += (lTimeDiff.count()/100.0 - mStfTimeMean/100.0);
         }
+      } else {
+        mStfTimeMean *= 2.0;
       }
     };
 

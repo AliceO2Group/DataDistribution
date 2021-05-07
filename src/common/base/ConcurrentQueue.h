@@ -25,9 +25,7 @@
 
 #include <Utilities.h>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 namespace impl
@@ -312,8 +310,7 @@ class IFifoPipeline
   IFifoPipeline() = delete;
 
   IFifoPipeline(unsigned pNoStages)
-    : mPipelineQueues(pNoStages),
-      mPipelinedSizeSamples(0)
+    : mPipelineQueues(pNoStages)
   {
   }
 
@@ -342,14 +339,7 @@ class IFifoPipeline
 
     // NOTE: (lNextStage == mPipelineQueues.size()) is the drop queue
     if (lNextStage < mPipelineQueues.size()) {
-      if (!mPipelineQueues[lNextStage].is_running()) {
-        return false;
-      }
-
-      const auto lSize = ++mPipelinedSize;
-      mPipelineQueues[lNextStage].push(std::forward<Args>(args)...);
-      mPipelinedSizeSamples.Fill(lSize);
-      return true;
+      return mPipelineQueues[lNextStage].push(std::forward<Args>(args)...);
     }
     return false;
   }
@@ -396,17 +386,13 @@ class IFifoPipeline
 
   long getPipelineSize() const noexcept { return mPipelinedSize; }
 
-  const auto& getPipelinedSizeSamples() const noexcept { return mPipelinedSizeSamples; }
-
  protected:
   virtual unsigned getNextPipelineStage(unsigned pStage) = 0;
 
   std::atomic_long mPipelinedSize = 0;
   std::vector<o2::DataDistribution::ConcurrentFifo<T>> mPipelineQueues;
-
-  RunningSamples<long> mPipelinedSizeSamples;
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_CONCURRENT_QUEUE_H_ */
