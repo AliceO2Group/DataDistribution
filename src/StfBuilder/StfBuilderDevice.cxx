@@ -140,7 +140,7 @@ void StfBuilderDevice::InitTask()
     std::this_thread::sleep_for(1s); exit(-1);
   }
 
-  I().mRunning = true;
+  I().mState.mRunning = true;
 
   // make sure we have detector if not using files
   if (!I().mFileSource->enabled()) {
@@ -233,7 +233,7 @@ void StfBuilderDevice::ResetTask()
   DDDLOG("StfBuilderDevice::ResetTask()");
 
   // Signal ConditionalRun() and other threads to stop
-  I().mRunning = false;
+  I().mState.mRunning = false;
 
   // Stop the pipeline
   I().stopPipeline();
@@ -285,7 +285,7 @@ void StfBuilderDevice::StfOutputThread()
     }
   }
 
-  while (I().mRunning) {
+  while (I().mState.mRunning) {
     using hres_clock = std::chrono::high_resolution_clock;
 
     // Get a STF ready for sending
@@ -295,7 +295,7 @@ void StfBuilderDevice::StfOutputThread()
     }
 
     // decrement the stf counter
-    I().mNumStfs--;
+    I().mCounters.mNumStfs--;
 
     DDDLOG_RL(2000, "Sending an STF out. stf_id={} stf_size={} unique_equipments={}",
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
@@ -374,7 +374,7 @@ void StfBuilderDevice::StfOutputThread()
     std::this_thread::sleep_for(2s);
   }
 
-  I().mRunning = false; // trigger stop via CondRun()
+  I().mState.mRunning = false; // trigger stop via CondRun()
 
   IDDLOG("Output: Stopped SubTimeFrame sending. sent_total={} rate={:.4}", I().mSentOutStfsTotal, I().mSentOutRate);
   DDDLOG("Exiting StfOutputThread...");
@@ -382,17 +382,17 @@ void StfBuilderDevice::StfOutputThread()
 
 void StfBuilderDevice::InfoThread()
 {
-  while (I().mRunning) {
+  while (I().mState.mRunning) {
 
     std::this_thread::sleep_for(2s);
 
-    if (I().mPaused) {
+    if (I().mState.mPaused) {
       continue;
     }
 
     IDDLOG("SubTimeFrame size_mean={} frequency_mean={:.4} sending_time_ms_mean={:.4} queued_stf={}",
       I().mStfSizeMean, (1.0 / I().mReadoutInterface->StfTimeMean()),
-      I().mStfDataTimeSamples, I().mNumStfs);
+      I().mStfDataTimeSamples, I().mCounters.mNumStfs);
     IDDLOG("SubTimeFrame sent_total={} rate={:.4}", I().mSentOutStfsTotal, I().mSentOutRate);
   }
 
@@ -404,11 +404,11 @@ bool StfBuilderDevice::ConditionalRun()
   // nothing to do here sleep for awhile
   std::this_thread::sleep_for(500ms);
 
-  if (!I().mRunning) {
+  if (!I().mState.mRunning) {
     DDDLOG("ConditionalRun() returning false.");
   }
 
-  return I().mRunning;
+  return I().mState.mRunning;
 }
 
 bpo::options_description StfBuilderDevice::getDetectorProgramOptions() {
