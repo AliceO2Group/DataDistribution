@@ -218,7 +218,7 @@ void StfSenderDevice::StfReceiverThread()
   DplToStfAdapter  lStfReceiver;
   std::unique_ptr<SubTimeFrame> lStf;
 
-  const auto lStfStartTime = hres_clock::now();
+  auto lStfStartTime = hres_clock::now();
 
   while (running()) {
     try {
@@ -231,28 +231,26 @@ void StfSenderDevice::StfReceiverThread()
       continue;
     }
 
-    if (!acceptingData()) {
+    if (!acceptingData() || !lStf) {
       if (lStf) {
         WDDLOG_RL(1000, "StfSender: received STF but not in the running state.");
       }
+      std::this_thread::sleep_for(10ms);
       continue;
     }
 
-    if (!lStf) {
-      std::this_thread::sleep_for(10ms);
-      continue; // timeout? try until the FMQFSM goes out of running
-    }
-
     { // Input STF frequency
-      const auto lStfDur = std::chrono::duration<double>(hres_clock::now() - lStfStartTime);
-      I().mStfTimeSamples.Fill((float)lStfDur.count());
+      const auto lNow = hres_clock::now();
+      const auto lStfDur = std::chrono::duration<double>(lNow - lStfStartTime);
+      lStfStartTime = lNow;
+      I().mStfTimeMean += (lStfDur.count()/100.0 - I().mStfTimeMean/100.0);
+
+      // get data size
+      I().mStfSizeMean += (lStf->getDataSize()/128 - I().mStfSizeMean/128);
     }
 
     ++lReceivedStfs;
     DDDLOG_RL(5000, "StfSender received total of {} STFs.", lReceivedStfs);
-
-    // get data size
-    I().mStfSizeSamples.Fill(lStf->getDataSize());
 
     IDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
@@ -267,14 +265,13 @@ void StfSenderDevice::StfReceiverThread()
 void StfSenderDevice::InfoThread()
 {
   while (running()) {
-    IDDLOG("StfSender: SubTimeFrame size_mean={} in_frequency_mean={:.4}",
-      I().mStfSizeSamples.Mean(), I().mStfTimeSamples.MeanStepFreq());
+    IDDLOG("StfSender: SubTimeFrame size_mean={} in_frequency_mean={:.4}", I().mStfSizeMean, (1.0 / I().mStfTimeMean));
     if (!standalone()) {
       const auto lCounters = I().mOutputHandler->getCounters();
 
       IDDLOG("StfSender: SubTimeFrame queued_stf_num={} queued_stf_size={} sending_stf_num={} sending_stf_size={} ",
-          lCounters.mBufferedStfCnt, lCounters.mBufferedStfSize,
-          lCounters.mBufferedStfCntSending, lCounters.mBufferedStfSizeSending);
+          lCounters.mBuffered.mCnt, lCounters.mBuffered.mSize,
+          lCounters.mInSending.mCnt, lCounters.mInSending.mSize);
     }
     std::this_thread::sleep_for(2s);
   }

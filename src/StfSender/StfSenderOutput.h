@@ -35,11 +35,15 @@ class StfSenderOutput
 public:
   struct StdSenderOutputCounters {
     // buffer state
-    std::uint64_t mBufferedStfSize = 0;
-    std::uint32_t mBufferedStfCnt = 0;
+    struct alignas(128) {
+      std::uint64_t mSize = 0;
+      std::uint32_t mCnt = 0;
+    } mBuffered;
     // buffered in sending
-    std::uint64_t mBufferedStfSizeSending = 0;
-    std::uint32_t mBufferedStfCntSending = 0;
+    struct alignas(128) {
+      std::uint64_t mSize = 0;
+      std::uint32_t mCnt = 0;
+    } mInSending;
   };
 
   StfSenderOutput() = delete;

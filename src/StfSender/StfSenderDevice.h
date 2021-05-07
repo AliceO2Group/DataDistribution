@@ -110,8 +110,8 @@ class StfSenderDevice : public DataDistDevice
 
     /// Info thread
     std::thread mInfoThread;
-    RunningSamples<uint64_t> mStfSizeSamples;
-    RunningSamples<float> mStfTimeSamples;
+    std::uint64_t mStfSizeMean = 0;
+    double mStfTimeMean = 50.0;
 
     unsigned getNextPipelineStage(unsigned pStage) final
     {
