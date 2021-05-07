@@ -29,7 +29,6 @@ if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Werror")
 endif()
 
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}/bin")
 
@@ -130,9 +129,11 @@ if (NOT spdlog_FOUND)
   )
 endif()
 
+include(jemalloc)
 
 message(STATUS "Boost version : ${Boost_VERSION}")
 message(STATUS "Boost include path : ${Boost_INCLUDE_DIRS}")
+message(STATUS "jemalloc include : ${jemalloc_INCLUDE_DIRS}")
 message(STATUS "FairMQ version : ${FairMQ_VERSION}")
 message(STATUS "AliceO2 include path : ${AliceO2_INCLUDE_DIR}")
 
