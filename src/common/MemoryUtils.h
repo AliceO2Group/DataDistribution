@@ -65,6 +65,7 @@ public:
   : mSegmentName(pSegmentName), mTransport(pShmTrans)
   {
     static_assert(ALIGN && !(ALIGN & (ALIGN - 1)), "Alignment must be power of 2");
+    fair::mq::RegionConfig lRegionCfg(true /*mlock*/, true /*bzero*/);
 
     pSize = align_size_up(pSize);
 
@@ -85,6 +86,7 @@ public:
     if (lMyLimits.rlim_cur >= pSize) {
       lMapFlags |= MAP_LOCKED;
     } else {
+      lRegionCfg.lock = false;
       if (std::getenv(ENV_NOLOCK)) {
         WDDLOG("MemoryResource: Memory locking disabled via {} env variable. Not suitable for production.",
           ENV_NOLOCK);
@@ -185,7 +187,8 @@ public:
         DDDLOG_RL(5000, "Memory segment '{}'::block merging ratio average={:.4}", mSegmentName, sMergeRatio);
       },
       lSegmentRoot.c_str(),
-      lMapFlags
+      lMapFlags,
+      lRegionCfg
     );
 
     if (!mRegion) {
@@ -198,8 +201,6 @@ public:
     mSegmentSize = mRegion->GetSize();
     mLength = mRegion->GetSize();
     mFree = mSegmentSize;
-
-    memset(mStart, 0x00, mLength);
 
     // Insert delay for testing
     const auto lShmDelay = std::getenv(ENV_SHM_DELAY);
@@ -220,7 +221,6 @@ public:
     // start the allocations
     mRunning = true;
   }
-
 
   ~RegionAllocatorResource() {
     // Ensure the region is destructed before anything else in this object
@@ -470,7 +470,7 @@ public:
   }
 
   inline
-  bool running() { return mRunning == true; }
+  bool running() { return mRunning; }
 
   void stop() {
     assert(mShmTransport);
