@@ -16,7 +16,7 @@ ExternalProject_Add(jemalloc
   BUILD_IN_SOURCE 1
   BUILD_BYPRODUCTS ${jemalloc_STATIC} ${jemalloc_STATIC_PIC}
 
-  CONFIGURE_COMMAND ./autogen.sh && ./configure --disable-shared --disable-doc --prefix=${CMAKE_BINARY_DIR}/jemalloc --with-malloc-conf=abort_conf:true,background_thread:true,metadata_thp:auto,percpu_arena:percpu,dirty_decay_ms:300000,muzzy_decay_ms:300000
+  CONFIGURE_COMMAND ./autogen.sh && ./configure --disable-shared --disable-doc --prefix=${CMAKE_BINARY_DIR}/jemalloc --with-malloc-conf=abort_conf:true,background_thread:true,metadata_thp:auto,dirty_decay_ms:300000,muzzy_decay_ms:300000
   BUILD_COMMAND ${MAKE}
   INSTALL_COMMAND make install
 
