@@ -231,7 +231,7 @@ else
       split-window  \
       "source $ENV_VAR_FILE; $STF_SENDER --id stf_sender-0 --discovery-id=flp0 --session default; read" \; \
       split-window  \
-      "source $ENV_VAR_FILE; $TF_BUILDER --id tf_builder-0 --discovery-id=epn0 --session epn-s0; read" \; \
+      "source $ENV_VAR_FILE; numactl --interleave=all $TF_BUILDER --id tf_builder-0 --discovery-id=epn0 --session epn-s0; read" \; \
       select-layout even-horizontal
 
     sleep 2
