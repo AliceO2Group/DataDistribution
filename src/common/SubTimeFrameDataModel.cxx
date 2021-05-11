@@ -20,9 +20,7 @@
 #include <iterator>
 #include <algorithm>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace o2::header;
@@ -131,5 +129,5 @@ void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf)
   // delete pStf
   pStf.reset();
 }
-}
+
 } /* o2::DataDistribution */
