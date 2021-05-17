@@ -22,10 +22,9 @@
 
 #include <chrono>
 #include <thread>
+#include <future>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -60,42 +59,65 @@ void TfBuilderDevice::InitTask()
 {
   DataDistLogger::SetThreadName("tfb-main");
 
-  {
-    mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
-    mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
-    mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
-    mTfBufferSize <<= 20; /* input parameter is in MiB */
+  std::promise<bool> lBuffersAllocated;
+  std::future<bool> lBuffersAllocatedFuture = lBuffersAllocated.get_future();
 
-    mDiscoveryConfig = std::make_shared<ConsulTfBuilder>(ProcessType::TfBuilder,
-      Config::getEndpointOption(*GetConfig()));
+  mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
+  mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
+  mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
+  mTfBufferSize <<= 20; /* input parameter is in MiB */
 
-    auto &lStatus =  mDiscoveryConfig->status();
-    lStatus.mutable_info()->set_type(TfBuilder);
-    lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
-    lStatus.mutable_info()->set_process_id(Config::getIdOption(TfBuilder, *GetConfig()));
-    lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
+  // start buffer creation in an async thread
+  std::thread([&]{
+    using hres_clock = std::chrono::high_resolution_clock;
+    const auto lBufferStart = hres_clock::now();
 
-    // wait for "partition-id"
-    while (!Config::getPartitionOption(*GetConfig())) {
-      WDDLOG("TfBuilder waiting on 'discovery-partition' config parameter.");
-      std::this_thread::sleep_for(1s);
-    }
-    mPartitionId = *Config::getPartitionOption(*GetConfig());
-    lStatus.mutable_partition()->set_partition_id(mPartitionId);
-
-    // File sink
-    if (!mFileSink.loadVerifyConfig(*(this->GetConfig()))) {
-      throw "File Sink options";
+    try {
+      mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, std::size_t(2048) << 20, dplEnabled());
+    } catch (std::exception &e) {
+      IDDLOG("InitTask::MemorySegment allocation failed. what={}", e.what());
+      // pass the failure
+      lBuffersAllocated.set_value_at_thread_exit(false);
       return;
     }
 
-    mRpc = std::make_shared<TfBuilderRpcImpl>(mDiscoveryConfig, *mMemI);
-    mFlpInputHandler = std::make_unique<TfBuilderInput>(*this, mRpc, eTfBuilderOut);
+    const bool isRunning = (MemI().mHeaderMemRes && MemI().mHeaderMemRes->running()) &&
+      (MemI().mDataMemRes && MemI().mDataMemRes->running());
+
+    const auto lElapsed = std::chrono::duration<double>(hres_clock::now() - lBufferStart).count();
+    IDDLOG("InitTask::MemorySegment allocated. success={} duration={:.3}", isRunning, lElapsed);
+
+    // pass the result
+    lBuffersAllocated.set_value_at_thread_exit(isRunning);
+  }).detach();
+
+  mDiscoveryConfig = std::make_shared<ConsulTfBuilder>(ProcessType::TfBuilder, Config::getEndpointOption(*GetConfig()));
+
+  auto &lStatus =  mDiscoveryConfig->status();
+  lStatus.mutable_info()->set_type(TfBuilder);
+  lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
+  lStatus.mutable_info()->set_process_id(Config::getIdOption(TfBuilder, *GetConfig()));
+  lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
+
+  // wait for "partition-id"
+  while (!Config::getPartitionOption(*GetConfig())) {
+    WDDLOG("TfBuilder waiting on 'discovery-partition' config parameter.");
+    std::this_thread::sleep_for(1s);
+  }
+  mPartitionId = *Config::getPartitionOption(*GetConfig());
+  lStatus.mutable_partition()->set_partition_id(mPartitionId);
+
+  // File sink
+  if (!mFileSink.loadVerifyConfig(*(this->GetConfig()))) {
+
+    throw "File Sink options";
+    return;
   }
 
-  {
-    auto &lStatus = mDiscoveryConfig->status();
+  mRpc = std::make_shared<TfBuilderRpcImpl>(mDiscoveryConfig, *mMemI);
+  mFlpInputHandler = std::make_unique<TfBuilderInput>(*this, mRpc, eTfBuilderOut);
 
+  {
     // finish discovery information: gRPC server
     int lRpcRealPort = 0;
     mRpc->initDiscovery(lStatus.info().ip_address(), lRpcRealPort);
@@ -124,6 +146,14 @@ void TfBuilderDevice::InitTask()
   if (!start()) {
     mShouldExit = true;
   }
+
+  // wait for the memory allocation and registration to finish
+  lBuffersAllocatedFuture.wait();
+  if (!lBuffersAllocatedFuture.get()) {
+    EDDLOG("InitTask::MemorySegment allocation failed. Exiting...");
+    throw "InitTask::MemorySegment allocation failed. Exiting...";
+    return;
+  }
 }
 
 void TfBuilderDevice::PreRun()
@@ -141,8 +171,6 @@ void TfBuilderDevice::PreRun()
 
 bool TfBuilderDevice::start()
 {
-  mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, std::size_t(2048) << 20 /* config */, dplEnabled());
-
   // start all gRPC clients
   while (!mRpc->start(mTfBufferSize)) {
     // try to reach the scheduler unless we should exit
@@ -354,5 +382,4 @@ void TfBuilderDevice::InfoThread()
   DDDLOG("Exiting info thread...");
 }
 
-}
 } /* namespace o2::DataDistribution */
