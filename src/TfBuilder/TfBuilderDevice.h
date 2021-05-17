@@ -31,9 +31,7 @@
 #include <memory>
 #include <condition_variable>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 class ConsulConfig;
@@ -165,7 +163,6 @@ class TfBuilderDevice : public DataDistDevice,
   std::atomic_bool mShouldExit = false;
 };
 
-}
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_TF_BUILDER_DEVICE_H_ */

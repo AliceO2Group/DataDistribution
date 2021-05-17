@@ -263,6 +263,8 @@ public:
 
   std::size_t free() const { return mFree; }
 
+  bool running() const { return mRunning; }
+
 protected:
   // NOTE: we align sizes of returned messages, but keep the exact size for allocation
   //       otherwise the shm messages would be larger than requested
@@ -426,7 +428,7 @@ private:
   /// fields
   std::string mSegmentName;
   std::size_t mSegmentSize;
-  std::atomic_bool mRunning = true;
+  std::atomic_bool mRunning = false;
 
   FairMQTransportFactory &mTransport;
   std::unique_ptr<FairMQUnmanagedRegion> mRegion;

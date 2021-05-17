@@ -264,6 +264,10 @@ void TfSchedulerStfInfo::HighWatermarkThread()
         continue;
       }
 
+      if (lStfsToFree.empty()) {
+        continue;
+      }
+
       // check if we have incomplete TFs smaller than the currently build one
       // since all StfSenders are required to send updates in order, all incomplete TFs before
       // the current can be discarded
