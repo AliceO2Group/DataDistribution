@@ -199,9 +199,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 
       lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
     } else {
-      auto lHdrMsgStack = Stack(lDataHdr);
-
-      lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lHdrMsgStack.data()), lHdrMsgStack.size());
+      lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(&lDataHdr), sizeof(lDataHdr));
     }
 
     if (!lHdrMsg) {
@@ -213,7 +211,6 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
       SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFramesBegin[i]) }
     );
   }
-
 }
 
 
