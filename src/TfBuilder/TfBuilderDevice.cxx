@@ -33,7 +33,6 @@ TfBuilderDevice::TfBuilderDevice()
   : DataDistDevice(),
     IFifoPipeline(eTfPipelineSize),
     mFileSink(*this, *this, eTfFileSinkIn, eTfFileSinkOut),
-    mFileSource(*this, eTfFileSourceOut),
     mTfSizeSamples(),
     mTfTimeSamples()
 {
@@ -201,9 +200,6 @@ bool TfBuilderDevice::start()
     EDDLOG("Could not initialize input connections. Exiting.");
     return false;
   }
-
-  // start file source
-  mFileSource.start(MemI(), mStandalone ? false : mDplEnabled);
 
   // start the info thread
   mInfoThread = create_thread_member("tfb_info", &TfBuilderDevice::InfoThread, this);

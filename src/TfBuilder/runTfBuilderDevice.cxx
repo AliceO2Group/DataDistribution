@@ -46,7 +46,7 @@ int main(int argc, char* argv[])
         bpo::bool_switch()->default_value(false),
         "Standalone operation. TimeFrames will not be forwarded to other processes.")(
         o2::DataDistribution::TfBuilderDevice::OptionKeyTfMemorySize,
-        bpo::value<std::uint64_t>()->default_value(512),
+        bpo::value<std::uint64_t>()->default_value(1024),
         "Memory buffer reserved for building and buffering TimeFrames (in MiB).");
 
       bpo::options_description lTfBuilderDplOptions("TfBuilder DPL options", 120);
