@@ -1,4 +1,4 @@
-  // This program is free software: you can redistribute it and/or modify
+// This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
@@ -143,6 +143,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
 
     char lThreadName[128];
     std::snprintf(lThreadName, 127, "to_%s", pTfBuilderId.c_str());
+    lThreadName[15] = '\0'; // kernel limitation
 
     mOutputMap.try_emplace(
       pTfBuilderId,

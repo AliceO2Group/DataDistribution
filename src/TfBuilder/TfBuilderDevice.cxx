@@ -141,7 +141,7 @@ void TfBuilderDevice::PreRun()
 
 bool TfBuilderDevice::start()
 {
-  mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, 512 << 20 /* config */, dplEnabled());
+  mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, std::size_t(2048) << 20 /* config */, dplEnabled());
 
   // start all gRPC clients
   while (!mRpc->start(mTfBufferSize)) {
