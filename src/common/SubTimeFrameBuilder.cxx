@@ -23,9 +23,7 @@
 #include <fairmq/FairMQDevice.h>
 #include <fairmq/FairMQUnmanagedRegion.h>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace o2::header;
@@ -170,7 +168,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 
   assert(pHdr.mTimeFrameId == mStf->header().mId);
 
-  const EquipmentIdentifier lEqId = EquipmentIdentifier(
+  const EquipmentIdentifier lEqId(
     o2::header::gDataDescriptionRawData,
     pDataOrig,
     pSubSpecification);
@@ -310,7 +308,7 @@ TimeFrameBuilder::TimeFrameBuilder(SyncMemoryResources &pMemRes,
   );
 
   mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
-    "O2DataRegion_FileSource",
+    "O2DataRegion_TimeFrame",
     *mMemRes.mShmTransport,
     pDataSegSize,
     0 // TODO: GPU flags
@@ -417,5 +415,4 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
   }
 }
 
-}
 } /* o2::DataDistribution */

@@ -28,9 +28,7 @@
 class FairMQDevice;
 class FairMQChannel;
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -168,7 +166,6 @@ class TimeFrameBuilder
   SyncMemoryResources &mMemRes;
 };
 
-}
 } /* o2::DataDistribution */
 
 #endif /* ALICEO2_SUBTIMEFRAME_BUILDER_H_ */
