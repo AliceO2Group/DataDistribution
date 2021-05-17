@@ -39,7 +39,6 @@ class StfToDplAdapter;
 
 enum TfBuilderPipeline {
   eTfBuilderOut = 0,
-  eTfFileSourceOut = 0,
 
   // input/output stages
   eTfFileSinkIn = 0,
@@ -145,9 +144,6 @@ class TfBuilderDevice : public DataDistDevice,
 
   /// File sink
   SubTimeFrameFileSink mFileSink;
-
-  /// File source
-  SubTimeFrameFileSource mFileSource;
 
   /// TF forwarding thread
   std::thread mTfFwdThread;
