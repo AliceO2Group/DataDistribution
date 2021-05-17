@@ -89,30 +89,9 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
   }
 }
 
-void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
+void StfToDplAdapter::inspect() const
 {
-  if (!mRunning) {
-    return;
-  }
-
-  mMessages.clear();
-  pStf->accept(*this);
-
-#if 0
-  DDDLOG("Content of the Stf:");
-  uint64_t lMsgIdx = 0;
-  for (auto lM = mMessages.cbegin(); lM != mMessages.cend(); ) {
-    DDDLOG("  o2: message #{}", lMsgIdx++);
-    o2::header::hexDump("o2 header", (*lM)->GetData(), (*lM)->GetSize());
-    lM++;
-    o2::header::hexDump("o2 payload", (*lM)->GetData(), std::clamp((*lM)->GetSize(), std::size_t(0), std::size_t(256)) );
-    lM++;
-  }
-#endif
-
-#if !defined(NDEBUG)
   // check validity of the TF message sequence
-
   const auto cMsgSize = mMessages.size() / 2;
 
   DataHeader::TForbitType lFirstTForbit = ~  DataHeader::TForbitType{0};
@@ -207,8 +186,32 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
     // TODO: record the origin
     lIdx += lDh->splitPayloadParts;
   }
+}
 
+void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
+{
+  if (!mRunning) {
+    return;
+  }
+
+  mMessages.clear();
+  pStf->accept(*this);
+
+#if 0
+  DDDLOG("Content of the Stf:");
+  uint64_t lMsgIdx = 0;
+  for (auto lM = mMessages.cbegin(); lM != mMessages.cend(); ) {
+    DDDLOG("  o2: message #{}", lMsgIdx++);
+    o2::header::hexDump("o2 header", (*lM)->GetData(), (*lM)->GetSize());
+    lM++;
+    o2::header::hexDump("o2 payload", (*lM)->GetData(), std::clamp((*lM)->GetSize(), std::size_t(0), std::size_t(256)) );
+    lM++;
+  }
 #endif
+
+  if (mInspectChannel) {
+    inspect();
+  }
 
   mChan.Send(mMessages);
 

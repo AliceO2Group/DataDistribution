@@ -34,6 +34,9 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
     : mChan(pDplBridgeChan)
   {
     mMessages.reserve(1024);
+    if (getenv("DATADIST_DEBUG_DPL_CHAN")) {
+      mInspectChannel = true;
+    }
   }
 
   virtual ~StfToDplAdapter() = default;
@@ -45,8 +48,12 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
  protected:
   void visit(SubTimeFrame& pStf) override;
 
+  void inspect() const;
+
  private:
   std::atomic_bool mRunning = true;
+  bool mInspectChannel = false;
+
   std::vector<FairMQMessagePtr> mMessages;
   FairMQChannel& mChan;
 };
