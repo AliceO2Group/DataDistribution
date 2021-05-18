@@ -18,9 +18,7 @@
 #include <condition_variable>
 #include <stdexcept>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -158,24 +156,23 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 ::grpc::Status TfSchedulerInstanceRpcImpl::GetPartitionState(::grpc::ServerContext* /*context*/,
   const ::o2::DataDistribution::PartitionInfo* /*request*/, ::o2::DataDistribution::PartitionResponse* response)
 {
-  DDDLOG("gRPC server: GetPartitionState");
-
+  // Terminating?
   if (!accepting_updates()) {
     response->set_partition_state(mPartitionState);
+    DDDLOG("gRPC server: GetPartitionState() state={}", PartitionState_Name(mPartitionState));
     return Status::OK;
   }
 
-  // Terminating?
   switch (mConnManager.getStfSenderState()) {
     case StfSenderState::STF_SENDER_STATE_OK:
     {
-      response->set_partition_state(o2::DataDistribution::PartitionState::PARTITION_CONFIGURED);
+      response->set_partition_state(PartitionState::PARTITION_CONFIGURED);
       response->set_info_message("Partition is fully configured.");
       break;
     }
     case StfSenderState::STF_SENDER_STATE_INITIALIZING:
     {
-      response->set_partition_state(o2::DataDistribution::PartitionState::PARTITION_CONFIGURING);
+      response->set_partition_state(PartitionState::PARTITION_CONFIGURING);
       const auto lMsg = fmt::format("Partition is being configured. Found {} out of {} StfSenders.",
         mConnManager.getStfSenderCount(), mConnManager.getStfSenderSet().size());
       response->set_info_message(lMsg);
@@ -183,17 +180,18 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
     }
     case StfSenderState::STF_SENDER_STATE_INCOMPLETE:
     {
-      response->set_partition_state(o2::DataDistribution::PartitionState::PARTITION_ERROR);
+      response->set_partition_state(PartitionState::PARTITION_ERROR);
       response->set_info_message("Not all StfSenders are reachable.");
       break;
     }
     default:
     {
-      response->set_partition_state(o2::DataDistribution::PartitionState::PARTITION_ERROR);
+      response->set_partition_state(PartitionState::PARTITION_ERROR);
       response->set_info_message("Unknown partition state.");
     }
   }
 
+  DDDLOG("gRPC server: GetPartitionState() state={}", PartitionState_Name(response->partition_state()));
   return Status::OK;
 }
 
@@ -207,7 +205,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
     updatePartitionState(PartitionState::PARTITION_TERMINATING);
     response->set_info_message("Terminate started.");
   } else {
-    const auto lMsg = fmt::format("Terminate is already requested. partition_id={}", request->partition_id());
+    const auto lMsg = fmt::format("Terminate was already requested. partition_id={}", request->partition_id());
     response->set_info_message(lMsg);
     WDDLOG(lMsg);
   }
@@ -298,5 +296,4 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 }
 
 
-}
 } /* o2::DataDistribution */

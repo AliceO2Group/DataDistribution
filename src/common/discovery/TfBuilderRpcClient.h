@@ -24,9 +24,7 @@
 #include <map>
 #include <thread>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using grpc::Server;
@@ -108,13 +106,10 @@ public:
     PartitionResponse lResponse;
 
     auto lStatus = mStub->TerminatePartition(&lContext, lPartitionInfo, &lResponse);
-    if (!lStatus.ok()) {
-      return false;
-    }
 
-    if (lStatus.ok() && lResponse.partition_state() != PartitionState::PARTITION_TERMINATING) {
-      EDDLOG("TerminatePartition: TfBuilder. state={} message={}", lResponse.partition_state(), lStatus.error_message());
-    }
+    // this is best effort only. ECS could have already stopped them
+    DDDLOG("TerminatePartition: TfBuilder. tfb_id={} state={} message={}",
+      mTfBuilderConf.info().process_id(), lResponse.partition_state(), lStatus.error_message());
     return true;
   }
 
@@ -279,7 +274,6 @@ private:
 };
 
 
-}
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_DATADIST_TFBUILDER_RPC_CLIENT_H_ */

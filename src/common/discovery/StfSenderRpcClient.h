@@ -27,9 +27,7 @@
 #include <map>
 #include <thread>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using grpc::Server;
@@ -68,7 +66,8 @@ public:
     PartitionInfo lPartInfo; // TODO: specify and check partition ID
     PartitionResponse lRet;
 
-    return mStub->TerminatePartition(&lContext, lPartInfo, &lRet).ok();
+    mStub->TerminatePartition(&lContext, lPartInfo, &lRet);
+    return true; // could have been stopped by the ECS
   }
 
   bool is_ready() const;
@@ -230,8 +229,6 @@ private:
   std::map<std::string, std::unique_ptr<StfSenderRpcClient>> mClients;
 };
 
-}
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_DATADIST_StfSender_RPC_CLIENT_H_ */
-

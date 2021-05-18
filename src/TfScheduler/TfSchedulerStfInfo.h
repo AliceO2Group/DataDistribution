@@ -33,9 +33,7 @@
 #include <thread>
 #include <chrono>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -85,6 +83,7 @@ public:
   }
 
   void stop() {
+    DDDLOG("TfSchedulerStfInfo::stop()");
     mRunning = false;
     mDropQueue.stop();
     mCompleteStfsInfoQueue.stop();
@@ -120,7 +119,7 @@ public:
 
 private:
   /// Discard timeout for incomplete TFs
-  static constexpr auto sStfDiscardTimeout = 10s;
+  static constexpr auto sStfDiscardTimeout = 5s;
 
   std::atomic_bool mRunning = false;
 
@@ -174,7 +173,7 @@ private:
   /// stale cleanup thread
   std::thread mStaleStfThread;
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_TF_SCHEDULER_STF_INFO_H_ */
