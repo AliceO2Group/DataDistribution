@@ -38,6 +38,7 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
   );
   lStfDistDataHeader.payloadSerializationMethod = gSerializationMethodNone;
   lStfDistDataHeader.tfCounter = pStf.header().mId;
+  lStfDistDataHeader.runNumber = pStf.header().mRunNumber;
 
   o2::framework::DataProcessingHeader lDplHeader(pStf.header().mId);
 

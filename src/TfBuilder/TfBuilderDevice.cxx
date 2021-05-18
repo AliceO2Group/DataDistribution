@@ -80,14 +80,11 @@ void TfBuilderDevice::InitTask()
       return;
     }
 
-    const bool isRunning = (MemI().mHeaderMemRes && MemI().mHeaderMemRes->running()) &&
-      (MemI().mDataMemRes && MemI().mDataMemRes->running());
-
     const auto lElapsed = std::chrono::duration<double>(hres_clock::now() - lBufferStart).count();
-    IDDLOG("InitTask::MemorySegment allocated. success={} duration={:.3}", isRunning, lElapsed);
+    IDDLOG("InitTask::MemorySegment allocated. success={} duration={:.3}", MemI().running(), lElapsed);
 
     // pass the result
-    lBuffersAllocated.set_value_at_thread_exit(isRunning);
+    lBuffersAllocated.set_value_at_thread_exit(MemI().running());
   }).detach();
 
   mDiscoveryConfig = std::make_shared<ConsulTfBuilder>(ProcessType::TfBuilder, Config::getEndpointOption(*GetConfig()));
