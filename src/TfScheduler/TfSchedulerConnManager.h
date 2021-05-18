@@ -33,9 +33,7 @@
 #include <list>
 #include <future>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 enum StfSenderState {
@@ -167,7 +165,7 @@ private:
 
   /// StfSender RPC-client channels
   std::recursive_mutex mStfSenderClientsLock;
-  StfSenderRpcClientCollection<ConsulTfSchedulerInstance> mStfSenderRpcClients;
+    StfSenderRpcClientCollection<ConsulTfSchedulerInstance> mStfSenderRpcClients;
   /// TfBuilder RPC-client channels
   TfBuilderRpcClientCollection<ConsulTfSchedulerInstance> mTfBuilderRpcClients;
 
@@ -176,7 +174,7 @@ private:
     std::condition_variable_any mStfDropFuturesCV;
     std::list<std::future<std::uint64_t>> mStfDropFutures;
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_TF_SCHEDULER_CONNMANAGER_H_ */

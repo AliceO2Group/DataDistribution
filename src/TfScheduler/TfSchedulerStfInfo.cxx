@@ -22,9 +22,7 @@
 #include <tuple>
 #include <algorithm>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -327,7 +325,7 @@ void TfSchedulerStfInfo::HighWatermarkThread()
     }
   }
 
-  DDDLOG("Exiting StfInfo Scheduling thread.");
+  DDDLOG("Exiting HighWatermarkThread thread.");
 }
 
 
@@ -476,5 +474,4 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
   }
 }
 
-}
 } /* o2::DataDistribution */
