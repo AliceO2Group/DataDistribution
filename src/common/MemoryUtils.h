@@ -472,7 +472,13 @@ public:
   }
 
   inline
-  bool running() { return mRunning; }
+  bool running() const { return mRunning; }
+
+  void start() {
+    if (mHeaderMemRes || mDataMemRes) {
+      mRunning = true;
+    }
+  }
 
   void stop() {
     assert(mShmTransport);
@@ -487,8 +493,8 @@ public:
     }
   }
 
-  inline std::size_t freeHeader() const { return mHeaderMemRes ? mHeaderMemRes->free() : std::size_t(0);  }
-  inline std::size_t freeData() const { return mHeaderMemRes ? mDataMemRes->free() : std::size_t(0);  }
+  inline std::size_t freeHeader() const { return (running() && mHeaderMemRes) ? mHeaderMemRes->free() : std::size_t(0); }
+  inline std::size_t freeData() const { return (running() && mDataMemRes) ? mDataMemRes->free() : std::size_t(0);  }
 
   std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
   std::unique_ptr<RegionAllocatorResource<64>> mDataMemRes;
@@ -497,7 +503,7 @@ public:
   std::shared_ptr<FairMQTransportFactory> mShmTransport;
 
 private:
-  bool mRunning = true;
+  bool mRunning = false;
 };
 
 

@@ -43,6 +43,8 @@ SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(MemoryResources &pMemRes,
       sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
       sizeof(DataHeader)
   );
+
+  mMemRes.start();
 }
 
 void SubTimeFrameReadoutBuilder::addHbFrames(
@@ -235,6 +237,8 @@ SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(MemoryResources &pMemRes,
     pDataSegSize,
     0 // TODO: GPU flags
   );
+
+  mMemRes.start();
 }
 
 void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
@@ -310,6 +314,8 @@ TimeFrameBuilder::TimeFrameBuilder(SyncMemoryResources &pMemRes,
     pDataSegSize,
     0 // TODO: GPU flags
   );
+
+  mMemRes.start();
 }
 
 void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
