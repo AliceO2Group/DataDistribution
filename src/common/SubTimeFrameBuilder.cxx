@@ -297,9 +297,12 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
 /// TimeFrameBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-TimeFrameBuilder::TimeFrameBuilder(SyncMemoryResources &pMemRes,
-  const std::size_t pDataSegSize, const std::size_t pHdrSegSize, bool pDplEnabled)
+TimeFrameBuilder::TimeFrameBuilder(SyncMemoryResources &pMemRes, bool pDplEnabled)
   : mDplEnabled(pDplEnabled), mMemRes(pMemRes)
+{
+}
+
+void TimeFrameBuilder::allocate_memory(const std::size_t pDataSegSize, const std::size_t pHdrSegSize)
 {
   mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
     "O2HeadersRegion",
@@ -320,7 +323,7 @@ TimeFrameBuilder::TimeFrameBuilder(SyncMemoryResources &pMemRes,
 
 void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
 {
-  if (!pStf) {
+  if (!pStf || !mMemRes.mHeaderMemRes || !mMemRes.mDataMemRes) {
     return;
   }
 

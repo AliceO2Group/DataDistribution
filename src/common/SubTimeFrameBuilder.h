@@ -140,8 +140,10 @@ class TimeFrameBuilder
 {
  public:
   TimeFrameBuilder() = delete;
-  TimeFrameBuilder(SyncMemoryResources &pMemRes, const std::size_t pDataSegSize, const std::size_t pHdrSegSize,
-    bool pDplEnabled);
+  TimeFrameBuilder(SyncMemoryResources &pMemRes, bool pDplEnabled);
+
+  // make allocate the memory here
+  void allocate_memory(const std::size_t pDataSegSize, const std::size_t pHdrSegSize);
 
   void adaptHeaders(SubTimeFrame *pStf);
 

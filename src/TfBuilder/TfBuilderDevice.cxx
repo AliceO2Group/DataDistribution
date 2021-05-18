@@ -58,21 +58,22 @@ void TfBuilderDevice::InitTask()
 {
   DataDistLogger::SetThreadName("tfb-main");
 
-  std::promise<bool> lBuffersAllocated;
-  std::future<bool> lBuffersAllocatedFuture = lBuffersAllocated.get_future();
-
   mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
   mTfBufferSize <<= 20; /* input parameter is in MiB */
 
   // start buffer creation in an async thread
+  mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), dplEnabled());
+  std::promise<bool> lBuffersAllocated;
+  std::future<bool> lBuffersAllocatedFuture = lBuffersAllocated.get_future();
+
   std::thread([&]{
     using hres_clock = std::chrono::high_resolution_clock;
     const auto lBufferStart = hres_clock::now();
 
     try {
-      mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), mTfBufferSize, std::size_t(2048) << 20, dplEnabled());
+      mTfBuilder->allocate_memory(mTfBufferSize, std::size_t(2048) << 20);
     } catch (std::exception &e) {
       IDDLOG("InitTask::MemorySegment allocation failed. what={}", e.what());
       // pass the failure
@@ -150,6 +151,8 @@ void TfBuilderDevice::InitTask()
     throw "InitTask::MemorySegment allocation failed. Exiting...";
     return;
   }
+
+  DDDLOG("InitTask completed.");
 }
 
 void TfBuilderDevice::PreRun()
@@ -159,7 +162,7 @@ void TfBuilderDevice::PreRun()
   lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
   mDiscoveryConfig->write();
 
-  // make directory for file sink
+  // make directory for the file sink
   mFileSink.makeDirectory();
 
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
@@ -314,7 +317,7 @@ void TfBuilderDevice::TfForwardThread()
         if (dplEnabled()) {
           // adapt headers to include DPL processing header on the stack
           assert(mTfBuilder);
-          mTfBuilder->adaptHeaders(lTf.get());
+          TfBuilderI().adaptHeaders(lTf.get());
 
           // Send to DPL
           assert (mTfDplAdapter);
