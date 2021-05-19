@@ -63,6 +63,17 @@ void TfBuilderDevice::InitTask()
   mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
   mTfBufferSize <<= 20; /* input parameter is in MiB */
 
+  // Using DPL?
+  if (mDplChannelName != "") {
+    mDplEnabled = true;
+    mStandalone = false;
+    IDDLOG("Using DPL channel. channel_name={}", mDplChannelName);
+  } else {
+    mDplEnabled = false;
+    mStandalone = true;
+    IDDLOG("Not sending to DPL.");
+  }
+
   // start buffer creation in an async thread
   mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), dplEnabled());
   std::promise<bool> lBuffersAllocated;
@@ -125,17 +136,6 @@ void TfBuilderDevice::InitTask()
       EDDLOG("Process with the same id already running? If not, clear the key manually.");
       throw "Discovery database error: this TfBuilder was/is already present.";
       return;
-    }
-
-    // Using DPL?
-    if (mDplChannelName != "") {
-      mDplEnabled = true;
-      mStandalone = false;
-      IDDLOG("Using DPL channel. channel_name={}", mDplChannelName);
-    } else {
-      mDplEnabled = false;
-      mStandalone = true;
-      IDDLOG("Not sending to DPL.");
     }
   }
 
