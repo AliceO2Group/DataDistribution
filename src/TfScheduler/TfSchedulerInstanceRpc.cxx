@@ -98,7 +98,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
     if (mPartitionState == PartitionState::PARTITION_TERMINATING) {
       // Notify TfBuilders
       if (mConnManager.requestTfBuildersTerminate()) {
-        IDDLOG("PartitionMonitorThread: All TfBuilders requested to terminate.");
+        IDDLOG("PartitionMonitorThread: All TfBuilders have terminated.");
       }
 
       if (mConnManager.requestStfSendersTerminate()) {

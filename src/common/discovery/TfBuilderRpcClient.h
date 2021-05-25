@@ -110,7 +110,7 @@ public:
     // this is best effort only. ECS could have already stopped them
     DDDLOG("TerminatePartition: TfBuilder. tfb_id={} state={} message={}",
       mTfBuilderConf.info().process_id(), lResponse.partition_state(), lStatus.error_message());
-    return true;
+    return lStatus.ok();
   }
 
   std::string getEndpoint() { return mTfBuilderConf.rpc_endpoint(); }
