@@ -66,8 +66,8 @@ public:
     PartitionInfo lPartInfo; // TODO: specify and check partition ID
     PartitionResponse lRet;
 
-    mStub->TerminatePartition(&lContext, lPartInfo, &lRet);
-    return true; // could have been stopped by the ECS
+    const auto lStatus = mStub->TerminatePartition(&lContext, lPartInfo, &lRet);
+    return lStatus.ok(); // could have been stopped by the ECS
   }
 
   bool is_ready() const;
