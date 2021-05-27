@@ -23,6 +23,7 @@
 #include <SubTimeFrameFileSink.h>
 #include <Utilities.h>
 #include <FmqUtilities.h>
+#include <DataDistMonitoring.h>
 
 #include <thread>
 #include <vector>
@@ -87,11 +88,12 @@ class StfSenderDevice : public DataDistDevice
     /// Configuration
     std::string mInputChannelName;
     bool mStandalone = false;
+    std::string mPartitionId;
 
     /// Discovery configuration
     std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
 
-    /// Scheculer RPC client
+    /// Scheduler RPC client
     TfSchedulerRpcClient mTfSchedulerRpcClient;
 
     /// Receiver threads
@@ -110,8 +112,6 @@ class StfSenderDevice : public DataDistDevice
 
     /// Info thread
     std::thread mInfoThread;
-    std::uint64_t mStfSizeMean = 0;
-    double mStfTimeMean = 50.0;
 
     unsigned getNextPipelineStage(unsigned pStage) final
     {

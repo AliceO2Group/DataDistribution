@@ -65,6 +65,11 @@ void StfSenderDevice::InitTask()
   I().mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
   I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
 
+  // start monitoring
+  DataDistMonitor::start_datadist(ProcessType::StfSender, GetConfig()->GetValue<std::string>("monitoring-backend"));
+  DataDistMonitor::set_rate(GetConfig()->GetValue<float>("monitoring-rate"));
+  DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
+
   if (!standalone()) {
     // Discovery
     I().mDiscoveryConfig = std::make_shared<ConsulStfSender>(ProcessType::StfSender, Config::getEndpointOption(*GetConfig()));
@@ -77,11 +82,17 @@ void StfSenderDevice::InitTask()
 
     // wait for "partition-id"
     while (!Config::getPartitionOption(*GetConfig())) {
-      WDDLOG("TfBuilder waiting on 'discovery-partition' config parameter.");
+      WDDLOG("StfSender waiting on 'discovery-partition' config parameter.");
       std::this_thread::sleep_for(1s);
     }
 
-    lStatus.mutable_partition()->set_partition_id(*Config::getPartitionOption(*GetConfig()));
+    I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
+    if (I().mPartitionId.empty()) {
+      WDDLOG("StfSender 'discovery-partition' parameter not set.");
+      std::this_thread::sleep_for(1s); exit(-1);
+    }
+
+    lStatus.mutable_partition()->set_partition_id(I().mPartitionId);
     I().mDiscoveryConfig->write();
   }
 
@@ -144,10 +155,18 @@ void StfSenderDevice::PreRun()
     I().mDiscoveryConfig->write();
   }
 
+  // reset counters
+  if (I().mOutputHandler) {
+    I().mOutputHandler->resetCounters();
+  }
+
   // make directory for file sink
   if (I().mFileSink) {
     I().mFileSink->makeDirectory();
   }
+
+  // enable monitoring
+  DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, I().mPartitionId);
 
   // start accepting data
   I().mAcceptingData = true;
@@ -160,11 +179,19 @@ void StfSenderDevice::PostRun()
   // stop accepting data
   I().mAcceptingData = false;
 
+  // disable monitoring
+  DataDistMonitor::disable_datadist();
+
   // update running state
   if (!standalone() && I().mDiscoveryConfig) {
     auto& lStatus = I().mDiscoveryConfig->status();
     lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
     I().mDiscoveryConfig->write();
+  }
+
+  // reset counters
+  if (I().mOutputHandler) {
+    I().mOutputHandler->resetCounters();
   }
 
   IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
@@ -204,6 +231,9 @@ void StfSenderDevice::ResetTask()
     I().mTfSchedulerRpcClient.stop();
   }
 
+  // stop monitoring
+  DataDistMonitor::stop_datadist();
+
   DDDLOG("ResetTask() done.");
 }
 
@@ -218,7 +248,7 @@ void StfSenderDevice::StfReceiverThread()
   DplToStfAdapter  lStfReceiver;
   std::unique_ptr<SubTimeFrame> lStf;
 
-  auto lStfStartTime = hres_clock::now();
+  decltype(hres_clock::now()) lStfStartTime = hres_clock::now();
 
   while (running()) {
     try {
@@ -235,7 +265,9 @@ void StfSenderDevice::StfReceiverThread()
       if (lStf) {
         WDDLOG_RL(1000, "StfSender: received STF but not in the running state.");
       }
-      std::this_thread::sleep_for(10ms);
+      DDMON("stfsender", "stf_input.rate", 0.0);
+      DDMON("stfsender", "stf_input.size", 0.0);
+      std::this_thread::sleep_for(20ms);
       continue;
     }
 
@@ -243,10 +275,10 @@ void StfSenderDevice::StfReceiverThread()
       const auto lNow = hres_clock::now();
       const auto lStfDur = std::chrono::duration<double>(lNow - lStfStartTime);
       lStfStartTime = lNow;
-      I().mStfTimeMean += (lStfDur.count()/100.0 - I().mStfTimeMean/100.0);
 
-      // get data size
-      I().mStfSizeMean += (lStf->getDataSize()/128 - I().mStfSizeMean/128);
+      DDMON("stfsender", "stf_input.rate", (1.0 / lStfDur.count()));
+      DDMON("stfsender", "stf_input.size", lStf->getDataSize());
+      DDMON("stfsender", "stf_input.id", (uint64_t)lStf->header().mId);
     }
 
     ++lReceivedStfs;
@@ -265,11 +297,10 @@ void StfSenderDevice::StfReceiverThread()
 void StfSenderDevice::InfoThread()
 {
   while (running()) {
-    IDDLOG("StfSender: SubTimeFrame size_mean={} in_frequency_mean={:.4}", I().mStfSizeMean, (1.0 / I().mStfTimeMean));
     if (!standalone()) {
       const auto lCounters = I().mOutputHandler->getCounters();
 
-      IDDLOG("StfSender: SubTimeFrame queued_stf_num={} queued_stf_size={} sending_stf_num={} sending_stf_size={} ",
+      DDDLOG("StfSender: SubTimeFrame queued_stf_num={} queued_stf_size={} sending_stf_num={} sending_stf_size={} ",
           lCounters.mBuffered.mCnt, lCounters.mBuffered.mSize,
           lCounters.mInSending.mCnt, lCounters.mInSending.mSize);
     }

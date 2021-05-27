@@ -145,11 +145,15 @@ STF_SENDER="StfSender"
 STF_SENDER+=" --discovery-net-if=$FLP_NETIF"
 STF_SENDER+=" --discovery-partition=$PARTITION"
 STF_SENDER+=" --mq-config $chainConfig"
+STF_SENDER+=" --monitoring-rate=5.0"
+STF_SENDER+=" --monitoring-log"
 
 TF_BUILDER="TfBuilder"
 TF_BUILDER+=" --discovery-net-if=$EPN_NETIF"
 TF_BUILDER+=" --discovery-partition=$PARTITION"
 TF_BUILDER+=" --mq-config $chainConfig"
+TF_BUILDER+=" --monitoring-rate=1.0"
+TF_BUILDER+=" --monitoring-log"
 
 if [[ ! -z $TF_BUILDER_DPL_CHAN ]]; then
   TF_BUILDER+=" --dpl-channel-name=$TF_BUILDER_DPL_CHAN"

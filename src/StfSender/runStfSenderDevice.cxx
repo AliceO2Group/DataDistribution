@@ -13,6 +13,7 @@
 #include <SubTimeFrameFileSink.h>
 #include <Config.h>
 #include <FmqUtilities.h>
+#include <DataDistMonitoring.h>
 
 #include <options/FairMQProgOptions.h>
 
@@ -36,6 +37,8 @@ int main(int argc, char* argv[])
 
       // Add InfoLogger Options
       r.fConfig.AddToCmdLineOptions(impl::DataDistLoggerCtx::getProgramOptions());
+      // Add Monitoring Options
+      r.fConfig.AddToCmdLineOptions(DataDistMonitor::getProgramOptions());
 
       // StfSender options
       bpo::options_description lStfSenderOptions("StfSender options", 120);
@@ -57,7 +60,6 @@ int main(int argc, char* argv[])
 
       // Add options for STF file sink
       r.fConfig.AddToCmdLineOptions(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());
-
     });
 
     runner.AddHook<InstantiateDevice>([](DeviceRunner& r){

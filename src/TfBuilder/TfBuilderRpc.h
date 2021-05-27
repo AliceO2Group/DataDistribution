@@ -33,9 +33,7 @@
 #include <thread>
 #include <mutex>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using grpc::Server;
@@ -122,14 +120,15 @@ private:
   std::recursive_mutex mTfIdSizesLock;
   std::unordered_map <uint64_t, uint64_t> mTfIdSizes;
   // Update information for the TfScheduler
-  std::atomic_uint64_t mCurrentTfBufferSize = 0;
+  std::uint64_t mBufferSize = 0;
+  std::uint64_t mCurrentTfBufferSize = 0;
   std::uint64_t mLastBuiltTfId = 0;
   std::uint32_t mNumBufferedTfs = 0;
 
   /// Queue of TF building requests
   std::unique_ptr<ConcurrentFifo<TfBuildingInformation>> mTfBuildRequests;
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_TF_BUILDER_RPC_H_ */

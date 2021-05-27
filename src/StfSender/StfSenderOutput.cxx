@@ -250,7 +250,7 @@ void StfSenderOutput::StfSchedulerThread()
       auto [it, ins] = mScheduledStfMap.try_emplace(lStfId, std::move(lStf));
       if (!ins) {
         (void)it;
-        EDDLOG_RL(500, "StfSchedulerThread: Stf already scheduled! Skipping the duplicate. stf_id={}", lStfId);
+        EDDLOG_RL(500, "StfSchedulerThread: Stf is already scheduled! Skipping the duplicate. stf_id={}", lStfId);
         continue;
       }
 
@@ -303,15 +303,10 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     } else {
       pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
     }
-    return;
-  }
-
-  // check if it is drop request from the scheduler
-  if (pTfBuilderId == "-1") {
+  } else if (pTfBuilderId == "-1") { // check if it is drop request from the scheduler
     pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
     mDropQueue.push(std::move(lStfIter->second));
     mScheduledStfMap.erase(lStfIter);
-    return;
   } else {
     auto lTfBuilderIter = mOutputMap.find(pTfBuilderId);
     if (lTfBuilderIter == mOutputMap.end()) {
@@ -326,11 +321,24 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     // we clean the buffer when data is sent
     pRes.set_status(StfDataResponse::OK);
 
-    mCounters.mInSending.mSize += lStfIter->second->getDataSize();
+    const auto lStfSize = lStfIter->second->getDataSize();
+    const auto lStfId = lStfIter->second->id();
+    mCounters.mInSending.mSize += lStfSize;
     mCounters.mInSending.mCnt += 1;
 
     auto lStfNode = mScheduledStfMap.extract(lStfIter);
     lTfBuilderIter->second.mStfQueue->push(std::move(lStfNode.mapped()));
+
+    // monitoring
+    {
+      using hres_clock = std::chrono::high_resolution_clock;
+      static decltype(hres_clock::now()) sStfStartTime = hres_clock::now();
+      const auto lDuration = std::chrono::duration<double>(hres_clock::now() - sStfStartTime);
+      DDMON("stfsender", "stf_output.stf_id", lStfId);
+      DDMON("stfsender", "stf_output.stf_rate", (1.0 / lDuration.count()));
+      DDMON("stfsender", "stf_output.stf_size", lStfSize);
+      sStfStartTime = hres_clock::now();
+    }
 
     if (lTfBuilderIter->second.mStfQueue->size() > 50) {
       WDDLOG_RL(1000, "SendToTfBuilder: STF queue backlog. queue_size={}", lTfBuilderIter->second.mStfQueue->size());
@@ -390,11 +398,18 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
       mCounters.mBuffered.mCnt -= 1;
       mCounters.mInSending.mSize -= lStfSize;
       mCounters.mInSending.mCnt -= 1;
+      mCounters.mTotalSent.mSize += lStfSize;
+      mCounters.mTotalSent.mCnt += 1;
 
       if (mCounters.mInSending.mCnt > 100) {
         DDDLOG_RL(2000, "DataHandlerThread: Number of buffered STFs. tfb_id={} num_stfs={} num_stf_total={} size_stf_total={}",
           pTfBuilderId, lInputStfQueue->size(), mCounters.mInSending.mCnt, mCounters.mInSending.mSize);
       }
+
+      DDMON("stfsender", "stf_output.sent_count", mCounters.mTotalSent.mCnt);
+      DDMON("stfsender", "stf_output.sent_size", mCounters.mTotalSent.mSize);
+      DDMON("stfsender", "buffered.stf_cnt", mCounters.mBuffered.mCnt);
+      DDMON("stfsender", "buffered.stf_size", mCounters.mBuffered.mSize);
     }
   }
 
@@ -426,6 +441,9 @@ void StfSenderOutput::StfDropThread()
       std::scoped_lock lLock(mScheduledStfMapLock);
       mCounters.mBuffered.mSize -= lStfSize;
       mCounters.mBuffered.mCnt -= 1;
+
+      DDMON("stfsender", "buffered.stf_size", mCounters.mBuffered.mSize);
+      DDMON("stfsender", "buffered.stf_cnt", mCounters.mBuffered.mCnt);
     }
   }
 

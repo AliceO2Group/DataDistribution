@@ -38,6 +38,8 @@ int main(int argc, char* argv[])
 
       // Add InfoLogger Options
       r.fConfig.AddToCmdLineOptions(impl::DataDistLoggerCtx::getProgramOptions());
+      // Add Monitoring Options
+      r.fConfig.AddToCmdLineOptions(DataDistMonitor::getProgramOptions());
 
       // TfBuilder options
       bpo::options_description lTfBuilderOptions("TfBuilder options", 120);

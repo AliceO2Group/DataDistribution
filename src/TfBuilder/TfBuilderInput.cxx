@@ -170,6 +170,7 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
   for (auto &[lSocketIdx, lStfSenderId] : lConnResult.connection_map()) {
     char lThreadName[128];
     std::snprintf(lThreadName, 127, "tfb_in_%03u", (unsigned)lSocketIdx);
+    lThreadName[15] = '\0';
 
     mInputThreads.try_emplace(
       lStfSenderId,
@@ -246,15 +247,9 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
       mStfMergerThread = {};
     }
   }
-  IDDLOG("TfBuilderInput::stop: Merger thread stopped.");
+  DDDLOG("TfBuilderInput::stop: Merger thread stopped.");
   IDDLOG("TfBuilderInput: Teardown complete.");
 }
-
-
-// TODO: add thread that waits on: getNewTfBuildingRequest()
-// -> and sends the data request to StfBuilders.
-
-
 
 /// Receiving thread
 void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)

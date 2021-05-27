@@ -44,6 +44,12 @@ public:
       std::uint64_t mSize = 0;
       std::uint32_t mCnt = 0;
     } mInSending;
+
+    // total sent
+    struct alignas(128) {
+      std::uint64_t mSize = 0;
+      std::uint64_t mCnt = 0;
+    } mTotalSent;
   };
 
   StfSenderOutput() = delete;
@@ -74,6 +80,13 @@ public:
     return mCounters;
   }
 
+  StdSenderOutputCounters resetCounters() {
+    std::scoped_lock lLock(mScheduledStfMapLock);
+    StdSenderOutputCounters lRet = mCounters;
+    mCounters = StdSenderOutputCounters();
+    return lRet;
+  }
+
  private:
   /// Ref to the main SubTimeBuilder O2 device
   StfSenderDevice& mDevice;
@@ -100,7 +113,7 @@ public:
   mutable std::mutex mOutputMapLock;
     std::map<std::string, OutputChannelObjects> mOutputMap;
 
-  // Buffer mainenance
+  // Buffer maintenance
   std::uint64_t mBufferSize = std::uint64_t(32) << 30;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mDropQueue;
   std::thread mStfDropThread;
