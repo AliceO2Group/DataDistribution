@@ -32,9 +32,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/asio/ip/host_name.hpp>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 struct ProcessType {
@@ -85,6 +83,8 @@ struct ProcessType {
     assert(0 && "Should not reach");
     return "UnknownType";
   }
+
+  constexpr operator int() const { return mType; }
 };
 
 constexpr const ProcessType ProcessType::StfBuilder{1};
@@ -229,7 +229,6 @@ private:
 };
 
 
-}
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_DATADIST_CONFIG_H_ */

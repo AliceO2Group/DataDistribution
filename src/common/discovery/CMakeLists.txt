@@ -64,8 +64,8 @@ target_link_libraries(discovery
     ppconsul
     protobuf::libprotobuf
     gRPC::grpc++_unsecure
+    FairMQ::FairMQ
   PRIVATE
     base
-    FairMQ::FairMQ
     Boost::program_options
 )

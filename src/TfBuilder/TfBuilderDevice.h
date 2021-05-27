@@ -25,6 +25,7 @@
 #include <ConcurrentQueue.h>
 #include <Utilities.h>
 #include <FmqUtilities.h>
+#include <DataDistMonitoring.h>
 
 #include <deque>
 #include <mutex>
@@ -147,13 +148,6 @@ class TfBuilderDevice : public DataDistDevice,
 
   /// TF forwarding thread
   std::thread mTfFwdThread;
-
-  /// Info thread
-  void InfoThread();
-  std::thread mInfoThread;
-
-  RunningSamples<uint64_t> mTfSizeSamples;
-  RunningSamples<float> mTfTimeSamples;
 
   std::atomic_bool mRunning = false;
   std::atomic_bool mShouldExit = false;

@@ -16,6 +16,7 @@
 
 #include <MemoryUtils.h>
 #include <DataDistLogger.h>
+#include <DataDistMonitoring.h>
 
 #include <condition_variable>
 #include <stdexcept>
@@ -40,6 +41,7 @@ void TfBuilderRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, int &lReal
 
 bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize)
 {
+  mBufferSize = pBufferSize;
   mCurrentTfBufferSize = pBufferSize;
   mTerminateRequested = false;
 
@@ -220,6 +222,7 @@ bool TfBuilderRpcImpl::recordTfBuilt(const SubTimeFrame &pTf)
     return false;
   }
   const auto lTfSize = pTf.getDataSize();
+  const auto lTfId = pTf.id();
 
   {
     std::scoped_lock lLock(mTfIdSizesLock);
@@ -231,14 +234,15 @@ bool TfBuilderRpcImpl::recordTfBuilt(const SubTimeFrame &pTf)
       mCurrentTfBufferSize = 0;
     }
 
-    assert (mTfIdSizes.count(pTf.header().mId) == 0);
+    assert (mTfIdSizes.count(lTfId) == 0);
 
     // save the size and id to increment the state later
-    mTfIdSizes[pTf.header().mId] = lTfSize;
-
+    mTfIdSizes[lTfId] = lTfSize;
     mNumBufferedTfs++;
+    mLastBuiltTfId = std::max(mLastBuiltTfId, lTfId);
 
-    mLastBuiltTfId = std::max(mLastBuiltTfId, pTf.header().mId);
+    DDMON("tfbuilder", "buffered.tf_cnt", mNumBufferedTfs);
+    DDMON("tfbuilder", "buffered.tf_size", mBufferSize - mCurrentTfBufferSize);
   }
   mUpdateCondition.notify_one();
 
@@ -264,8 +268,10 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
 
     // remove the tf id from the map
     mTfIdSizes.erase(pTfId);
-
     mNumBufferedTfs--;
+
+    DDMON("tfbuilder", "buffered.tf_cnt", mNumBufferedTfs);
+    DDMON("tfbuilder", "buffered.tf_size", mBufferSize - mCurrentTfBufferSize);
   }
 
   mUpdateCondition.notify_one();

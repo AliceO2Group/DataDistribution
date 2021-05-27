@@ -32,9 +32,7 @@ using namespace std::chrono_literals;
 TfBuilderDevice::TfBuilderDevice()
   : DataDistDevice(),
     IFifoPipeline(eTfPipelineSize),
-    mFileSink(*this, *this, eTfFileSinkIn, eTfFileSinkOut),
-    mTfSizeSamples(),
-    mTfTimeSamples()
+    mFileSink(*this, *this, eTfFileSinkIn, eTfFileSinkOut)
 {
 }
 
@@ -62,6 +60,11 @@ void TfBuilderDevice::InitTask()
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
   mTfBufferSize <<= 20; /* input parameter is in MiB */
+
+  // start monitoring
+  DataDistMonitor::start_datadist(ProcessType::TfBuilder, GetConfig()->GetValue<std::string>("monitoring-backend"));
+  DataDistMonitor::set_rate(GetConfig()->GetValue<float>("monitoring-rate"));
+  DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
 
   // Using DPL?
   if (mDplChannelName != "") {
@@ -112,7 +115,7 @@ void TfBuilderDevice::InitTask()
     WDDLOG("TfBuilder waiting on 'discovery-partition' config parameter.");
     std::this_thread::sleep_for(1s);
   }
-  mPartitionId = *Config::getPartitionOption(*GetConfig());
+  mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("INVALID_PARTITION");
   lStatus.mutable_partition()->set_partition_id(mPartitionId);
 
   // File sink
@@ -165,6 +168,9 @@ void TfBuilderDevice::PreRun()
   // make directory for the file sink
   mFileSink.makeDirectory();
 
+  // enable monitoring
+  DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, mPartitionId);
+
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 
@@ -201,9 +207,6 @@ bool TfBuilderDevice::start()
     return false;
   }
 
-  // start the info thread
-  mInfoThread = create_thread_member("tfb_info", &TfBuilderDevice::InfoThread, this);
-
   return true;
 }
 
@@ -236,12 +239,6 @@ void TfBuilderDevice::stop()
   }
   DDDLOG("TfBuilderDevice::stop(): Forward thread stopped.");
 
-  //wait for the info thread
-  if (mInfoThread.joinable()) {
-    mInfoThread.join();
-  }
-  DDDLOG("TfBuilderDevice::stop(): Info thread stopped.");
-
   // stop the RPCs
   if (mRpc) {
     mRpc->stop();
@@ -254,6 +251,9 @@ void TfBuilderDevice::stop()
   if (mTfBuilder) {
     mTfBuilder->stop();
   }
+
+  // stop monitoring
+  DataDistMonitor::stop_datadist();
 
   DDDLOG("TfBuilderDevice() stopped... ");
 }
@@ -272,6 +272,9 @@ void TfBuilderDevice::PostRun()
   lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
   mDiscoveryConfig->write();
 
+  // disable monitoring
+  DataDistMonitor::disable_datadist();
+
   IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 
@@ -289,7 +292,7 @@ bool TfBuilderDevice::ConditionalRun()
 void TfBuilderDevice::TfForwardThread()
 {
   using hres_clock = std::chrono::high_resolution_clock;
-  const auto lFreqStartTime = hres_clock::now();
+  auto lRateStartTime = hres_clock::now();
   std::uint64_t lTfOutCnt = 0;
 
   while (mRunning) {
@@ -299,19 +302,19 @@ void TfBuilderDevice::TfForwardThread()
       break;
     }
 
-    const auto lTfId = lTf->header().mId;
-
-    // MON: record frequency and size of TFs
+    const auto lTfId = lTf->id();
     {
-      mTfTimeSamples.Fill((float)std::chrono::duration<double>(hres_clock::now() - lFreqStartTime).count());
-      // size samples
-      mTfSizeSamples.Fill(lTf->getDataSize());
+      const auto lStfDur = std::chrono::duration<double>(hres_clock::now() - lRateStartTime);
+      lRateStartTime = hres_clock::now();
+      DDMON("tfbuilder", "tf_output.id", lTfId);
+      DDMON("tfbuilder", "tf_output.size", lTf->getDataSize());
+      DDMON("tfbuilder", "tf_output.rate", 1.0 / lStfDur.count());
     }
 
     if (!mStandalone) {
       try {
         lTfOutCnt++;
-        IDDLOG_RL(1000, "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={:d}",
+        IDDLOG_RL(5000, "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={:d}",
           lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), lTfOutCnt);
 
         if (dplEnabled()) {
@@ -362,20 +365,7 @@ void TfBuilderDevice::TfForwardThread()
     std::this_thread::sleep_for(2s);
   }
 
-  IDDLOG("Exiting TF forwarding thread.");
-}
-
-void TfBuilderDevice::InfoThread()
-{
-  while (mRunning) {
-
-    IDDLOG("TimeFrame size_mean={} in_frequency_mean={:.4} queued_stf={}",
-      mTfSizeSamples.Mean(), mTfTimeSamples.MeanStepFreq(), getPipelineSize());
-
-    std::this_thread::sleep_for(5s);
-  }
-
-  DDDLOG("Exiting info thread...");
+  DDDLOG("Exiting TF forwarding thread.");
 }
 
 } /* namespace o2::DataDistribution */
