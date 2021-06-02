@@ -368,7 +368,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
 
           if (mDplEnabled) {
             auto lStack = Stack(
-              reinterpret_cast<o2::byte*>(lHeader->GetData()),
+              reinterpret_cast<std::byte*>(lHeader->GetData()),
               o2::framework::DataProcessingHeader{pStf->header().mId}
             );
 
