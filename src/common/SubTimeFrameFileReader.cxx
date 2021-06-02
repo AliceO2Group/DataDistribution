@@ -118,7 +118,7 @@ Stack SubTimeFrameFileReader::getHeaderStack(std::size_t &pOrigsize)
     return Stack{};
   }
 
-  o2::byte* lStackMem = peek();
+  std::byte* lStackMem = peek();
   if (!ignore_nbytes(lStackSize) ) {
     // error in the stream
     pOrigsize = 0;
