@@ -137,7 +137,7 @@ Stack SubTimeFrameFileReader::getHeaderStack(std::size_t &pOrigsize)
 
     // Write over the new DataHeader. We need to update some of the BaseHeader values.
     assert (sizeof (DataHeader) > lBaseOfDH->size() ); // current DataHeader must be larger
-    std::memcpy(&lNewDh, lBaseOfDH->data(), lBaseOfDH->size());
+    std::memcpy(&lNewDh, (void*)lBaseOfDH->data(), lBaseOfDH->size());
 
     // make sure to bump the version in the BaseHeader.
     // TODO: Is there a better way?
