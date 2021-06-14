@@ -66,7 +66,7 @@ void StfSenderDevice::InitTask()
   I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
 
   // start monitoring
-  DataDistMonitor::start_datadist(ProcessType::StfSender, GetConfig()->GetValue<std::string>("monitoring-backend"));
+  DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfSender, GetConfig()->GetProperty<std::string>("monitoring-backend"));
   DataDistMonitor::set_rate(GetConfig()->GetValue<float>("monitoring-rate"));
   DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
 
@@ -284,7 +284,7 @@ void StfSenderDevice::StfReceiverThread()
     ++lReceivedStfs;
     DDDLOG_RL(5000, "StfSender received total of {} STFs.", lReceivedStfs);
 
-    IDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
+    DDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
     I().queue(eReceiverOut, std::move(lStf));

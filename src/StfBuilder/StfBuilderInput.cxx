@@ -260,14 +260,12 @@ void StfInputInterface::StfBuilderThread()
         }
 
         mSeqStfQueue.push(std::move(*lStf));
-        { // MON: data of a new STF received, get the freq and new start time
+        {
           auto lNow = hres_clock::now();
           std::chrono::duration<double> lTimeDiff = lNow - lStartSec;
           lStartSec = lNow;
-          mStfTimeMean += (lTimeDiff.count()/100.0 - mStfTimeMean/100.0);
+          DDMON("stfbuilder", "stf_input.rate", (1.0 / lTimeDiff.count()));
         }
-      } else {
-        mStfTimeMean *= 2.0;
       }
     };
 
@@ -418,8 +416,13 @@ void StfInputInterface::StfSequencerThread()
 
   static constexpr std::uint64_t sMaxMissingStfsForSeq = 2ull * 11234 / 256; // 2 seconds of STFs
 
+  std::uint64_t lMissingStfs = 0;
+
   while (mRunning) {
     auto lStf = mSeqStfQueue.pop_wait_for(500ms);
+
+    // monitoring cumulative metric
+    DDMON("stfbuilder", "stf_input.missing.total", lMissingStfs);
 
     if (lStf == std::nullopt || !mAcceptingData) {
       continue;
@@ -456,6 +459,8 @@ void StfInputInterface::StfSequencerThread()
           auto lEmptyStf = std::make_unique<SubTimeFrame>(lStfIdIdx);
           (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eNull);
           mDevice.I().queue(eStfBuilderOut, std::move(lEmptyStf));
+
+          lMissingStfs++;
         }
       } else {
         WDDLOG_RL(1000, "READOUT_INTERFACE: Large STF gap. previous_stf_id={} current_stf_id={} num_missing={}",
@@ -465,6 +470,7 @@ void StfInputInterface::StfSequencerThread()
       // insert the actual stf
       mLastSeqStfId = lCurrId;
       mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
+
       continue;
     }
 

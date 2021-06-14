@@ -96,6 +96,11 @@ void StfBuilderDevice::InitTask()
   I().mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
   I().mMaxBuiltStfs = GetConfig()->GetValue<std::uint64_t>(OptionKeyMaxBuiltStfs);
 
+  // start monitoring
+  DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend", ""));
+  DataDistMonitor::set_rate(GetConfig()->GetValue<float>("monitoring-rate"));
+  DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
+
   // input data handling
   ReadoutDataUtils::sSpecifiedDataOrigin = getDataOriginFromOption(
     GetConfig()->GetValue<std::string>(OptionKeyStfDetector));
@@ -222,9 +227,6 @@ void StfBuilderDevice::InitTask()
     I().mReadoutInterface->start();
   }
 
-  // info thread
-  I().mInfoThread = create_thread_member("stfb_info", &StfBuilderDevice::InfoThread, this);
-
   IDDLOG("InitTask() done... ");
 }
 
@@ -257,11 +259,6 @@ void StfBuilderDevice::ResetTask()
     I().mOutputThread.join();
   }
 
-  // wait for the info thread
-  if (I().mInfoThread.joinable()) {
-    I().mInfoThread.join();
-  }
-
   // stop the memory resources very last
   MemI().stop();
 
@@ -270,6 +267,8 @@ void StfBuilderDevice::ResetTask()
 
 void StfBuilderDevice::StfOutputThread()
 {
+  using hres_clock = std::chrono::high_resolution_clock;
+
   std::unique_ptr<InterleavedHdrDataSerializer> lStfSerializer;
   std::unique_ptr<StfToDplAdapter> lStfDplAdapter;
 
@@ -285,27 +284,35 @@ void StfBuilderDevice::StfOutputThread()
     }
   }
 
-  while (I().mState.mRunning) {
-    using hres_clock = std::chrono::high_resolution_clock;
+  decltype(hres_clock::now()) lStfStartTime = hres_clock::now();
 
+  while (I().mState.mRunning) {
     // Get a STF ready for sending
     std::unique_ptr<SubTimeFrame> lStf = I().dequeue(eStfSendIn);
     if (!lStf) {
+      DDMON("stfbuilder", "stf_input.rate", 0);
+      DDMON("stfbuilder", "stf_input.size", 0);
       break;
     }
 
     // decrement the stf counter
     I().mCounters.mNumStfs--;
 
-    DDDLOG_RL(2000, "Sending an STF out. stf_id={} stf_size={} unique_equipments={}",
-      lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
+    DDDLOG_RL(5000, "Sending an STF out. stf_id={} stf_size={} unique_equipments={}",
+      lStf->id(), lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
-    // get data size sample
-    I().mStfSizeMean += (lStf->getDataSize()/64 - I().mStfSizeMean/64);
+    {
+      // Output STF frequency
+      const auto lNow = hres_clock::now();
+      const auto lStfDur = std::chrono::duration<double>(lNow - lStfStartTime);
+      lStfStartTime = lNow;
+
+      DDMON("stfbuilder", "stf_output.rate", (1.0 / lStfDur.count()));
+      DDMON("stfbuilder", "stf_output.size", lStf->getDataSize());
+      DDMON("stfbuilder", "stf_output.id", lStf->id());
+    }
 
     if (!isStandalone()) {
-      const auto lSendStartTime = hres_clock::now();
-
       try {
 
         if (!dplEnabled()) {
@@ -335,11 +342,10 @@ void StfBuilderDevice::StfOutputThread()
 
       I().mSentOutStfs++;
       I().mSentOutStfsTotal++;
+      DDMON("stfbuilder", "stf_output.total", I().mSentOutStfsTotal);
 
       const auto lNow = hres_clock::now();
-      const double lTimeMs = std::max(1e-6, std::chrono::duration<double, std::milli>(lNow - lSendStartTime).count());
       I().mSentOutRate = double(I().mSentOutStfs) / std::chrono::duration<double>(lNow - sStartOfStfSending).count();
-      I().mStfDataTimeSamples += (lTimeMs / 100.0 - I().mStfDataTimeSamples / 100.0);
     }
 
     // check if we should exit:
@@ -380,24 +386,7 @@ void StfBuilderDevice::StfOutputThread()
   DDDLOG("Exiting StfOutputThread...");
 }
 
-void StfBuilderDevice::InfoThread()
-{
-  while (I().mState.mRunning) {
 
-    std::this_thread::sleep_for(2s);
-
-    if (I().mState.mPaused) {
-      continue;
-    }
-
-    IDDLOG("SubTimeFrame size_mean={} frequency_mean={:.4} sending_time_ms_mean={:.4} queued_stf={}",
-      I().mStfSizeMean, (1.0 / I().mReadoutInterface->StfTimeMean()),
-      I().mStfDataTimeSamples, I().mCounters.mNumStfs);
-    IDDLOG("SubTimeFrame sent_total={} rate={:.4}", I().mSentOutStfsTotal, I().mSentOutRate);
-  }
-
-  DDDLOG("Exiting Info thread...");
-}
 
 bool StfBuilderDevice::ConditionalRun()
 {
