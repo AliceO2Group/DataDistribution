@@ -23,38 +23,18 @@
 namespace o2::DataDistribution
 {
 
-DataDistMonitoring::DataDistMonitoring(const ProcessType pProc, const std::string &pUriList)
+DataDistMonitoring::DataDistMonitoring(const o2::monitoring::tags::Value pProc, const std::string &pUriList)
 {
   using namespace o2::monitoring;
 
-  switch (pProc) {
-
-    case ProcessType::StfBuilder:
-      mSubSystem = tags::Value::StfBuilder;
-      break;
-    case ProcessType::StfSender:
-      mSubSystem = tags::Value::StfSender;
-      break;
-    case ProcessType::TfBuilder:
-      mSubSystem = tags::Value::TfBuilder;
-      break;
-    case ProcessType::TfSchedulerService:
-      mSubSystem = tags::Value::TfScheduler;
-      break;
-    case ProcessType::TfSchedulerInstance:
-      mSubSystem = tags::Value::TfScheduler;
-      break;
-
-    default:
-      break;
-  }
-
+  mSubSystem = pProc;
   mUriList = pUriList;
 
   if (!mUriList.empty()) {
     mO2Monitoring = o2::monitoring::MonitoringFactory::Get(pUriList);
-    mO2Monitoring->addGlobalTag(tags::Key::Subsystem, mSubSystem);
-    mO2Monitoring->enableBuffering(512);
+    mO2Monitoring->addGlobalTag(tags::Key::Subsystem, tags::Value::DataDistribution);
+    mO2Monitoring->addGlobalTag(tags::Key::Rolename, mSubSystem);
+    mO2Monitoring->enableBuffering(1024);
   }
 
   mRunning = true;
@@ -200,7 +180,7 @@ void DataDistMonitoring::MonitorThread()
 std::unique_ptr<DataDistMonitoring> DataDistMonitor::mDataDistMon = nullptr;
 std::unique_ptr<DataDistMonitoring> DataDistMonitor::mSchedMon = nullptr;
 
-void DataDistMonitor::start_datadist(const ProcessType pProc, const std::string &pDatadistUris)
+void DataDistMonitor::start_datadist(const o2::monitoring::tags::Value pProc, const std::string &pDatadistUris)
 {
   mDataDistMon = std::make_unique<DataDistMonitoring>(pProc, pDatadistUris);
 }
@@ -209,7 +189,7 @@ void DataDistMonitor::stop_datadist()
   mDataDistMon = nullptr;
 }
 
-void DataDistMonitor::start_scheduling(const ProcessType pProc, const std::string &pSchedulingUris)
+void DataDistMonitor::start_scheduling(const o2::monitoring::tags::Value pProc, const std::string &pSchedulingUris)
 {
   if (!pSchedulingUris.empty()) {
     mSchedMon = std::make_unique<DataDistMonitoring>(pProc, pSchedulingUris);

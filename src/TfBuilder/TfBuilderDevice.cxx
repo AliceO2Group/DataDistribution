@@ -62,7 +62,7 @@ void TfBuilderDevice::InitTask()
   mTfBufferSize <<= 20; /* input parameter is in MiB */
 
   // start monitoring
-  DataDistMonitor::start_datadist(ProcessType::TfBuilder, GetConfig()->GetValue<std::string>("monitoring-backend"));
+  DataDistMonitor::start_datadist(o2::monitoring::tags::Value::TfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend"));
   DataDistMonitor::set_rate(GetConfig()->GetValue<float>("monitoring-rate"));
   DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
 

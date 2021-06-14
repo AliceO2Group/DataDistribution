@@ -14,7 +14,6 @@
 #ifndef DATADIST_MONITORING_H_
 #define DATADIST_MONITORING_H_
 
-#include <Config.h>
 #include <Monitoring/Monitoring.h>
 #include <Monitoring/Tags.h>
 #include <Monitoring/Metric.h>
@@ -40,7 +39,7 @@ struct DataDistMetric {
 class DataDistMonitoring {
 public:
   DataDistMonitoring() = delete;
-  DataDistMonitoring(const ProcessType pProc, const std::string &pUriList);
+  DataDistMonitoring(const o2::monitoring::tags::Value pProc, const std::string &pUriList);
   ~DataDistMonitoring();
 
   inline void push(const std::string_view &pName, const std::string_view &pKey, double pVal) {
@@ -100,10 +99,10 @@ private:
 
 class DataDistMonitor {
 public:
-  static void start_datadist(const ProcessType pProc, const std::string &pDatadistUris);
+  static void start_datadist(const o2::monitoring::tags::Value pProc, const std::string &pDatadistUris);
   static void stop_datadist();
 
-  static void start_scheduling(const ProcessType pProc, const std::string &pSchedulingUris);
+  static void start_scheduling(const o2::monitoring::tags::Value pProc, const std::string &pSchedulingUris);
   static void stop_scheduling();
 
   static void enable_datadist(const std::uint32_t pRunNum, const std::string_view &pPartId) {

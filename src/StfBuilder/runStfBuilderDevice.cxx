@@ -40,6 +40,8 @@ int main(int argc, char* argv[])
 
       // Add InfoLogger Options
       r.fConfig.AddToCmdLineOptions(impl::DataDistLoggerCtx::getProgramOptions());
+      // Add Monitoring Options
+      r.fConfig.AddToCmdLineOptions(DataDistMonitor::getProgramOptions());
 
       bpo::options_description lStfBuilderOptions("StfBuilder options", 120);
 

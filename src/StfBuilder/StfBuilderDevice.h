@@ -23,6 +23,7 @@
 #include <ConcurrentQueue.h>
 #include <Utilities.h>
 #include <FmqUtilities.h>
+#include <DataDistMonitoring.h>
 
 #include <deque>
 #include <memory>
@@ -124,8 +125,12 @@ class StfBuilderDevice : public DataDistDevice
       I().mFileSink->makeDirectory();
     }
 
+    // enable monitoring
+    DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, GetConfig()->GetProperty<std::string>("discovery-partition", "-"));
+
     IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
   }
+
   virtual void PostRun() override final {
 
     if (I().mReadoutInterface) {
@@ -137,6 +142,9 @@ class StfBuilderDevice : public DataDistDevice
       I().mFileSource->pause();
       IDDLOG("Pausing file source.");
     }
+
+    // disable monitoring
+    DataDistMonitor::disable_datadist();
 
     IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
   }
@@ -178,10 +186,6 @@ class StfBuilderDevice : public DataDistDevice
     /// File source
     std::unique_ptr<SubTimeFrameFileSource> mFileSource;
 
-    /// Info thread
-    std::thread mInfoThread;
-    uint64_t mStfSizeMean;
-    double mStfDataTimeSamples;
     std::uint64_t mSentOutStfsTotal = 0;
     std::uint64_t mSentOutStfs = 0; // used to calculate the rate (pause/resume)
     double mSentOutRate = 0.0;

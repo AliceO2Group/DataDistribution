@@ -124,6 +124,8 @@ STF_BUILDER+=" $CHECKRDH"
 STF_BUILDER+=" --io-threads $IO_THREADS"
 STF_BUILDER+=" --detector $DETECTOR"
 STF_BUILDER+=" --detector-rdh 4"
+STF_BUILDER+=" --monitoring-rate=1.0"
+STF_BUILDER+=" --monitoring-log"
 
 if [[ ! -z $STF_BUILDER_DPL_CHAN ]]; then
   STF_BUILDER+=" --dpl-channel-name=$STF_BUILDER_DPL_CHAN"

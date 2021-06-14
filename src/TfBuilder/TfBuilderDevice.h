@@ -57,7 +57,6 @@ class TfBuilderDevice : public DataDistDevice,
  public:
   static constexpr const char* OptionKeyStandalone = "stand-alone";
   static constexpr const char* OptionKeyTfMemorySize = "tf-memory-size";
-
   static constexpr const char* OptionKeyDplChannelName = "dpl-channel-name";
 
   /// Default constructor
