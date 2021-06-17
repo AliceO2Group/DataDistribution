@@ -43,9 +43,14 @@ bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize)
 {
   mBufferSize = pBufferSize;
   mCurrentTfBufferSize = pBufferSize;
-  mTerminateRequested = false;
 
   // Interact with the scheduler
+  if (!mTfSchedulerRpcClient.should_retry_start()) {
+    WDDLOG("TfSchedulerRpc: Failed to connect to scheduler. Exiting.");
+    mTerminateRequested = true;
+    return false;
+  }
+
   if (!mTfSchedulerRpcClient.start(mDiscoveryConfig)) {
     return false;
   }

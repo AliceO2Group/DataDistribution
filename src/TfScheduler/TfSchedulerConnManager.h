@@ -146,7 +146,10 @@ class TfSchedulerConnManager
   }
 
   StfSenderState getStfSenderState() const { return mStfSenderState; }
-  std::size_t getStfSenderCount() const { return mStfSenderRpcClients.size(); }
+  std::size_t getStfSenderCount() {
+    std::scoped_lock lLock(mStfSenderClientsLock);
+    return mStfSenderRpcClients.size();
+  }
 
 private:
   /// Partition information

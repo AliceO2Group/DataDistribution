@@ -37,7 +37,7 @@ void TfSchedulerInstanceRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, 
   IDDLOG("gRPC server is staretd. server_ep={}:{}", pRpcSrvBindIp, lRealPort);
 }
 
-void TfSchedulerInstanceRpcImpl::start()
+bool TfSchedulerInstanceRpcImpl::start()
 {
   mRunning = true;
   mMonitorThread = create_thread_member("part_monitor", &TfSchedulerInstanceRpcImpl::PartitionMonitorThread, this);
@@ -52,9 +52,19 @@ void TfSchedulerInstanceRpcImpl::start()
   // start all client gRPC channels
   // This can block, waiting to connect to all StfSenders.
   // We have to loop and check if we should bail on Terminate request
+  static const auto sStartTimeout = 5 * 60s;
+  const auto lConnectionStartTime = std::chrono::steady_clock::now();
+
   while (accepting_updates() && !mConnManager.start()) {
     std::this_thread::sleep_for(500ms);
+    if (std::chrono::steady_clock::now() - lConnectionStartTime > sStartTimeout) {
+      DDDLOG("Failed to reach all StfSenders in {} seconds.",sStartTimeout.count());
+      updatePartitionState(PartitionState::PARTITION_ERROR);
+      return false;
+    }
   }
+
+  return true;
 }
 
 void TfSchedulerInstanceRpcImpl::stop()
@@ -78,7 +88,14 @@ void TfSchedulerInstanceRpcImpl::stop()
 
 void TfSchedulerInstanceRpcImpl::updatePartitionState(const PartitionState pNewState)
 {
+  // ignore final states
+  if (mPartitionState == PartitionState::PARTITION_TERMINATED ||
+    mPartitionState == PartitionState::PARTITION_ERROR) {
+    return;
+  }
+
   if (pNewState != mPartitionState) {
+
     IDDLOG("PartitionState: Changing partition state from '{}' to '{}'",
       PartitionState_Name(mPartitionState), PartitionState_Name(pNewState));
     mPartitionState = pNewState;
@@ -95,7 +112,8 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
     std::this_thread::sleep_for(500ms);
 
     // In teardown?
-    if (mPartitionState == PartitionState::PARTITION_TERMINATING) {
+    if (mPartitionState == PartitionState::PARTITION_TERMINATING
+      || mPartitionState == PartitionState::PARTITION_ERROR) {
       // Notify TfBuilders
       if (mConnManager.requestTfBuildersTerminate()) {
         IDDLOG("PartitionMonitorThread: All TfBuilders have terminated.");
@@ -103,10 +121,10 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 
       if (mConnManager.requestStfSendersTerminate()) {
         IDDLOG("PartitionMonitorThread: All StfSenders requested to terminate.");
-        // safe to exit now
-        mStfInfo.stop();
 
-        updatePartitionState(PartitionState::PARTITION_TERMINATED);
+        if (mPartitionState == PartitionState::PARTITION_TERMINATING) {
+          updatePartitionState(PartitionState::PARTITION_TERMINATED);
+        }
         break;
       }
 
@@ -173,7 +191,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
     case StfSenderState::STF_SENDER_STATE_INITIALIZING:
     {
       response->set_partition_state(PartitionState::PARTITION_CONFIGURING);
-      const auto lMsg = fmt::format("Partition is being configured. Found {} out of {} StfSenders.",
+      const auto lMsg = fmt::format("Partition is being configured. Connected to {} out of {} StfSenders.",
         mConnManager.getStfSenderCount(), mConnManager.getStfSenderSet().size());
       response->set_info_message(lMsg);
       break;

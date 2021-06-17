@@ -128,8 +128,14 @@ void StfSenderDevice::InitTask()
       I().mDiscoveryConfig->write();
 
       // contact the scheduler on gRPC
-      while (!I().mTfSchedulerRpcClient.start(I().mDiscoveryConfig)) {
-        std::this_thread::sleep_for(250ms);
+      while (I().mTfSchedulerRpcClient.should_retry_start() && !I().mTfSchedulerRpcClient.start(I().mDiscoveryConfig)) {
+        std::this_thread::sleep_for(100ms * (rand()%5 + 1));
+      }
+
+      // We failed to connect to the TfScheduler
+      if (!I().mTfSchedulerRpcClient.should_retry_start()) {
+        EDDLOG("InitTask: Failed to connect to TfScheduler. Exiting.");
+        throw std::runtime_error("Cannot connect to TfScheduler.");
       }
     }
 

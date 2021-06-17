@@ -89,24 +89,30 @@ public:
     mCompleteStfsInfoQueue.stop();
 
     if (mSchedulingThread.joinable()) {
+      DDDLOG("Waiting on TfSchedulerStfInfo::SchedulingThread");
       mSchedulingThread.join();
     }
 
     if (mStaleStfThread.joinable()) {
+      DDDLOG("Waiting on TfSchedulerStfInfo::StaleCleanupThread");
       mStaleStfThread.join();
     }
 
     if (mWatermarkThread.joinable()) {
+      DDDLOG("Waiting on TfSchedulerStfInfo::HighWatermarkThread");
       mWatermarkThread.join();
     }
 
     if (mDropThread.joinable()) {
+      DDDLOG("Waiting on TfSchedulerStfInfo::DropThread");
       mDropThread.join();
     }
 
     // delete all stf information
     std::unique_lock lLock(mGlobalStfInfoLock);
     mStfInfoMap.clear();
+
+    DDDLOG("Finished TfSchedulerStfInfo::stop");
   }
 
   void addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse);
