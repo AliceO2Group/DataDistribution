@@ -43,12 +43,13 @@ class TfSchedulerInstanceHandler
 
   ~TfSchedulerInstanceHandler();
 
-  void start();
+  bool start();
   void stop();
 
   void TfSchedulerInstanceThread();
 
   bool isTerminated() const { return mRpcServer.getPartitionState() == PartitionState::PARTITION_TERMINATED; }
+  bool isError() const { return mRpcServer.getPartitionState() == PartitionState::PARTITION_ERROR; }
 
  private:
     /// Partiton info

@@ -41,14 +41,31 @@ public:
   template <typename ConsulCli>
   bool start(std::shared_ptr<ConsulCli> pConfig) {
 
+    if (!mShouldRetryStart) {
+      return false;
+    }
+
     const auto &lPartitionId = pConfig->status().partition().partition_id();
 
     using namespace std::chrono_literals;
 
     mTfSchedulerConf.Clear();
     if (!pConfig->getTfSchedulerConfig(lPartitionId, mTfSchedulerConf)) {
-      IDDLOG_RL(1000, "TfScheduler instance configuration not found.");
+      // check for terminal states and exit
+      if (mTfSchedulerConf.partition_state() == PartitionState::PARTITION_ERROR ||
+          mTfSchedulerConf.partition_state() == PartitionState::PARTITION_TERMINATED) {
+        WDDLOG("Partition State: {}", PartitionState_Name(mTfSchedulerConf.partition_state()));
+        mShouldRetryStart = false;
+        return false;
+      }
+
+      IDDLOG_RL(1000, "TfScheduler instance configuration not found. Retrying.");
       return false;
+    }
+
+    // do not create a new connection if already connected
+    if (mChannel) {
+      return true;
     }
 
     const std::string &lEndpoint = mTfSchedulerConf.rpc_endpoint();
@@ -98,11 +115,16 @@ public:
     return false;
   }
 
+  bool should_retry_start() const { return mShouldRetryStart; }
+
 private:
   TfSchedulerInstanceConfigStatus mTfSchedulerConf;
 
   std::unique_ptr<TfSchedulerInstanceRpc::Stub> mStub;
   std::shared_ptr<grpc::Channel> mChannel;
+
+  // keep looking for the TfScheduler instance
+  bool mShouldRetryStart = true;
 };
 
 } /* namespace o2::DataDistribution */

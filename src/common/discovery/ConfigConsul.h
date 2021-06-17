@@ -387,6 +387,14 @@ public:
 
       Kv kv(*mConsul);
 
+      // get partition state
+      using namespace std::string_literals;
+      static const std::string sPartStateKey = getInfoPrefix(mStatus.partition().partition_id());
+      auto lPartState = kv.item(sPartStateKey + "/partition-state"s);
+      if (lPartState.valid() && !lPartState.value.empty()) {
+        pTfSchedulerStat.set_partition_state(o2::DataDistribution::PartitionState(stoul(lPartState.value)));
+      }
+
       // get all schedulers in the partition
       auto lReqItems = kv.items(lConsulKey);
       if (lReqItems.empty()) {

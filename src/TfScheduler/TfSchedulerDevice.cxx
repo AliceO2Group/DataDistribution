@@ -89,14 +89,17 @@ bool TfSchedulerDevice::ConditionalRun()
         std::string("0"), // TODO: add multiple schedulers
         lNewPartitionRequest
       );
-      mSchedInstance->start();
-
-      IDDLOG("Created new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
+      if (mSchedInstance->start()) {
+        IDDLOG("Created new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
+      } else {
+        EDDLOG("Failed to create new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
+        return false;
+      }
     }
   }
 
   if (mSchedInstance) {
-    if (mSchedInstance->isTerminated()) {
+    if (mSchedInstance->isTerminated() || mSchedInstance->isError()) {
       std::this_thread::sleep_for(2000ms);
       return false; // -> PostRun() -> exit
     }

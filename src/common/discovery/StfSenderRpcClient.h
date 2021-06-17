@@ -149,35 +149,34 @@ public:
       );
     }
 
-    IDDLOG_RL(1000, "gRPC: Connected to {} out of {} StfSender{}",
-      mClients.size(), lNumStfSenders, lNumStfSenders > 1 ? "s" : "");
-
-    if (mClients.size() != lNumStfSenders) {
-      static int sBackoff = 0;
-      sBackoff = std::min(sBackoff + 1, 10);
-      // back off until gRPC servers on all StfSeners become ready
-      std::this_thread::sleep_for(sBackoff * 100ms);
-    }
-
-    // retry connecting all Clients
-    if (!mRunning || mClients.size() < lNumStfSenders) {
-      return false;
-    }
-
-    // make sure all connections are ready
+    // make sure all connections are established
     bool lAllConnReady = true;
+    bool lWaitForStfSenders = false;
     {
       std::scoped_lock lLock(mClientsGlobalLock);
 
+      if (mClients.size() < lNumStfSenders) {
+        lWaitForStfSenders = true;
+        WDDLOG_RL(1000, "gRPC: Connected to {} out of {} StfSenders", mClients.size(), lNumStfSenders);
+      }
+
+      // check the connection on existing clients
       for (auto &[ mCliId, lClient] : mClients) {
         if (!lClient->is_ready()) {
           lAllConnReady = false;
-          WDDLOG("StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId,
-          lClient->grpc_status());
-       }
+          WDDLOG("StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
+        }
       }
     }
 
+    // retry connecting all Clients
+    if (lWaitForStfSenders) {
+      // back off until gRPC servers on all StfSeners become ready
+      std::this_thread::sleep_for(250ms);
+      return false;
+    }
+
+    // only continue when all connections are established
     mClientsCreated = lAllConnReady;
 
     return lAllConnReady;

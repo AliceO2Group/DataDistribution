@@ -145,6 +145,7 @@ void TfBuilderDevice::InitTask()
   // start the task
   if (!start()) {
     mShouldExit = true;
+    throw std::runtime_error("Aborting InitTask(). Cannot configure.");
   }
 
   // wait for the memory allocation and registration to finish
@@ -176,8 +177,13 @@ void TfBuilderDevice::PreRun()
 
 bool TfBuilderDevice::start()
 {
-  // start all gRPC clients
   while (!mRpc->start(mTfBufferSize)) {
+    // check if should stop looking for TfScheduler
+    if (mRpc->isTerminateRequested()) {
+      mShouldExit = true;
+      return false;
+    }
+
     // try to reach the scheduler unless we should exit
     if (IsRunningState() && NewStatePending()) {
       mShouldExit = true;

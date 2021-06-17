@@ -63,7 +63,7 @@ TfSchedulerInstanceHandler::~TfSchedulerInstanceHandler()
   stop();
 }
 
-void TfSchedulerInstanceHandler::start()
+bool TfSchedulerInstanceHandler::start()
 {
   mRunning = true;
   // create scheduler thread
@@ -71,9 +71,13 @@ void TfSchedulerInstanceHandler::start()
     &TfSchedulerInstanceHandler::TfSchedulerInstanceThread, this);
 
   // start rpc processing
-  mRpcServer.start();
+  if (!mRpcServer.start()) {
+    EDDLOG("Failed to reach all StfSenders. partition={}", mPartitionInfo.mPartitionId);
+    return false;
+  }
 
   DDDLOG("Started new TfSchedulerInstance. partition={}", mPartitionInfo.mPartitionId);
+  return true;
 }
 
 void TfSchedulerInstanceHandler::stop()

@@ -66,21 +66,24 @@ class TfSchedulerInstanceRpcImpl final : public TfSchedulerInstanceRpc::Service
 
 
   void initDiscovery(const std::string pRpcSrvBindIp, int &lRealPort /*[out]*/);
-  void start();
+  bool start();
   void stop();
 
   void PartitionMonitorThread();
 
   bool accepting_updates() const {
-    return !(mPartitionState == PartitionState::PARTITION_TERMINATING ||
-    mPartitionState == PartitionState::PARTITION_TERMINATED);
+    return !(
+      mPartitionState == PartitionState::PARTITION_TERMINATING ||
+      mPartitionState == PartitionState::PARTITION_TERMINATED ||
+      mPartitionState == PartitionState::PARTITION_ERROR
+    );
   }
 
   PartitionState getPartitionState() const { return mPartitionState; }
 
  private:
   /// Partition monitoring thread
-  bool mRunning = false;
+  std::atomic_bool mRunning = false;
   std::thread mMonitorThread;
 
   /// Discovery
