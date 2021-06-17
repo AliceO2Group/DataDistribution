@@ -27,9 +27,7 @@
 #include <tuple>
 #include <variant>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 ////////////////////////////////////////////////////////////////////////////////
 /// RDH reader interface
@@ -380,8 +378,15 @@ public:
     eRdhVer6 = 6,
   };
 
+  enum RunType {
+    eInvalid = -1,
+    ePhysics = 1,
+    eThresholdScan = 2,
+  };
+
   static o2::header::DataOrigin sSpecifiedDataOrigin; // to be initialized if not RDH6
   static RdhVersion sRdhVersion;
+  static RunType sRunType;
 
   static bool sEmptyTriggerHBFrameFilterring;
 
@@ -399,10 +404,11 @@ public:
 std::istream& operator>>(std::istream& in, ReadoutDataUtils::SanityCheckMode& pRetVal);
 std::istream& operator>>(std::istream& in, ReadoutDataUtils::SubSpecMode& pRetVal);
 std::istream& operator>>(std::istream& in, ReadoutDataUtils::RdhVersion& pRetVal);
+std::istream& operator>>(std::istream& in, ReadoutDataUtils::RunType& pRetVal);
 
 std::string to_string (ReadoutDataUtils::SubSpecMode c);
+std::string to_string (ReadoutDataUtils::RunType c);
 
-}
 } /* o2::DataDistribution */
 
 #endif /* ALICEO2_READOUT_DATAMODEL_H_ */

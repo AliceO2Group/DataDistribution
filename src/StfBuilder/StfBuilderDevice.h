@@ -64,6 +64,7 @@ class StfBuilderDevice : public DataDistDevice
   static constexpr const char* OptionKeyInputChannelName = "input-channel-name";
   static constexpr const char* OptionKeyOutputChannelName = "output-channel-name";
   static constexpr const char* OptionKeyDplChannelName = "dpl-channel-name";
+  static constexpr const char* OptionKeyRunType = "run-type";
   static constexpr const char* OptionKeyStandalone = "stand-alone";
   static constexpr const char* OptionKeyMaxBufferedStfs = "max-buffered-stfs";
   static constexpr const char* OptionKeyMaxBuiltStfs = "max-built-stfs";
