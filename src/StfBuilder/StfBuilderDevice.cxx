@@ -111,11 +111,31 @@ void StfBuilderDevice::InitTask()
   ReadoutDataUtils::sRawDataSubspectype =
     GetConfig()->GetValue<ReadoutDataUtils::SubSpecMode>(OptionKeySubSpec);
 
+  ReadoutDataUtils::sRunType = GetConfig()->GetValue<ReadoutDataUtils::RunType>(OptionKeyRunType);
+
   ReadoutDataUtils::sRdhSanityCheckMode =
     GetConfig()->GetValue<ReadoutDataUtils::SanityCheckMode>(OptionKeyRdhSanityCheck);
 
   ReadoutDataUtils::sEmptyTriggerHBFrameFilterring =
     GetConfig()->GetValue<bool>(OptionKeyFilterEmptyTriggerData);
+
+  // check run type
+  if (ReadoutDataUtils::sRunType == ReadoutDataUtils::RunType::eInvalid) {
+    EDDLOG("Run type paramter must be correctly set.");
+    throw std::logic_error("Run type paramter must be correctly set.");
+  }
+
+  // check run type
+  if (ReadoutDataUtils::sRunType == ReadoutDataUtils::RunType::eThresholdScan) {
+    if (! (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginITS) ||
+          (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginMFT)) {
+
+      EDDLOG("Run type paramter 'scan' is supported only for ITS and MFT. Please specify the detector option.");
+      throw std::logic_error("Run type paramter 'scan' is supported only for ITS and MFT. Please specify the detector option.");
+    }
+  }
+
+  IDDLOG("Configuration: Run type: '{}'", to_string(ReadoutDataUtils::sRunType));
 
   // Buffering limitation
   if (I().mMaxStfsInPipeline > 0) {
@@ -404,6 +424,11 @@ bpo::options_description StfBuilderDevice::getDetectorProgramOptions() {
   bpo::options_description lDetectorOptions("SubTimeFrameBuilder data source", 120);
 
   lDetectorOptions.add_options() (
+    OptionKeyRunType,
+    bpo::value<ReadoutDataUtils::RunType>()->default_value(ReadoutDataUtils::RunType::ePhysics, "physics"),
+    "Specifies the operation mode for STF building. Deafult 'physics' STF aggregation, or 'scan' for individual link operation (MFT and ITS)."
+    " Allowed values: 'physics'(default) or 'scan'."
+  )(
     OptionKeyStfDetector,
     bpo::value<std::string>()->default_value(""),
     "Specifies the detector string for SubTimeFrame building. Allowed are: "

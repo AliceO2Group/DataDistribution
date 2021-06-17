@@ -22,15 +22,15 @@
 
 #include <tuple>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 o2::header::DataOrigin ReadoutDataUtils::sSpecifiedDataOrigin = o2::header::gDataOriginInvalid; // to be initialized if not RDH6
 ReadoutDataUtils::SubSpecMode ReadoutDataUtils::sRawDataSubspectype = eCruLinkId;
 ReadoutDataUtils::SanityCheckMode ReadoutDataUtils::sRdhSanityCheckMode = eNoSanityCheck;
 ReadoutDataUtils::RdhVersion ReadoutDataUtils::sRdhVersion = eRdhInvalid;
+ReadoutDataUtils::RunType ReadoutDataUtils::sRunType = RunType::eInvalid;
+
 bool ReadoutDataUtils::sEmptyTriggerHBFrameFilterring = false;
 
 std::unique_ptr<RDHReaderIf> RDHReader::sRDHReader = nullptr;
@@ -314,6 +314,22 @@ std::istream& operator>>(std::istream& in, ReadoutDataUtils::RdhVersion& pRetVal
   return in;
 }
 
+std::istream& operator>>(std::istream& in, ReadoutDataUtils::RunType& pRetVal)
+{
+  std::string token;
+  in >> token;
+
+  if (token == "physics") {
+    pRetVal = ReadoutDataUtils::RunType::ePhysics;
+  } else if (token == "scan") {
+    pRetVal = ReadoutDataUtils::RunType::eThresholdScan;
+  } else {
+    in.setstate(std::ios_base::failbit);
+    pRetVal = ReadoutDataUtils::RunType::eInvalid;
+  }
+  return in;
+}
+
 std::ostream& operator<<(std::ostream& out, const ReadoutDataUtils::RdhVersion& pRetVal)
 {
   std::string token;
@@ -321,7 +337,7 @@ std::ostream& operator<<(std::ostream& out, const ReadoutDataUtils::RdhVersion& 
   return out;
 }
 
-std::string to_string(ReadoutDataUtils::SubSpecMode pSubSpec)
+std::string to_string(const ReadoutDataUtils::SubSpecMode pSubSpec)
 {
   switch (pSubSpec)
   {
@@ -334,5 +350,21 @@ std::string to_string(ReadoutDataUtils::SubSpecMode pSubSpec)
   }
 }
 
+std::string to_string(const ReadoutDataUtils::RunType pRunType)
+{
+  switch (pRunType)
+  {
+    case ReadoutDataUtils::RunType::ePhysics:
+      return "physics";
+      break;
+    case ReadoutDataUtils::RunType::eThresholdScan:
+      return "scan";
+      break;
+    default:
+      return "invalid";
+      break;
+  }
 }
+
+
 } /* o2::DataDistribution */
