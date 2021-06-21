@@ -333,12 +333,13 @@ public:
 /// ReadoutSubTimeframeHeader
 ////////////////////////////////////////////////////////////////////////////////
 
+// FIXME: copied from Readout/SubTimeframe.h
 // definition of the header message for a subtimeframe made of 1
 // message with this header followed by a message for each HBFrame
 // All data belong to the same source (a link or user logic)
 
 struct ReadoutSubTimeframeHeader {
-  uint8_t  mVersion = 3;
+  uint8_t  mVersion = 2;
   uint32_t mTimeFrameId = 0; // id of timeframe
   uint32_t mRunNumber = 0;
   uint8_t mSystemId = 0xFF;
@@ -350,8 +351,7 @@ struct ReadoutSubTimeframeHeader {
   struct {
     uint8_t mLastTFMessage : 1; // bit 0
     uint8_t mIsRdhFormat : 1;   // bit 1
-    uint8_t mNoTfId : 1;        // bit 2    (ITS/MFT threshold scan data)
-    uint8_t mFlagsUnused : 5;   // bit 3-7: unused
+    uint8_t mFlagsUnused : 6;   // bit 2-7: unused
   } mFlags;
 };
 
