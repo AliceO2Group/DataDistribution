@@ -29,17 +29,27 @@
 namespace o2::DataDistribution
 {
 
-void StfInputInterface::start()
+void StfInputInterface::start(bool pBuildStf)
 {
   mRunning = true;
+  mBuildStf = pBuildStf;
 
-  mSeqStfQueue.start();
   mBuilderInputQueue = std::make_unique<ConcurrentFifo<std::vector<FairMQMessagePtr>>>();
   mStfBuilder = std::make_unique<SubTimeFrameReadoutBuilder>(mDevice.MemI(), mDevice.dplEnabled());
 
-  mStfSeqThread = create_thread_member("stfb_seq", &StfInputInterface::StfSequencerThread, this);
-  mBuilderThread = create_thread_member("stfb_builder", &StfInputInterface::StfBuilderThread, this);
-  mInputThread = create_thread_member("stfb_input", &StfInputInterface::DataHandlerThread, this);
+  // sequence thread only needed when building physics STFs
+  if (pBuildStf) {
+    mSeqStfQueue.start();
+    mStfSeqThread = create_thread_member("stfb_seq", &StfInputInterface::StfSequencerThread, this);
+  }
+
+  if (pBuildStf) {
+    mBuilderThread = create_thread_member("stfb_builder", &StfInputInterface::StfBuilderThread, this);
+  } else  {
+    mBuilderThread = create_thread_member("equip_builder", &StfInputInterface::EquipmentBuilderThread, this);
+  }
+
+  mInputThread = create_thread_member("stfb_input", &StfInputInterface::StfReceiverThread, this);
 }
 
 void StfInputInterface::stop()
@@ -59,8 +69,8 @@ mRunning = false;
       mBuilderThread.join();
   }
 
-  mSeqStfQueue.stop();
   if (mStfSeqThread.joinable()) {
+    mSeqStfQueue.stop();
     mStfSeqThread.join();
   }
 
@@ -72,7 +82,7 @@ mRunning = false;
 }
 
 /// Receiving thread
-void StfInputInterface::DataHandlerThread()
+void StfInputInterface::StfReceiverThread()
 {
   using namespace std::chrono_literals;
   constexpr std::uint32_t cInvalidStfId = ~0;
@@ -147,37 +157,39 @@ void StfInputInterface::DataHandlerThread()
       }
 
       // check for backward/forward tf jumps
-      if (lCurrentStfId != cInvalidStfId) {
-        static thread_local std::uint64_t sNumNonContIncStfs = 0;
-        static thread_local std::uint64_t sNumNonContDecStfs = 0;
+      if (mBuildStf) {
+        if (lCurrentStfId != cInvalidStfId) {
+          static std::uint64_t sNumNonContIncStfs = 0;
+          static std::uint64_t sNumNonContDecStfs = 0;
 
-        // backward jump
-        if (lReadoutHdr.mTimeFrameId < lCurrentStfId) {
-          sNumNonContIncStfs++;
-          std::stringstream lErrMsg;
-          lErrMsg << "READOUT INTERFACE: "
-              "TF ID decreased! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
-              "o2-readout-exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
-              "Total occurrences: " << sNumNonContIncStfs;
+          // backward jump
+          if (lReadoutHdr.mTimeFrameId < lCurrentStfId) {
+            sNumNonContIncStfs++;
+            std::stringstream lErrMsg;
+            lErrMsg << "READOUT INTERFACE: "
+                "TF ID decreased! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
+                "o2-readout-exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
+                "Total occurrences: " << sNumNonContIncStfs;
 
-          EDDLOG_RL(200, lErrMsg.str());
-          DDDLOG(lErrMsg.str());
+            EDDLOG_RL(200, lErrMsg.str());
+            DDDLOG(lErrMsg.str());
 
-          // TODO: accout for lost data
-          continue;
+            // TODO: accout for lost data
+            continue;
+          }
+
+          // forward jump
+          if (lReadoutHdr.mTimeFrameId > (lCurrentStfId + 1)) {
+            sNumNonContDecStfs++;
+            WDDLOG_RL(200, "READOUT INTERFACE: TF ID non-contiguous increase! ({}) -> ({}). Total occurrences: {}",
+              lCurrentStfId, lReadoutHdr.mTimeFrameId, sNumNonContDecStfs);
+          }
+          // we keep the data since this might be a legitimate jump
         }
 
-        // forward jump
-        if (lReadoutHdr.mTimeFrameId > (lCurrentStfId + 1)) {
-          sNumNonContDecStfs++;
-          WDDLOG_RL(200, "READOUT INTERFACE: TF ID non-contiguous increase! ({}) -> ({}). Total occurrences: {}",
-            lCurrentStfId, lReadoutHdr.mTimeFrameId, sNumNonContDecStfs);
-        }
-        // we keep the data since this might be a legitimate jump
+        // get the current TF id
+        lCurrentStfId = lReadoutHdr.mTimeFrameId;
       }
-
-      // get the current TF id
-      lCurrentStfId = lReadoutHdr.mTimeFrameId;
 
       mBuilderInputQueue->push(std::move(lReadoutMsgs));
     }
@@ -224,7 +236,7 @@ void StfInputInterface::StfBuilderThread()
   SubTimeFrameReadoutBuilder &lStfBuilder = *mStfBuilder;
 
   // insert and mask the feeid
-  auto lInsertWitFeeIdMasking = [&lStfBuilder, lFeeIdMask] (const header::DataOrigin &pDataOrigin,
+  auto lInsertWithFeeIdMasking = [&lStfBuilder, lFeeIdMask] (const header::DataOrigin &pDataOrigin,
     const header::DataHeader::SubSpecificationType &pSubSpec, const ReadoutSubTimeframeHeader &pRdoHeader,
     const FairMQParts::iterator pStartHbf, const std::size_t pInsertCnt) {
 
@@ -368,7 +380,7 @@ void StfInputInterface::StfBuilderThread()
         if (lEndHbf == lReadoutMsgs.end()) {
           //insert the remaining span
           std::size_t lInsertCnt = (lEndHbf - lStartHbf);
-          lAdded += lInsertWitFeeIdMasking(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
+          lAdded += lInsertWithFeeIdMasking(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
           break;
         }
 
@@ -388,7 +400,7 @@ void StfInputInterface::StfBuilderThread()
             " block[0]_subspec={:#06x}, block[{}]_subspec={:#06x}",
             lSubSpecification, (lEndHbf - (lReadoutMsgs.begin() + 1)), lNewSubSpec);
           // insert
-          lAdded += lInsertWitFeeIdMasking(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
+          lAdded += lInsertWithFeeIdMasking(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lEndHbf - lStartHbf);
           lStartHbf = lEndHbf;
 
           lSubSpecification = lNewSubSpec;
@@ -409,6 +421,147 @@ void StfInputInterface::StfBuilderThread()
 
   DDDLOG("Exiting StfBuilder thread.");
 }
+
+
+/// StfBuilding thread for ITS/MFT threshold scan
+void StfInputInterface::EquipmentBuilderThread()
+{
+  using namespace std::chrono_literals;
+  using hres_clock = std::chrono::high_resolution_clock;
+
+  bool lStarted = false;
+  std::vector<FairMQMessagePtr> lReadoutMsgs(1U << 20);
+  lReadoutMsgs.clear();
+
+  // per equipment data cache
+  std::map<EquipmentIdentifier, std::unique_ptr<SubTimeFrame> > lEquipmentStfs;
+
+  // support FEEID masking
+  std::uint32_t lFeeIdMask = ~std::uint32_t(0); // subspec size
+  const auto lFeeMask = std::getenv("DATADIST_FEE_MASK");
+  if (lFeeMask) {
+    try {
+      lFeeIdMask = std::stoul(lFeeMask, nullptr, 16);
+    } catch(...) {
+      EDDLOG("Cannot convert {} for the FeeID mask.", lFeeMask);
+    }
+  }
+  IDDLOG("StfBuilder: Using {:#06x} as the FeeID mask.", lFeeIdMask);
+
+  // Reference to the input channel
+  assert (mBuilderInputQueue);
+  assert (mStfBuilder);
+  // Input queue
+  auto &lInputQueue = *mBuilderInputQueue;
+  // Stf builder
+  SubTimeFrameReadoutBuilder &lStfBuilder = *mStfBuilder;
+
+  // insert and mask the feeid
+  auto lInsertWithFeeIdMasking = [&lStfBuilder, lFeeIdMask] (const header::DataOrigin &pDataOrigin,
+    const header::DataHeader::SubSpecificationType &pSubSpec, const ReadoutSubTimeframeHeader &pRdoHeader,
+    const FairMQParts::iterator pStartHbf, const std::size_t pInsertCnt) {
+
+    // mask the subspecification if the fee mode is used
+    auto lMaskedSubspec = pSubSpec;
+    if (ReadoutDataUtils::SubSpecMode::eFeeId == ReadoutDataUtils::sRawDataSubspectype) {
+      lMaskedSubspec &= lFeeIdMask;
+    }
+
+    lStfBuilder.addEquipmentData(pDataOrigin, lMaskedSubspec, pRdoHeader, pStartHbf, pInsertCnt);
+
+    return pInsertCnt;
+  };
+
+  const auto cStfDataWaitFor = 500ms;
+  std::chrono::time_point<hres_clock, std::chrono::duration<double>> lStartSec = hres_clock::now();
+
+  while (mRunning) {
+
+    // Lambda for completing the Stf
+    auto finishBuildingCurrentStf = [&]() {
+      // Finished: queue the current STF and start a new one
+      if (auto lStf = lStfBuilder.getStf(); lStf.has_value()) {
+        // start the new STF
+        (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eReadoutNoTfId);
+
+        mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
+        {
+          auto lNow = hres_clock::now();
+          std::chrono::duration<double> lTimeDiff = lNow - lStartSec;
+          lStartSec = lNow;
+          DDMON("stfbuilder", "stf_input.rate", (1.0 / lTimeDiff.count()));
+        }
+      }
+    };
+
+    // Equipment ID for the HBFrames (from the header)
+    lReadoutMsgs.clear();
+
+    // receive readout messages
+    const auto lRet = lInputQueue.pop_wait_for(lReadoutMsgs, cStfDataWaitFor);
+    if (!lRet && mRunning) {
+      if (lStarted) {
+        // finish on a timeout
+        finishBuildingCurrentStf();
+      }
+      continue;
+    } else if (!lRet && !mRunning) {
+      break;
+    } else if (lRet && !mRunning) {
+      static thread_local std::uint64_t sAfterStopStfs = 0;
+      sAfterStopStfs++;
+      WDDLOG_RL(1000, "StfBuilderThread: Building STFs after stop signal. after_stop_stf_count={}", sAfterStopStfs);
+    }
+
+    // must not be empty
+    if (lReadoutMsgs.size() <= 1) {
+      EDDLOG_RL(1000, "READOUT INTERFACE: empty readout multipart.");
+      continue;
+    }
+
+    // stated to build STFs
+    lStarted = true;
+
+    // Copy to avoid surprises. The receiving header is not O2 compatible and can be discarded
+    ReadoutSubTimeframeHeader lReadoutHdr;
+    // NOTE: the size is checked on receive
+    std::memcpy(&lReadoutHdr, lReadoutMsgs[0]->GetData(), sizeof(ReadoutSubTimeframeHeader));
+
+    // log only
+    DDDLOG_RL(5000, "READOUT INTERFACE: Received an ReadoutMsg. stf_id={}", lReadoutHdr.mTimeFrameId);
+
+    // check multipart size
+    if (lReadoutMsgs.size() == 1 && !lReadoutHdr.mFlags.mLastTFMessage) {
+      EDDLOG_RL(1000, "READOUT INTERFACE: Received only a header message without the STF stop bit set.");
+      continue;
+    }
+
+    // get the subspecification
+    header::DataHeader::SubSpecificationType lSubSpecification = ~header::DataHeader::SubSpecificationType(0);
+    header::DataOrigin lDataOrigin;
+    try {
+      const auto R1 = RDHReader(lReadoutMsgs[1]);
+      lDataOrigin = ReadoutDataUtils::getDataOrigin(R1);
+      lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
+    } catch (RDHReaderException &e) {
+      EDDLOG_RL(1000, "READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
+      // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
+      continue;
+    }
+
+    auto lStartHbf = lReadoutMsgs.begin() + 1; // skip the meta message
+    std::size_t lInsertCnt = lReadoutMsgs.size() - 1;
+
+    // insert all HBFs
+    lInsertWithFeeIdMasking(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
+
+    // finish and send the STF
+    finishBuildingCurrentStf();
+  }
+
+  DDDLOG("Exiting EquipmentBuilderThread thread.");
+}
+
 
 void StfInputInterface::StfSequencerThread()
 {

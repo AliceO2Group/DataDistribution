@@ -321,8 +321,8 @@ std::istream& operator>>(std::istream& in, ReadoutDataUtils::RunType& pRetVal)
 
   if (token == "physics") {
     pRetVal = ReadoutDataUtils::RunType::ePhysics;
-  } else if (token == "scan") {
-    pRetVal = ReadoutDataUtils::RunType::eThresholdScan;
+  } else if (token == "topology") {
+    pRetVal = ReadoutDataUtils::RunType::eTopology;
   } else {
     in.setstate(std::ios_base::failbit);
     pRetVal = ReadoutDataUtils::RunType::eInvalid;
@@ -357,8 +357,8 @@ std::string to_string(const ReadoutDataUtils::RunType pRunType)
     case ReadoutDataUtils::RunType::ePhysics:
       return "physics";
       break;
-    case ReadoutDataUtils::RunType::eThresholdScan:
-      return "scan";
+    case ReadoutDataUtils::RunType::eTopology:
+      return "topology";
       break;
     default:
       return "invalid";
