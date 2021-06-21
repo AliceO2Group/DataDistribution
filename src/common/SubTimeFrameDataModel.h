@@ -293,7 +293,7 @@ class SubTimeFrame : public IDataModelObject
   SubTimeFrame(SubTimeFrame&& a) = default;
   SubTimeFrame& operator=(SubTimeFrame&& a) = default;
 
-  // adopt all data from a
+  // adopt all data from another STF
   void mergeStf(std::unique_ptr<SubTimeFrame> pStf);
 
   // get data size (not including o2 headers)
@@ -309,6 +309,7 @@ class SubTimeFrame : public IDataModelObject
     enum Origin {
       eReadout = 1,
       eFile,
+      eReadoutNoTfId, // MFT/ITS topology run
       eNull
     } mOrigin = eNull;
 

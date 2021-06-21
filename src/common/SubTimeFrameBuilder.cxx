@@ -170,15 +170,10 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 
   assert(pHdr.mTimeFrameId == mStf->header().mId);
 
-  const EquipmentIdentifier lEqId(
+  DataHeader lDataHdr(
     o2::header::gDataDescriptionRawData,
     pDataOrig,
-    pSubSpecification);
-
-  DataHeader lDataHdr(
-    lEqId.mDataDescription,
-    lEqId.mDataOrigin,
-    lEqId.mSubSpecification,
+    pSubSpecification,
     0 /* Update later */
   );
   lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
@@ -189,6 +184,66 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
       continue; // already filtered out
     }
 
+    std::unique_ptr<FairMQMessage> lHdrMsg;
+
+    lDataHdr.payloadSize = pHbFramesBegin[i]->GetSize();
+
+    if (mDplEnabled) {
+      auto lStack = Stack(
+        lDataHdr,
+        o2::framework::DataProcessingHeader{mStf->header().mId}
+      );
+
+      lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+    } else {
+      lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(&lDataHdr), sizeof(lDataHdr));
+    }
+
+    if (!lHdrMsg) {
+      EDDLOG("Allocation error: HbFrame::DataHeader={}", sizeof(DataHeader));
+      throw std::bad_alloc();
+    }
+
+    mStf->addStfData(lDataHdr,
+      SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFramesBegin[i]) }
+    );
+  }
+}
+
+void SubTimeFrameReadoutBuilder::addEquipmentData(
+  const o2::header::DataOrigin &pDataOrig,
+  const o2::header::DataHeader::SubSpecificationType pSubSpecification,
+  const ReadoutSubTimeframeHeader& pHdr,
+  std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen)
+{
+  static uint32_t sTfId = 1;
+
+  if (!mRunning) {
+    WDDLOG("Adding HBFrames while STFBuilder is not running!");
+    return;
+  }
+
+  if (!mStf) {
+    mStf = std::make_unique<SubTimeFrame>(sTfId);
+    sTfId++;
+    mFirstFiltered.clear();
+  }
+
+  if (pHdr.mTimeframeOrbitFirst != 0) {
+    mStf->updateFirstOrbit(pHdr.mTimeframeOrbitFirst);
+  }
+
+  mStf->updateRunNumber(pHdr.mRunNumber);
+
+  DataHeader lDataHdr(
+    o2::header::gDataDescriptionRawData,
+    pDataOrig,
+    pSubSpecification,
+    0 /* Update later */
+  );
+  lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
+
+  for (size_t i = 0; i < pHBFrameLen; i++) {
     std::unique_ptr<FairMQMessage> lHdrMsg;
 
     lDataHdr.payloadSize = pHbFramesBegin[i]->GetSize();

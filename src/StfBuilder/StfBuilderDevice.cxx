@@ -126,12 +126,13 @@ void StfBuilderDevice::InitTask()
   }
 
   // check run type
-  if (ReadoutDataUtils::sRunType == ReadoutDataUtils::RunType::eThresholdScan) {
-    if (! (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginITS) ||
-          (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginMFT)) {
+  if (ReadoutDataUtils::sRunType == ReadoutDataUtils::RunType::eTopology) {
+    if (! ((ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginITS) ||
+      (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginMFT))) {
 
-      EDDLOG("Run type paramter 'scan' is supported only for ITS and MFT. Please specify the detector option.");
-      throw std::logic_error("Run type paramter 'scan' is supported only for ITS and MFT. Please specify the detector option.");
+      EDDLOG("Run type paramter 'topology' is supported only for ITS and MFT. Please specify the detector option. detector={}",
+        std::string(ReadoutDataUtils::sSpecifiedDataOrigin.str));
+      throw std::logic_error("Run type paramter 'topology' is supported only for ITS and MFT. Please specify the detector option.");
     }
   }
 
@@ -244,7 +245,7 @@ void StfBuilderDevice::InitTask()
 
   // start a thread for readout process
   if (!I().mFileSource->enabled()) {
-    I().mReadoutInterface->start();
+    I().mReadoutInterface->start(ReadoutDataUtils::sRunType == ReadoutDataUtils::RunType::ePhysics);
   }
 
   IDDLOG("InitTask() done... ");
@@ -426,8 +427,8 @@ bpo::options_description StfBuilderDevice::getDetectorProgramOptions() {
   lDetectorOptions.add_options() (
     OptionKeyRunType,
     bpo::value<ReadoutDataUtils::RunType>()->default_value(ReadoutDataUtils::RunType::ePhysics, "physics"),
-    "Specifies the operation mode for STF building. Deafult 'physics' STF aggregation, or 'scan' for individual link operation (MFT and ITS)."
-    " Allowed values: 'physics'(default) or 'scan'."
+    "Specifies the operation mode for STF building. Deafult 'physics' STF aggregation, or 'topology' for topology based data distribution."
+    " Allowed values: 'physics'(default) or 'topology'."
   )(
     OptionKeyStfDetector,
     bpo::value<std::string>()->default_value(""),

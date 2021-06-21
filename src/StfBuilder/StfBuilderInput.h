@@ -39,7 +39,7 @@ public:
     : mDevice(pStfBuilderDev)
   { }
 
-  void start();
+  void start(bool pBuildStf);
   void stop();
 
   void setRunningState(bool pRunning) {
@@ -47,8 +47,9 @@ public:
     mAcceptingData = pRunning;
   }
 
-  void DataHandlerThread();
+  void StfReceiverThread();
   void StfBuilderThread();
+  void EquipmentBuilderThread(); // threshold scans
   void StfSequencerThread();
 
  private:
@@ -58,6 +59,7 @@ public:
   /// Thread for the input channel
   bool mRunning = false;
   bool mAcceptingData = false;
+  bool mBuildStf = true; // STF or equipment (threshold scan)
   std::thread mInputThread;
 
   /// StfBuilding thread and queues

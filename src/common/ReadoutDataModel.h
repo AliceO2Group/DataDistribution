@@ -381,7 +381,7 @@ public:
   enum RunType {
     eInvalid = -1,
     ePhysics = 1,
-    eThresholdScan = 2,
+    eTopology = 2,
   };
 
   static o2::header::DataOrigin sSpecifiedDataOrigin; // to be initialized if not RDH6
