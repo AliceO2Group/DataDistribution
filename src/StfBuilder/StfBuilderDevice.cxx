@@ -335,7 +335,6 @@ void StfBuilderDevice::StfOutputThread()
 
     if (!isStandalone()) {
       try {
-
         if (!dplEnabled()) {
           assert (lStfSerializer);
           lStfSerializer->serialize(std::move(lStf));

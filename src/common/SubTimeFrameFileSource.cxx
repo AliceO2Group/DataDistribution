@@ -472,11 +472,6 @@ void SubTimeFrameFileSource::DataInjectThread()
       break;
     }
 
-    // set origin
-    if (lStf) {
-      lStf->setOrigin(SubTimeFrame::Header::Origin::eFile);
-    }
-
     static auto sRateStartTime = std::chrono::high_resolution_clock::now();
 
     while (mRunning && mPaused) {
