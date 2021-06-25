@@ -273,25 +273,23 @@ void StfSenderDevice::StfReceiverThread()
       }
       DDMON("stfsender", "stf_input.rate", 0.0);
       DDMON("stfsender", "stf_input.size", 0.0);
-      std::this_thread::sleep_for(20ms);
+      lStfStartTime = hres_clock::now();
       continue;
     }
 
     { // Input STF frequency
       const auto lNow = hres_clock::now();
-      const auto lStfDur = std::chrono::duration<double>(lNow - lStfStartTime);
+      const std::chrono::duration<double> lStfDur = lNow - lStfStartTime;
       lStfStartTime = lNow;
 
-      DDMON("stfsender", "stf_input.rate", (1.0 / lStfDur.count()));
+      DDMON("stfsender", "stf_input.rate", (1.0 / std::max(0.000001, lStfDur.count())));
       DDMON("stfsender", "stf_input.size", lStf->getDataSize());
-      DDMON("stfsender", "stf_input.id", (uint64_t)lStf->header().mId);
+      DDMON("stfsender", "stf_input.id", lStf->id());
     }
 
-    ++lReceivedStfs;
-    DDDLOG_RL(5000, "StfSender received total of {} STFs.", lReceivedStfs);
-
-    DDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
-      lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
+    lReceivedStfs += 1;
+    DDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={} total={}",
+      lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size(), lReceivedStfs);
 
     I().queue(eReceiverOut, std::move(lStf));
   }

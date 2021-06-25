@@ -32,8 +32,9 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
 {
   assert(pDiscoveryConfig);
   mDiscoveryConfig = pDiscoveryConfig;
+  mRunning = true;
 
-  { // TODO: remove me
+  { // TODO: only for testing
     const auto lStfsBuffSizeVar = getenv("DATADIST_STFS_BUFFER_SIZE");
     if (lStfsBuffSizeVar) {
       try {
@@ -58,10 +59,14 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
 
   // create scheduler thread
   mSchedulerThread = create_thread_member("stfs_sched", &StfSenderOutput::StfSchedulerThread, this);
+
+  // create monitoring thread
+  mMonitoringThread = create_thread_member("stfs_mon", &StfSenderOutput::StfMonitoringThread, this);
 }
 
 void StfSenderOutput::stop()
 {
+  mRunning = false;
   // stop the scheduler: on pipeline interrupt
   if (mSchedulerThread.joinable()) {
     mSchedulerThread.join();
@@ -93,6 +98,11 @@ void StfSenderOutput::stop()
     std::scoped_lock lLock(mOutputMapLock);
     mOutputMap.clear();
   }
+
+  // wait for monitoring thread
+  if (mMonitoringThread.joinable()) {
+    mMonitoringThread.join();
+  }
 }
 
 bool StfSenderOutput::running() const
@@ -108,7 +118,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
     std::scoped_lock lLock(mOutputMapLock);
 
     if (mOutputMap.count(pTfBuilderId) > 0) {
-      WDDLOG("StfSenderOutput::connectTfBuilder: TfBuilder is already connected. tfb_id={}", pTfBuilderId);
+      EDDLOG("StfSenderOutput::connectTfBuilder: TfBuilder is already connected. tfb_id={}", pTfBuilderId);
       return eEXISTS;
     }
   }
@@ -124,7 +134,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
     mZMQTransportFactory
   );
 
-  lNewChannel->UpdateSndBufSize(2);
+  lNewChannel->UpdateSndBufSize(12);
   lNewChannel->Init();
 
   if (!lNewChannel->Validate()) {
@@ -194,7 +204,7 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
   }
 
   // stop and teardown everything
-  IDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending thread. tfb_id={}", pTfBuilderId);
+  DDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending thread. tfb_id={}", pTfBuilderId);
   lOutputObj.mStfQueue->stop();
   if (lOutputObj.mThread.joinable()) {
     lOutputObj.mThread.join();
@@ -209,7 +219,7 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
   lSocketMap.erase(pTfBuilderId);
   mDiscoveryConfig->write();
 
-  IDDLOG("StfSenderOutput::disconnectTfBuilder tfb_id={}", pTfBuilderId);
+  DDDLOG("StfSenderOutput::disconnectTfBuilder tfb_id={}", pTfBuilderId);
   return true;
 }
 
@@ -220,19 +230,28 @@ void StfSenderOutput::StfSchedulerThread()
   std::unique_ptr<SubTimeFrame> lStf;
 
   while ((lStf = mPipelineI.dequeue(eSenderIn)) != nullptr) {
-    const auto lStfId = lStf->header().mId;
+    const auto lStfId = lStf->id();
     const auto lStfSize = lStf->getDataSize();
 
-    if (mDevice.standalone()) {
-      continue;
+    // update buffer sizes
+    StdSenderOutputCounters lCounters;
+    {
+      std::scoped_lock lLock(mCountersLock);
+      mCounters.mBuffered.mSize += lStfSize;
+      mCounters.mBuffered.mCnt += 1;
+
+      lCounters = mCounters;
     }
+
+    assert (!mDevice.standalone());
 
     if (!mDevice.TfSchedRpcCli().is_ready()) {
       EDDLOG_RL(1000, "StfSchedulerThread: TfScheduler gRPC connection is not ready stf_id={}", lStfId);
+      mDropQueue.push(std::move(lStf));
       continue;
     }
 
-    DDDLOG_RL(5000, "StfSchedulerThread: scheduling stf_id={}", lStfId);
+    DDDLOG_RL(5000, "StfSchedulerThread: Scheduling stf_id={}", lStfId);
 
     StfSenderStfInfo lStfInfo;
     SchedulerStfInfoResponse lSchedResponse;
@@ -243,25 +262,20 @@ void StfSenderOutput::StfSchedulerThread()
     lStfInfo.set_stf_id(lStfId);
     lStfInfo.set_stf_size(lStfSize);
 
-    // move the stf into triage map (before notifying the scheduler to avoid races)
+    lStfInfo.mutable_stfs_info()->set_buffer_size(mBufferSize);
+    lStfInfo.mutable_stfs_info()->set_buffer_used(lCounters.mBuffered.mSize);
+    lStfInfo.mutable_stfs_info()->set_num_buffered_stfs(lCounters.mBuffered.mCnt);
+
+    // to avoid races, move the stf into the triage map before notifying the scheduler
     {
       std::scoped_lock lLock(mScheduledStfMapLock);
-
       auto [it, ins] = mScheduledStfMap.try_emplace(lStfId, std::move(lStf));
       if (!ins) {
         (void)it;
         EDDLOG_RL(500, "StfSchedulerThread: Stf is already scheduled! Skipping the duplicate. stf_id={}", lStfId);
+        mDropQueue.push(std::move(lStf));
         continue;
       }
-
-      // update buffer size
-      mCounters.mBuffered.mSize += lStfSize;
-      mCounters.mBuffered.mCnt += 1;
-
-      // send current state of the buffers
-      lStfInfo.mutable_stfs_info()->set_buffer_size(mBufferSize);
-      lStfInfo.mutable_stfs_info()->set_buffer_used(mCounters.mBuffered.mSize);
-      lStfInfo.mutable_stfs_info()->set_num_buffered_stfs(mCounters.mBuffered.mCnt);
     }
 
     // Send STF info to scheduler
@@ -279,8 +293,8 @@ void StfSenderOutput::StfSchedulerThread()
           }
         }
 
-      WDDLOG_RL(5000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
-        lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
+        WDDLOG_RL(5000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
+          lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
       }
       DDDLOG_RL(5000, "Sent STF announce, stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
     }
@@ -322,23 +336,15 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     pRes.set_status(StfDataResponse::OK);
 
     const auto lStfSize = lStfIter->second->getDataSize();
-    const auto lStfId = lStfIter->second->id();
-    mCounters.mInSending.mSize += lStfSize;
-    mCounters.mInSending.mCnt += 1;
+
+    {
+      std::scoped_lock lCntLock(mCountersLock);
+      mCounters.mInSending.mSize += lStfSize;
+      mCounters.mInSending.mCnt += 1;
+    }
 
     auto lStfNode = mScheduledStfMap.extract(lStfIter);
     lTfBuilderIter->second.mStfQueue->push(std::move(lStfNode.mapped()));
-
-    // monitoring
-    {
-      using hres_clock = std::chrono::high_resolution_clock;
-      static decltype(hres_clock::now()) sStfStartTime = hres_clock::now();
-      const auto lDuration = std::chrono::duration<double>(hres_clock::now() - sStfStartTime);
-      DDMON("stfsender", "stf_output.stf_id", lStfId);
-      DDMON("stfsender", "stf_output.stf_rate", (1.0 / lDuration.count()));
-      DDMON("stfsender", "stf_output.stf_size", lStfSize);
-      sStfStartTime = hres_clock::now();
-    }
 
     if (lTfBuilderIter->second.mStfQueue->size() > 50) {
       WDDLOG_RL(1000, "SendToTfBuilder: STF queue backlog. queue_size={}", lTfBuilderIter->second.mStfQueue->size());
@@ -349,7 +355,7 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
 /// Sending thread
 void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
 {
-  IDDLOG("StfSenderOutput[{}]: Starting the thread", pTfBuilderId);
+  DDDLOG("StfSenderOutput[{}]: Starting the thread", pTfBuilderId);
 
   FairMQChannel *lOutputChan = nullptr;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> *lInputStfQueue = nullptr;
@@ -373,10 +379,11 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
     std::unique_ptr<SubTimeFrame> lStf = std::move(lStfOpt.value());
     lStfOpt.reset();
 
+    const auto lStfId = lStf->id();
     const auto lStfSize = lStf->getDataSize();
 
     DDDLOG_GRL(5000, "Sending an STF to TfBuilder. stf_id={} tfb_id={} stf_size={} total_sent_stf={}",
-      lStf->header().mId, pTfBuilderId, lStfSize, lNumSentStfs);
+      lStfId, pTfBuilderId, lStfSize, lNumSentStfs);
 
     try {
       lStfSerializer.serialize(std::move(lStf));
@@ -392,8 +399,9 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
     // update buffer status
     lNumSentStfs += 1;
 
+    StdSenderOutputCounters lCounters;
     {
-      std::scoped_lock lLock(mScheduledStfMapLock);
+      std::scoped_lock lCntLock(mCountersLock);
       mCounters.mBuffered.mSize -= lStfSize;
       mCounters.mBuffered.mCnt -= 1;
       mCounters.mInSending.mSize -= lStfSize;
@@ -401,28 +409,27 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
       mCounters.mTotalSent.mSize += lStfSize;
       mCounters.mTotalSent.mCnt += 1;
 
-      if (mCounters.mInSending.mCnt > 100) {
-        DDDLOG_RL(2000, "DataHandlerThread: Number of buffered STFs. tfb_id={} num_stfs={} num_stf_total={} size_stf_total={}",
-          pTfBuilderId, lInputStfQueue->size(), mCounters.mInSending.mCnt, mCounters.mInSending.mSize);
-      }
-
-      DDMON("stfsender", "stf_output.sent_count", mCounters.mTotalSent.mCnt);
-      DDMON("stfsender", "stf_output.sent_size", mCounters.mTotalSent.mSize);
-      DDMON("stfsender", "buffered.stf_cnt", mCounters.mBuffered.mCnt);
-      DDMON("stfsender", "buffered.stf_size", mCounters.mBuffered.mSize);
+      lCounters = mCounters;
     }
+
+    if (lCounters.mInSending.mCnt > 100) {
+      DDDLOG_RL(2000, "DataHandlerThread: Number of buffered STFs. tfb_id={} num_stfs={} num_stf_total={} size_stf_total={}",
+        pTfBuilderId, lInputStfQueue->size(), lCounters.mInSending.mCnt, lCounters.mInSending.mSize);
+    }
+
+    DDMON("stfsender", "stf_output.stf_id", lStfId);
   }
 
-  IDDLOG("Exiting StfSenderOutput[{}]", pTfBuilderId);
+  DDDLOG("Exiting StfSenderOutput[{}]", pTfBuilderId);
 }
 
-/// Sending thread
+/// Drop thread
 void StfSenderOutput::StfDropThread()
 {
   DDDLOG("Starting DataDropThread thread.");
   std::uint64_t lNumDroppedStfs = 0;
 
-  while (true) {
+  while (mRunning) {
     std::unique_ptr<SubTimeFrame> lStf;
     if (!mDropQueue.pop(lStf)) {
       break;
@@ -438,16 +445,54 @@ void StfSenderOutput::StfDropThread()
     // update buffer status
     lNumDroppedStfs += 1;
     {
-      std::scoped_lock lLock(mScheduledStfMapLock);
+      std::scoped_lock lLock(mCountersLock);
       mCounters.mBuffered.mSize -= lStfSize;
       mCounters.mBuffered.mCnt -= 1;
-
-      DDMON("stfsender", "buffered.stf_size", mCounters.mBuffered.mSize);
-      DDMON("stfsender", "buffered.stf_cnt", mCounters.mBuffered.mCnt);
     }
   }
 
   DDDLOG("Exiting DataDropThread thread");
+}
+
+void StfSenderOutput::StfMonitoringThread()
+{
+  DDDLOG("Starting StfMonitoring thread.");
+
+  StdSenderOutputCounters lPrevCounters;
+  {
+    std::scoped_lock lLock(mCountersLock);
+    lPrevCounters = mCounters;
+  }
+  std::chrono::high_resolution_clock::time_point lLastSent = std::chrono::high_resolution_clock::now();
+
+  while (mRunning) {
+    std::this_thread::sleep_for(100ms);
+    StdSenderOutputCounters lCurrCounters;
+    {
+      std::scoped_lock lLock(mCountersLock);
+      lCurrCounters = mCounters;
+    }
+    const auto lNow = std::chrono::high_resolution_clock::now();
+
+    DDMON("stfsender", "stf_output.sent_count", lCurrCounters.mTotalSent.mCnt);
+    DDMON("stfsender", "stf_output.sent_size", lCurrCounters.mTotalSent.mSize);
+
+    DDMON("stfsender", "buffered.stf_cnt", lCurrCounters.mBuffered.mCnt);
+    DDMON("stfsender", "buffered.stf_size", lCurrCounters.mBuffered.mSize);
+
+    DDMON("stfsender", "sending.stf_cnt", lCurrCounters.mInSending.mCnt);
+    DDMON("stfsender", "sending.stf_size", lCurrCounters.mInSending.mSize);
+
+    const std::chrono::duration<double> lDuration = lNow - lLastSent;
+    const double lSentStfs = double(lCurrCounters.mTotalSent.mCnt - lPrevCounters.mTotalSent.mCnt);
+    DDMON("stfsender", "stf_output.stf_rate", (lSentStfs / std::max(0.000001, lDuration.count())));
+    DDMON("stfsender", "stf_output.stf_size", (lCurrCounters.mTotalSent.mSize - lPrevCounters.mTotalSent.mSize) );
+
+    lPrevCounters = lCurrCounters;
+    lLastSent = lNow;
+  }
+
+  DDDLOG("Exiting StfMonitoring thread");
 }
 
 } /* o2::DataDistribution */
