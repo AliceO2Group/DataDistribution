@@ -67,6 +67,7 @@ public:
   void StfSchedulerThread();
   void StfDropThread();
   void DataHandlerThread(const std::string pTfBuilderId);
+  void StfMonitoringThread();
 
   /// RPC requests
   enum ConnectStatus { eOK, eEXISTS, eCONNERR };
@@ -76,12 +77,12 @@ public:
   void sendStfToTfBuilder(const std::uint64_t pStfId, const std::string &pTfBuilderId, StfDataResponse &pRes);
 
   StdSenderOutputCounters getCounters() {
-    std::scoped_lock lLock(mScheduledStfMapLock);
+    std::scoped_lock lLock(mCountersLock);
     return mCounters;
   }
 
   StdSenderOutputCounters resetCounters() {
-    std::scoped_lock lLock(mScheduledStfMapLock);
+    std::scoped_lock lLock(mCountersLock);
     StdSenderOutputCounters lRet = mCounters;
     mCounters = StdSenderOutputCounters();
     return lRet;
@@ -92,6 +93,10 @@ public:
   StfSenderDevice& mDevice;
   stf_pipeline &mPipelineI;
 
+  /// Running flag
+  std::atomic_bool mRunning = false;
+  std::thread mMonitoringThread;
+
   /// Discovery configuration
   std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
   std::shared_ptr<FairMQTransportFactory>  mZMQTransportFactory;
@@ -100,6 +105,9 @@ public:
   std::thread mSchedulerThread;
   std::mutex mScheduledStfMapLock;
     std::map<std::uint64_t, std::unique_ptr<SubTimeFrame>> mScheduledStfMap;
+
+  /// Buffer utilization counters
+  std::mutex mCountersLock;
     StdSenderOutputCounters mCounters;
 
   /// Threads for output channels (to EPNs)
