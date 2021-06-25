@@ -25,11 +25,13 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 
 #include <fairlogger/Logger.h>
-// #include <fairmq/DeviceRunner.h>
-// #include <options/FairMQProgOptions.h>
 
 #include <InfoLogger/InfoLogger.hxx>
 #include <boost/program_options/options_description.hpp>
+
+#if defined(__linux__)
+#include <unistd.h>
+#endif
 
 namespace o2::DataDistribution
 {
@@ -357,6 +359,10 @@ struct DataDistLoggerCtx {
     });
 
     sRateUpdateThread = std::thread([&]() {
+#if defined(__linux__)
+      nice(+1);
+      pthread_setname_np(pthread_self(), "log_clock");
+#endif
       while (sRunning) {
         DataDistLogger::sRateLimitLast = std::chrono::steady_clock::now();
 
@@ -366,6 +372,12 @@ struct DataDistLoggerCtx {
     });
 
     mInfoLoggerThread = std::thread([&]() {
+      // nice the collection thread to decrease contention with sending threads
+#if defined(__linux__)
+      nice(+10);
+      pthread_setname_np(pthread_self(), "infolog");
+#endif
+
       std::tuple<AliceO2::InfoLogger::InfoLogger::Severity, std::string> lLogVal;
 
       while (sRunning) {

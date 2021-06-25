@@ -20,6 +20,10 @@
 #include <Monitoring/MonitoringFactory.h>
 #include <Monitoring/Metric.h>
 
+#if defined(__linux__)
+#include <unistd.h>
+#endif
+
 namespace o2::DataDistribution
 {
 
@@ -65,6 +69,11 @@ void DataDistMonitoring::MetricCollectionThread()
   using namespace o2::monitoring;
 
   DDDLOG("Starting monitoring collection thread for {}...", mUriList);
+
+  // nice the collection thread to decrease contention with sending threads
+#if defined(__linux__)
+  nice(+10);
+#endif
 
   while (mRunning) {
     auto lMetric = mMetricsQueue.pop_wait_for(std::chrono::milliseconds(250));

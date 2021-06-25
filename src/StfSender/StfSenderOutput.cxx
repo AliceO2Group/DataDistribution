@@ -23,6 +23,10 @@
 #include <condition_variable>
 #include <stdexcept>
 
+#if defined(__linux__)
+#include <unistd.h>
+#endif
+
 namespace o2::DataDistribution
 {
 
@@ -225,8 +229,14 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
 
 void StfSenderOutput::StfSchedulerThread()
 {
-  DDDLOG("StfSchedulerThread: Starting.");
   // Notifies the scheduler about stfs
+  DDDLOG("StfSchedulerThread: Starting.");
+
+  // increase the priority
+#if defined(__linux__)
+  nice(-10);
+#endif
+
   std::unique_ptr<SubTimeFrame> lStf;
 
   while ((lStf = mPipelineI.dequeue(eSenderIn)) != nullptr) {
@@ -356,6 +366,10 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
 void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
 {
   DDDLOG("StfSenderOutput[{}]: Starting the thread", pTfBuilderId);
+  // decrease the priority
+#if defined(__linux__)
+  nice(2);
+#endif
 
   FairMQChannel *lOutputChan = nullptr;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> *lInputStfQueue = nullptr;
@@ -427,6 +441,11 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
 void StfSenderOutput::StfDropThread()
 {
   DDDLOG("Starting DataDropThread thread.");
+  // decrease the priority
+#if defined(__linux__)
+  nice(5);
+#endif
+
   std::uint64_t lNumDroppedStfs = 0;
 
   while (mRunning) {
@@ -457,6 +476,11 @@ void StfSenderOutput::StfDropThread()
 void StfSenderOutput::StfMonitoringThread()
 {
   DDDLOG("Starting StfMonitoring thread.");
+
+  // decrease the priority
+#if defined(__linux__)
+  nice(10);
+#endif
 
   StdSenderOutputCounters lPrevCounters;
   {
