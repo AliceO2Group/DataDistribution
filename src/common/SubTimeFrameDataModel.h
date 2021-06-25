@@ -307,11 +307,11 @@ class SubTimeFrame : public IDataModelObject
     std::uint32_t mRunNumber = 0;
 
     enum Origin {
+      eInvalid = -1,
       eReadout = 1,
-      eFile,
-      eReadoutNoTfId, // MFT/ITS topology run
+      eReadoutTopology, // MFT/ITS topology run
       eNull
-    } mOrigin = eNull;
+    } mOrigin = eInvalid;
 
     Header() = default;
     explicit Header(TimeFrameIdType pId)

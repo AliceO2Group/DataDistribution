@@ -276,6 +276,42 @@ void StfSenderOutput::StfSchedulerThread()
     lStfInfo.mutable_stfs_info()->set_buffer_used(lCounters.mBuffered.mSize);
     lStfInfo.mutable_stfs_info()->set_num_buffered_stfs(lCounters.mBuffered.mCnt);
 
+    switch (lStf->header().mOrigin) {
+      case SubTimeFrame::Header::Origin::eReadout:
+      {
+        lStfInfo.set_stf_source(StfSource::DEFAULT);
+        break;
+      }
+      case SubTimeFrame::Header::Origin::eReadoutTopology:
+      {
+        lStfInfo.set_stf_source(StfSource::TOPOLOGICAL);
+        auto lInfoPtr = lStfInfo.mutable_stf_source_info()->Add();
+
+        const auto &lStfEquip = lStf->getEquipmentIdentifiers();
+        if (lStfEquip.size() != 1) {
+          EDDLOG_RL(1000, "StfSchedulerThread: number of equipments is not 1. num_equipments={}", lStfEquip.size());
+          mDropQueue.push(std::move(lStf));
+          continue;
+        }
+
+        lInfoPtr->set_data_origin(std::string(lStfEquip.begin()->mDataOrigin.str, 3));
+        lInfoPtr->set_data_subspec(lStfEquip.begin()->mSubSpecification);
+        break;
+      }
+      case SubTimeFrame::Header::Origin::eNull:
+      {
+        lStfInfo.set_stf_source(StfSource::EMPTY);
+        break;
+      }
+      default:
+      {
+        EDDLOG_RL(1000, "StfSchedulerThread: dropping STF of unknown type stf_source={}", lStf->header().mOrigin);
+        mDropQueue.push(std::move(lStf));
+        continue;
+        break;
+      }
+    }
+
     // to avoid races, move the stf into the triage map before notifying the scheduler
     {
       std::scoped_lock lLock(mScheduledStfMapLock);

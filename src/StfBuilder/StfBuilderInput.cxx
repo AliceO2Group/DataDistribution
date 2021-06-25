@@ -482,7 +482,7 @@ void StfInputInterface::EquipmentBuilderThread()
       // Finished: queue the current STF and start a new one
       if (auto lStf = lStfBuilder.getStf(); lStf.has_value()) {
         // start the new STF
-        (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eReadoutNoTfId);
+        (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eReadoutTopology);
 
         mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
         {

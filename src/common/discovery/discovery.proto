@@ -190,14 +190,29 @@ message StfSenderInfo {
   uint32              num_buffered_stfs   = 3;
 }
 
+enum StfSource {
+  IGNORE_StfSourceInfo__    = 0;
+  DEFAULT                   = 1;  // regular physics STF
+  EMPTY                     = 2;  // missing STF inserted by StfBuilder
+  TOPOLOGICAL               = 3;  // STF for topological distribution
+}
+
+message StfSourceInfo {
+  string data_origin        = 1;
+  uint64 data_subspec       = 2;
+}
+
 message StfSenderStfInfo {
-  BasicInfo           info             = 1;
-  PartitionInfo       partition        = 2;
+  BasicInfo               info             = 1;
+  PartitionInfo           partition        = 2;
 
-  uint64              stf_id           = 3;
-  uint64              stf_size         = 4;
+  uint64                  stf_id           = 3;
+  uint64                  stf_size         = 4;
 
-  StfSenderInfo       stfs_info        = 5;
+  StfSenderInfo           stfs_info        = 5;
+
+  StfSource               stf_source       = 6;
+  repeated StfSourceInfo  stf_source_info  = 7;
 }
 
 message SchedulerStfInfoResponse {
