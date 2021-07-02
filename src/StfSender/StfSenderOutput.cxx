@@ -545,8 +545,18 @@ void StfSenderOutput::StfMonitoringThread()
 
     const std::chrono::duration<double> lDuration = lNow - lLastSent;
     const double lSentStfs = double(lCurrCounters.mTotalSent.mCnt - lPrevCounters.mTotalSent.mCnt);
-    DDMON("stfsender", "stf_output.stf_rate", (lSentStfs / std::max(0.000001, lDuration.count())));
-    DDMON("stfsender", "stf_output.stf_size", (lCurrCounters.mTotalSent.mSize - lPrevCounters.mTotalSent.mSize) );
+
+    if (lSentStfs > 0) {
+      const auto lStfRate = lSentStfs / std::max(0.000001, lDuration.count());
+      const auto lStfSize = (lCurrCounters.mTotalSent.mSize - lPrevCounters.mTotalSent.mSize) / lSentStfs;
+      DDMON("stfsender", "stf_output.rate", lStfRate);
+      DDMON("stfsender", "stf_output.size", lStfSize);
+      DDMON("stfsender", "data_output.rate", (lStfRate * lStfSize));
+    } else {
+      DDMON("stfsender", "stf_output.rate", 0);
+      DDMON("stfsender", "stf_output.size", 0);
+      DDMON("stfsender", "data_output.rate", 0);
+    }
 
     lPrevCounters = lCurrCounters;
     lLastSent = lNow;

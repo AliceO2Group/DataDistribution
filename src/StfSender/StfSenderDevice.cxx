@@ -273,6 +273,7 @@ void StfSenderDevice::StfReceiverThread()
       }
       DDMON("stfsender", "stf_input.rate", 0.0);
       DDMON("stfsender", "stf_input.size", 0.0);
+      DDMON("stfsender", "data_input.rate", 0.0);
       lStfStartTime = hres_clock::now();
       continue;
     }
@@ -282,9 +283,11 @@ void StfSenderDevice::StfReceiverThread()
       const std::chrono::duration<double> lStfDur = lNow - lStfStartTime;
       lStfStartTime = lNow;
 
-      DDMON("stfsender", "stf_input.rate", (1.0 / std::max(0.000001, lStfDur.count())));
+      const auto lRate = 1.0 / std::max(0.000001, lStfDur.count());
+      DDMON("stfsender", "stf_input.rate", lRate);
       DDMON("stfsender", "stf_input.size", lStf->getDataSize());
       DDMON("stfsender", "stf_input.id", lStf->id());
+      DDMON("stfsender", "data_input.rate", lRate * lStf->getDataSize());
     }
 
     lReceivedStfs += 1;

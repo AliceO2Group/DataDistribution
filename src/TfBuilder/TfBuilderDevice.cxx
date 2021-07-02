@@ -323,9 +323,11 @@ void TfBuilderDevice::TfForwardThread()
     {
       const auto lStfDur = std::chrono::duration<double>(hres_clock::now() - lRateStartTime);
       lRateStartTime = hres_clock::now();
+      const auto lRate = (1.0 / lStfDur.count());
       DDMON("tfbuilder", "tf_output.id", lTfId);
       DDMON("tfbuilder", "tf_output.size", lTf->getDataSize());
-      DDMON("tfbuilder", "tf_output.rate", 1.0 / lStfDur.count());
+      DDMON("tfbuilder", "tf_output.rate", lRate);
+      DDMON("tfbuilder", "data_output.rate", (lRate * lTf->getDataSize()));
     }
 
     if (!mStandalone) {

@@ -311,8 +311,9 @@ void StfBuilderDevice::StfOutputThread()
     // Get a STF ready for sending
     std::unique_ptr<SubTimeFrame> lStf = I().dequeue(eStfSendIn);
     if (!lStf) {
-      DDMON("stfbuilder", "stf_input.rate", 0);
-      DDMON("stfbuilder", "stf_input.size", 0);
+      DDMON("stfbuilder", "stf_output.rate", 0);
+      DDMON("stfbuilder", "stf_output.size", 0);
+      DDMON("stfbuilder", "data_output.rate", 0);
       break;
     }
 
@@ -328,9 +329,11 @@ void StfBuilderDevice::StfOutputThread()
       const auto lStfDur = std::chrono::duration<double>(lNow - lStfStartTime);
       lStfStartTime = lNow;
 
-      DDMON("stfbuilder", "stf_output.rate", (1.0 / lStfDur.count()));
+      const auto lRate = 1.0 / std::max(lStfDur.count(), 0.00001);
+      DDMON("stfbuilder", "stf_output.rate", lRate);
       DDMON("stfbuilder", "stf_output.size", lStf->getDataSize());
       DDMON("stfbuilder", "stf_output.id", lStf->id());
+      DDMON("stfbuilder", "data_output.rate", (lRate * lStf->getDataSize()));
     }
 
     if (!isStandalone()) {
