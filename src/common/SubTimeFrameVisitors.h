@@ -100,10 +100,13 @@ class CoalescedHdrDataSerializer : public ISubTimeFrameVisitor
 
   void serialize(std::unique_ptr<SubTimeFrame>&& pStf);
 
+  void stop() { mRunning = false; }
+
  protected:
   void visit(SubTimeFrame& pStf) override;
 
  private:
+  std::atomic_bool mRunning = true;
   std::vector<FairMQMessagePtr> mHdrs;
   std::vector<FairMQMessagePtr> mData;
 

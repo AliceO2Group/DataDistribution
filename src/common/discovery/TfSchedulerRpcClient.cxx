@@ -160,23 +160,14 @@ bool TfSchedulerRpcClient::TfBuilderDisconnectionRequest(TfBuilderConfigStatus &
   }
 
   using namespace std::chrono_literals;
+  ClientContext lContext;
 
-  while(is_alive()) {
-    ClientContext lContext;
+  // update timestamp
+  updateTimeInformation(*pParam.mutable_info());
 
-    // update timestamp
-    updateTimeInformation(*pParam.mutable_info());
+  auto lStatus = mStub->TfBuilderDisconnectionRequest(&lContext, pParam, &pRet);
 
-    auto lStatus = mStub->TfBuilderDisconnectionRequest(&lContext, pParam, &pRet);
-    if (lStatus.ok()) {
-      return true;
-    }
-
-    pRet.Clear();
-    std::this_thread::sleep_for(500ms);
-  }
-
-  return false;
+  return (lStatus.ok() ? true : false);
 }
 
 // rpc TfBuilderUpdate(TfBuilderUpdateMessage) returns (google.protobuf.Empty) { }

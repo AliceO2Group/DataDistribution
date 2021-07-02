@@ -17,6 +17,7 @@
 #include <ConfigConsul.h>
 
 #include <SubTimeFrameDataModel.h>
+#include <SubTimeFrameVisitors.h>
 #include <ConcurrentQueue.h>
 
 #include <vector>
@@ -27,6 +28,7 @@ namespace o2::DataDistribution
 {
 
 class StfSenderDevice;
+class CoalescedHdrDataSerializer;
 
 class StfSenderOutput
 {
@@ -114,6 +116,7 @@ public:
   struct OutputChannelObjects {
     std::string mTfBuilderEndpoint;
     std::unique_ptr<FairMQChannel> mChannel;
+    std::unique_ptr<CoalescedHdrDataSerializer> mStfSerializer;
     std::unique_ptr<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>> mStfQueue;
     std::thread mThread;
   };
