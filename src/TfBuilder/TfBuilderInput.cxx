@@ -25,9 +25,7 @@
 #include <thread>
 #include <chrono>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -174,7 +172,7 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 
     mInputThreads.try_emplace(
       lStfSenderId,
-      create_thread_member(lThreadName, &TfBuilderInput::DataHandlerThread, this, lSocketIdx)
+      create_thread_member(lThreadName, &TfBuilderInput::DataHandlerThread, this, lSocketIdx, lStfSenderId)
     );
   }
 
@@ -244,7 +242,6 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
 
     if (mStfMergerThread.joinable()) {
       mStfMergerThread.join();
-      mStfMergerThread = {};
     }
   }
   DDDLOG("TfBuilderInput::stop: Merger thread stopped.");
@@ -252,12 +249,12 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
 }
 
 /// Receiving thread
-void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
+void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex, const std::string pStfSenderId)
 {
   std::uint64_t lNumStfs = 0;
 
-  DataDistLogger::SetThreadName(fmt::format("Receiver[{}]", pFlpIndex));
-  DDDLOG("Starting receiver thread for StfSender[{}]", pFlpIndex);
+  DataDistLogger::SetThreadName(fmt::format("Receiver[{}]", pStfSenderId));
+  DDDLOG("Starting receiver thread for StfSender[{}]", pStfSenderId);
 
   // Reference to the input channel
   auto& lInputChan = *mStfSenderChannels[pFlpIndex];
@@ -277,7 +274,7 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex)
     }
 
     // send to deserializer thread so that we can keep receiving
-    mReceivedData.push(std::move(lStfData));
+    mReceivedData.push(std::move(ReceivedStfMeta(pStfSenderId, std::move(lStfData))));
     lNumStfs++;
   }
 
@@ -307,10 +304,17 @@ void TfBuilderInput::StfDeserializingThread()
       continue;
     }
 
-    const TimeFrameIdType lTfId = lStfInfo.mStf->header().mId;
+    const TimeFrameIdType lTfId = lStfInfo.mStf->id();
     lNumStfs++;
 
-    DDDLOG_RL(5000, "Deserialized STF. stf_id={} total={}", lTfId, lNumStfs);
+    // Rename TF id if this is a Topological TF
+    std::uint64_t lNewTfId = 0;
+    if (mRpc->getTopologicalTfId(lData->mStfSenderId, lTfId, lNewTfId)) {
+      DDDLOG_RL(5000, "Deserialized STF. stf_id={} new_id={} total={}", lTfId, lNewTfId, lNumStfs);
+      lStfInfo.mStf->updateId(lNewTfId);
+    } else {
+      DDDLOG_RL(5000, "Deserialized STF. stf_id={} total={}", lTfId, lNumStfs);
+    }
 
     {
       // Push the STF into the merger queue
@@ -396,5 +400,5 @@ void TfBuilderInput::StfMergerThread()
 
   IDDLOG("Exiting STF merger thread.");
 }
-}
+
 } /* namespace o2::DataDistribution */

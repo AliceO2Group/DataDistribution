@@ -66,6 +66,7 @@ void TfSchedulerStfInfo::SchedulingThread()
     }
     lRequest.set_tf_id(lTfId);
     lRequest.set_tf_size(lTfSize);
+    lRequest.set_tf_source(StfSource::DEFAULT);
 
     // 1: Get the best TfBuilder candidate
     std::string lTfBuilderId;
@@ -232,6 +233,8 @@ void TfSchedulerStfInfo::HighWatermarkThread()
       std::unique_lock lLock(mGlobalStfInfoLock);
       if (std::cv_status::timeout == mMemWatermarkCondition.wait_for(lLock, 1s)) {
         DDDLOG_RL(10000, "HighWatermarkThread: Running the StfSender buffer utilization perodic scan.");
+      } else {
+        WDDLOG_RL(10000, "HighWatermarkThread: Running the scan.");
       }
 
       // check for problematic stf senders
@@ -333,11 +336,13 @@ void TfSchedulerStfInfo::DropThread()
 {
   while (mRunning) {
 
-    std::tuple<std::uint64_t> lStfToDrop;
+    // stfID, stfs_id (empty to drop all)
+    std::tuple<std::uint64_t, std::string> lStfToDrop;
 
     while (mDropQueue.pop(lStfToDrop)) {
 
       const std::uint64_t lStfId = std::get<0>(lStfToDrop);
+      const std::string &lStfsId = std::get<1>(lStfToDrop);
 
 #if !defined(NDEBUG)
       { // Should remove earlier?
@@ -345,7 +350,12 @@ void TfSchedulerStfInfo::DropThread()
         assert (mStfInfoMap.count(lStfId) == 0);
       }
 #endif
-      mConnManager.dropAllStfsAsync(lStfId);
+
+      if (lStfsId.empty()) {
+        mConnManager.dropAllStfsAsync(lStfId); // drop all
+      } else {
+        mConnManager.dropSingleStfsAsync(lStfId, lStfsId); // drop one StfSender  (topological distribution)
+      }
     }
   }
 
@@ -359,6 +369,15 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
 
   const auto lNumStfSenders = mDiscoveryConfig->status().stf_sender_count();
   const auto lStfId = pStfInfo.stf_id();
+
+  if (pStfInfo.stf_source() == StfSource::TOPOLOGICAL) {
+    assert (pStfInfo.stf_source_info_size() == 1);
+
+    auto &lStfSourceInfo = pStfInfo.stf_source_info()[0]; // only one is valid
+    DDDLOG_GRL(10000, "Received a topological STF info: {}/{}", lStfSourceInfo.data_origin(), lStfSourceInfo.data_subspec());
+
+    return addTopologyStfInfo(pStfInfo, pResponse);
+  }
 
   {
     std::unique_lock lLock(mGlobalStfInfoLock);
@@ -473,5 +492,118 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
     }
   }
 }
+
+
+/// TOPOLOGY RUN: Stfs global info
+void TfSchedulerStfInfo::addTopologyStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse)
+{
+  assert (pStfInfo.stf_source() == StfSource::TOPOLOGICAL);
+  assert (pStfInfo.stf_source_info_size() == 1);
+
+  const auto &lStfSourceInfo = pStfInfo.stf_source_info()[0]; // only one is valid
+  const auto lDataOrigin = std::string(lStfSourceInfo.data_origin());
+  const std::uint64_t lSubSpec = lStfSourceInfo.data_subspec();
+
+  DDDLOG_GRL(5000, "Received a topological STF info: {}/{}", lStfSourceInfo.data_origin(), lStfSourceInfo.data_subspec());
+
+  {
+    // Drop not running
+    if (!mRunning) {
+      pResponse.set_status(SchedulerStfInfoResponse::DROP_NOT_RUNNING);
+      return;
+    }
+
+    // add the current STF to the list
+    pResponse.set_status(SchedulerStfInfoResponse::OK);
+
+    auto lTopoStfInfo = std::make_unique<TopoStfInfo>(pStfInfo, lDataOrigin, lSubSpec);
+    mTopoStfInfoQueue.push(std::move(lTopoStfInfo));
+  }
+}
+
+void TfSchedulerStfInfo::TopoSchedulingThread()
+{
+  DataDistLogger::SetThreadName("TopoSchedulingThread");
+  DDDLOG("Starting StfInfo TopoSchedulingThread.");
+
+  std::uint64_t lNumTfScheds = 0;
+
+  // count how many time an FLP was missing STFs
+  std::optional<std::unique_ptr<TopoStfInfo>> lStfInfosOpt;
+
+  while ((lStfInfosOpt = mTopoStfInfoQueue.pop()) != std::nullopt) {
+    const std::unique_ptr<TopoStfInfo> &lTopoStfInfo = lStfInfosOpt.value();
+
+    TfBuildingInformation lRequest;
+
+    const auto lTfId = lTopoStfInfo->stf_id();
+    const std::string &lStfSenderId = lTopoStfInfo->process_id();
+
+    // calculate combined STF size
+    const std::uint64_t lTfSize = lTopoStfInfo->stf_size();
+    (*lRequest.mutable_stf_size_map())[lStfSenderId] = lTfSize;
+    lRequest.set_tf_id(lTfId);
+    lRequest.set_tf_size(lTfSize);
+    lRequest.set_tf_source(StfSource::TOPOLOGICAL);
+
+    const std::string_view lDataOrigin = std::string_view(lTopoStfInfo->mDataOrigin, 3);
+    const std::uint64_t lSubSpec = lTopoStfInfo->mSubSpec;
+
+    DDDLOG_RL(1000, "TopoScheduling: origin={} subspec={} total={}", lDataOrigin, lSubSpec, lNumTfScheds);
+
+    // 1: Get the best TfBuilder
+    std::string lTfBuilderId;
+    if (mTfBuilderInfo.findTfBuilderForTopoStf(lDataOrigin, lSubSpec, lTfBuilderId /*out*/) ) {
+      lNumTfScheds++;
+      assert (!lTfBuilderId.empty());
+      // Notify TfBuilder to build the TF
+      TfBuilderRpcClient lRpcCli = mConnManager.getTfBuilderRpcClient(lTfBuilderId);
+
+      // finding and getting the client is racy
+      if (lRpcCli) {
+        BuildTfResponse lResponse;
+
+        if (lRpcCli.get().BuildTfRequest(lRequest, lResponse)) {
+          switch (lResponse.status()) {
+            case BuildTfResponse::OK:
+              break;
+            case BuildTfResponse::ERROR_NOMEM:
+              requestDropTopoStf(lTfId, lStfSenderId);
+              break;
+            case BuildTfResponse::ERROR_NOT_RUNNING:
+              EDDLOG("Scheduling error: selected TfBuilder returned ERROR_NOT_RUNNING. tf_id={:s}", lTfBuilderId);
+              requestDropTopoStf(lTfId, lStfSenderId);
+              break;
+            default:
+              break;
+          }
+        } else {
+          EDDLOG("TopoScheduling of TF failed. to_tfb_id={} reason=grpc_error", lTfBuilderId);
+          WDDLOG("Removing TfBuilder from scheduling. tfb_id={}", lTfBuilderId);
+
+          lRpcCli.put();
+
+          requestDropTopoStf(lTfId, lStfSenderId);
+          mConnManager.removeTfBuilder(lTfBuilderId);
+          mTfBuilderInfo.removeReadyTfBuilder(lTfBuilderId);
+        }
+      } else {
+        // TfBuilder was removed in the meantime, e.g. by housekeeping thread because of stale info
+        // We drop the current TF as this is not a likely situation
+        WDDLOG("Selected TfBuilder is not currently reachable. TF will be dropped. tfb_id={} tf_id={}",
+          lTfBuilderId, lTfId);
+
+        requestDropTopoStf(lTfId, lStfSenderId);
+        mTfBuilderInfo.removeReadyTfBuilder(lTfBuilderId);
+      }
+    } else {
+      // No candidate for scheduling
+      requestDropTopoStf(lTfId, lStfSenderId);
+    }
+  }
+
+  DDDLOG("Exiting StfInfo TopoSchedulingThread.");
+}
+
 
 } /* o2::DataDistribution */

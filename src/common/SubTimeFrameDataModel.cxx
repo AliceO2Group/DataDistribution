@@ -97,6 +97,17 @@ std::vector<EquipmentIdentifier> SubTimeFrame::getEquipmentIdentifiers() const
 
 void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf)
 {
+  // make sure header values match
+  if (mHeader.mOrigin != pStf->header().mOrigin) {
+    EDDLOG("Merging STFs error: STF origins do not match origin={} new_origin={}",
+      mHeader.mOrigin,  pStf->header().mOrigin);
+  }
+
+  if (mHeader.mFirstOrbit != pStf->header().mFirstOrbit) {
+    EDDLOG("Merging STFs error: STF first orbits do not match firstOrbit={} new_firstOrbit={}",
+      mHeader.mFirstOrbit,  pStf->header().mFirstOrbit);
+  }
+
   // make sure data equipment does not repeat
   std::set<EquipmentIdentifier> lUnionSet;
   for (const auto& lId : getEquipmentIdentifiers())
