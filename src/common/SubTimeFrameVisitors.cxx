@@ -285,7 +285,7 @@ void CoalescedHdrDataSerializer::serialize(std::unique_ptr<SubTimeFrame>&& pStf)
   mHdrs.clear();
 
   // send the data + coslesced headers
-  mChan.Send(mData);
+  while (mRunning && (static_cast<std::int64_t>(fair::mq::TransferCode::timeout) == mChan.Send(mData, 500))) { }
 
   // make sure headers and chunk pointers don't linger
   mData.clear();

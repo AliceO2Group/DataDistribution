@@ -159,11 +159,14 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
     std::snprintf(lThreadName, 127, "to_%s", pTfBuilderId.c_str());
     lThreadName[15] = '\0'; // kernel limitation
 
+    auto lSer = std::make_unique<CoalescedHdrDataSerializer>(*lNewChannel);
+
     mOutputMap.try_emplace(
       pTfBuilderId,
       OutputChannelObjects {
         pEndpoint,
         std::move(lNewChannel),
+        std::move(lSer),
         std::make_unique<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>>(),
         // Note: this thread will try to access this same map. The MapLock will prevent races
         create_thread_member(lThreadName, &StfSenderOutput::DataHandlerThread, this, pTfBuilderId)
@@ -210,6 +213,7 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
   // stop and teardown everything
   DDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending thread. tfb_id={}", pTfBuilderId);
   lOutputObj.mStfQueue->stop();
+  lOutputObj.mStfSerializer->stop();
   if (lOutputObj.mThread.joinable()) {
     lOutputObj.mThread.join();
   }
@@ -407,22 +411,20 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
   nice(2);
 #endif
 
-  FairMQChannel *lOutputChan = nullptr;
+  CoalescedHdrDataSerializer *lStfSerializer = nullptr;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> *lInputStfQueue = nullptr;
   {
     // get the thread data. MapLock prevents races on the map operation
     std::scoped_lock lLock(mOutputMapLock);
     auto &lOutData = mOutputMap.at(pTfBuilderId);
 
-    lOutputChan = lOutData.mChannel.get();
+    lStfSerializer = lOutData.mStfSerializer.get();
     lInputStfQueue = lOutData.mStfQueue.get();
   }
-  assert(lOutputChan != nullptr && lOutputChan->IsValid());
   assert(lInputStfQueue != nullptr && lInputStfQueue->is_running());
 
   std::uint64_t lNumSentStfs = 0;
 
-  CoalescedHdrDataSerializer lStfSerializer(*lOutputChan);
   std::optional<std::unique_ptr<SubTimeFrame>> lStfOpt;
 
   while ((lStfOpt = lInputStfQueue->pop()) != std::nullopt) {
@@ -436,7 +438,7 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
       lStfId, pTfBuilderId, lStfSize, lNumSentStfs);
 
     try {
-      lStfSerializer.serialize(std::move(lStf));
+      lStfSerializer->serialize(std::move(lStf));
     } catch (std::exception &e) {
       if (mDevice.IsRunningState()){
         EDDLOG("StfSenderOutput[{}]: exception on send, what={}", pTfBuilderId, e.what());
