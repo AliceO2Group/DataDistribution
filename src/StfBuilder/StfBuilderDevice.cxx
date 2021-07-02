@@ -98,7 +98,7 @@ void StfBuilderDevice::InitTask()
 
   // start monitoring
   DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend", ""));
-  DataDistMonitor::set_rate(GetConfig()->GetValue<float>("monitoring-rate"));
+  DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
   DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
 
   // input data handling
