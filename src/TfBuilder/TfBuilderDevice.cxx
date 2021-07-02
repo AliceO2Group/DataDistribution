@@ -172,6 +172,8 @@ void TfBuilderDevice::PreRun()
   // enable monitoring
   DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, mPartitionId);
 
+  DDMON("tfbuilder", "running", 1);
+
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 
@@ -273,6 +275,8 @@ void TfBuilderDevice::ResetTask()
 // Get here when ConditionalRun returns false
 void TfBuilderDevice::PostRun()
 {
+  DDMON("tfbuilder", "running", 0);
+
   // update running state
   auto& lStatus = mDiscoveryConfig->status();
   lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
@@ -292,6 +296,13 @@ bool TfBuilderDevice::ConditionalRun()
   }
   // nothing to do here sleep for awhile
   std::this_thread::sleep_for(250ms);
+
+  {
+    static unsigned sRateLimit_Monitoring = 0;
+    if ((sRateLimit_Monitoring++ % 128) == 0) {
+      DDMON("tfbuilder", "running", 1);
+    }
+  }
   return true;
 }
 
