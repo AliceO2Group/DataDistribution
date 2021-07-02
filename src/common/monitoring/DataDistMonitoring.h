@@ -120,13 +120,12 @@ public:
     }
   }
 
-  static void set_rate(const float pRate) {
+  static void set_interval(const float pInterval) {
     if (mDataDistMon) {
-      if (pRate <= std::numeric_limits<float>::epsilon()) {
+      if (pInterval <= std::numeric_limits<float>::epsilon()) {
         mDataDistMon->set_active(false);
       } else {
-        unsigned lMonIntMs = unsigned(1000.0f / std::max(0.00001f, pRate));
-        mDataDistMon->set_interval(lMonIntMs);
+        mDataDistMon->set_interval(std::round(double(pInterval) * 1000.0));
       }
     }
   }
@@ -148,7 +147,7 @@ public:
     bpo::options_description lMonitoringOpts("Monitoring options", 120);
     lMonitoringOpts.add_options()
       ("monitoring-backend", bpo::value<std::string>()->default_value(""), "Monitoring url.")
-      ("monitoring-rate", bpo::value<float>()->default_value(2.0), "Monitoring metric rate (values per second).")
+      ("monitoring-interval", bpo::value<float>()->default_value(2.0), "Monitoring metric interval (seconds).")
       ("monitoring-log", bpo::bool_switch()->default_value(false), "Log Monitoring metric.");
 
     return lMonitoringOpts;
