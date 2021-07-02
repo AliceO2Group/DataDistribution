@@ -31,9 +31,7 @@
 #include <thread>
 #include <chrono>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -43,6 +41,9 @@ struct TfBuilderInfo {
   TfBuilderUpdateMessage mTfBuilderUpdate;
   std::uint64_t mLastScheduledTf = 0;
   std::uint64_t mEstimatedFreeMemory;
+
+  // Topological distribution
+  double mTotalUtilization = 0.0;
 
   TfBuilderInfo() = delete;
 
@@ -57,6 +58,22 @@ struct TfBuilderInfo {
   std::uint64_t last_scheduled_tf_id() const { return mLastScheduledTf; }
   std::uint64_t last_built_tf_id() const { return mTfBuilderUpdate.last_built_tf_id(); }
 };
+
+struct TfBuilderTopoInfo {
+    std::uint64_t mSubSpec;
+    char mDataOrigin[4];
+
+    TfBuilderTopoInfo() = default;
+    TfBuilderTopoInfo(const std::string_view pDataOrigin, const std::uint64_t pSubSoec)
+    : mSubSpec(pSubSoec)
+    {
+      std::copy_n(pDataOrigin.cbegin(), 3, mDataOrigin); mDataOrigin[3] = '\0';
+    }
+
+    std::size_t operator()(TfBuilderTopoInfo const& s) const noexcept;
+};
+
+bool operator==(const TfBuilderTopoInfo& lhs, const TfBuilderTopoInfo& rhs);
 
 class TfSchedulerTfBuilderInfo
 {
@@ -86,13 +103,11 @@ class TfSchedulerTfBuilderInfo
     }
 
     {
-      std::scoped_lock lLock(mGlobalInfoLock);
+      std::scoped_lock lLock(mGlobalInfoLock, mReadyInfoLock, mTopoInfoLock);
       // delete all info
       mGlobalInfo.clear();
-    }
-    {
-      std::scoped_lock lLock(mReadyInfoLock);
       mReadyTfBuilders.clear();
+      mTopoTfBuilders.clear();
     }
   }
 
@@ -108,12 +123,22 @@ class TfSchedulerTfBuilderInfo
 
   void removeReadyTfBuilder(const std::string &pId)
   {
-    std::scoped_lock lLock(mReadyInfoLock);
+    std::scoped_lock lLock(mReadyInfoLock, mTopoInfoLock);
     for (auto it = mReadyTfBuilders.begin(); it != mReadyTfBuilders.end(); it++) {
       if ((*it)->id() == pId) {
-        DDDLOG("Removed TfBuilder from the ready list. tfb_id={}", pId);
+        IDDLOG("Removed TfBuilder from the ready list. tfb_id={}", pId);
         mReadyTfBuilders.erase(it);
         break;
+      }
+    }
+
+    // remove all assignments
+    for (auto it = mTopoTfBuilders.cbegin(); it != mTopoTfBuilders.cend(); /* inc below */ ) {
+      if (it->second->id() == pId) {
+        IDDLOG("Removed TfBuilder from the topo list. tfb_id={} equip={}/{}", pId, it->first.mDataOrigin, it->first.mSubSpec);
+        mTopoTfBuilders.erase(it++);
+      } else {
+        ++it;
       }
     }
   }
@@ -129,6 +154,10 @@ class TfSchedulerTfBuilderInfo
     }
     return false;
   }
+
+
+  /// Topological distribution
+  bool findTfBuilderForTopoStf(const std::string_view pDataOrigin, const std::uint64_t pSubSpec, std::string& pTfBuilderId /*out*/);
 
 private:
   /// Overestimation of actual size for TF building
@@ -151,9 +180,13 @@ private:
   /// List of TfBuilders with available resources
   mutable std::recursive_mutex mReadyInfoLock;
     std::deque<std::shared_ptr<TfBuilderInfo>> mReadyTfBuilders;
+
+  /// List of TfBuilders for Topological distribution
+  mutable std::recursive_mutex mTopoInfoLock;
+    std::unordered_map<TfBuilderTopoInfo, std::shared_ptr<TfBuilderInfo>, TfBuilderTopoInfo> mTopoTfBuilders;
 };
 
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_TF_SCHEDULER_TFBUILDER_INFO_H_ */

@@ -20,12 +20,21 @@
 #include <tuple>
 #include <algorithm>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
+
+std::size_t TfBuilderTopoInfo::operator()(TfBuilderTopoInfo const& s) const noexcept
+{
+    std::size_t h1 = std::hash<std::uint64_t>{}(mSubSpec);
+    std::size_t h2 = std::hash<std::string_view>{}(std::string_view(s.mDataOrigin, 3));
+    return h1 ^ (h2 << 1);
+}
+
+bool operator==(const TfBuilderTopoInfo& lhs, const TfBuilderTopoInfo& rhs) {
+    return lhs.mSubSpec == rhs.mSubSpec && (0 == std::memcmp(lhs.mDataOrigin, rhs.mDataOrigin, 3));
+}
 
 void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage &pTfBuilderUpdate)
 {
@@ -84,7 +93,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
         lInfo->mTfBuilderUpdate = pTfBuilderUpdate;
 
         // verify the memory estimation is correct
-        if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory() ) {
+        if (lInfo->mEstimatedFreeMemory > (pTfBuilderUpdate.free_memory() * (sTfSizeOverestimatePercent + 100) / 100) ) {
           DDDLOG("TfBuilder memory estimate is too high. tfb_id={:s} mem_estimate={}", lTfBuilderId,
             (double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory())));
         }
@@ -165,6 +174,53 @@ bool TfSchedulerTfBuilderInfo::findTfBuilderForTf(const std::uint64_t pSize, std
   return true;
 }
 
+
+bool TfSchedulerTfBuilderInfo::findTfBuilderForTopoStf(const std::string_view pDataOrigin, const std::uint64_t pSubSpec, std::string& pTfBuilderId /*out*/)
+{
+  // look for a candidate in the assigned list
+  std::scoped_lock lLock(mReadyInfoLock, mTopoInfoLock);
+  {
+    const auto &lTfBuilderInfo = mTopoTfBuilders.find({pDataOrigin, pSubSpec});
+    if (lTfBuilderInfo != mTopoTfBuilders.end()) {
+      pTfBuilderId = lTfBuilderInfo->second->id();
+      return true;
+    }
+  }
+
+  // assign the least utilized EPN from the ready list
+  {
+    double lMinUtil = std::numeric_limits<double>::max();
+    std::shared_ptr<TfBuilderInfo> lMinTfBuilder;
+
+    for (auto &lIt : mReadyTfBuilders) {
+      if (lIt->mTotalUtilization < lMinUtil) {
+        lMinUtil = lIt->mTotalUtilization;
+        lMinTfBuilder = lIt;
+      }
+    }
+
+    if (!lMinTfBuilder) {
+      WDDLOG_RL(1000, "FindTfBuilderTopo: TF cannot be scheduled. reason=NO_TFBUILDERS total={}", mReadyTfBuilders.size());
+      return false;
+    }
+
+    pTfBuilderId = lMinTfBuilder->id();
+    lMinTfBuilder->mTotalUtilization += 1.0; // TODO: Fix weights and link groups
+
+    // add utilization and cache the TfBuilder
+    mTopoTfBuilders.emplace(std::piecewise_construct,
+      std::forward_as_tuple(pDataOrigin, pSubSpec),
+      std::forward_as_tuple(lMinTfBuilder)
+    );
+
+    DDDLOG("Topological TfBuilder Assignment: {}/{} -> {}", pDataOrigin, pSubSpec, pTfBuilderId);
+
+    return true;
+  }
+
+  return false;
+}
+
 void TfSchedulerTfBuilderInfo::HousekeepingThread()
 {
   using namespace std::chrono_literals;
@@ -211,5 +267,4 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
   DDDLOG("Exiting TfBuilderInfo-Housekeeping thread.");
 }
 
-}
 } /* o2::DataDistribution */

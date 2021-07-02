@@ -27,9 +27,7 @@
 #include <mutex>
 #include <thread>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 class TfBuilderDevice;
@@ -49,7 +47,7 @@ class TfBuilderInput
   bool start(std::shared_ptr<ConsulTfBuilder> pConfig);
   void stop(std::shared_ptr<ConsulTfBuilder> pConfig);
 
-  void DataHandlerThread(const std::uint32_t pFlpIndex);
+  void DataHandlerThread(const std::uint32_t pFlpIndex, const std::string pStfSenderId);
   void StfDeserializingThread();
   void StfMergerThread();
 
@@ -77,12 +75,14 @@ class TfBuilderInput
     std::chrono::time_point<std::chrono::system_clock> mTimeReceived;
     std::unique_ptr<std::vector<FairMQMessagePtr>> mRecvStfdata;
     std::unique_ptr<SubTimeFrame> mStf;
+    std::string mStfSenderId;
 
-    ReceivedStfMeta(std::unique_ptr<std::vector<FairMQMessagePtr>> &&pRecvStfdata)
+    ReceivedStfMeta(const std::string &pStfSenderId, std::unique_ptr<std::vector<FairMQMessagePtr>> &&pRecvStfdata)
     : mTimeReceived(std::chrono::system_clock::now()),
       mRecvStfdata(std::move(pRecvStfdata)),
-      mStf(nullptr)
-    {}
+      mStf(nullptr),
+      mStfSenderId(pStfSenderId)
+    { }
   };
 
   ConcurrentQueue<ReceivedStfMeta> mReceivedData;
@@ -98,7 +98,7 @@ class TfBuilderInput
   /// Output pipeline stage
   unsigned mOutStage;
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_TF_BUILDER_INPUT_H_ */

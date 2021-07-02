@@ -230,11 +230,13 @@ message SchedulerStfInfoResponse {
 }
 
 message TfBuildingInformation {
-  uint64                       tf_id      = 1;
-  uint64                       tf_size    = 2;
+  uint64              tf_id           = 1;
+  uint64              tf_size         = 2;
 
   // flp ID - STF size mapping
-  map<string, uint64> stf_size_map        = 3;
+  map<string, uint64> stf_size_map    = 3;
+
+  StfSource           tf_source       = 4; // DEFAULT or TOPOLOGICAL
 }
 
 message BuildTfResponse {

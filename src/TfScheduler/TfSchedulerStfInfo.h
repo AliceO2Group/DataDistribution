@@ -55,6 +55,25 @@ struct StfInfo {
   std::uint64_t stf_size() const { return mStfInfo.stf_size(); }
 };
 
+struct TopoStfInfo {
+  StfSenderStfInfo mStfInfo;
+  char mDataOrigin[4]; // detector id
+  std::uint64_t mSubSpec;
+  bool mIsScheduled = false;
+
+  TopoStfInfo() = delete;
+  TopoStfInfo(const StfSenderStfInfo &pStfInfo, const std::string_view &pDataOrigin, const std::uint64_t pSubSpec)
+  : mStfInfo(pStfInfo),
+    mSubSpec(pSubSpec)
+  {
+    std::copy_n(pDataOrigin.cbegin(), 3, mDataOrigin); mDataOrigin[3] = '\0';
+  }
+
+  const std::string& process_id() const { return mStfInfo.info().process_id(); }
+  std::uint64_t stf_id() const { return mStfInfo.stf_id(); }
+  std::uint64_t stf_size() const { return mStfInfo.stf_size(); }
+};
+
 class TfSchedulerStfInfo
 {
 public:
@@ -80,6 +99,8 @@ public:
     mStaleStfThread = create_thread_member("stale_drop", &TfSchedulerStfInfo::StaleCleanupThread, this);
     mWatermarkThread = create_thread_member("wmark", &TfSchedulerStfInfo::HighWatermarkThread, this);
     mDropThread = create_thread_member("sched_drop", &TfSchedulerStfInfo::DropThread, this);
+    // Topological distribution
+    mTopoSchedulingThread = create_thread_member("sched_topo_sched", &TfSchedulerStfInfo::TopoSchedulingThread, this);
   }
 
   void stop() {
@@ -87,6 +108,7 @@ public:
     mRunning = false;
     mDropQueue.stop();
     mCompleteStfsInfoQueue.stop();
+    mTopoStfInfoQueue.stop();
 
     if (mSchedulingThread.joinable()) {
       DDDLOG("Waiting on TfSchedulerStfInfo::SchedulingThread");
@@ -108,6 +130,11 @@ public:
       mDropThread.join();
     }
 
+    if (mTopoSchedulingThread.joinable()) {
+      DDDLOG("Waiting on TfSchedulerStfInfo::TopoSchedulingThread");
+      mTopoSchedulingThread.join();
+    }
+
     // delete all stf information
     std::unique_lock lLock(mGlobalStfInfoLock);
     mStfInfoMap.clear();
@@ -118,6 +145,7 @@ public:
   void addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse);
 
   void SchedulingThread();
+  void TopoSchedulingThread();
   void StaleCleanupThread();
   void HighWatermarkThread();
   void DropThread();
@@ -139,10 +167,10 @@ private:
   TfSchedulerTfBuilderInfo &mTfBuilderInfo;
 
   /// Drop thread & queue
-  ConcurrentFifo<std::tuple<std::uint64_t>> mDropQueue;
+  ConcurrentFifo<std::tuple<std::uint64_t, std::string>> mDropQueue;
   std::thread mDropThread;
 
-  /// Stfs global info
+  /// GLOBAL RUN: Stfs global info
   mutable std::mutex mGlobalStfInfoLock;
     std::condition_variable mMemWatermarkCondition;
     std::map<std::uint64_t, std::vector<StfInfo>> mStfInfoMap;
@@ -156,18 +184,22 @@ private:
       assert (mDroppedStfs.GetEvent(lStfId) == false);
       mDroppedStfs.SetEvent(lStfId);
       mStfInfoMap.erase(lStfId);
-      mDropQueue.push(std::make_tuple(lStfId));
+      mDropQueue.push(std::make_tuple(lStfId, ""));
     }
 
-    inline void requestDropAllFromSchedule(const std::uint64_t lStfId) {
-      std::scoped_lock lLock(mGlobalStfInfoLock);
-      if (mDroppedStfs.GetEvent(lStfId) != false) {
-        EDDLOG_RL(1000, "Request for dripping of already discarded TF. tf_id={}", lStfId);
-      }
-      mDroppedStfs.SetEvent(lStfId);
-      mStfInfoMap.erase(lStfId);
-      mDropQueue.push(std::make_tuple(lStfId)); // TODO: add REASON
+  inline void requestDropAllFromSchedule(const std::uint64_t lStfId) {
+    std::scoped_lock lLock(mGlobalStfInfoLock);
+    if (mDroppedStfs.GetEvent(lStfId) != false) {
+      EDDLOG_RL(1000, "Request for dripping of already discarded TF. tf_id={}", lStfId);
     }
+    mDroppedStfs.SetEvent(lStfId);
+    mStfInfoMap.erase(lStfId);
+    mDropQueue.push(std::make_tuple(lStfId, "")); // TODO: add REASON
+  }
+
+  inline void requestDropTopoStf(const std::uint64_t lStfId, const std::string &pStfsId) {
+    mDropQueue.push(std::make_tuple(lStfId, pStfsId));
+  }
 
   /// scheduling thread & queue
   ConcurrentFifo<std::vector<StfInfo>> mCompleteStfsInfoQueue;
@@ -178,6 +210,14 @@ private:
 
   /// stale cleanup thread
   std::thread mStaleStfThread;
+
+  /// TOPOLOGY RUN: Stfs global info
+  void addTopologyStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse);
+
+  /// scheduling thread & queue
+  ConcurrentFifo<std::unique_ptr<TopoStfInfo>> mTopoStfInfoQueue;
+  std::thread mTopoSchedulingThread;
+
 };
 
 } /* namespace o2::DataDistribution */

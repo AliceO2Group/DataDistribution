@@ -350,17 +350,25 @@ class SubTimeFrame : public IDataModelObject
   mutable bool mDataUpdated = false;
 
 public:
+
+  void updateId(const std::uint64_t pNewId) {
+    if (pNewId > 0) {
+      mHeader.mId = pNewId;
+      mDataUpdated = false;
+    }
+  }
+
   void updateFirstOrbit(const std::uint32_t pOrbit) {
     if (pOrbit < mHeader.mFirstOrbit) {
       mHeader.mFirstOrbit = pOrbit;
-     mDataUpdated = false;
+      mDataUpdated = false;
     }
   }
 
   void updateRunNumber(const std::uint32_t pRunNum) {
     if (mHeader.mRunNumber != pRunNum) {
       mHeader.mRunNumber = pRunNum;
-     mDataUpdated = false;
+      mDataUpdated = false;
     }
   }
 

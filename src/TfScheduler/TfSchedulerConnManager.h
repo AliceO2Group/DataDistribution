@@ -119,6 +119,8 @@ class TfSchedulerConnManager
 
   /// Drop all SubTimeFrames (in case they can't be scheduled)
   void dropAllStfsAsync(const std::uint64_t pStfId);
+  /// Drop a single SubTimeFrames (in case they can't be scheduled)
+  void dropSingleStfsAsync(const std::uint64_t pStfId, const std::string &pStfSenderId);
 
   bool newTfBuilderRpcClient(const std::string &pId)
   {

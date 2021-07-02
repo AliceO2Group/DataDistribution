@@ -21,9 +21,7 @@
 #include <condition_variable>
 #include <stdexcept>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -142,13 +140,24 @@ void TfBuilderRpcImpl::UpdateSendingThread()
   DDDLOG("Exiting TfBuilder Update sending thread.");
 }
 
+bool TfBuilderRpcImpl::getTopologicalTfId(const std::string &pStfSenderId, std::uint64_t pIncomingId, std::uint64_t &pNewId /*out*/)
+{
+  std::scoped_lock lLock(mTfIdRenameMapLock);
+  if (mTfIdRenameMap[pStfSenderId].count(pIncomingId) > 0) {
+    pNewId = mTfIdRenameMap[pStfSenderId][pIncomingId];
+    mTfIdRenameMap[pStfSenderId].erase(pIncomingId);
+    return true;
+  }
+  return false;
+}
+
 void TfBuilderRpcImpl::StfRequestThread()
 {
   using namespace std::chrono_literals;
   DDDLOG("Starting Stf requesting thread.");
 
   const auto &lTfBuilderId = mDiscoveryConfig->status().info().process_id();
-  TfBuildingInformation mTfInfo;
+  TfBuildingInformation lTfInfo;
 
   StfDataRequestMessage lStfRequest;
   StfDataResponse lStfResponse;
@@ -156,18 +165,25 @@ void TfBuilderRpcImpl::StfRequestThread()
   std::uint64_t lNumTfRequests = 0;
 
   while (mRunning) {
-    if (!mTfBuildRequests->pop(mTfInfo)) {
+    if (!mTfBuildRequests->pop(lTfInfo)) {
       continue; // mRunning will change to false
     }
 
     lNumTfRequests++;
     DDDLOG_RL(1000, "Requesting SubTimeFrame. stf_id={} tf_size={} total_requests={}",
-      mTfInfo.tf_id(), mTfInfo.tf_size(), lNumTfRequests);
+      lTfInfo.tf_id(), lTfInfo.tf_size(), lNumTfRequests);
 
-    for (auto &lStfDataIter : mTfInfo.stf_size_map()) {
+    for (auto &lStfDataIter : lTfInfo.stf_size_map()) {
       const auto &lStfSenderId = lStfDataIter.first;
       // const auto &lStfSize = lStfDataIter.second;
-      lStfRequest.set_stf_id(mTfInfo.tf_id());
+      lStfRequest.set_stf_id(lTfInfo.tf_id());
+
+      // record renaming of TF if this is a topological TF
+      if (lTfInfo.tf_source() == StfSource::TOPOLOGICAL) {
+        std::scoped_lock lLock(mTfIdRenameMapLock);
+        mTfIdRenameMap[lStfSenderId][lTfInfo.tf_id()] = mTfIdNext;
+        mTfIdNext += 1;
+      }
 
       grpc::Status lStatus = StfSenderRpcClients()[lStfSenderId]->StfDataRequest(lStfRequest, lStfResponse);
       if (!lStatus.ok()) {
@@ -285,7 +301,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
 }
 
 ::grpc::Status TfBuilderRpcImpl::BuildTfRequest(::grpc::ServerContext* /*context*/,
-                                                const TfBuildingInformation* request, BuildTfResponse* response)
+  const TfBuildingInformation* request, BuildTfResponse* response)
 {
   if (!mRunning || mTerminateRequested) {
     response->set_status(BuildTfResponse::ERROR_NOT_RUNNING);
@@ -294,14 +310,15 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
 
   const auto &lTfId = request->tf_id();
   const auto &lTfSize = request->tf_size();
+  const auto &lTfSource = request->tf_source();
 
   // sanity checks for accepting new TFs
   {
     std::scoped_lock lLock(mTfIdSizesLock);
 
     if (lTfSize > mCurrentTfBufferSize) {
-      EDDLOG("Request to build a TimeFrame: Not enough free memory! tf_id={} tf_size={} buffer_size={}",
-        lTfId,lTfSize, mCurrentTfBufferSize);
+      EDDLOG_GRL(1000, "Request to build a TimeFrame: Not enough free memory! tf_id={} tf_size={} buffer_size={} stf_type={}",
+        lTfId,lTfSize, mCurrentTfBufferSize, StfSource_Name(lTfSource));
 
       response->set_status(BuildTfResponse::ERROR_NOMEM);
       return ::grpc::Status::OK;
@@ -311,6 +328,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
   // add request to the queue
   mTfBuildRequests->push(*request);
 
+  response->set_status(BuildTfResponse::OK);
   return ::grpc::Status::OK;
 }
 
@@ -325,5 +343,4 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
   return ::grpc::Status::OK;
 }
 
-}
 } /* o2::DataDistribution */

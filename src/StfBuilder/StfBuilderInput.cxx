@@ -120,7 +120,7 @@ void StfInputInterface::StfReceiverThread()
 
       // not in running state
       if (lRet > 0 && !mAcceptingData) {
-        WDDLOG_RL(1000, "READOUT INTERFACE: Discarding received data because we are not in the FMQ:RUNNING state.");
+        WDDLOG_RL(1000, "READOUT INTERFACE: Discarding received data because not in the FMQ:RUNNING state.");
         continue;
       }
 
