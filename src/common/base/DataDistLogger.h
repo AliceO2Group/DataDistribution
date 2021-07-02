@@ -80,7 +80,7 @@ private:
 
   inline void do_vformat(fmt::string_view format, fmt::format_args args) {
     try {
-      fmt::vformat_to(mLogMessage, format, args);
+      fmt::vformat_to(std::back_inserter(mLogMessage), format, args);
     } catch (const fmt::format_error &e) {
       fmt::format_to(mLogMessage, "FORMAT ERROR: {}. provided_format_string={}", e.what(), format);
     }
