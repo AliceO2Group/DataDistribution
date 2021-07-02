@@ -36,9 +36,11 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
     0, // TODO: subspecification? FLP ID? EPN ID?
     sizeof(SubTimeFrame::Header)
   );
+
   lStfDistDataHeader.payloadSerializationMethod = gSerializationMethodNone;
   lStfDistDataHeader.tfCounter = pStf.header().mId;
   lStfDistDataHeader.runNumber = pStf.header().mRunNumber;
+  lStfDistDataHeader.firstTForbit = pStf.header().mFirstOrbit;
 
   o2::framework::DataProcessingHeader lDplHeader(pStf.header().mId);
 
