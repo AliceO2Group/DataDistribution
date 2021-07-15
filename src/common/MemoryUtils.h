@@ -204,7 +204,7 @@ public:
 
     // Insert delay for testing
     const auto lShmDelay = std::getenv(ENV_SHM_DELAY);
-    if (lShmDelay) {
+    if (lShmDelay && mSegmentName.find("O2DataRegion") != std::string::npos) {
       try {
         double lDelaySec = std::stod(lShmDelay);
         lDelaySec = std::abs(lDelaySec);
