@@ -38,6 +38,11 @@ if(${CXX_GOOD_FLAGS})
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wlogical-op -Wnull-dereference")
 endif()
 
+check_cxx_compiler_flag("-Wl,--no-as-needed -ldl" CXX_GOOD_FLAGS)
+if(${CXX_GOOD_FLAGS})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--no-as-needed -ldl")
+endif()
+
 check_cxx_compiler_flag("-Wduplicated-cond -Wdouble-promotion -Wshadow -Wformat=2" CXX_GOOD_FLAGS)
 if(${CXX_GOOD_FLAGS})
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wduplicated-cond -Wdouble-promotion -Wshadow -Wformat=2")

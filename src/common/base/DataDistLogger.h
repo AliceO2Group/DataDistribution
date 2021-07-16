@@ -345,6 +345,8 @@ struct DataDistLoggerCtx {
       EDDLOG("DataDistLoggerCtx: Already initialized! Static init was already done.");
       return;
     }
+    auto ignore_unused = [](auto /*param*/) {
+    };
 
     sRunning = true;
 
@@ -360,7 +362,7 @@ struct DataDistLoggerCtx {
 
     sRateUpdateThread = std::thread([&]() {
 #if defined(__linux__)
-      nice(+1);
+      ignore_unused(nice(+1));
       pthread_setname_np(pthread_self(), "log_clock");
 #endif
       while (sRunning) {
@@ -374,7 +376,7 @@ struct DataDistLoggerCtx {
     mInfoLoggerThread = std::thread([&]() {
       // nice the collection thread to decrease contention with sending threads
 #if defined(__linux__)
-      nice(+10);
+      ignore_unused(nice(+10));
       pthread_setname_np(pthread_self(), "infolog");
 #endif
 
