@@ -238,7 +238,7 @@ void StfSenderOutput::StfSchedulerThread()
 
   // increase the priority
 #if defined(__linux__)
-  nice(-10);
+  (void) nice(-10);
 #endif
 
   std::unique_ptr<SubTimeFrame> lStf;
@@ -408,7 +408,7 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
   DDDLOG("StfSenderOutput[{}]: Starting the thread", pTfBuilderId);
   // decrease the priority
 #if defined(__linux__)
-  nice(2);
+  (void) nice(2);
 #endif
 
   CoalescedHdrDataSerializer *lStfSerializer = nullptr;
@@ -481,7 +481,7 @@ void StfSenderOutput::StfDropThread()
   DDDLOG("Starting DataDropThread thread.");
   // decrease the priority
 #if defined(__linux__)
-  nice(5);
+  (void) nice(5);
 #endif
 
   std::uint64_t lNumDroppedStfs = 0;
@@ -517,7 +517,7 @@ void StfSenderOutput::StfMonitoringThread()
 
   // decrease the priority
 #if defined(__linux__)
-  nice(10);
+  (void) nice(10);
 #endif
 
   StdSenderOutputCounters lPrevCounters;
