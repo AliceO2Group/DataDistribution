@@ -30,7 +30,7 @@
 
 #include <functional>
 
-class FairMQUnmanagedRegion;
+#include <fairmq/FwdDecls.h>
 
 namespace o2::DataDistribution
 {
