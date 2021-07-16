@@ -25,8 +25,7 @@
 #include <mutex>
 #include <optional>
 
-class FairMQDevice;
-class FairMQChannel;
+#include <fairmq/FwdDecls.h>
 
 namespace o2::DataDistribution
 {

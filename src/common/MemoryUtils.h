@@ -44,7 +44,7 @@
 namespace icl = boost::icl;
 
 class DataHeader;
-class FairMQUnmanagedRegion;
+#include <fairmq/FwdDecls.h>
 
 namespace o2::DataDistribution
 {

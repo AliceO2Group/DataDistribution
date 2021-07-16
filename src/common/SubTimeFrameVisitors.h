@@ -21,7 +21,7 @@
 
 #include <vector>
 
-class FairMQChannel;
+#include <fairmq/FwdDecls.h>
 
 namespace o2
 {
