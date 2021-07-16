@@ -72,7 +72,7 @@ void DataDistMonitoring::MetricCollectionThread()
 
   // nice the collection thread to decrease contention with sending threads
 #if defined(__linux__)
-  nice(+10);
+  (void) nice(+10);
 #endif
 
   while (mRunning) {
