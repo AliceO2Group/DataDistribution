@@ -65,6 +65,7 @@ class SubTimeFrameFileWriter : public ISubTimeFrameConstVisitor
   //
   static constexpr std::streamsize sBuffSize = 1ul << 20; // 1 MiB
   static constexpr std::streamsize sChunkSize = 512;
+  boost::filesystem::path mFileName;
   std::ofstream mFile;
 
   bool mWriteInfo;
