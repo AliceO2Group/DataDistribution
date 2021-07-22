@@ -20,6 +20,7 @@
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameDPL.h>
 #include <Utilities.h>
+#include <ConfigConsul.h>
 
 #include <options/FairMQProgOptions.h>
 #include <Framework/SourceInfoHeader.h>
@@ -28,6 +29,7 @@
 #include <thread>
 #include <exception>
 #include <boost/algorithm/string.hpp>
+
 
 namespace o2::DataDistribution
 {
@@ -95,6 +97,9 @@ void StfBuilderDevice::InitTask()
   I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
   I().mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
   I().mMaxBuiltStfs = GetConfig()->GetValue<std::uint64_t>(OptionKeyMaxBuiltStfs);
+
+  // partition id is used for monitoring.
+  I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("-");
 
   // start monitoring
   DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend", ""));

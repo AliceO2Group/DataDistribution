@@ -135,6 +135,24 @@ public:
   }
 
   static
+  boost::program_options::options_description getProgramOptionsStfBuilder()
+  {
+    boost::program_options::options_description lDataDistDiscovery("DataDistribution discovery options", 120);
+
+    lDataDistDiscovery.add_options()(
+      OptionKeyDiscoveryEndpoint,
+      boost::program_options::value<std::string>()->default_value(""),
+      "Specifies URL of the DataDistribution discovery endpoint.");
+
+    lDataDistDiscovery.add_options()(
+      OptionKeyDiscoveryPartition,
+      boost::program_options::value<std::string>()->default_value(""),
+      "Specifies partition ID for the DataDistribution discovery.");
+
+    return lDataDistDiscovery;
+  }
+
+  static
   std::string getNetworkIfAddressOption(const FairMQProgOptions& pFMQProgOpt)
   {
     const std::string lIf = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryNetInterface);
