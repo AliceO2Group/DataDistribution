@@ -126,6 +126,9 @@ void HandleFMQOptions(fair::mq::DeviceRunner &pFMQRunner)
 
   try {
     pFMQRunner.UnsubscribeFromConfigChange();
+    // add fake handlers to avoid exception at exit
+    lFMQConfig.Subscribe<bool>("device-runner", [](const std::string&, const bool) { });
+    lFMQConfig.Subscribe<std::string>("device-runner", [&](const std::string&, const std::string&) {});
   } catch(...) { }
 
   // subscribe to notifications
@@ -139,7 +142,7 @@ void HandleFMQOptions(fair::mq::DeviceRunner &pFMQRunner)
   handleSeverity("severity-infologger", lFMQConfig.GetProperty<std::string>("severity-infologger"));
 
   // set a degfault run number
-  handleRunNumber("runNumber", "0");
+  handleRunNumber("runNumber", "1");
 }
 
 }
