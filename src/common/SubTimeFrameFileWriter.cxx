@@ -17,6 +17,7 @@
 #include "DataDistLogger.h"
 
 #include <iomanip>
+#include <string>
 
 namespace o2
 {
@@ -24,6 +25,7 @@ namespace DataDistribution
 {
 
 using namespace o2::header;
+using namespace std::string_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// SubTimeFrameFileWriter
@@ -96,7 +98,8 @@ namespace impl {
 }
 
 SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pFileName, bool pWriteInfo)
-  : mWriteInfo(pWriteInfo)
+  : mFileName(pFileName),
+    mWriteInfo(pWriteInfo)
 {
   using ios = std::ios_base;
 
@@ -114,11 +117,11 @@ SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pF
   }
 
   try {
-    mFile.open(pFileName.string(), ios::binary | ios::trunc | ios::out | ios::ate);
+    mFile.open(pFileName.string() + ".part"s, ios::binary | ios::trunc | ios::out | ios::ate);
 
     if (mWriteInfo) {
       auto lInfoFileName = pFileName.string();
-      lInfoFileName += ".info";
+      lInfoFileName += ".info.part"s;
 
       mInfoFile.open(lInfoFileName, ios::trunc | ios::out);
       mInfoFile << impl::sInfoToHdrString() << '\n';
@@ -133,8 +136,10 @@ SubTimeFrameFileWriter::~SubTimeFrameFileWriter()
 {
   try {
     mFile.close();
+    boost::filesystem::rename(mFileName.string() + ".part"s, mFileName.string());
     if (mWriteInfo) {
       mInfoFile.close();
+      boost::filesystem::rename(mFileName.string() + ".info.part"s, mFileName.string() + ".info"s);
     }
   } catch (std::ifstream::failure& eCloseErr) {
     EDDLOG("Closing TF file failed. error={}", eCloseErr.what());
