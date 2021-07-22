@@ -159,6 +159,7 @@ class StfBuilderDevice : public DataDistDevice
     : IFifoPipeline(eStfPipelineSize) {}
 
     /// config
+    std::string mPartitionId;
     std::string mInputChannelName;
     std::string mOutputChannelName;
     std::string mDplChannelName;

@@ -17,6 +17,7 @@
 #include <SubTimeFrameFileSink.h>
 #include <SubTimeFrameFileSource.h>
 #include <FmqUtilities.h>
+#include <Config.h>
 
 #include <fairmq/DeviceRunner.h>
 
@@ -90,6 +91,8 @@ int main(int argc, char* argv[])
       r.fConfig.AddToCmdLineOptions(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());
       // Add options for STF file source
       r.fConfig.AddToCmdLineOptions(o2::DataDistribution::SubTimeFrameFileSource::getProgramOptions());
+      // Add options for Data Distribution discovery
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::Config::getProgramOptionsStfBuilder());
 
     });
 

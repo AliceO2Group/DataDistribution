@@ -70,6 +70,9 @@ void StfSenderDevice::InitTask()
   DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
   DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
 
+  // partition id is used for monitoring.
+  I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("-");
+
   if (!standalone()) {
     // Discovery
     I().mDiscoveryConfig = std::make_shared<ConsulStfSender>(ProcessType::StfSender, Config::getEndpointOption(*GetConfig()));
@@ -86,7 +89,6 @@ void StfSenderDevice::InitTask()
       std::this_thread::sleep_for(1s);
     }
 
-    I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
     if (I().mPartitionId.empty()) {
       WDDLOG("StfSender 'discovery-partition' parameter not set.");
       std::this_thread::sleep_for(1s); exit(-1);
