@@ -360,7 +360,7 @@ struct DataDistLoggerCtx {
 
     sRateUpdateThread = std::thread([&]() {
 #if defined(__linux__)
-      (void) nice(+1);
+      if (nice(+1)) {}
       pthread_setname_np(pthread_self(), "log_clock");
 #endif
       while (sRunning) {
@@ -374,7 +374,7 @@ struct DataDistLoggerCtx {
     mInfoLoggerThread = std::thread([&]() {
       // nice the collection thread to decrease contention with sending threads
 #if defined(__linux__)
-      (void) nice(+10);
+      if (nice(+10)) {}
       pthread_setname_np(pthread_self(), "infolog");
 #endif
 
