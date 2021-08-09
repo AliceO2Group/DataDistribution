@@ -374,8 +374,12 @@ class IFifoPipeline
   {
     T t;
     mPipelineQueues[pStage].pop(t);
-    mPipelinedSize--;
     return t;
+  }
+
+  std::optional<T> dequeue_for(const unsigned pStage, const std::chrono::microseconds &pWaitUs)
+  {
+    return mPipelineQueues[pStage].pop_wait_for(pWaitUs);
   }
 
   bool try_pop(unsigned pStage)
@@ -384,12 +388,9 @@ class IFifoPipeline
     return mPipelineQueues[pStage].try_pop(t);
   }
 
-  long getPipelineSize() const noexcept { return mPipelinedSize; }
-
  protected:
   virtual unsigned getNextPipelineStage(unsigned pStage) = 0;
 
-  std::atomic_long mPipelinedSize = 0;
   std::vector<o2::DataDistribution::ConcurrentFifo<T>> mPipelineQueues;
 };
 
