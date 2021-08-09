@@ -271,6 +271,7 @@ void StfInputInterface::StfBuilderThread()
             (*lStf)->header().mId, (*lStf)->getDataSize());
         }
 
+        (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eReadout);
         mSeqStfQueue.push(std::move(*lStf));
         {
           auto lNow = hres_clock::now();
@@ -584,7 +585,6 @@ void StfInputInterface::StfSequencerThread()
     // have data, check the sequence
     if (lStf) {
       const auto lCurrId = (*lStf)->id();
-      (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eReadout);
 
       if (lCurrId <= mLastSeqStfId) {
         EDDLOG_RL(500, "READOUT_INTERFACE: Repeated STF will be rejected. previous_stf_id={} current_stf_id={}",
@@ -610,7 +610,7 @@ void StfInputInterface::StfSequencerThread()
         // create the missing ones and continue
         for (std::uint64_t lStfIdIdx = lMissingIdStart; lStfIdIdx < lCurrId; lStfIdIdx++) {
           auto lEmptyStf = std::make_unique<SubTimeFrame>(lStfIdIdx);
-          (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eNull);
+          lEmptyStf->setOrigin(SubTimeFrame::Header::Origin::eNull);
           mDevice.I().queue(eStfBuilderOut, std::move(lEmptyStf));
 
           lMissingStfs++;
