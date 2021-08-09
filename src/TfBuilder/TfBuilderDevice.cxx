@@ -175,6 +175,9 @@ void TfBuilderDevice::PreRun()
   DDMON("tfbuilder", "running", 1);
 
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
+
+  mTfFwdTotalDataSize = 0;
+  mTfFwdTotalTfCount = 0;
 }
 
 bool TfBuilderDevice::start()
@@ -295,11 +298,11 @@ bool TfBuilderDevice::ConditionalRun()
     return false;
   }
   // nothing to do here sleep for awhile
-  std::this_thread::sleep_for(250ms);
+  std::this_thread::sleep_for(500ms);
 
   {
     static unsigned sRateLimit_Monitoring = 0;
-    if ((sRateLimit_Monitoring++ % 128) == 0) {
+    if ((sRateLimit_Monitoring++ % 32) == 0) {
       DDMON("tfbuilder", "running", 1);
     }
   }
@@ -313,11 +316,20 @@ void TfBuilderDevice::TfForwardThread()
   std::uint64_t lTfOutCnt = 0;
 
   while (mRunning) {
-    std::unique_ptr<SubTimeFrame> lTf = dequeue(eTfFwdIn);
-    if (!lTf) {
+    std::optional<std::unique_ptr<SubTimeFrame>> lTfOpt = dequeue_for(eTfFwdIn, 1000ms);
+    if (!mRunning) {
       IDDLOG("TfForwardThread(): Queue closed. Exiting... ");
       break;
     }
+
+    if (lTfOpt == std::nullopt) {
+      DDMON("tfbuilder", "data_output.rate", 0);
+      DDMON("tfbuilder", "tf_output.sent_size", mTfFwdTotalDataSize);
+      DDMON("tfbuilder", "tf_output.sent_count", mTfFwdTotalTfCount);
+      continue;
+    }
+
+    std::unique_ptr<SubTimeFrame> lTf = std::move(lTfOpt.value());
 
     const auto lTfId = lTf->id();
     {
@@ -328,6 +340,11 @@ void TfBuilderDevice::TfForwardThread()
       DDMON("tfbuilder", "tf_output.size", lTf->getDataSize());
       DDMON("tfbuilder", "tf_output.rate", lRate);
       DDMON("tfbuilder", "data_output.rate", (lRate * lTf->getDataSize()));
+
+      mTfFwdTotalDataSize += lTf->getDataSize();
+      mTfFwdTotalTfCount += 1;
+      DDMON("tfbuilder", "tf_output.sent_size", mTfFwdTotalDataSize);
+      DDMON("tfbuilder", "tf_output.sent_count", mTfFwdTotalTfCount);
     }
 
     if (!mStandalone) {

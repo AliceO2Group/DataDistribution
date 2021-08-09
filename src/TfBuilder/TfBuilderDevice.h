@@ -147,6 +147,8 @@ class TfBuilderDevice : public DataDistDevice,
 
   /// TF forwarding thread
   std::thread mTfFwdThread;
+  std::uint64_t mTfFwdTotalDataSize;
+  std::uint64_t mTfFwdTotalTfCount;
 
   std::atomic_bool mRunning = false;
   std::atomic_bool mShouldExit = false;
