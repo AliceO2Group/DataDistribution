@@ -41,13 +41,13 @@ class SubTimeFrameReadoutBuilder
   SubTimeFrameReadoutBuilder() = delete;
   SubTimeFrameReadoutBuilder(MemoryResources &pMemRes, bool pDplEnabled);
 
-  void addHbFrames(const o2::header::DataOrigin &pDataOrig,
+  bool addHbFrames(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
     const ReadoutSubTimeframeHeader& pHdr,
     std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen);
 
 
-  void addEquipmentData(const o2::header::DataOrigin &pDataOrig,
+  bool addEquipmentData(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
     const ReadoutSubTimeframeHeader& pHdr,
     std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen);
@@ -60,6 +60,7 @@ class SubTimeFrameReadoutBuilder
 
     std::unique_ptr<SubTimeFrame> lStf = std::move(mStf);
     mStf = nullptr;
+    mAcceptStfData = true;
     mFirstFiltered.clear();
 
     return (lStf) ? std::optional<std::unique_ptr<SubTimeFrame>>(std::move(lStf)) : std::nullopt;
@@ -74,6 +75,7 @@ class SubTimeFrameReadoutBuilder
   bool mRunning = true;
 
   std::unique_ptr<SubTimeFrame> mStf;
+  bool mAcceptStfData = true;        // toggle on allocation issues
 
   // filtering: keep info if the first HBFrame is already kept back
   std::unordered_map<o2::header::DataHeader::SubSpecificationType, bool> mFirstFiltered;
