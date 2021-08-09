@@ -61,8 +61,10 @@ public:
   RegionAllocatorResource() = delete;
 
   RegionAllocatorResource(std::string pSegmentName, FairMQTransportFactory& pShmTrans,
-                          std::size_t pSize, std::uint64_t pRegionFlags = 0)
-  : mSegmentName(pSegmentName), mTransport(pShmTrans)
+                          std::size_t pSize, std::uint64_t pRegionFlags = 0, bool pCanFail = false)
+  : mSegmentName(pSegmentName),
+    mCanFail(pCanFail),
+    mTransport(pShmTrans)
   {
     static_assert(ALIGN && !(ALIGN & (ALIGN - 1)), "Alignment must be power of 2");
     fair::mq::RegionConfig lRegionCfg(true /*mlock*/, true /*bzero*/);
@@ -288,12 +290,19 @@ protected:
     pSize = align_size_up(pSize);
 
     auto lRet = try_alloc(pSize);
-    // we cannot fail! report problem if failing to allocate block often
+
     while (!lRet && mRunning) {
       // try to reclaim if possible
       if (try_reclaim(pSize)) {
         // try again
         lRet = try_alloc(pSize);
+      }
+
+      if (mCanFail && !lRet) {
+        WDDLOG_RL(1000, "RegionAllocatorResource: Allocation failed. region={} alloc={} region_size={} free={}",
+          mSegmentName, pSize, mRegion->GetSize(), mFree);
+          WDDLOG_RL(1000, "Memory region '{}' is too small, or there is a large backpressure.", mSegmentName);
+        return nullptr;
       }
 
       if (!lRet) {
@@ -429,6 +438,7 @@ private:
   std::string mSegmentName;
   std::size_t mSegmentSize;
   std::atomic_bool mRunning = false;
+  bool mCanFail = false;
 
   FairMQTransportFactory &mTransport;
   std::unique_ptr<FairMQUnmanagedRegion> mRegion;

@@ -39,15 +39,14 @@ SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(MemoryResources &pMemRes,
     "O2HeadersRegion",
     *mMemRes.mShmTransport,
     std::size_t(512) << 20, /* good for 5s 3CRU @ 50Gbps, TODO: make configurable */
-    mDplEnabled ?
-      sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader) :
-      sizeof(DataHeader)
+    0, /* region flags ? */
+    true /* Header alloc can fail with large FLP-DPL backpreassure  */
   );
 
   mMemRes.start();
 }
 
-void SubTimeFrameReadoutBuilder::addHbFrames(
+bool SubTimeFrameReadoutBuilder::addHbFrames(
   const o2::header::DataOrigin &pDataOrig,
   const o2::header::DataHeader::SubSpecificationType pSubSpecification,
   const ReadoutSubTimeframeHeader& pHdr,
@@ -57,11 +56,17 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
 
   if (!mRunning) {
     WDDLOG("Adding HBFrames while STFBuilder is not running!");
-    return;
+    mAcceptStfData = false;
+    return false;
+  }
+
+  if (!mAcceptStfData) {
+    return false;
   }
 
   if (!mStf) {
     mStf = std::make_unique<SubTimeFrame>(pHdr.mTimeFrameId);
+    mAcceptStfData = true;
     mFirstFiltered.clear();
   }
 
@@ -74,7 +79,7 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
       mStf->updateFirstOrbit(R.getOrbit());
     } catch (...) {
       EDDLOG("Error getting RDHReader instace. Not using {} HBFs", pHBFrameLen);
-      return;
+      return false;
     }
   }
 
@@ -200,17 +205,23 @@ void SubTimeFrameReadoutBuilder::addHbFrames(
     }
 
     if (!lHdrMsg) {
-      EDDLOG("Allocation error: HbFrame::DataHeader={}", sizeof(DataHeader));
-      throw std::bad_alloc();
+      WDDLOG_RL(1000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
+
+      // clear data of the partial STF
+      mAcceptStfData = false;
+      mStf->clear();
+
+      return false;
     }
 
     mStf->addStfData(lDataHdr,
       SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFramesBegin[i]) }
     );
   }
+  return true;
 }
 
-void SubTimeFrameReadoutBuilder::addEquipmentData(
+bool SubTimeFrameReadoutBuilder::addEquipmentData(
   const o2::header::DataOrigin &pDataOrig,
   const o2::header::DataHeader::SubSpecificationType pSubSpecification,
   const ReadoutSubTimeframeHeader& pHdr,
@@ -220,7 +231,11 @@ void SubTimeFrameReadoutBuilder::addEquipmentData(
 
   if (!mRunning) {
     WDDLOG("Adding HBFrames while STFBuilder is not running!");
-    return;
+    return false;
+  }
+
+  if (!mAcceptStfData) {
+    return false;
   }
 
   if (!mStf) {
@@ -260,14 +275,21 @@ void SubTimeFrameReadoutBuilder::addEquipmentData(
     }
 
     if (!lHdrMsg) {
-      EDDLOG("Allocation error: HbFrame::DataHeader={}", sizeof(DataHeader));
-      throw std::bad_alloc();
+      WDDLOG_RL(1000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
+
+      // clear data of the partial STF
+      mAcceptStfData = false;
+      mStf->clear();
+
+      return false;
     }
 
     mStf->addStfData(lDataHdr,
       SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFramesBegin[i]) }
     );
   }
+
+  return true;
 }
 
 
