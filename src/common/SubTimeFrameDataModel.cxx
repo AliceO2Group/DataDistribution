@@ -141,4 +141,33 @@ void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf)
   pStf.reset();
 }
 
+void SubTimeFrame::removeRedundantHeaders()
+{
+  // Update data block indexes
+  for (auto &lIdentSubSpecVect : mData) {
+    StfSubSpecMap &lSubSpecMap = lIdentSubSpecVect.second;
+
+    for (auto &lSubSpecDataVector : lSubSpecMap) {
+      StfDataVector &lDataVector = lSubSpecDataVector.second;
+
+      // Only remove if RAWDATA
+      if (!lDataVector.empty() && lDataVector[0].mHeader) {
+        o2hdr::DataHeader *lDataHdr = reinterpret_cast<o2hdr::DataHeader*>(lDataVector[0].mHeader->GetData());
+        if (lDataHdr->dataDescription != gDataDescriptionRawData) {
+          continue;
+        }
+      }
+
+      // leave the first header
+      for (StfDataVector::size_type i = 1; i < lDataVector.size(); i++) {
+
+        if(lDataVector[i].mHeader) {
+
+          lDataVector[i].mHeader.reset(nullptr);
+        }
+      }
+    }
+  }
+}
+
 } /* o2::DataDistribution */

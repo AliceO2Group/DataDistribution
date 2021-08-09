@@ -78,9 +78,7 @@ struct hash<o2::header::DataIdentifier> {
 
 } //namespace std
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 namespace o2hdr = o2::header;
@@ -237,10 +235,13 @@ class SubTimeFrame : public IDataModelObject
     std::unique_ptr<FairMQMessage> mHeader;
     std::unique_ptr<FairMQMessage> mData;
 
-    inline const o2hdr::DataHeader& getDataHeader() const
+    inline const o2hdr::DataHeader* getDataHeader() const
     {
+      if (!mHeader) {
+        return nullptr;
+      }
       // this is fine since we created the DataHeader there
-      return *reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
+      return reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
     }
 
     inline void setPayloadIndex_TfCounter_RunNumber(
@@ -250,8 +251,12 @@ class SubTimeFrame : public IDataModelObject
       const std::uint32_t pRunNumber
       )
     {
-      assert(mHeader && mHeader->GetData() != nullptr);
       assert(pIdx < pTotal);
+
+      // can be removed if redundant
+      if (!mHeader) {
+        return;
+      }
 
       // DataHeader must be first in the stack
       o2hdr::DataHeader *lDataHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
@@ -261,11 +266,12 @@ class SubTimeFrame : public IDataModelObject
       lDataHdr->runNumber = pRunNumber;
     }
 
-
     inline void setFirstOrbit(const std::uint32_t pFirstOrbit)
     {
-      assert(mHeader && mHeader->GetData() != nullptr);
-
+      // Redundant headers can be removed
+      if (!mHeader) {
+        return;
+      }
       // TODO: get returns const ptr
       // DataHeader must be first in the stack
       o2hdr::DataHeader *lDataHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
@@ -327,6 +333,10 @@ class SubTimeFrame : public IDataModelObject
   // NOTE: method declared const to work with const visitors, manipulated fields are mutable
   void updateStf() const;
 
+  // remove redundant o2 headers in split-payload messages
+  // NOTE: Only remove headers while waiting to be copied to TfBuilder!
+  void removeRedundantHeaders();
+
  protected:
   void accept(ISubTimeFrameVisitor& v) override { updateStf(); v.visit(*this); }
   void accept(ISubTimeFrameConstVisitor& v) const override { updateStf(); v.visit(*this); }
@@ -382,17 +392,21 @@ private:
     auto& lDataVector = mData[lDataId][pDataHeader.subSpecification];
 
     lDataVector.push_back(std::move(pStfData));
-   mDataUpdated = false;
+    mDataUpdated = false;
   }
 
   inline void addStfData(StfData&& pStfData)
   {
-    const o2hdr::DataHeader &lDataHeader = pStfData.getDataHeader();
-    addStfData(lDataHeader, std::move(pStfData));
+    const o2hdr::DataHeader* lDataHeader = pStfData.getDataHeader();
+    if (!lDataHeader) {
+      return;
+    }
+
+    addStfData(*lDataHeader, std::move(pStfData));
   }
 
 };
-}
+
 } /* o2::DataDistribution */
 
 namespace std
