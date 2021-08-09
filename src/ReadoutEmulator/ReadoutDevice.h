@@ -80,8 +80,6 @@ class ReadoutDevice : public DataDistDevice
 
   /// Observables
   std::thread mInfoThread;
-
-  RunningSamples<uint64_t, 8192> mFreeSuperpagesSamples;
 };
 
 } /* namespace o2::DataDistribution */
