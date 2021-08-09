@@ -17,16 +17,15 @@
 
 #include <chrono>
 #include <thread>
+#include <functional>
 
-namespace o2
-{
-namespace DataDistribution
+
+namespace o2::DataDistribution
 {
 
 ReadoutDevice::ReadoutDevice()
   : DataDistDevice(),
-    mCruMemoryHandler{ std::make_shared<CruMemoryHandler>() },
-    mFreeSuperpagesSamples()
+    mCruMemoryHandler{ std::make_shared<CruMemoryHandler>() }
 {
   mDataBlockMsgs.reserve(1024);
 }
@@ -129,7 +128,10 @@ void ReadoutDevice::SendingThread()
   static constexpr auto cStfInterval = std::chrono::microseconds(22810);
   uint64_t lNumberSentStfs = 0;
   uint64_t lCurrentTfId = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::high_resolution_clock::now().time_since_epoch()).count() / cStfInterval.count();;
+        std::chrono::high_resolution_clock::now().time_since_epoch()).count() / cStfInterval.count() - 71394000000;
+
+  uint64_t lTfIdToSkip = ~uint64_t(0);
+
 
   while (IsRunningState()) {
 
@@ -139,14 +141,25 @@ void ReadoutDevice::SendingThread()
       return;
     }
 
-    mFreeSuperpagesSamples.Fill(mCruMemoryHandler->free_superpages());
-
     // check no data signal
     if (lCruLinkData.mLinkHeader.mFlags.mIsRdhFormat == 0) {
       // WDDLOG("No Superpages left! Losing data...");
     }
 
+    // debug: skip some of the STFs
+    if (lTfIdToSkip == ~uint64_t(0)) {
+      if ((std::hash<unsigned long long>{}((unsigned long long)lCurrentTfId) % 67) == 0 ) {
+        lTfIdToSkip = lCurrentTfId + 1;
+        IDDLOG("Skipping sending data for tf_id={}", lTfIdToSkip);
+      }
+    } else if (lTfIdToSkip != ~uint64_t(0)) {
+      if (lTfIdToSkip < lCurrentTfId) {
+        lTfIdToSkip = ~uint64_t(0);
+      }
+    }
+
     ReadoutSubTimeframeHeader lHBFHeader = lCruLinkData.mLinkHeader;
+    lHBFHeader.mVersion = 2;
     lHBFHeader.mTimeFrameId = lCurrentTfId;
     lHBFHeader.mTimeframeOrbitFirst = lCurrentTfId * 256;
     lHBFHeader.mTimeframeOrbitLast = (lCurrentTfId + 1) * 256 - 1;
@@ -159,7 +172,7 @@ void ReadoutDevice::SendingThread()
     if (isStfFinished) {
       lNumberSentStfs += 1;
       lCurrentTfId = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::high_resolution_clock::now().time_since_epoch()).count() / cStfInterval.count();
+        std::chrono::high_resolution_clock::now().time_since_epoch()).count() / cStfInterval.count() - 71394000000;
       lHBFHeader.mFlags.mLastTFMessage = 1;
     }
 
@@ -179,6 +192,11 @@ void ReadoutDevice::SendingThread()
       mDataBlockMsgs.push_back(lOutputChan.NewMessage(mDataRegion, lDmaChunk.mDataPtr, lDmaChunk.mDataSize));
     }
 
+    if (lTfIdToSkip == lHBFHeader.mTimeFrameId) {
+      mDataBlockMsgs.clear();
+      continue;
+    }
+
     lOutputChan.Send(mDataBlockMsgs);
     mDataBlockMsgs.clear();
   }
@@ -189,7 +207,6 @@ void ReadoutDevice::InfoThread()
   WaitForRunningState();
 
   while (IsRunningState()) {
-    IDDLOG("Free superpages count_mean={}", mFreeSuperpagesSamples.Mean());
 
     using namespace std::chrono_literals;
     std::this_thread::sleep_for(2s);
@@ -198,5 +215,4 @@ void ReadoutDevice::InfoThread()
   DDDLOG("Exiting Info thread...");
 }
 
-}
 } /* namespace o2::DataDistribution */
