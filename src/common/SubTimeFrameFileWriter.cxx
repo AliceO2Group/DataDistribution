@@ -240,7 +240,9 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
 
     for (const auto& lStfData : mStfData) {
       // only write DataHeader (make a local DataHeader copy to clear flagsNextHeader bit)
-      DataHeader lDh = lStfData->getDataHeader();
+      const DataHeader *lDhPtr = lStfData->getDataHeader();
+      DataHeader lDh = (lDhPtr) ? *lDhPtr : DataHeader() ;
+
       lDh.flagsNextHeader = 0;
       buffered_write(reinterpret_cast<const char*>(&lDh), sizeof (DataHeader));
       buffered_write(lStfData->mData->GetData(), lStfData->mData->GetSize());
@@ -268,7 +270,7 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
       for (const auto& lStfData : mStfData) {
         fmt::memory_buffer lValRow;
 
-        const DataHeader &lDH = lStfData->getDataHeader();
+        const DataHeader &lDH = *lStfData->getDataHeader();
 
         const auto& l4DataOrigin = lDH.dataOrigin;
         const auto& l5DataDescription = lDH.dataDescription;

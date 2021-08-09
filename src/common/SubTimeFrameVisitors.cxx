@@ -66,6 +66,12 @@ void InterleavedHdrDataSerializer::visit(SubTimeFrame& pStf)
   for (auto& lDataIdentMapIter : pStf.mData) {
     for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
       for (auto& lStfDataIter : lSubSpecMapIter.second) {
+
+        if (!lStfDataIter.mHeader) {
+          EDDLOG_RL(1000, "BUG: InterleavedHdrDataSerializer: O2 headers must not be removed before this call!");
+          continue;
+        }
+
         mMessages.push_back(std::move(lStfDataIter.mHeader));
 
         if (lStfDataIter.mData->GetSize() == 0) {
@@ -220,6 +226,7 @@ void CoalescedHdrDataSerializer::visit(SubTimeFrame& pStf)
   }
   std::memcpy(lDataMsg->GetData(), &pStf.header(), sizeof(SubTimeFrame::Header));
 
+  // NOTE: header vector has 2 messages more than the data vector
   mHdrs.push_back(std::move(lDataHeaderMsg));
   mHdrs.push_back(std::move(lDataMsg));
 
@@ -245,7 +252,14 @@ void CoalescedHdrDataSerializer::serialize(std::unique_ptr<SubTimeFrame>&& pStf)
 
   // coalesce the headers
   const std::size_t lHdrSize = std::accumulate(mHdrs.begin(), mHdrs.end(), std::size_t(0),
-    [](const std::size_t v, const FairMQMessagePtr&h) { return v + h->GetSize(); }
+    [](const std::size_t v, const FairMQMessagePtr&h) {
+      // check if we have to fake a removed header
+      if (h == nullptr) {
+        return v + sizeof(DataHeader);
+      } else {
+        return v + h->GetSize();
+      }
+    }
   );
 
   const std::size_t lTotalHdrSize = (mHdrs.size() * sizeof(header_info)) + lHdrSize;
@@ -264,12 +278,42 @@ void CoalescedHdrDataSerializer::serialize(std::unique_ptr<SubTimeFrame>&& pStf)
   char* lFullHdrMsgAddr = reinterpret_cast<char*>(lFullHdrMsg->GetData());
 
   // coalesce all headers into a single message
-  for (const auto &lHdr : mHdrs) {
+  // keep a reference to the last non-null header
+  // update index on the fly
+  DataHeader lLastDataHeader;
+  DataHeader::SplitPayloadIndexType lLastDataHeaderIdx = 0;
 
-    const header_info lHdrInfo = { lHdrOff, lHdr->GetSize() };
+  for (std::size_t i = 0; i < mHdrs.size(); i++) {
 
+    const auto &lHdr = mHdrs[i];
+    const header_info lHdrInfo = { lHdrOff, (lHdr) ? lHdr->GetSize() : sizeof(DataHeader) };
+
+    // copy the header descriptor
     std::memcpy(lFullHdrMsgAddr + lInfoOff, &lHdrInfo, sizeof(header_info));
-    std::memcpy(lFullHdrMsgAddr + lHdrOff, reinterpret_cast<const char*>(lHdr->GetData()), lHdrInfo.len);
+
+    if (lHdr) {
+      // save the header to reconstruct the missing redundant split-payload headers
+      if (lHdr->GetSize() >= sizeof(DataHeader)) {
+        std::memcpy(&lLastDataHeader, reinterpret_cast<const char*>(lHdr->GetData()), sizeof(DataHeader));
+        lLastDataHeaderIdx = 0;
+      }
+
+      // serialize the header to the coalesced message
+      std::memcpy(lFullHdrMsgAddr + lHdrOff, reinterpret_cast<const char*>(lHdr->GetData()), lHdrInfo.len);
+    } else {
+      // make sure the desc is RAW?
+      if (lLastDataHeader.dataDescription != gDataDescriptionRawData) {
+        EDDLOG_RL(1000, "BUG: CoalescedHdrDataSerializer: O2 trailer header must be RAWDATA!");
+      }
+
+      // update the payload index and size
+      lLastDataHeaderIdx += 1;
+      lLastDataHeader.splitPayloadIndex = lLastDataHeaderIdx;
+      lLastDataHeader.payloadSize = mData[i-2]->GetSize(); // indexing: see the visit method
+
+      // serialize the header to the coalesced message
+      std::memcpy(lFullHdrMsgAddr + lHdrOff, &lLastDataHeader, sizeof (DataHeader));
+    }
 
     lInfoOff += sizeof(header_info);
     lHdrOff += lHdrInfo.len;
@@ -290,7 +334,6 @@ void CoalescedHdrDataSerializer::serialize(std::unique_ptr<SubTimeFrame>&& pStf)
   // make sure headers and chunk pointers don't linger
   mData.clear();
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// CoalescedHdrDataDeserializer
