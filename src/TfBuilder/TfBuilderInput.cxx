@@ -70,11 +70,11 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
       lTransportFactory
     );
 
-    lNewChannel->Init();
-
     lNewChannel->UpdateRateLogging(1); // log each second
-
     lNewChannel->UpdateAutoBind(true); // make sure bind succeeds
+    lNewChannel->UpdateRcvBufSize(200); // make sure one sender does not advance too much
+    lNewChannel->UpdateRcvKernelSize(2 << 20);
+    lNewChannel->Init();
 
     if (!lNewChannel->BindEndpoint(lAddress)) {
       EDDLOG("Cannot bind channel to a free port! Check permissions. bind_address={}", lAddress);
