@@ -59,6 +59,12 @@ class SubTimeFrameReadoutBuilder
   std::optional<std::unique_ptr<SubTimeFrame>> getStf() {
 
     std::unique_ptr<SubTimeFrame> lStf = std::move(mStf);
+
+    // mark as NULL if data was rejected
+    if (lStf && !mAcceptStfData) {
+      lStf->setOrigin(SubTimeFrame::Header::Origin::eNull);
+    }
+
     mStf = nullptr;
     mAcceptStfData = true;
     mFirstFiltered.clear();
