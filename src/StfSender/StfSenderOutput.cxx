@@ -247,6 +247,9 @@ void StfSenderOutput::StfSchedulerThread()
     const auto lStfId = lStf->id();
     const auto lStfSize = lStf->getDataSize();
 
+    // remove split-payload headers
+    lStf->removeRedundantHeaders();
+
     // update buffer sizes
     StdSenderOutputCounters lCounters;
     {
