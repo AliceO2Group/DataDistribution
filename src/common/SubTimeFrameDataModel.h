@@ -327,7 +327,11 @@ class SubTimeFrame : public IDataModelObject
   const Header& header() const { return mHeader; }
   TimeFrameIdType id() const { return mHeader.mId; }
   Header::Origin origin() const { return mHeader.mOrigin; }
-  void setOrigin(const Header::Origin pOrig) { mHeader.mOrigin = pOrig; }
+  void setOrigin(const Header::Origin pOrig) {
+    if (mHeader.mOrigin == Header::Origin::eInvalid) {
+      mHeader.mOrigin = pOrig;
+    }
+  }
 
   void clear() { mData.clear(); mDataUpdated = false; }
   // NOTE: method declared const to work with const visitors, manipulated fields are mutable
