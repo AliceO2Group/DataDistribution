@@ -211,6 +211,7 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
   TfBuilderUpdateMessage lUpdate;
   const auto &lStatus = mDiscoveryConfig->status();
   static std::uint64_t sUpdateCnt = 0;
+  std::uint64_t lNumTfsInBuilding = 0;
 
   *lUpdate.mutable_info() = lStatus.info();
   *lUpdate.mutable_partition() = lStatus.partition();
@@ -225,6 +226,9 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
     lUpdate.set_free_memory(lFreeMem);
     lUpdate.set_num_buffered_tfs(mNumBufferedTfs);
     lUpdate.set_last_built_tf_id(mLastBuiltTfId);
+    lUpdate.set_num_tfs_in_building(mNumTfsInBuilding);
+
+    lNumTfsInBuilding = mNumTfsInBuilding;
   }
 
   sUpdateCnt++;
@@ -234,6 +238,17 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
   if (!lRet) {
     EDDLOG_RL(1000, "Sending TfBuilder status update failed.");
   }
+
+  DDMON("tfbuilder", "buffer.tf_cnt", mNumBufferedTfs);
+  DDMON("tfbuilder", "buffer.tf_size", mBufferSize - mCurrentTfBufferSize);
+  DDMON("tfbuilder", "merge.tfs_in_building", lNumTfsInBuilding);
+
+  DDMON("tfbuilder", "buffer.dr_free", mMemI.freeData());
+  DDMON("tfbuilder", "buffer.hr_free", mMemI.freeHeader());
+
+  DDMON("tfbuilder", "buffer.dr_used", mMemI.sizeData() - mMemI.freeData());
+  DDMON("tfbuilder", "buffer.hr_used", mMemI.sizeHeader() - mMemI.freeHeader());
+
   return lRet;
 }
 
@@ -255,6 +270,9 @@ bool TfBuilderRpcImpl::recordTfBuilt(const SubTimeFrame &pTf)
       mCurrentTfBufferSize = 0;
     }
 
+    // Let the scheduler know that we can have more "in building" TFs
+    mNumTfsInBuilding = std::max(0, mNumTfsInBuilding - 1);
+
     assert (mTfIdSizes.count(lTfId) == 0);
 
     // save the size and id to increment the state later
@@ -262,8 +280,9 @@ bool TfBuilderRpcImpl::recordTfBuilt(const SubTimeFrame &pTf)
     mNumBufferedTfs++;
     mLastBuiltTfId = std::max(mLastBuiltTfId, lTfId);
 
-    DDMON("tfbuilder", "buffered.tf_cnt", mNumBufferedTfs);
-    DDMON("tfbuilder", "buffered.tf_size", mBufferSize - mCurrentTfBufferSize);
+    DDMON("tfbuilder", "buffer.tf_cnt", mNumBufferedTfs);
+    DDMON("tfbuilder", "buffer.tf_size", mBufferSize - mCurrentTfBufferSize);
+    DDMON("tfbuilder", "buffer.dr_used", mMemI.sizeData() - mMemI.freeData());
   }
   mUpdateCondition.notify_one();
 
@@ -291,8 +310,9 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
     mTfIdSizes.erase(pTfId);
     mNumBufferedTfs--;
 
-    DDMON("tfbuilder", "buffered.tf_cnt", mNumBufferedTfs);
-    DDMON("tfbuilder", "buffered.tf_size", mBufferSize - mCurrentTfBufferSize);
+    DDMON("tfbuilder", "buffer.tf_cnt", mNumBufferedTfs);
+    DDMON("tfbuilder", "buffer.tf_size", mBufferSize - mCurrentTfBufferSize);
+    DDMON("tfbuilder", "buffer.dr_used", mMemI.sizeData() - mMemI.freeData());
   }
 
   mUpdateCondition.notify_one();
@@ -323,6 +343,9 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
       response->set_status(BuildTfResponse::ERROR_NOMEM);
       return ::grpc::Status::OK;
     }
+
+    // count how many TFs are in "building". Decremented in recordTfBuilt()
+    mNumTfsInBuilding += 1;
   }
 
   // add request to the queue

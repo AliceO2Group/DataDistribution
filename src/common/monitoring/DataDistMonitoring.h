@@ -21,6 +21,7 @@
 
 #include "ConcurrentQueue.h"
 
+#include <boost/program_options.hpp>
 #include <memory>
 #include <string>
 #include <tuple>

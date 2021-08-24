@@ -177,6 +177,7 @@ private:
     std::map<std::string, StfSenderInfo> mStfSenderInfoMap;
     std::uint64_t mLastStfId = 0;
     std::uint64_t mMaxCompletedTfId = 0;
+    std::uint64_t mNotScheduledTfsCount = 0;
     EventRecorder mDroppedStfs;
     EventRecorder mBuiltTfs;
 
@@ -185,6 +186,7 @@ private:
       mDroppedStfs.SetEvent(lStfId);
       mStfInfoMap.erase(lStfId);
       mDropQueue.push(std::make_tuple(lStfId, ""));
+      mNotScheduledTfsCount++;
     }
 
   inline void requestDropAllFromSchedule(const std::uint64_t lStfId) {
@@ -195,10 +197,12 @@ private:
     mDroppedStfs.SetEvent(lStfId);
     mStfInfoMap.erase(lStfId);
     mDropQueue.push(std::make_tuple(lStfId, "")); // TODO: add REASON
+    mNotScheduledTfsCount++;
   }
 
   inline void requestDropTopoStf(const std::uint64_t lStfId, const std::string &pStfsId) {
     mDropQueue.push(std::make_tuple(lStfId, pStfsId));
+    mNotScheduledTfsCount++;
   }
 
   /// scheduling thread & queue

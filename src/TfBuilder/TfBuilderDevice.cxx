@@ -368,13 +368,10 @@ void TfBuilderDevice::TfForwardThread()
         } else {
           IDDLOG("StfOutputThread: shutting down. exception_what={:s}", e.what());
         }
-        break;
       }
     }
 
     // decrement the size used by the TF
-    // TODO: move this close to the output channel send to have more precise accounting of free memory
-    //       or, get the memory status directly from shm region
     mRpc->recordTfForwarded(lTfId);
   }
 

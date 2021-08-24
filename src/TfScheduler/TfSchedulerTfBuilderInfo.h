@@ -40,7 +40,9 @@ struct TfBuilderInfo {
   std::chrono::system_clock::time_point mUpdateLocalTime;
   TfBuilderUpdateMessage mTfBuilderUpdate;
   std::uint64_t mLastScheduledTf = 0;
-  std::uint64_t mEstimatedFreeMemory;
+  std::uint64_t mEstimatedFreeMemory = 0;
+  std::uint64_t mReportedFreeMemory = 0;
+  std::size_t mTfsInBuilding = 0;
 
   // Topological distribution
   double mTotalUtilization = 0.0;
@@ -52,6 +54,7 @@ struct TfBuilderInfo {
     mTfBuilderUpdate(pTfBuilderUpdate)
   {
     mEstimatedFreeMemory = mTfBuilderUpdate.free_memory();
+    mReportedFreeMemory = mTfBuilderUpdate.free_memory();
   }
 
   const std::string& id() const { return mTfBuilderUpdate.info().process_id(); }
@@ -149,7 +152,9 @@ class TfSchedulerTfBuilderInfo
   {
     std::scoped_lock lLock(mGlobalInfoLock, mReadyInfoLock);
     if (mGlobalInfo.count(pTfBuilderId) > 0) {
-      mGlobalInfo[pTfBuilderId]->mLastScheduledTf = pTfIf;
+      auto &lTfBld = mGlobalInfo[pTfBuilderId];
+      lTfBld->mLastScheduledTf = pTfIf;
+      lTfBld->mTfsInBuilding += 1; // will be updated by TfBuilder updates
       return true;
     }
     return false;
