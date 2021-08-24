@@ -182,7 +182,7 @@ message TfBuilderUpdateMessage {
   uint64              last_built_tf_id    = 3;
   uint64              free_memory         = 4;
   uint32              num_buffered_tfs    = 5;
-  uint32              num_tfs_in_building = 6;
+  int32               num_tfs_in_building = 6;
 }
 
 message StfSenderInfo {

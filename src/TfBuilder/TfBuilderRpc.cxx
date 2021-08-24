@@ -140,17 +140,6 @@ void TfBuilderRpcImpl::UpdateSendingThread()
   DDDLOG("Exiting TfBuilder Update sending thread.");
 }
 
-bool TfBuilderRpcImpl::getTopologicalTfId(const std::string &pStfSenderId, std::uint64_t pIncomingId, std::uint64_t &pNewId /*out*/)
-{
-  std::scoped_lock lLock(mTfIdRenameMapLock);
-  if (mTfIdRenameMap[pStfSenderId].count(pIncomingId) > 0) {
-    pNewId = mTfIdRenameMap[pStfSenderId][pIncomingId];
-    mTfIdRenameMap[pStfSenderId].erase(pIncomingId);
-    return true;
-  }
-  return false;
-}
-
 void TfBuilderRpcImpl::StfRequestThread()
 {
   using namespace std::chrono_literals;
@@ -177,13 +166,6 @@ void TfBuilderRpcImpl::StfRequestThread()
       const auto &lStfSenderId = lStfDataIter.first;
       // const auto &lStfSize = lStfDataIter.second;
       lStfRequest.set_stf_id(lTfInfo.tf_id());
-
-      // record renaming of TF if this is a topological TF
-      if (lTfInfo.tf_source() == StfSource::TOPOLOGICAL) {
-        std::scoped_lock lLock(mTfIdRenameMapLock);
-        mTfIdRenameMap[lStfSenderId][lTfInfo.tf_id()] = mTfIdNext;
-        mTfIdNext += 1;
-      }
 
       grpc::Status lStatus = StfSenderRpcClients()[lStfSenderId]->StfDataRequest(lStfRequest, lStfResponse);
       if (!lStatus.ok()) {

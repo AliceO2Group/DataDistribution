@@ -264,6 +264,7 @@ public:
   }
 
   std::size_t free() const { return mFree; }
+  std::size_t size() const { return mSegmentSize; }
 
   bool running() const { return mRunning; }
 
@@ -506,6 +507,9 @@ public:
   inline std::size_t freeHeader() const { return (running() && mHeaderMemRes) ? mHeaderMemRes->free() : std::size_t(0); }
   inline std::size_t freeData() const { return (running() && mDataMemRes) ? mDataMemRes->free() : std::size_t(0);  }
 
+  inline std::size_t sizeHeader() const { return (running() && mHeaderMemRes) ? mHeaderMemRes->size() : std::size_t(0); }
+  inline std::size_t sizeData() const { return (running() && mDataMemRes) ? mDataMemRes->size() : std::size_t(0);  }
+
   std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
   std::unique_ptr<RegionAllocatorResource<64>> mDataMemRes;
 
@@ -537,6 +541,22 @@ public:
     assert(mDataMemRes);
     std::scoped_lock lock(mDataLock);
     return mDataMemRes->NewFairMQMessage(pSize);
+  }
+
+  inline
+  FairMQMessagePtr newDataMessage(const char *pData, const std::size_t pSize) {
+    assert(mDataMemRes);
+    FairMQMessagePtr lMsg;
+    {
+      std::scoped_lock lock(mDataLock);
+      lMsg = mDataMemRes->NewFairMQMessage(pSize);
+    }
+
+    if (lMsg) {
+      memcpy(lMsg->GetData(), pData, pSize);
+    }
+
+    return lMsg;
   }
 
 private:

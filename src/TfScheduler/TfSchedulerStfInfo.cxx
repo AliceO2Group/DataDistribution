@@ -16,6 +16,8 @@
 
 #include <StfSenderRpcClient.h>
 
+#include <DataDistMonitoring.h>
+
 #include <boost/algorithm/string/join.hpp>
 
 #include <set>
@@ -43,7 +45,14 @@ void TfSchedulerStfInfo::SchedulingThread()
   std::map<std::string, std::uint64_t> lStfSenderMissingCnt;
   std::optional<std::vector<StfInfo>> lStfInfosOpt;
 
+  // total number of scheduled Tfs
+  std::size_t lScheduledTfs = 0;
+
   while ((lStfInfosOpt = mCompleteStfsInfoQueue.pop()) != std::nullopt) {
+
+    DDMON("tfscheduler", "tf.rejected.total", mNotScheduledTfsCount);
+    DDMON("tfscheduler", "tf.scheduled.total", lScheduledTfs);
+
     const std::vector<StfInfo> &lStfInfos = lStfInfosOpt.value();
     TfBuildingInformation lRequest;
 
@@ -86,6 +95,7 @@ void TfSchedulerStfInfo::SchedulingThread()
           switch (lResponse.status()) {
             case BuildTfResponse::OK:
               // marked TfBuilder as scheduled
+              lScheduledTfs++;
               mTfBuilderInfo.markTfBuilderWithTfId(lTfBuilderId, lRequest.tf_id());
               break;
             case BuildTfResponse::ERROR_NOMEM:
@@ -222,6 +232,9 @@ void TfSchedulerStfInfo::HighWatermarkThread()
   std::vector<std::uint64_t> lStfsToErase;
   lStfsToErase.reserve(1000);
 
+
+  std::size_t lNoStfSenderBufferAvailableCnt = 0;
+
   while (mRunning) {
     std::vector<std::uint64_t> lStfsToDrop;
     std::uint64_t lStfsToDropSize = 0;
@@ -261,7 +274,9 @@ void TfSchedulerStfInfo::HighWatermarkThread()
       IDDLOG_RL(5000, "HighWatermark: StfSender buffer utilization max_util={:.4} stfs_id={} mean_util={:.4}",
         lBuffUtilMax, lStfsToFree, lBuffUtilMean);
 
-      if (lBuffUtilMax <= 0.95) {
+      DDMON("tfscheduler", "stfsender.buffer.max_util", lBuffUtilMax);
+
+      if (lBuffUtilMax <= 0.90) {
         continue;
       }
 
@@ -287,7 +302,7 @@ void TfSchedulerStfInfo::HighWatermarkThread()
 
         assert (!lStfVec.empty());
 
-        // check the TFID
+        // check the TF ID
         if (lStfId > mMaxCompletedTfId) {
           break;
         }
@@ -323,9 +338,13 @@ void TfSchedulerStfInfo::HighWatermarkThread()
     }// unlock mGlobalStfInfoLock
 
     if (lStfsToDropSize > 0) {
-      IDDLOG("HighWatermark: cleared dropped STFs from StfSender. stfs_id={} num_stfs_dropped={} dropped_size={}",
+      WDDLOG("HighWatermark: cleared dropped STFs from StfSender. stfs_id={} num_stfs_dropped={} dropped_size={}",
         lStfsToFree, lStfsToDrop.size(), lStfsToDropSize);
     }
+
+    lNoStfSenderBufferAvailableCnt += lStfsToDrop.size();
+    DDMON("tfscheduler", "tf.rejected.stfs_drop_size", lStfsToDropSize);
+    DDMON("tfscheduler", "tf.rejected.total", mNotScheduledTfsCount);
   }
 
   DDDLOG("Exiting HighWatermarkThread thread.");
@@ -471,17 +490,11 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
 
     // check if complete
     if (lStfIdVector.size() == lNumStfSenders) {
-      { // check duration
-        const std::chrono::duration<double, std::milli> lTfSchedDur = lStfIdVector.rbegin()->mUpdateLocalTime -
-          lStfIdVector.begin()->mUpdateLocalTime;
+      // check duration
+      const std::chrono::duration<double, std::milli> lTfSchedDur = lStfIdVector.rbegin()->mUpdateLocalTime -
+        lStfIdVector.begin()->mUpdateLocalTime;
 
-        sCompleteTfDurAvg += (lTfSchedDur / 16 - sCompleteTfDurAvg / 16);
-        sCompleteTfDurMax = std::max(lTfSchedDur, sCompleteTfDurMax);
-
-        DDDLOG_GRL(1000, "STFUpdateComplete: collected {} STFs. current_dur_ms={:.3} mean_dur_ms={:.3} max_dur_ms={:.3}",
-          lNumStfSenders, lTfSchedDur.count(), sCompleteTfDurAvg.count(), sCompleteTfDurMax.count());
-      }
-
+      // move info to the completed queue
       auto lInfoNode = mStfInfoMap.extract(lStfId);
       mMaxCompletedTfId = std::max(mMaxCompletedTfId, lStfId);
 
@@ -489,7 +502,10 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
       mBuiltTfs.SetEvent(lStfId);
       mCompleteStfsInfoQueue.push(std::move(lInfoNode.mapped()));
 
+      DDMON("tfscheduler", "stf.update.complete_dur_ms", lTfSchedDur.count());
     }
+
+    DDMON("tfscheduler", "stf.update.parallel_tf_num", mStfInfoMap.size());
   }
 }
 

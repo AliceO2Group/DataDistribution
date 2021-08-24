@@ -10,6 +10,7 @@
 
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#include <DataDistMonitoring.h>
 
 #include "TfBuilderInput.h"
 #include "TfBuilderRpc.h"
@@ -148,19 +149,22 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
   // Start all the threads
   mState = RUNNING;
 
-  // Start the deserialize thread
+  // Start the pacer thread
   mReceivedData.start();
-  mStfDeserThread = create_thread_member("tfb_deser", &TfBuilderInput::StfDeserializingThread, this);
+  mStfPacingThread = create_thread_member("tfb_pace", &TfBuilderInput::StfPacingThread, this);
 
-  // Start the merger
+  // Start the deserialize thread
   {
     std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
     mStfMergeMap.clear();
-    mStfCount = 0;
 
-    // start the merger thread
-    mStfMergerThread = create_thread_member("tfb_merge", &TfBuilderInput::StfMergerThread, this);
+    mStfDeserThread = create_thread_member("tfb_deser", &TfBuilderInput::StfDeserializingThread, this);
   }
+
+  // Start the merger
+  mStfsForMerging.start();
+  mStfMergerThread = create_thread_member("tfb_merge", &TfBuilderInput::StfMergerThread, this);
+
 
   // start all input threads
   assert(mInputThreads.size() == 0);
@@ -224,13 +228,13 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
   mStfSenderChannels.clear();
   IDDLOG("TfBuilderInput::stop: All input channels are closed.");
 
-  //Wait for deserializer thread
+  //Wait for pacer thread
   mReceivedData.stop();
-  if (mStfDeserThread.joinable()) {
-    mStfDeserThread.join();
+  if (mStfPacingThread.joinable()) {
+    mStfPacingThread.join();
   }
 
-  // Make sure the merger stopped
+  // Make sure the deserializer stopped
   {
     DDDLOG("TfBuilderInput::stop: Stopping the STF merger thread.");
     {
@@ -240,10 +244,17 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
       mStfMergerCondition.notify_all();
     }
 
-    if (mStfMergerThread.joinable()) {
-      mStfMergerThread.join();
+    if (mStfDeserThread.joinable()) {
+      mStfDeserThread.join();
     }
   }
+
+  //Wait for merger thread
+  mStfsForMerging.stop();
+  if (mStfMergerThread.joinable()) {
+    mStfMergerThread.join();
+  }
+
   DDDLOG("TfBuilderInput::stop: Merger thread stopped.");
   IDDLOG("TfBuilderInput: Teardown complete.");
 }
@@ -259,19 +270,43 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex, const std:
   // Reference to the input channel
   auto& lInputChan = *mStfSenderChannels[pFlpIndex];
 
+  // Deserialization object (stf ID)
+  CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
+
   while (mState == RUNNING) {
     std::unique_ptr<std::vector<FairMQMessagePtr>> lStfData = std::make_unique<std::vector<FairMQMessagePtr>>();
 
-    const std::int64_t ret = lInputChan.Receive(*lStfData, 1000 /* ms */);
-    // timeout ?
-    if (ret == -2) {
-      continue;
+    const std::int64_t lRet = lInputChan.Receive(*lStfData, 1000 /* ms */);
+
+    switch (lRet) {
+      case static_cast<std::int64_t>(fair::mq::TransferCode::timeout):
+        continue;
+        break;
+      case static_cast<std::int64_t>(fair::mq::TransferCode::interrupted):
+        if (mState == RUNNING) {
+          IDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::interrupted pStfSenderId={}", pStfSenderId);
+        }
+        continue;
+        break;
+      case static_cast<std::int64_t>(fair::mq::TransferCode::error):
+        EDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::error err={} errno={} error={}",
+          int(lRet), errno, std::string(strerror(errno)));
+        continue;
+        break;
+      default: // data or zero
+        if (lRet <= 0) {
+          WDDLOG_RL(1000, "STF receive failed. what=zero_size");
+          continue;
+        }
+        break;
     }
 
-    if (ret < 0) {
-      IDDLOG_GRL(1000, "STF receive failed err={} errno={} error={}", ret, errno, std::string(strerror(errno)));
-      continue;
+    // move data to the dedicated region if required
+    if (std::size_t(lRet) > mDevice.TfBuilderI().freeData()) {
+      EDDLOG_GRL(1000, "TfBuilderInput::DataHandlerThread: Data region size too small for received data. received={} region_free={}",
+        lRet, mDevice.TfBuilderI().freeData());
     }
+    lStfReceiver.copy_to_region(*lStfData);
 
     // send to deserializer thread so that we can keep receiving
     mReceivedData.push(std::move(ReceivedStfMeta(pStfSenderId, std::move(lStfData))));
@@ -281,12 +316,12 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex, const std:
   IDDLOG("Exiting input thread [{}]", pFlpIndex);
 }
 
-/// FMQ->STF thread
-void TfBuilderInput::StfDeserializingThread()
+/// TF building pacing thread
+void TfBuilderInput::StfPacingThread()
 {
-  std::uint64_t lNumStfs = 0;
-  // Deserialization object
+  // Deserialization object (stf ID)
   CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
+  std::uint64_t lTopoStfId = 0;
 
   while (mState == RUNNING) {
 
@@ -298,34 +333,144 @@ void TfBuilderInput::StfDeserializingThread()
 
     assert (lStfInfo.mRecvStfdata);
 
-    // try to deserialize
-    lStfInfo.mStf = lStfReceiver.deserialize(*lStfInfo.mRecvStfdata);
-    if (!lStfInfo.mStf) {
+    const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(*lStfInfo.mRecvStfdata);
+    std::uint64_t lTfId = lStfHeader.mId;
+
+    // Rename STF id if this is a Topological TF
+    if (lStfHeader.mOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
+      // deserialize here to be able to rename the stf
+      lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfdata));
+      lStfInfo.mRecvStfdata = nullptr;
+
+      const std::uint64_t lNewTfId = ++lTopoStfId;
+      DDDLOG_RL(5000, "Deserialized STF. stf_id={} new_id={}", lStfInfo.mStf->id(), lNewTfId);
+      lStfInfo.mStf->updateId(lNewTfId);
+      lTfId = lNewTfId;
+    }
+
+    lStfInfo.mStfId = lTfId;
+
+    /// TODO: STF receive pacing
+    // TfScheduler should manage memory of the region and not overcommit the TfBuilders
+
+    { // Push the STF into the merger queue
+      std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
+
+      if (lTfId > mMaxMergedTfId) {
+        mStfMergeMap[lTfId].push_back(std::move(lStfInfo));
+      } else {
+        EDDLOG_RL(1000, "StfPacingThread: Received STF ID is larger than the last built STF. stfs_id={} stf_id={} last_stf_id={}",
+          lStfInfo.mStfSenderId, lTfId, mMaxMergedTfId);
+      }
+    }
+    mStfMergerCondition.notify_one();
+  }
+
+  IDDLOG("Exiting stf deserializer thread.");
+}
+
+
+void TfBuilderInput::deserialize_headers(std::vector<ReceivedStfMeta> &pStfs)
+{
+  for (auto &lStfInfo : pStfs) {
+    if (lStfInfo.mStf) {
       continue;
     }
 
-    const TimeFrameIdType lTfId = lStfInfo.mStf->id();
-    lNumStfs++;
+    // Deserialization object
+    CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
 
-    // Rename TF id if this is a Topological TF
-    std::uint64_t lNewTfId = 0;
-    if (mRpc->getTopologicalTfId(lData->mStfSenderId, lTfId, lNewTfId)) {
-      DDDLOG_RL(5000, "Deserialized STF. stf_id={} new_id={} total={}", lTfId, lNewTfId, lNumStfs);
-      lStfInfo.mStf->updateId(lNewTfId);
-    } else {
-      DDDLOG_RL(5000, "Deserialized STF. stf_id={} total={}", lTfId, lNumStfs);
+    // deserialize the data
+    lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfdata));
+    lStfInfo.mRecvStfdata = nullptr;
+  }
+}
+
+// check if topological (S)TF
+bool TfBuilderInput::is_topo_stf(const std::vector<ReceivedStfMeta> &pStfs) const
+{
+  if (pStfs.empty()) {
+    return false;
+  }
+
+  if (pStfs.size() == 1 && pStfs.begin()->mStf) {
+    if (pStfs.begin()->mStf->header().mOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
+      return true;
+    }
+  }
+
+  if (pStfs.size() > 1 && pStfs.begin()->mStf) {
+    if (pStfs.begin()->mStf->header().mOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
+      EDDLOG_RL(1000, "TfBuilderInput::is_topo_stf: multiple topological STFs with a same ID. stf_id={}",
+        pStfs.begin()->mStf->id());
+    }
+  }
+
+  return false;
+}
+
+/// FMQ->STF thread
+void TfBuilderInput::StfDeserializingThread()
+{
+  // Deserialization object
+  CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
+
+  while (mState == RUNNING) {
+
+    std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
+    mStfMergerCondition.wait_for(lQueueLock, 500ms);
+
+    if (mStfMergeMap.empty()) {
+      continue;
     }
 
+    // 1.1 deserialize all topological or completed TFs with the smallest ID
     {
-      // Push the STF into the merger queue
-      std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
+      auto lMinTfInfo = mStfMergeMap.begin();
+      const auto lStfId = lMinTfInfo->first;
+      auto &lStfVector = lMinTfInfo->second;
 
-      mStfMergeMap[lTfId].push_back(std::move(lStfInfo));
-      mStfCount++;
+      deserialize_headers(lStfVector);
 
-      if (mStfMergeMap[lTfId].size() == mNumStfSenders) {
-        lQueueLock.unlock();
-        mStfMergerCondition.notify_one();
+      // 1.2 check if the oldest TF is completed or topological STF?
+      if ((lStfVector.size() == mNumStfSenders) || is_topo_stf(lStfVector)) {
+        mStfsForMerging.push(std::move(lStfVector));
+        mStfMergeMap.erase(lStfId);
+        continue;
+      }
+    }
+
+    // 3.1 check out of order completions
+    TimeFrameIdType lMergedStf = 0;
+    for (auto &lStfInfosIter : mStfMergeMap) {
+      const auto lStfId = lStfInfosIter.first;
+      auto &lStfVector = lStfInfosIter.second;
+
+      if (lStfVector.size() == mNumStfSenders) {
+        lMergedStf = lStfId;
+        break;
+      }
+    }
+
+    // 3.2 Merge incomplete larger STFs
+    if (lMergedStf != 0) {
+      while (!mStfMergeMap.empty()) {
+        auto lMinTfInfo = mStfMergeMap.begin();
+        const auto lMinStfId = lMinTfInfo->first;
+        auto &lStfVector = lMinTfInfo->second;
+
+        if (lMinStfId < lMergedStf) {
+          break;
+        }
+
+        if (lStfVector.size() < mNumStfSenders) {
+          WDDLOG_RL(1000, "StfDeserializingThread: Merging a TF with incomplete number of STFs. stf_num={} stfs_num={}",
+            lStfVector.size(), mNumStfSenders);
+        }
+
+        deserialize_headers(lStfVector);
+        mStfsForMerging.push(std::move(lStfVector));
+        mStfMergeMap.erase(lMinStfId);
       }
     }
   }
@@ -337,65 +482,62 @@ void TfBuilderInput::StfDeserializingThread()
 void TfBuilderInput::StfMergerThread()
 {
   using namespace std::chrono_literals;
+  using hres_clock = std::chrono::high_resolution_clock;
+
+  auto lRateStartTime = hres_clock::now();
 
   std::uint64_t lNumBuiltTfs = 0;
 
   while (mState == RUNNING) {
 
-    std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
-
-    if (mStfCount < mNumStfSenders) {
-      if (std::cv_status::timeout == mStfMergerCondition.wait_for(lQueueLock, 500ms)) {
-        continue;
-      }
+    auto lStfVectorOpt = mStfsForMerging.pop();
+    if (lStfVectorOpt == std::nullopt) {
+      continue;
     }
+    auto &lStfVector = lStfVectorOpt.value();
 
-    if (mStfCount < mNumStfSenders) {
+    // merge the current TF!
+    const auto lBuildDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      lStfVector.rbegin()->mTimeReceived - lStfVector.begin()->mTimeReceived);
+
+    // start from the first element (using it as the seed for the TF)
+    std::unique_ptr<SubTimeFrame> lTf = std::move(lStfVector.begin()->mStf);
+    if (!lTf) {
+      EDDLOG("StfMergerThread: First Stf is null. (not deserialized?)");
       continue;
     }
 
-    for (auto &lStfInfoIt : mStfMergeMap) {
-      auto &lStfMetaVec = lStfInfoIt.second;
-      const auto lStfId = lStfInfoIt.first;
-
-      if (lStfMetaVec.size() < mNumStfSenders) {
-        continue;
-      }
-
-      if (lStfMetaVec.size() > mNumStfSenders) {
-        EDDLOG("StfMerger: number of STFs is larger than expected. stf_id={:d} num_stfs={:d} num_stf_senders={:d}",
-          lStfId, lStfMetaVec.size(), mNumStfSenders);
-      }
-
-      // merge the current TF!
-      const auto lBuildDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-        lStfMetaVec.rbegin()->mTimeReceived - lStfMetaVec.begin()->mTimeReceived);
-
-      // start from the first element (using it as the seed for the TF)
-      std::unique_ptr<SubTimeFrame> lTf = std::move(lStfMetaVec.begin()->mStf);
-
-      for (auto lStfIter = std::next(lStfMetaVec.begin()); lStfIter != lStfMetaVec.end(); ++lStfIter) {
-          // Add them all up
-          lTf->mergeStf(std::move(lStfIter->mStf));
-      }
-
-      lNumBuiltTfs++;
-      DDDLOG_RL(1000, "Building of TF completed. tf_id={:d} duration_ms={} total_tf={:d}",
-        lStfId, lBuildDurationMs.count(), lNumBuiltTfs);
-
-      // remove consumed STFs from the merge queue
-      mStfMergeMap.erase(lStfId);
-      mStfCount -= mNumStfSenders;
-
-      // account the size of received TF
-      mRpc->recordTfBuilt(*lTf);
-
-      // Queue out the TF for consumption
-      mDevice.queue(mOutStage, std::move(lTf));
-
-      // break from the for loop and try again
-      break;
+    // Add the rest of STFs
+    for (auto lStfIter = std::next(lStfVector.begin()); lStfIter != lStfVector.end(); ++lStfIter) {
+      lTf->mergeStf(std::move(lStfIter->mStf));
     }
+    lNumBuiltTfs++;
+
+    const auto lTfId = lTf->id();
+
+    mMaxMergedTfId = std::max(mMaxMergedTfId, lTfId);
+
+    // account the size of received TF
+    mRpc->recordTfBuilt(*lTf);
+
+    DDDLOG_RL(1000, "Building of TF completed. tf_id={:d} duration_ms={} total_tf={:d}",
+      lTfId, lBuildDurationMs.count(), lNumBuiltTfs);
+
+    {
+      const auto lNow = hres_clock::now();
+      const auto lTfDur = std::chrono::duration<double>(lNow - lRateStartTime);
+      lRateStartTime = lNow;
+      const auto lRate = (1.0 / lTfDur.count());
+
+      DDMON("tfbuilder", "tf_input.size", lTf->getDataSize());
+      DDMON("tfbuilder", "tf_input.rate", lRate);
+      DDMON("tfbuilder", "data_input.rate", (lRate * lTf->getDataSize()));
+
+      DDMON("tfbuilder", "merge.receive_span_ms", lBuildDurationMs.count());
+    }
+
+    // Queue out the TF for consumption
+    mDevice.queue(mOutStage, std::move(lTf));
   }
 
   IDDLOG("Exiting STF merger thread.");

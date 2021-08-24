@@ -364,6 +364,14 @@ void CoalescedHdrDataDeserializer::visit(SubTimeFrame& pStf)
       EDDLOG("Received STF data payload with zero size");
     }
 
+#if !defined(NDEBUG)
+    // make sure header payload size matches
+     DataHeader *lHdrPtr = reinterpret_cast<DataHeader*>(lHdrMsg->GetData());
+     if (lHdrPtr->payloadSize != lDataMsg->GetSize()) {
+       EDDLOG_RL(1000, "BUG: Header payloadSize does not match the data size. hdr_size={} data_size={}", lHdrPtr->payloadSize, lDataMsg->GetSize());
+     }
+#endif
+
     pStf.addStfData({ std::move(lHdrMsg), std::move(lDataMsg) });
   }
 }
@@ -490,5 +498,102 @@ std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize_impl()
 
   return lStf;
 }
+
+
+SubTimeFrame::Header CoalescedHdrDataDeserializer::peek_tf_header(const std::vector<FairMQMessagePtr>& pMsgs) const
+{
+  try {
+    // recreate header messages
+    const auto &lCoalescedHdr = *pMsgs.rbegin();
+
+    // we pack 2 transient stf header messages into Hdrs and 1 coalesced header msg
+    const auto lExpectedMsgs = pMsgs.size() + 1;
+
+    std::size_t lInfoOff = 0;
+    std::size_t lHdrOff = lExpectedMsgs * sizeof(CoalescedHdrDataSerializer::header_info);
+    char* lFullHdrMsgAddr = reinterpret_cast<char*>(lCoalescedHdr->GetData());
+
+    // sanity checking
+    if (lCoalescedHdr->GetSize() < lExpectedMsgs * sizeof(CoalescedHdrDataSerializer::header_info)) {
+      EDDLOG("CoalescedHdrDataDeserializer: packed header message too small. size={} min_expected_size={}",
+        lCoalescedHdr->GetSize(), (lExpectedMsgs * sizeof(CoalescedHdrDataSerializer::header_info)));
+      throw std::runtime_error("CoalescedHdrDataDeserializer::HeaderSize too small");
+    }
+
+    // unpack coalesced headers
+    SubTimeFrame::Header lStfHeader;
+
+    CoalescedHdrDataSerializer::header_info lHdrInfo;
+    // 1st message is the data header
+    std::memcpy(&lHdrInfo, lFullHdrMsgAddr + lInfoOff, sizeof(CoalescedHdrDataSerializer::header_info));
+
+    if (lHdrInfo.len > (100 << 10)) {
+      WDDLOG("CoalescedHdrDataDeserializer: unpacked header size is too large. size={}", lHdrInfo.len);
+    }
+
+    if (lHdrInfo.start != (lHdrOff)) {
+      EDDLOG("CoalescedHdrDataDeserializer: header unpacking failed. msg_idx={} offset_meta={} offset_unpacking={}",
+        0, lHdrInfo.start, lHdrOff);
+      throw std::runtime_error("CoalescedHdrDataDeserializer::Deserializing failed");
+    }
+
+    // auto lNewHdr = mTfBld.newHeaderMessage(lFullHdrMsgAddr + lHdrOff, lHdrInfo.len);
+
+    lInfoOff += sizeof(CoalescedHdrDataSerializer::header_info);
+    lHdrOff += lHdrInfo.len;
+
+
+    // 2nd message is the STF header
+    std::memcpy(&lHdrInfo, lFullHdrMsgAddr + lInfoOff, sizeof(CoalescedHdrDataSerializer::header_info));
+
+    if (lHdrInfo.len > (100 << 10)) {
+      WDDLOG("CoalescedHdrDataDeserializer: unpacked header size is too large. size={}", lHdrInfo.len);
+    }
+
+    if (lHdrInfo.start != (lHdrOff)) {
+      EDDLOG("CoalescedHdrDataDeserializer: header unpacking failed. msg_idx={} offset_meta={} offset_unpacking={}",
+        1, lHdrInfo.start, lHdrOff);
+      throw std::runtime_error("CoalescedHdrDataDeserializer::Deserializing failed");
+    }
+
+    // auto lNewHdr = mTfBld.newHeaderMessage(lFullHdrMsgAddr + lHdrOff, lHdrInfo.len);
+    if (lHdrInfo.len != sizeof (SubTimeFrame::Header)) {
+      EDDLOG("CoalescedHdrDataDeserializer: header unpacking failed. Expected StfHeader_size={} msg_idx=1 offset_meta={} offset_unpacking={} hdr_size={}",
+        sizeof (SubTimeFrame::Header), lHdrInfo.start, lHdrOff, lHdrInfo.len);
+      throw std::runtime_error("CoalescedHdrDataDeserializer::Deserializing failed");
+    }
+
+    memcpy(&lStfHeader, lFullHdrMsgAddr + lHdrOff, lHdrInfo.len);
+
+    return lStfHeader;
+
+  } catch (std::runtime_error& e) {
+    EDDLOG("SubTimeFrame deserialization failed. reason={}", e.what());
+  } catch (std::exception& e) {
+    EDDLOG("SubTimeFrame deserialization failed. reason={}", e.what());
+  }
+
+  return SubTimeFrame::Header();
+}
+
+// copy all messages into the data region, and update the vector
+bool CoalescedHdrDataDeserializer::copy_to_region(std::vector<FairMQMessagePtr>& pMsgs /* in/out */)
+{
+
+  for (std::size_t idx = 0; idx < pMsgs.size(); idx++) {
+    const auto lSize = pMsgs[idx]->GetSize();
+
+    auto lMsgCopy = mTfBld.newDataMessage(reinterpret_cast<const char*>(pMsgs[idx]->GetData()), lSize);
+
+    if (lMsgCopy) {
+      pMsgs[idx] = std::move(lMsgCopy);
+    } else {
+      WDDLOG_GRL(1000, "CoalescedHdrDataDeserializer::copy_to_region: DataRegion allocation failed.");
+    }
+  }
+
+  return true;
+}
+
 
 } /* o2::DataDistribution */
