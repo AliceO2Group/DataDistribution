@@ -52,12 +52,27 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 
   mNumStfSenders = lNumStfSenders;
 
-  IDDLOG("Creating input channels. num_channels={} partition={}",
-    mNumStfSenders, lStatus.partition().partition_id());
+  IDDLOG("Creating input channels. num_channels={} partition={}", mNumStfSenders, lStatus.partition().partition_id());
 
   const auto &lAaddress = lStatus.info().ip_address();
 
   auto &lSocketMap = *(lStatus.mutable_sockets()->mutable_map());
+
+  // ZEROMQ high watermark on receive
+  int lRcvBufSize = 50;
+  {
+    const auto lTfBZmqHwmVar = getenv("DATADIST_TF_ZMQ_RCVHWM");
+    if (lTfBZmqHwmVar) {
+      try {
+        const int lTfBZmqHwm = std::stoi(lTfBZmqHwmVar);
+        lRcvBufSize = std::max(lTfBZmqHwm, 4);
+        IDDLOG("TfBuilderInput: RcvBufSize is set to {}. DATADIST_TF_ZMQ_RCVHWM={}", lRcvBufSize, lRcvBufSize);
+      } catch (...) {
+        EDDLOG("(Sub)TimeFrame source: DATADIST_TF_ZMQ_RCVHWM must be greater than 3. DATADIST_TF_ZMQ_RCVHWM={}",
+          lTfBZmqHwmVar);
+      }
+    }
+  }
 
   for (std::uint32_t lSocketIdx = 0; lSocketIdx < mNumStfSenders; lSocketIdx++) {
 
@@ -73,7 +88,7 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 
     lNewChannel->UpdateRateLogging(1); // log each second
     lNewChannel->UpdateAutoBind(true); // make sure bind succeeds
-    lNewChannel->UpdateRcvBufSize(200); // make sure one sender does not advance too much
+    lNewChannel->UpdateRcvBufSize(lRcvBufSize); // make sure one sender does not advance too much
     lNewChannel->UpdateRcvKernelSize(2 << 20);
     lNewChannel->Init();
 
