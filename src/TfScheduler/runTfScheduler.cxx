@@ -9,6 +9,7 @@
 // or submit itself to any jurisdiction.
 
 #include "DataDistLogger.h"
+#include "DataDistMonitoring.h"
 #include "TfSchedulerDevice.h"
 #include <Config.h>
 #include <FmqUtilities.h>
@@ -34,6 +35,8 @@ int main(int argc, char* argv[])
 
       // Add InfoLogger Options
       r.fConfig.AddToCmdLineOptions(impl::DataDistLoggerCtx::getProgramOptions());
+      // Add Monitoring Options
+      r.fConfig.AddToCmdLineOptions(DataDistMonitor::getProgramOptions());
 
       // Add options for Data Distribution discovery
       r.fConfig.AddToCmdLineOptions(

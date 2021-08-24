@@ -252,7 +252,7 @@ void TfSchedulerStfInfo::HighWatermarkThread()
         }
 
         // log problematic ones
-        if (lBufUtil > 0.95) {
+        if (lBufUtil > 0.90) {
           WDDLOG_RL(1000, "HighWatermark: buffer utilization too high. stfs_id={} buffer_util={:.4} buffer_size={}",
             lStfs, lBufUtil, lStfsUtil.buffer_size());
         }

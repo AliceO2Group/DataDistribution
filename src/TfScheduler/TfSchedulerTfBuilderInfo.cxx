@@ -16,6 +16,8 @@
 
 #include <StfSenderRpcClient.h>
 
+#include <DataDistMonitoring.h>
+
 #include <set>
 #include <tuple>
 #include <algorithm>
@@ -32,7 +34,8 @@ std::size_t TfBuilderTopoInfo::operator()(TfBuilderTopoInfo const& s) const noex
     return h1 ^ (h2 << 1);
 }
 
-bool operator==(const TfBuilderTopoInfo& lhs, const TfBuilderTopoInfo& rhs) {
+bool operator==(const TfBuilderTopoInfo& lhs, const TfBuilderTopoInfo& rhs)
+{
     return lhs.mSubSpec == rhs.mSubSpec && (0 == std::memcmp(lhs.mDataOrigin, rhs.mDataOrigin, 3));
 }
 
@@ -86,6 +89,8 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
       // acquire the ready lock, since the data is shared
       std::scoped_lock lLockReady(mReadyInfoLock);
       lInfo->mUpdateLocalTime = lLocalTime;
+      lInfo->mReportedFreeMemory = pTfBuilderUpdate.free_memory();
+      lInfo->mTfsInBuilding = pTfBuilderUpdate.num_tfs_in_building();
 
       // update only when the last scheduled tf is built!
       if (pTfBuilderUpdate.last_built_tf_id() == lInfo->last_scheduled_tf_id()) {
@@ -93,7 +98,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
         lInfo->mTfBuilderUpdate = pTfBuilderUpdate;
 
         // verify the memory estimation is correct
-        if (lInfo->mEstimatedFreeMemory > (pTfBuilderUpdate.free_memory() * (sTfSizeOverestimatePercent + 100) / 100) ) {
+        if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory()) {
           DDDLOG("TfBuilder memory estimate is too high. tfb_id={:s} mem_estimate={}", lTfBuilderId,
             (double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory())));
         }
@@ -126,6 +131,9 @@ bool TfSchedulerTfBuilderInfo::findTfBuilderForTf(const std::uint64_t pSize, std
 {
   static std::atomic_uint64_t sNoTfBuilderAvailable = 0;
   static std::atomic_uint64_t sNoMemoryAvailable = 0;
+  static std::atomic_uint64_t sTfNumExceeeded = 0;
+
+  const std::size_t cMaxTfsInBuilding = 8;
 
   // NOTE: we will overestimate memory requirement by a factor, until TfBuilder updates
   //       us with the actual size.
@@ -134,10 +142,18 @@ bool TfSchedulerTfBuilderInfo::findTfBuilderForTf(const std::uint64_t pSize, std
   std::scoped_lock lLock(mReadyInfoLock);
 
   uint64_t lMaxMem = 0;
+  bool lMaxTfExceeded = false;
   auto lIt = mReadyTfBuilders.begin();
   for (; lIt != mReadyTfBuilders.end(); ++lIt) {
     lMaxMem = std::max(lMaxMem, (*lIt)->mEstimatedFreeMemory);
+
+    if ((*lIt)->mTfsInBuilding >= cMaxTfsInBuilding) {
+      lMaxTfExceeded = true;
+      continue;
+    }
+
     if ((*lIt)->mEstimatedFreeMemory >= lTfEstSize) {
+      lMaxTfExceeded = false;
       break;
     }
   }
@@ -146,10 +162,19 @@ bool TfSchedulerTfBuilderInfo::findTfBuilderForTf(const std::uint64_t pSize, std
   if ( lIt == mReadyTfBuilders.end() ) {
     if (mReadyTfBuilders.empty()) {
       ++sNoTfBuilderAvailable;
+      DDMON("tfscheduler", "tf.rejected.no_tfb_inst", sNoTfBuilderAvailable);
+
       WDDLOG_RL(1000, "FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={}",
         sNoTfBuilderAvailable);
+
+    } else if (lMaxTfExceeded) {
+      ++sTfNumExceeeded;
+      WDDLOG_RL(1000, "FindTfBuilder: TF cannot be scheduled. reason=NUM_TF_EXCEEEDED total={} tf_size={} ready_tfb={}",
+        sTfNumExceeeded, lTfEstSize, mReadyTfBuilders.size());
+      DDMON("tfscheduler", "tf.rejected.max_tf_exceeded", sTfNumExceeeded);
     } else {
       ++sNoMemoryAvailable;
+      DDMON("tfscheduler", "tf.rejected.no_tfb_buf", sNoMemoryAvailable);
       WDDLOG_RL(1000, "FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={} tf_size={} ready_tfb={}",
         sNoMemoryAvailable, lTfEstSize, mReadyTfBuilders.size());
     }
@@ -245,11 +270,10 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
           lIdsToErase.push_back(lInfo->mTfBuilderUpdate.info().process_id());
         }
 
-        DDDLOG("TfBuilder information: tfb_id={:s} free_memory={:d} num_buffered_tfs={:d}",
-          lInfo->mTfBuilderUpdate.info().process_id(), lInfo->mTfBuilderUpdate.free_memory(),
-          lInfo->mTfBuilderUpdate.num_buffered_tfs());
+        DDDLOG("TfBuilder information: tfb_id={:s} free_memory_est={:d} free_memory_rep={:d} num_buffered_tfs={:d} num_tf_in_building={}",
+          lInfo->mTfBuilderUpdate.info().process_id(), lInfo->mEstimatedFreeMemory, lInfo->mReportedFreeMemory,
+          lInfo->mTfBuilderUpdate.num_buffered_tfs(), lInfo->mTfsInBuilding);
       }
-
     } // mGlobalInfoLock unlock (to be able to sleep)
 
     if (!lIdsToErase.empty()) {

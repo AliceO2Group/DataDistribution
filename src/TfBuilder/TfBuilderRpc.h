@@ -120,12 +120,13 @@ private:
 
   /// TF buffer size accounting
   std::recursive_mutex mTfIdSizesLock;
-  std::unordered_map <uint64_t, uint64_t> mTfIdSizes;
-  // Update information for the TfScheduler
-  std::uint64_t mBufferSize = 0;
-  std::uint64_t mCurrentTfBufferSize = 0;
-  std::uint64_t mLastBuiltTfId = 0;
-  std::uint32_t mNumBufferedTfs = 0;
+    std::unordered_map <uint64_t, uint64_t> mTfIdSizes;
+    // Update information for the TfScheduler
+    std::uint64_t mBufferSize = 0;
+    std::uint64_t mCurrentTfBufferSize = 0;
+    std::uint64_t mLastBuiltTfId = 0;
+    std::uint32_t mNumBufferedTfs = 0;
+    std::int32_t mNumTfsInBuilding = 0;
 
   /// Queue of TF building requests
   std::unique_ptr<ConcurrentFifo<TfBuildingInformation>> mTfBuildRequests;

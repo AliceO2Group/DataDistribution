@@ -16,6 +16,7 @@
 #include <ConfigConsul.h>
 
 #include <DataDistLogger.h>
+#include <DataDistMonitoring.h>
 
 #include <condition_variable>
 #include <stdexcept>
@@ -55,6 +56,14 @@ TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
 
   mDiscoveryConfig->write();
 
+  // start monitoring
+  DataDistMonitor::start_datadist(o2::monitoring::tags::Value::TfScheduler, pDev.GetConfig()->GetProperty<std::string>("monitoring-backend"));
+  DataDistMonitor::set_interval(pDev.GetConfig()->GetValue<float>("monitoring-interval"));
+  DataDistMonitor::set_log(pDev.GetConfig()->GetValue<bool>("monitoring-log"));
+
+  // enable monitoring
+  DataDistMonitor::enable_datadist(1, mPartitionInfo.mPartitionId);
+
   DDDLOG("Initialized new TfSchedulerInstance. partition={}", mPartitionInfo.mPartitionId);
 }
 
@@ -82,6 +91,9 @@ bool TfSchedulerInstanceHandler::start()
 
 void TfSchedulerInstanceHandler::stop()
 {
+  // stop monitoring
+  DataDistMonitor::stop_datadist();
+
   mRpcServer.stop();
 
   mRunning = false;
