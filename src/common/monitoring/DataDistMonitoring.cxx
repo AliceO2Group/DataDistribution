@@ -121,30 +121,41 @@ void DataDistMonitoring::MonitorThread()
         continue;
       }
 
-      for (const auto &lMetricIter : mMetricMap) {
-        const DataDistMetric &lMetricObj = lMetricIter.second;
+      for (auto &lMetricIter : mMetricMap) {
+        DataDistMetric &lMetricObj = lMetricIter.second;
 
         const std::string &lMetricName = lMetricObj.mMetricName;
-        const auto &lKeyValMaps = lMetricObj.mKeyValueVectors;
+        auto &lKeyValMaps = lMetricObj.mKeyValueVectors;
         const auto &lTimeStamp = lMetricObj.mTimestamp;
 
         o2::monitoring::Metric lMetric(lMetricName, Metric::DefaultVerbosity, lTimeStamp);
 
-        for (const auto &lKeyValsIter : lKeyValMaps) {
+        for (auto &lKeyValsIter : lKeyValMaps) {
 
           const auto &lKey = lKeyValsIter.first;
-          const auto &lValues = lKeyValsIter.second;
+          auto &lValues = lKeyValsIter.second;
 
           if (lValues.empty()) {
             continue;
           }
 
-          // create mean, min, max
-          const auto lMean = std::accumulate( begin(lValues), end(lValues), 0.0) / lValues.size();
-          lMetric.addValue(lMean, lKey);
-          const auto lMinMax = std::minmax_element(begin(lValues), end(lValues));
-          lMetric.addValue(*lMinMax.first, lKey + "_min");
-          lMetric.addValue(*lMinMax.second, lKey + "_max");
+          // create mean, median, min, max
+          std::sort(lValues.begin(), lValues.end());
+
+          // report average of middle 80% samples
+          auto lMid80 = 0.0;
+          if (lValues.size() >= 3) {
+            const auto lMedBegin = std::max(std::size_t(1), (lValues.size() + 9) / 10);
+            const auto lMedEnd = std::min(lValues.size() - 1, (lValues.size() * 9) / 10);
+
+            lMid80 = std::accumulate(lValues.begin() + lMedBegin, lValues.begin() + lMedEnd, 0.0) / (lMedEnd - lMedBegin);
+          } else {
+            lMid80 = std::accumulate( begin(lValues), end(lValues), 0.0) / lValues.size();
+          }
+
+          lMetric.addValue(lMid80, lKey);
+          lMetric.addValue(*lValues.begin(), lKey + "_min");
+          lMetric.addValue(*lValues.rbegin(), lKey + "_max");
         }
 
         // log
