@@ -171,9 +171,16 @@ class TimeFrameBuilder
     return mMemRes.newDataMessage(pSize);
   }
 
+  inline
+  FairMQMessagePtr newDataMessage(const char *pData, const std::size_t pSize) {
+    return mMemRes.newDataMessage(pData, pSize);
+  }
+
   inline void stop() {
     mMemRes.stop();
   }
+
+  inline auto freeData() const { return mMemRes.freeData(); }
 
  private:
 

@@ -86,8 +86,6 @@ public:
 
   ::grpc::Status TerminatePartition(::grpc::ServerContext* context, const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response) override;
 
-  bool getTopologicalTfId(const std::string &pStfSenderId, std::uint64_t pIncomingId, std::uint64_t &pNewId /*out*/);
-
 private:
   std::atomic_bool mRunning = false;
   std::atomic_bool mTerminateRequested = false;
@@ -130,14 +128,6 @@ private:
 
   /// Queue of TF building requests
   std::unique_ptr<ConcurrentFifo<TfBuildingInformation>> mTfBuildRequests;
-
-  /// TF id "renaming" for topological runs.
-  /// NOTE: TfBuilder expects unique TF ids, but with topological run multiple StfSenders will have
-  ///       identical ids. Since DPL requires incremental TFIDs, we'll update TF id's as they are
-  ///       received.
-  std::mutex mTfIdRenameMapLock;
-    std::uint64_t mTfIdNext = 1;
-    std::map<std::string, std::map<uint64_t, uint64_t> > mTfIdRenameMap;
 };
 
 } /* namespace o2::DataDistribution */

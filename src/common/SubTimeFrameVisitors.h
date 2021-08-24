@@ -128,6 +128,10 @@ class CoalescedHdrDataDeserializer : public ISubTimeFrameVisitor
   std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan, bool pLogError = false);
   std::unique_ptr<SubTimeFrame> deserialize(std::vector<FairMQMessagePtr>& pMsgs);
 
+  SubTimeFrame::Header peek_tf_header(const std::vector<FairMQMessagePtr>& pMsgs) const;
+
+  bool copy_to_region(std::vector<FairMQMessagePtr>& pMsgs /* in/out */);
+
  protected:
   std::unique_ptr<SubTimeFrame> deserialize_impl();
   void visit(SubTimeFrame& pStf) override;

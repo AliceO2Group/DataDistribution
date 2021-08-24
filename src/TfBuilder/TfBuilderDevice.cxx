@@ -392,6 +392,7 @@ void TfBuilderDevice::TfForwardThread()
     lCompletedMsg.AddPart(lOutputChan.NewMessage(lDoneStack.data(), lDoneStack.size(), lNoFree));
     lCompletedMsg.AddPart(lOutputChan.NewMessage());
     lOutputChan.Send(lCompletedMsg);
+    lOutputChan.Send(lCompletedMsg); // FIXME: send EOS on PULL
 
     IDDLOG("Source Completed message sent to DPL.");
     // NOTE: no guarantees this will be sent out

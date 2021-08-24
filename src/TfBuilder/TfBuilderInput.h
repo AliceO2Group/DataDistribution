@@ -48,6 +48,7 @@ class TfBuilderInput
   void stop(std::shared_ptr<ConsulTfBuilder> pConfig);
 
   void DataHandlerThread(const std::uint32_t pFlpIndex, const std::string pStfSenderId);
+  void StfPacingThread();
   void StfDeserializingThread();
   void StfMergerThread();
 
@@ -72,6 +73,7 @@ class TfBuilderInput
 
   /// Deserializing thread
   struct ReceivedStfMeta {
+    TimeFrameIdType mStfId;
     std::chrono::time_point<std::chrono::system_clock> mTimeReceived;
     std::unique_ptr<std::vector<FairMQMessagePtr>> mRecvStfdata;
     std::unique_ptr<SubTimeFrame> mStf;
@@ -86,14 +88,22 @@ class TfBuilderInput
   };
 
   ConcurrentQueue<ReceivedStfMeta> mReceivedData;
-  std::thread mStfDeserThread;
+  std::thread mStfPacingThread;
 
-  /// STF Merger
-  std::thread mStfMergerThread;
   std::mutex mStfMergerQueueLock;
     std::condition_variable mStfMergerCondition;
     std::map<TimeFrameIdType, std::vector<ReceivedStfMeta>> mStfMergeMap;
-    std::uint64_t mStfCount = 0;
+    std::uint64_t mMaxMergedTfId = 0;
+
+  /// Stf Deserializer (add O2 headers etc)
+  void deserialize_headers(std::vector<ReceivedStfMeta> &pStfs); // only the leading split-payload hdr message
+  bool is_topo_stf(const std::vector<ReceivedStfMeta> &pStfs) const; // check if topological (S)TF
+
+  std::thread mStfDeserThread;
+
+  /// STF Merger
+  ConcurrentQueue<std::vector<ReceivedStfMeta>> mStfsForMerging;
+  std::thread mStfMergerThread;
 
   /// Output pipeline stage
   unsigned mOutStage;
