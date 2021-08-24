@@ -124,8 +124,10 @@ STF_BUILDER+=" $CHECKRDH"
 STF_BUILDER+=" --io-threads $IO_THREADS"
 STF_BUILDER+=" --detector $DETECTOR"
 STF_BUILDER+=" --detector-rdh 4"
-STF_BUILDER+=" --monitoring-rate=1.0"
+STF_BUILDER+=" --monitoring-interval=1.0"
 STF_BUILDER+=" --monitoring-log"
+STF_BUILDER+=" --discovery-partition=$PARTITION"
+# STF_BUILDER+=" --run-type=topology"
 
 if [[ ! -z $STF_BUILDER_DPL_CHAN ]]; then
   STF_BUILDER+=" --dpl-channel-name=$STF_BUILDER_DPL_CHAN"
@@ -147,15 +149,16 @@ STF_SENDER="StfSender"
 STF_SENDER+=" --discovery-net-if=$FLP_NETIF"
 STF_SENDER+=" --discovery-partition=$PARTITION"
 STF_SENDER+=" --mq-config $chainConfig"
-STF_SENDER+=" --monitoring-rate=5.0"
+STF_SENDER+=" --monitoring-interval=2.0"
 STF_SENDER+=" --monitoring-log"
 
 TF_BUILDER="TfBuilder"
 TF_BUILDER+=" --discovery-net-if=$EPN_NETIF"
 TF_BUILDER+=" --discovery-partition=$PARTITION"
 TF_BUILDER+=" --mq-config $chainConfig"
-TF_BUILDER+=" --monitoring-rate=1.0"
+TF_BUILDER+=" --monitoring-interval=5.0"
 TF_BUILDER+=" --monitoring-log"
+TF_BUILDER+=" --stand-alone"
 
 if [[ ! -z $TF_BUILDER_DPL_CHAN ]]; then
   TF_BUILDER+=" --dpl-channel-name=$TF_BUILDER_DPL_CHAN"
@@ -175,6 +178,8 @@ fi
 
 TF_SCHEDULER="TfScheduler"
 TF_SCHEDULER+=" --discovery-net-if=$EPN_NETIF"
+TF_SCHEDULER+=" --monitoring-interval=2.0"
+TF_SCHEDULER+=" --monitoring-log"
 
 echo "$STF_BUILDER"
 echo "$STF_SENDER"
@@ -239,10 +244,33 @@ else
       split-window  \
       "source $ENV_VAR_FILE; numactl --interleave=all $TF_BUILDER --id tf_builder-0 --discovery-id=epn0 --session epn-s0; read" \; \
       select-layout even-horizontal
-
-    sleep 2
-    rm "$ENV_VAR_FILE"
   fi
+
+  if [[ $FLP_CNT -gt 1 ]]; then
+    FLP_ID_LIST+=";flp1"
+    tmux -CC \
+      new-window \
+      "source $ENV_VAR_FILE; $READOUT $READOUT_PARAM_1; read" \; \
+      split-window \
+      "source $ENV_VAR_FILE; $STF_BUILDER --id stf_builder-1 --session flp-s1; read" \; \
+      split-window  \
+      "source $ENV_VAR_FILE; $STF_SENDER --id stf_sender-1 --discovery-id=flp1 --session  flp-s1; read" \; \
+      select-layout even-horizontal
+  fi
+
+  # NOTE: does not work with the updated configuration
+  # cat $ENV_VAR_FILE
+  if [[ $EPN_CNT -gt 1 ]]; then
+    tmux -CC \
+      split-window \
+      "source $ENV_VAR_FILE; numactl --interleave=all $TF_BUILDER --id tf_builder-1 --discovery-id=epn1 --session epn-s1; read" \; \
+      select-layout even-horizontal
+
+      # "source $ENV_VAR_FILE; numactl --interleave=all gdb --args $TF_BUILDER --id tf_builder-1 --discovery-id=epn1 --session epn-s1; read" \; \
+  fi
+
+  sleep 2
+  rm "$ENV_VAR_FILE"
 fi
 
 
