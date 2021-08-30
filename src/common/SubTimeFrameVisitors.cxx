@@ -295,6 +295,7 @@ void CoalescedHdrDataSerializer::serialize(std::unique_ptr<SubTimeFrame>&& pStf)
       // save the header to reconstruct the missing redundant split-payload headers
       if (lHdr->GetSize() >= sizeof(DataHeader)) {
         std::memcpy(&lLastDataHeader, reinterpret_cast<const char*>(lHdr->GetData()), sizeof(DataHeader));
+        lLastDataHeader.flagsNextHeader = 0;
         lLastDataHeaderIdx = 0;
       }
 
@@ -468,6 +469,14 @@ std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize_impl()
         EDDLOG("CoalescedHdrDataDeserializer: header unpacking failed. msg_idx={} offset_meta={} offset_unpacking={}",
           m, lHdrInfo.start, lHdrOff);
         throw std::runtime_error("CoalescedHdrDataDeserializer::Deserializing failed");
+      }
+
+      // fix single DataHeaders in case FLP-DPL was used
+      if (lHdrInfo.len == sizeof (DataHeader)) {
+        DataHeader *lDh = reinterpret_cast<DataHeader*>(lFullHdrMsgAddr + lHdrOff);
+        if (lDh->description == DataHeader::sHeaderType) {
+          lDh->flagsNextHeader = 0; // DD header is alone
+        }
       }
 
       auto lNewHdr = mTfBld.newHeaderMessage(lFullHdrMsgAddr + lHdrOff, lHdrInfo.len);

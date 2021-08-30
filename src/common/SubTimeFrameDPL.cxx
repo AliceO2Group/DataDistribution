@@ -288,6 +288,10 @@ void DplToStfAdapter::visit(SubTimeFrame& pStf)
     // add the data to the STF
     pStf.addStfData({ std::move(lHdrMsg), std::move(lDataMsg) });
   }
+
+  if (!lStfHeaderFound) {
+    throw std::runtime_error("STF receive error: missing SubTimeFrame::Header missing_o2_hdr=" + std::string(gDataDescSubTimeFrame.str));
+  }
 }
 
 std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize_impl()
