@@ -433,13 +433,14 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
         } else {
           // make the stack with an DPL header
           // get the DataHeader
-          auto lDHdr = o2::header::get<o2::header::DataHeader*>(
-            lHeader->GetData(),
-            lHeader->GetSize()
-          );
-
-          if (lDHdr == nullptr) {
-            EDDLOG("TimeFrame invalid. DataHeader not found in the header stack.");
+          try {
+            auto lDHdr = o2::header::get<o2::header::DataHeader*>(lHeader->GetData(), lHeader->GetSize());
+            if (lDHdr == nullptr) {
+              EDDLOG("TimeFrame invalid. DataHeader not found in the header stack.");
+              continue;
+            }
+          } catch (std::exception& e) {
+            EDDLOG("TimeFrame invalid: get<DataHeader>() failed. what={}", e.what());
             continue;
           }
 
