@@ -162,16 +162,30 @@ void TfBuilderRpcImpl::StfRequestThread()
     DDDLOG_RL(1000, "Requesting SubTimeFrame. stf_id={} tf_size={} total_requests={}",
       lTfInfo.tf_id(), lTfInfo.tf_size(), lNumTfRequests);
 
+    // sort all STFs descending by data size. Fetch the largest ones first.
+    std::vector<std::tuple<std::string, std::uint64_t, StfDataRequestMessage>> lStfRequestVector;
+
     for (auto &lStfDataIter : lTfInfo.stf_size_map()) {
       const auto &lStfSenderId = lStfDataIter.first;
-      // const auto &lStfSize = lStfDataIter.second;
+      const auto &lStfSize = lStfDataIter.second;
+
       lStfRequest.set_stf_id(lTfInfo.tf_id());
 
-      grpc::Status lStatus = StfSenderRpcClients()[lStfSenderId]->StfDataRequest(lStfRequest, lStfResponse);
+      lStfRequestVector.push_back(std::make_tuple(lStfSenderId, lStfSize, lStfRequest));
+    }
+
+    std::sort(lStfRequestVector.begin(), lStfRequestVector.end(), [](const auto & a, const auto & b) -> bool {
+      return std::get<1>(a) > std::get<1>(b);
+    });
+
+    for (const auto &lStfDataReq : lStfRequestVector) {
+      const auto& [lStfSenderId, lStfSize, lStfDataReqMsg] = lStfDataReq;
+
+      grpc::Status lStatus = StfSenderRpcClients()[lStfSenderId]->StfDataRequest(lStfDataReqMsg, lStfResponse);
       if (!lStatus.ok()) {
         // gRPC problem... continue asking for other STFs
-        EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={}",
-          lStfSenderId, lStatus.error_code(), lStatus.error_message());
+        EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={}",
+          lStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfSize);
         continue;
       }
 
