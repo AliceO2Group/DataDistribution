@@ -152,9 +152,11 @@ public:
             continue;
           }
 
+          // align up the message size for correct interval merging
+          const auto lALen = align_size_up(lInt.size);
           lIntMap += std::make_pair(
             icl::discrete_interval<std::size_t>::right_open(
-              std::size_t(lInt.ptr) , std::size_t(lInt.ptr) + lInt.size), std::size_t(1));
+              std::size_t(lInt.ptr) , std::size_t(lInt.ptr) + lALen), std::size_t(1));
         }
 
         {
@@ -179,9 +181,9 @@ public:
             memset(lStart, 0x00, lLen);
             reclaimSHMMessage(lStart, lLen);
           }
-        }
 
-        mFree += lReclaimed;
+          mFree += lReclaimed;
+        }
 
         // weighted average merge ratio
         sMergeRatio = sMergeRatio * 0.75 + double(pBlkVect.size() - lIntMap.iterative_size()) /
@@ -557,6 +559,28 @@ public:
     }
 
     return lMsg;
+  }
+
+  inline
+  void newDataMessages(const std::vector<FairMQMessagePtr> &pSrcMsgs, std::vector<FairMQMessagePtr> &pDstMsgs) {
+
+    // create a new instance to support passing the same vect as in and out
+    std::vector<FairMQMessagePtr> lNewMsgs(pSrcMsgs.size());
+    lNewMsgs.clear();
+
+    { // allocate under one lock
+      std::scoped_lock lock(mDataLock);
+      for (const auto &lOrigMsg : pSrcMsgs) {
+        lNewMsgs.emplace_back( mDataMemRes->NewFairMQMessage(lOrigMsg->GetSize()) );
+      }
+    }
+
+    // copy without holding allocator lock
+    for (std::size_t i = 0; i < pSrcMsgs.size(); i++) {
+      memcpy(lNewMsgs[i]->GetData(), pSrcMsgs[i]->GetData(), pSrcMsgs[i]->GetSize());
+    }
+
+    pDstMsgs = std::move(lNewMsgs);
   }
 
 private:

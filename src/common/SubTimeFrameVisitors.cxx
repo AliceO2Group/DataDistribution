@@ -579,18 +579,7 @@ SubTimeFrame::Header CoalescedHdrDataDeserializer::peek_tf_header(const std::vec
 // copy all messages into the data region, and update the vector
 bool CoalescedHdrDataDeserializer::copy_to_region(std::vector<FairMQMessagePtr>& pMsgs /* in/out */)
 {
-
-  for (std::size_t idx = 0; idx < pMsgs.size(); idx++) {
-    const auto lSize = pMsgs[idx]->GetSize();
-
-    auto lMsgCopy = mTfBld.newDataMessage(reinterpret_cast<const char*>(pMsgs[idx]->GetData()), lSize);
-
-    if (lMsgCopy) {
-      pMsgs[idx] = std::move(lMsgCopy);
-    } else {
-      WDDLOG_GRL(1000, "CoalescedHdrDataDeserializer::copy_to_region: DataRegion allocation failed.");
-    }
-  }
+  mTfBld.newDataMessages(pMsgs, pMsgs);
 
   return true;
 }

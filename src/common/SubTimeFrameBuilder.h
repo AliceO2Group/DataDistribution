@@ -176,6 +176,11 @@ class TimeFrameBuilder
     return mMemRes.newDataMessage(pData, pSize);
   }
 
+  inline
+  void newDataMessages(const std::vector<FairMQMessagePtr> &pSrcMsgs, std::vector<FairMQMessagePtr> &pDstMsgs) {
+    mMemRes.newDataMessages(pSrcMsgs, pDstMsgs);
+  }
+
   inline void stop() {
     mMemRes.stop();
   }
