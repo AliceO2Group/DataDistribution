@@ -61,6 +61,9 @@ void TfBuilderDevice::InitTask()
   mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
   mTfBufferSize <<= 20; /* input parameter is in MiB */
 
+  mTfHdrBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfHdrMemorySize);
+  mTfHdrBufferSize <<= 20; /* input parameter is in MiB */
+
   // start monitoring
   DataDistMonitor::start_datadist(o2::monitoring::tags::Value::TfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend"));
   DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
@@ -87,7 +90,7 @@ void TfBuilderDevice::InitTask()
     const auto lBufferStart = hres_clock::now();
 
     try {
-      mTfBuilder->allocate_memory(mTfBufferSize, std::size_t(2048) << 20);
+      mTfBuilder->allocate_memory(mTfBufferSize, mTfHdrBufferSize);
     } catch (std::exception &e) {
       IDDLOG("InitTask::MemorySegment allocation failed. what={}", e.what());
       // pass the failure

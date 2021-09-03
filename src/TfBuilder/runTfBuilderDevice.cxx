@@ -49,7 +49,10 @@ int main(int argc, char* argv[])
         "Standalone operation. TimeFrames will not be forwarded to other processes.")(
         o2::DataDistribution::TfBuilderDevice::OptionKeyTfMemorySize,
         bpo::value<std::uint64_t>()->default_value(1024),
-        "Memory buffer reserved for building and buffering TimeFrames (in MiB).");
+        "Memory buffer reserved for building and buffering TimeFrames (in MiB).")(
+        o2::DataDistribution::TfBuilderDevice::OptionKeyTfHdrMemorySize,
+        bpo::value<std::uint64_t>()->default_value(512),
+        "Memory buffer reserved for TimeFrame O2 headers (in MiB).");
 
       bpo::options_description lTfBuilderDplOptions("TfBuilder DPL options", 120);
       lTfBuilderDplOptions.add_options()(
