@@ -57,6 +57,7 @@ class TfBuilderDevice : public DataDistDevice,
  public:
   static constexpr const char* OptionKeyStandalone = "stand-alone";
   static constexpr const char* OptionKeyTfMemorySize = "tf-memory-size";
+  static constexpr const char* OptionKeyTfHdrMemorySize = "tf-hdr-memory-size";
   static constexpr const char* OptionKeyDplChannelName = "dpl-channel-name";
 
   /// Default constructor
@@ -126,6 +127,7 @@ class TfBuilderDevice : public DataDistDevice,
   std::string mDplChannelName;
   bool mStandalone;
   std::uint64_t mTfBufferSize;
+  std::uint64_t mTfHdrBufferSize;
   std::string mPartitionId;
   bool mDplEnabled = false;
 
