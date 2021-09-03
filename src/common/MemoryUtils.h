@@ -139,13 +139,10 @@ public:
       pSize,
       pRegionFlags,
       [this](const std::vector<FairMQRegionBlock>& pBlkVect) {
-
-        static thread_local icl::interval_map<std::size_t, std::size_t> lIntMap;
+        icl::interval_map<std::size_t, std::size_t> lIntMap;
         static thread_local double sMergeRatio = 0.5;
 
-        std::int64_t lReclaimed = 0;
-
-        lIntMap.clear();
+        std::uint64_t lReclaimed = 0;
 
         for (const auto &lInt : pBlkVect) {
           if (lInt.size == 0) {
@@ -183,6 +180,7 @@ public:
           }
 
           mFree += lReclaimed;
+          mGeneration += 1;
         }
 
         // weighted average merge ratio
@@ -295,10 +293,15 @@ protected:
     auto lRet = try_alloc(pSize);
 
     while (!lRet && mRunning) {
+      auto lGen = mGeneration.load();
       // try to reclaim if possible
       if (try_reclaim(pSize)) {
         // try again
         lRet = try_alloc(pSize);
+      }
+
+      if (lRet) {
+        break;
       }
 
       if (mCanFail && !lRet) {
@@ -308,12 +311,16 @@ protected:
         return nullptr;
       }
 
-      if (!lRet) {
+      while (true) {
         using namespace std::chrono_literals;
         WDDLOG_RL(1000, "RegionAllocatorResource: waiting to allocate a message. region={} alloc={} region_size={} free={}",
           mSegmentName, pSize, mRegion->GetSize(), mFree);
         WDDLOG_RL(1000, "Memory region '{}' is too small, or there is a large backpressure.", mSegmentName);
-        std::this_thread::sleep_for(5ms);
+        if (lGen != mGeneration.load()) {
+          break; // retry alloc
+        } else {
+          std::this_thread::sleep_for(20ms);
+        }
       }
     }
 
@@ -451,6 +458,7 @@ private:
 
   // free space accounting
   std::atomic_int64_t mFree = 0;
+  std::atomic_uint64_t mGeneration = 0; // bump when free is finished, so that we don't retry allocs
 
   // two step reclaim to avoid lock contention in the allocation path
   std::mutex mReclaimLock;
