@@ -223,12 +223,12 @@
                 "channels": [
                     {
                         "name": "dpl-tf-channel",
-                        "transport": "zeromq",
+                        "transport": "shmem",
                         "sockets": [
                             {
-                                "type": "pull",
-                                "method": "connect",
-                                "address": "ipc://@tmp-tf-builder-dpl-pipe-0",
+                                "type": "push",
+                                "method": "bind",
+                                "address": "ipc://@tf-builder-pipe-0",
                                 "rateLogging": "1"
                             }
                         ]
@@ -243,9 +243,9 @@
                         "transport": "zeromq",
                         "sockets": [
                             {
-                                "type": "pull",
-                                "method": "connect",
-                                "address": "ipc://@tmp-tf-builder-dpl-pipe-1",
+                                "type": "push",
+                                "method": "bind",
+                                "address": "ipc://@tf-builder-pipe-1",
                                 "rateLogging": "1"
                             }
                         ]

@@ -186,6 +186,8 @@ echo "$STF_SENDER"
 echo "$TF_SCHEDULER"
 echo "$TF_BUILDER"
 
+export DATADIST_DEBUG_DPL_CHAN=1
+
 if [[ -z $USE_TMUX ]]; then
 
   # start TF scheduler
