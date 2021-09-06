@@ -39,6 +39,7 @@ SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(MemoryResources &pMemRes,
     "O2HeadersRegion",
     *mMemRes.mShmTransport,
     std::size_t(512) << 20, /* good for 5s 3CRU @ 50Gbps, TODO: make configurable */
+    RegionAllocStrategy::eFindFirst,
     0, /* region flags ? */
     true /* Header alloc can fail with large FLP-DPL backpreassure  */
   );
@@ -305,13 +306,16 @@ SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(MemoryResources &pMemRes,
     "O2HeadersRegion_FileSource",
     *mMemRes.mShmTransport,
     pHdrSegSize,
-    0
+    RegionAllocStrategy::eFindFirst,
+    0, /* GPU flags */
+    false /* cannot fail */
   );
 
   mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
     "O2DataRegion_FileSource",
     *mMemRes.mShmTransport,
     pDataSegSize,
+    RegionAllocStrategy::eFindLongest,
     0 // TODO: GPU flags
   );
 
@@ -385,14 +389,18 @@ void TimeFrameBuilder::allocate_memory(const std::size_t pDataSegSize, const std
     "O2HeadersRegion",
     *mMemRes.mShmTransport,
     pHdrSegSize,
-    0 /* dont need registration flags for headers */
+    RegionAllocStrategy::eFindFirst,
+    0, /* GPU flags */
+    false /* cannot fail */
   );
 
   mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
     "O2DataRegion_TimeFrame",
     *mMemRes.mShmTransport,
     pDataSegSize,
-    0 // TODO: GPU flags
+    RegionAllocStrategy::eFindLongest,
+    0, /* TODO: GPU flags */
+    false /* cannot fail */
   );
 
   mMemRes.start();
@@ -449,6 +457,9 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
               reinterpret_cast<std::byte*>(lHeader->GetData()),
               o2::framework::DataProcessingHeader{pStf->header().mId}
             );
+
+            WDDLOG_RL(5000, "Reallocation of Header messages is not optimal. orig_size={} new_size={}",
+              lHeader->GetSize(), lStack.size());
 
             lStfDataIter.mHeader = newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
             if (!lStfDataIter.mHeader) {

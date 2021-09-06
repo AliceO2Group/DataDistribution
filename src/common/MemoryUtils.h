@@ -53,6 +53,11 @@ static constexpr const char *ENV_NOLOCK = "DATADIST_NO_MLOCK";
 static constexpr const char *ENV_SHM_PATH = "DATADIST_SHM_PATH";
 static constexpr const char *ENV_SHM_DELAY = "DATADIST_SHM_DELAY";
 
+enum RegionAllocStrategy {
+  eFindLongest,
+  eFindFirst
+};
+
 template<size_t ALIGN = 64>
 class RegionAllocatorResource
 {
@@ -61,8 +66,10 @@ public:
   RegionAllocatorResource() = delete;
 
   RegionAllocatorResource(std::string pSegmentName, FairMQTransportFactory& pShmTrans,
-                          std::size_t pSize, std::uint64_t pRegionFlags = 0, bool pCanFail = false)
+                          std::size_t pSize, const RegionAllocStrategy pStrategy, std::uint64_t pRegionFlags = 0,
+                          bool pCanFail = false)
   : mSegmentName(pSegmentName),
+    mStrategy(pStrategy),
     mCanFail(pCanFail),
     mTransport(pShmTrans)
   {
@@ -379,23 +386,39 @@ private:
       return false;
     }
 
-    auto lMaxIter = std::max_element(std::begin(mFreeRanges), std::end(mFreeRanges),
-      [](const auto& l, const auto& r) {
-        return (l.first.upper() - l.first.lower()) < (r.first.upper() - r.first.lower());
-      });
+    auto lMaxIter = mFreeRanges.end();
+
+    if (mStrategy == eFindFirst) {
+      for (auto lInt = mFreeRanges.begin(); lInt != mFreeRanges.end(); ++lInt) {
+        if (lInt->first.upper() - lInt->first.lower() >= pSize) {
+          lMaxIter = lInt;
+          break;
+        }
+      }
+    } else { /* eFindLongest */
+      lMaxIter = std::max_element(mFreeRanges.begin(), mFreeRanges.end(),
+        [](const auto& l, const auto& r) {
+          return (l.first.upper() - l.first.lower()) < (r.first.upper() - r.first.lower());
+        }
+      );
+    }
+
+    if (lMaxIter == mFreeRanges.end()) {
+      return false;
+    }
 
     // check if the size is adequate
-    const auto lFoudSize = lMaxIter->first.upper() - lMaxIter->first.lower();
-    if (pSize > lFoudSize) {
+    const auto lFoundSize = lMaxIter->first.upper() - lMaxIter->first.lower();
+    if (pSize > lFoundSize) {
       return false;
     }
 
     if (lMaxIter->second > 1) {
       EDDLOG("RegionAllocator BUG: Overlapping interval found: ptr={:p} length={} overlaps={}",
-        reinterpret_cast<char*>(lMaxIter->first.lower()), lFoudSize, lMaxIter->second);
+        reinterpret_cast<char*>(lMaxIter->first.lower()), lFoundSize, lMaxIter->second);
 
       // erase this segment
-      mFree -= lFoudSize;
+      mFree -= lFoundSize;
       assert (mFree > 0);
       mFreeRanges.erase(lMaxIter);
       return false;
@@ -403,7 +426,7 @@ private:
 
     // return the extent
     mStart = reinterpret_cast<char*>(lMaxIter->first.lower());
-    mLength = lFoudSize;
+    mLength = lFoundSize;
     mFreeRanges.erase(lMaxIter);
 
     {
@@ -448,6 +471,7 @@ private:
   std::string mSegmentName;
   std::size_t mSegmentSize;
   std::atomic_bool mRunning = false;
+  RegionAllocStrategy mStrategy;
   bool mCanFail = false;
 
   FairMQTransportFactory &mTransport;
