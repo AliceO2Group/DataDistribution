@@ -161,10 +161,8 @@ class TimeFrameBuilder
 
   void adaptHeaders(SubTimeFrame *pStf);
 
-  inline
-  FairMQMessagePtr newHeaderMessage(const char *pData, const std::size_t pSize) {
-    return mMemRes.newHeaderMessage(pData, pSize);
-  }
+
+  FairMQMessagePtr newHeaderMessage(const char *pData, const std::size_t pSize);
 
   inline
   FairMQMessagePtr newDataMessage(const std::size_t pSize) {

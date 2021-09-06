@@ -341,24 +341,10 @@ void CoalescedHdrDataSerializer::serialize(std::unique_ptr<SubTimeFrame>&& pStf)
 ////////////////////////////////////////////////////////////////////////////////
 void CoalescedHdrDataDeserializer::visit(SubTimeFrame& pStf)
 {
-  assert(mHdrs.size() >= 2); // stf meta messages must be present
-  assert(mData.size() == mHdrs.size()-2); // we pack 2transient messages in the begining of headers
-
-  // header
-  DataHeader lStfDataHdr;
-  std::memcpy(&lStfDataHdr, mHdrs[0]->GetData(), sizeof(DataHeader));
-  // verify the stf DataHeader
-  if (!(gStfDistDataHeader == lStfDataHdr)) {
-    WDDLOG("Receiving bad SubTimeFrame::Header::DataHeader message");
-    throw std::runtime_error("SubTimeFrame::Header::DataHeader");
-  }
-  // copy the header
-  std::memcpy(&pStf.mHeader, mHdrs[1]->GetData(), sizeof(SubTimeFrame::Header));
-
   // iterate over all incoming HBFrame data sources
   for (size_t i = 0; i < mData.size(); i += 1) {
 
-    auto &lHdrMsg = mHdrs[i+2];
+    auto &lHdrMsg = mHdrs[i];
     auto &lDataMsg = mData[i];
 
     if (lDataMsg->GetSize() == 0) {
@@ -375,6 +361,9 @@ void CoalescedHdrDataDeserializer::visit(SubTimeFrame& pStf)
 
     pStf.addStfData({ std::move(lHdrMsg), std::move(lDataMsg) });
   }
+
+  mHdrs.clear();
+  mData.clear();
 }
 
 std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize(FairMQChannel& pChan, bool pLogError)
@@ -457,7 +446,7 @@ std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize_impl()
     }
 
     // unpack coalesced headers
-    for (unsigned m = 0; m < lExpectedMsgs; m++) {
+    for (std::size_t m = 0; m < lExpectedMsgs; m++) {
       CoalescedHdrDataSerializer::header_info lHdrInfo;
       std::memcpy(&lHdrInfo, lFullHdrMsgAddr + lInfoOff, sizeof(CoalescedHdrDataSerializer::header_info));
 
@@ -471,20 +460,15 @@ std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize_impl()
         throw std::runtime_error("CoalescedHdrDataDeserializer::Deserializing failed");
       }
 
-      // fix single DataHeaders in case FLP-DPL was used
-      if (lHdrInfo.len == sizeof (DataHeader)) {
-        DataHeader *lDh = reinterpret_cast<DataHeader*>(lFullHdrMsgAddr + lHdrOff);
-        if (lDh->description == DataHeader::sHeaderType) {
-          lDh->flagsNextHeader = 0; // DD header is alone
-        }
+      if (m == 1) { // STF::Header is not an o2 message
+        std::memcpy(&(lStf->mHeader), lFullHdrMsgAddr + lHdrOff, sizeof(SubTimeFrame::Header));
+      } else if (m > 1) {
+        auto lNewHdr = mTfBld.newHeaderMessage(lFullHdrMsgAddr + lHdrOff, lHdrInfo.len);
+        mHdrs.push_back(std::move(lNewHdr));
       }
-
-      auto lNewHdr = mTfBld.newHeaderMessage(lFullHdrMsgAddr + lHdrOff, lHdrInfo.len);
 
       lInfoOff += sizeof(CoalescedHdrDataSerializer::header_info);
       lHdrOff += lHdrInfo.len;
-
-      mHdrs.push_back(std::move(lNewHdr));
     }
 
     lStf->accept(*this);

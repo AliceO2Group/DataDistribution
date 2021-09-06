@@ -35,6 +35,7 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
   {
     mMessages.reserve(1024);
     if (getenv("DATADIST_DEBUG_DPL_CHAN")) {
+      IDDLOG("Inspection of DPL messages is enabled");
       mInspectChannel = true;
     }
   }

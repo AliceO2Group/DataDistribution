@@ -46,6 +46,9 @@ class SyncMemoryResources;
 class TfBuilderRpcImpl final : public TfBuilderRpc::Service
 {
 public:
+  static constexpr const char* OptionKeyMaxNumTransfers = "max-inflight";
+  static boost::program_options::options_description getTfBuilderRpcProgramOptions();
+
   TfBuilderRpcImpl(std::shared_ptr<ConsulTfBuilder> pDiscoveryConfig, SyncMemoryResources &pMemI)
   : mMemI(pMemI),
     mDiscoveryConfig(pDiscoveryConfig),
@@ -66,9 +69,28 @@ public:
   void UpdateSendingThread();
   void StfRequestThread();
 
+  bool recordStfReceived(const std::string &pStfSenderId, const std::uint64_t pTfId);
   bool recordTfBuilt(const SubTimeFrame &pTf);
   bool recordTfForwarded(const std::uint64_t &pTfId);
   bool sendTfBuilderUpdate();
+
+  void setMaxNumReqInFlight(const std::int64_t pMaxNum) { mMaxNumReqInFlight = std::max(std::int64_t(8), pMaxNum); }
+
+  void subscribeParameters(fair::mq::ProgOptions &pFMQConfig) {
+    pFMQConfig.Subscribe<std::string>(OptionKeyMaxNumTransfers, [&](const std::string &pKey, const std::string &pVal) {
+
+      if (pKey == std::string(OptionKeyMaxNumTransfers)) {
+        IDDLOG("NEW {}. val={}", OptionKeyMaxNumTransfers, pVal);
+
+        try {
+          const auto lNumVal = boost::lexical_cast<std::int64_t>(pVal);
+          setMaxNumReqInFlight(lNumVal);
+        } catch( boost::bad_lexical_cast const &e) {
+          EDDLOG("NEW max-inflight value is not numeric.");
+        }
+      }
+    });
+  }
 
   bool getNewTfBuildingRequest(TfBuildingInformation &pNewTfRequest)
   { if (!mTfBuildRequests) {
@@ -100,6 +122,29 @@ private:
   // Stf request thread
   // std::condition_variable mNewRequestCondition;
   std::thread mStfRequestThread;
+
+    struct StfRequests {
+      std::string mStfSenderId;
+      std::uint64_t mStfDataSize;
+      StfDataRequestMessage mRequest;
+
+      StfRequests() = default;
+      StfRequests(const std::string &pStfSenderId, const std::uint64_t pStfDataSize, const StfDataRequestMessage &pRequest)
+      : mStfSenderId(pStfSenderId), mStfDataSize(pStfDataSize), mRequest(pRequest) { }
+    };
+
+  std::atomic_int64_t mMaxNumReqInFlight = 64;
+  std::mutex mStfReqMapLock;
+    std::condition_variable mStfReqMapCV;
+    std::int64_t mNumReqInFlight = 0;
+    std::map<std::uint64_t, std::vector<StfRequests>> mStfRequestMap;
+
+  // monitor how long it takes to fetch stfs from each FLP
+  std::mutex mStfDurationMapLock;
+    std::map<
+      std::uint64_t, /* TF ID */
+      std::unordered_map<std::string, std::chrono::steady_clock::time_point> /* StfSender id -> time */
+    > mStfReqDuration;
 
   /// TfBuilder Memory Resource
   SyncMemoryResources &mMemI;
