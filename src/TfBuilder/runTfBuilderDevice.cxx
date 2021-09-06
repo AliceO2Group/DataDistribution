@@ -13,6 +13,8 @@
 
 #include "DataDistLogger.h"
 #include "TfBuilderDevice.h"
+#include "TfBuilderRpc.h"
+
 #include <SubTimeFrameFileSink.h>
 #include <Config.h>
 #include <FmqUtilities.h>
@@ -62,6 +64,9 @@ int main(int argc, char* argv[])
 
       r.fConfig.AddToCmdLineOptions(lTfBuilderOptions);
       r.fConfig.AddToCmdLineOptions(lTfBuilderDplOptions);
+
+      // Add options for TfBuilderRPC
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::TfBuilderRpcImpl::getTfBuilderRpcProgramOptions());
 
       // Add options for TF file sink
       r.fConfig.AddToCmdLineOptions(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());

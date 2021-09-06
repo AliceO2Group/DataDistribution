@@ -157,10 +157,10 @@ public:
           }
 
           // align up the message size for correct interval merging
-          const auto lALen = align_size_up(lInt.size);
+          const auto lASize = align_size_up(lInt.size);
           lIntMap += std::make_pair(
             icl::discrete_interval<std::size_t>::right_open(
-              std::size_t(lInt.ptr) , std::size_t(lInt.ptr) + lALen), std::size_t(1));
+              std::size_t(lInt.ptr), std::size_t(lInt.ptr) + lASize), std::size_t(1));
         }
 
         {
@@ -177,12 +177,16 @@ public:
               continue; // skip the overlapping thing
             }
 
-            const auto lLen = lIntMerged.first.upper() - lIntMerged.first.lower();
+            const std::size_t lLen = lIntMerged.first.upper() - lIntMerged.first.lower();
             lReclaimed += lLen;
 
             // zero and reclaim
             void *lStart = (void *) lIntMerged.first.lower();
+
+            // clear the memory
             memset(lStart, 0x00, lLen);
+
+            // recover the merged region
             reclaimSHMMessage(lStart, lLen);
           }
 
@@ -238,7 +242,7 @@ public:
 
   inline
   std::unique_ptr<FairMQMessage> NewFairMQMessage(std::size_t pSize) {
-    auto* lMem = do_allocate(pSize, ALIGN);
+    auto* lMem = do_allocate(pSize);
     if (lMem) {
       return mTransport.CreateMessage(mRegion, lMem, pSize);
     } else {
@@ -248,7 +252,7 @@ public:
 
   inline
   std::unique_ptr<FairMQMessage> NewFairMQMessage(const char *pData, const std::size_t pSize) {
-    auto* lMem = do_allocate(pSize, ALIGN);
+    auto* lMem = do_allocate(pSize);
     if (lMem) {
       std::memcpy(lMem, pData, pSize);
       return mTransport.CreateMessage(mRegion, lMem, pSize);
@@ -283,7 +287,7 @@ protected:
     return (pSize + ALIGN - 1) / ALIGN * ALIGN;
   }
 
-  void* do_allocate(std::size_t pSize, std::size_t /* pAlign */)
+  void* do_allocate(std::size_t pSize)
   {
     if (!mRunning) {
       return nullptr;
@@ -383,6 +387,7 @@ private:
     mLength = 0;
 
     if (mFreeRanges.empty()) {
+      WDDLOG_GRL(1000, "DataRegionResource {} try_reclaim({}): FREE MAP is empty! free={}", mSegmentName, pSize, mFree);
       return false;
     }
 
@@ -447,14 +452,14 @@ private:
     return true;
   }
 
-  void reclaimSHMMessage(const void* pData, size_t pSize)
+  // pSize must be aligned up when deallocating
+  // mReclaimLock must be held!
+  void reclaimSHMMessage(const void* pData, const std::size_t pSize)
   {
-    // align up
-    pSize = align_size_up(pSize);
-
-    mFreeRanges += std::make_pair(icl::discrete_interval<std::size_t>::right_open(
-      reinterpret_cast<std::size_t>(pData), reinterpret_cast<std::size_t>(pData) + pSize),
-      std::size_t(1)
+    mFreeRanges += std::make_pair(
+      icl::discrete_interval<std::size_t>::right_open(
+        reinterpret_cast<std::size_t>(pData), reinterpret_cast<std::size_t>(pData) + pSize),
+        std::size_t(1)
     );
 
 #if !defined(NDEBUG)

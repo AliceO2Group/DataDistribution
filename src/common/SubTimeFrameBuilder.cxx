@@ -406,6 +406,51 @@ void TimeFrameBuilder::allocate_memory(const std::size_t pDataSegSize, const std
   mMemRes.start();
 }
 
+FairMQMessagePtr TimeFrameBuilder::newHeaderMessage(const char *pData, const std::size_t pSize)
+{
+    if (pSize < sizeof (DataHeader)) {
+      EDDLOG_RL(1000, "TimeFrameBuilder: Header size less that DataHeader size={}", pSize);
+      return nullptr;
+    }
+
+    // Get the DH
+    DataHeader *lDataHdr = const_cast<DataHeader*>(reinterpret_cast<const DataHeader*>(pData));
+    if (lDataHdr->description != DataHeader::sHeaderType) {
+      EDDLOG_RL(1000, "TimeFrameBuilder: Unknown header type {}", std::string(lDataHdr->description.str));
+      return nullptr;
+    }
+
+    // clear last bit set in data header
+    if (pSize == sizeof(DataHeader)) {
+      lDataHdr->flagsNextHeader = 0; // DataHeader is alone
+    }
+
+    // check if already have DataProcessing header
+    const o2::framework::DataProcessingHeader* lDplHdr = nullptr;
+    try {
+      lDplHdr = o2::header::get<o2::framework::DataProcessingHeader*>(pData, pSize);
+    } catch(...) {
+      lDplHdr = nullptr;
+    }
+
+    if (mDplEnabled && !lDplHdr) {
+      auto lStack = Stack(
+        *lDataHdr,
+        o2::framework::DataProcessingHeader{lDataHdr->tfCounter}
+      );
+      return mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+    }
+
+    if (!mDplEnabled && lDplHdr) {
+      // remove processing header
+      const auto lNewSize = reinterpret_cast<const char*>(lDplHdr) - pData;
+      lDataHdr->flagsNextHeader = 0; // DataHeader is alone
+      return mMemRes.newHeaderMessage(pData, lNewSize);
+    }
+
+    return mMemRes.newHeaderMessage(pData, pSize);
+}
+
 void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
 {
   if (!pStf || !mMemRes.mHeaderMemRes || !mMemRes.mDataMemRes) {
@@ -427,17 +472,24 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
           continue;
         }
 
+        auto lDataHdrConst = o2::header::get<o2::header::DataHeader*>(
+          lHeader->GetData(),
+          lHeader->GetSize()
+        );
+
+        if (!lDataHdrConst) {
+          EDDLOG("Adapting TF headers: Missing DataHeader get<DataHeader*>().");
+          continue;
+        }
+
         auto lDplHdrConst = o2::header::get<o2::framework::DataProcessingHeader*>(
           lHeader->GetData(),
           lHeader->GetSize()
         );
 
         if (lDplHdrConst != nullptr) {
-          if (lDplHdrConst->startTime != pStf->header().mId) {
-
-            auto lDplHdr = const_cast<o2::framework::DataProcessingHeader*>(lDplHdrConst);
-            lDplHdr->startTime = pStf->header().mId;
-          }
+          auto lDplHdr = const_cast<o2::framework::DataProcessingHeader*>(lDplHdrConst);
+          lDplHdr->startTime = pStf->header().mId;
         } else {
           // make the stack with an DPL header
           // get the DataHeader
@@ -483,6 +535,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
           {
             const auto &lHeaderMsg = lStfDataIter.mHeader;
             if (lHeaderMsg->GetType() != fair::mq::Transport::SHM) {
+              WDDLOG_RL(1000, "adaptHeaders: Moving header message to SHM. size={}", lHeaderMsg->GetSize());
               auto lNewHdr = newHeaderMessage(reinterpret_cast<char*>(lHeaderMsg->GetData()), lHeaderMsg->GetSize());
               if (!lNewHdr) {
                 return;
@@ -496,6 +549,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
             const auto &lDataMsg = lStfDataIter.mData;
             if (lDataMsg->GetType() != fair::mq::Transport::SHM) {
               auto lNewDataMsg = newDataMessage(lDataMsg->GetSize());
+              WDDLOG_RL(1000, "adaptHeaders: Moving data message to SHM. size={}", lDataMsg->GetSize());
               if (lNewDataMsg) {
                 std::memcpy(lNewDataMsg->GetData(), lDataMsg->GetData(), lDataMsg->GetSize());
               } else {

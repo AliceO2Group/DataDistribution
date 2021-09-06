@@ -351,6 +351,9 @@ void TfBuilderInput::StfPacingThread()
     const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(*lStfInfo.mRecvStfdata);
     std::uint64_t lTfId = lStfHeader.mId;
 
+    // signal in flight STF is finished (or error)
+    mRpc->recordStfReceived(lStfInfo.mStfSenderId, lTfId);
+
     // Rename STF id if this is a Topological TF
     if (lStfHeader.mOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
       // deserialize here to be able to rename the stf
