@@ -323,12 +323,19 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex, const std:
     }
     lStfReceiver.copy_to_region(*lStfData);
 
+    // get Stf ID
+    const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(*lStfData);
+    const std::uint64_t lTfId = lStfHeader.mId;
+
+    // signal in flight STF is finished (or error)
+    mRpc->recordStfReceived(pStfSenderId, lTfId);
+
     // send to deserializer thread so that we can keep receiving
-    mReceivedData.push(std::move(ReceivedStfMeta(pStfSenderId, std::move(lStfData))));
+    mReceivedData.push(lTfId, lStfHeader.mOrigin, pStfSenderId, std::move(lStfData));
     lNumStfs++;
   }
 
-  IDDLOG("Exiting input thread [{}]", pFlpIndex);
+  DDDLOG("Exiting input thread [{}]", pFlpIndex);
 }
 
 /// TF building pacing thread
@@ -347,15 +354,10 @@ void TfBuilderInput::StfPacingThread()
     auto &lStfInfo = lData.value();
 
     assert (lStfInfo.mRecvStfdata);
-
-    const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(*lStfInfo.mRecvStfdata);
-    std::uint64_t lTfId = lStfHeader.mId;
-
-    // signal in flight STF is finished (or error)
-    mRpc->recordStfReceived(lStfInfo.mStfSenderId, lTfId);
+    std::uint64_t lTfId = lStfInfo.mStfId;
 
     // Rename STF id if this is a Topological TF
-    if (lStfHeader.mOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
+    if (lStfInfo.mStfOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
       // deserialize here to be able to rename the stf
       lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfdata));
       lStfInfo.mRecvStfdata = nullptr;
@@ -364,9 +366,8 @@ void TfBuilderInput::StfPacingThread()
       DDDLOG_RL(5000, "Deserialized STF. stf_id={} new_id={}", lStfInfo.mStf->id(), lNewTfId);
       lStfInfo.mStf->updateId(lNewTfId);
       lTfId = lNewTfId;
+      lStfInfo.mStfId = lTfId;
     }
-
-    lStfInfo.mStfId = lTfId;
 
     /// TODO: STF receive pacing
     // TfScheduler should manage memory of the region and not overcommit the TfBuilders
@@ -381,22 +382,23 @@ void TfBuilderInput::StfPacingThread()
           lStfInfo.mStfSenderId, lTfId, mMaxMergedTfId);
       }
     }
+    // wake up the merging thread
     mStfMergerCondition.notify_one();
   }
 
-  IDDLOG("Exiting stf deserializer thread.");
+  DDDLOG("Exiting StfPacingThread.");
 }
 
 
 void TfBuilderInput::deserialize_headers(std::vector<ReceivedStfMeta> &pStfs)
 {
+  // Deserialization object
+  CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
+
   for (auto &lStfInfo : pStfs) {
     if (lStfInfo.mStf) {
-      continue;
+      continue; // already deserialized
     }
-
-    // Deserialization object
-    CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
 
     // deserialize the data
     lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfdata));
@@ -428,6 +430,7 @@ bool TfBuilderInput::is_topo_stf(const std::vector<ReceivedStfMeta> &pStfs) cons
 }
 
 /// FMQ->STF thread
+/// This thread can block waiting on free O2 Header memory
 void TfBuilderInput::StfDeserializingThread()
 {
   // Deserialization object
@@ -473,10 +476,12 @@ void TfBuilderInput::StfDeserializingThread()
     // 3.2 Merge incomplete larger STFs
     if (lMergedStf != 0) {
       while (!mStfMergeMap.empty()) {
+        // Get the TF with lowest ID
         auto lMinTfInfo = mStfMergeMap.begin();
         const auto lMinStfId = lMinTfInfo->first;
         auto &lStfVector = lMinTfInfo->second;
 
+        // If stop if TF Id is after the just completed TF
         if (lMinStfId < lMergedStf) {
           break;
         }
@@ -515,8 +520,8 @@ void TfBuilderInput::StfMergerThread()
     auto &lStfVector = lStfVectorOpt.value();
 
     // merge the current TF!
-    const auto lBuildDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-      lStfVector.rbegin()->mTimeReceived - lStfVector.begin()->mTimeReceived);
+    const std::chrono::duration<double, std::milli> lBuildDurationMs =
+      lStfVector.rbegin()->mTimeReceived - lStfVector.begin()->mTimeReceived;
 
     // start from the first element (using it as the seed for the TF)
     std::unique_ptr<SubTimeFrame> lTf = std::move(lStfVector.begin()->mStf);

@@ -350,7 +350,7 @@ void TfBuilderRpcImpl::StfRequestThread()
       DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);
 
       if (!mRunning || mStfRequestMap.empty() || mNumReqInFlight >= mMaxNumReqInFlight) {
-        mStfReqMapCV.wait_for(lLock, 500ms);
+        mStfReqMapCV.wait_for(lLock, 50ms);
         continue; // reevaluate the conditions
       }
 
@@ -359,13 +359,27 @@ void TfBuilderRpcImpl::StfRequestThread()
 
       // save request for outside the lock
       std::size_t lIdx = lReqVector.size() - 1;
-      if (lIdx > 4) {
-        std::array<double, 2> i{ 0, double(lReqVector.size()) };
-        std::array<double, 2> w{ double(lReqVector.begin()->mStfDataSize + 1), double(lReqVector.rbegin()->mStfDataSize + 1) };
-        std::piecewise_linear_distribution<> d(i.begin(), i.end(), w.begin());
+      if (lIdx > 8) {
+        std::array<double, 4> i{
+          0,
+          double(lReqVector.size() / 3),
+          double(lReqVector.size() * 2 / 3),
+          double(lReqVector.size())        // return values from [ 0, lReqVector.size )
+        };
 
-        lIdx = std::min(std::size_t(std::floor(d(lGen))), lReqVector.size() - 1);
+        std::array<double, 4> w{
+          double(lReqVector[0].mStfDataSize + 1.0),
+          double(lReqVector[lReqVector.size() / 3].mStfDataSize + 1.0),
+          double(lReqVector[lReqVector.size() * 2 / 3].mStfDataSize + 1.0),
+          double(lReqVector.rbegin()->mStfDataSize + 1.0)
+        };
+
+        std::piecewise_linear_distribution<> lDist(i.begin(), i.end(), w.begin());
+
+        lIdx = std::min(std::size_t(lDist(lGen)), lReqVector.size() - 1);
       }
+
+      DDMON("tfbuilder", "merge.request_idx", double(lReqVector.size()) / double(lIdx + 1));
 
       lStfRequest = std::move(lReqVector[lIdx]);
       lReqVector.erase(lReqVector.cbegin() + lIdx);

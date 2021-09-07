@@ -28,9 +28,7 @@
 #include <tuple>
 
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 ProcessTypePB to_ProcessTypePB(const ProcessType pType) {
@@ -86,7 +84,6 @@ bool ConsulConfig<TfSchedulerServiceConfigStatus>::createKeyPrefix() {
 }
 
 
-}
+} /* namespace ConsulImpl */
 
-}
-}
+} /* namespace o2::DataDistribution */
