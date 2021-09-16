@@ -52,7 +52,19 @@ class SubTimeFrameFileWriter : public ISubTimeFrameConstVisitor
   ///
   std::uint64_t size() { return std::uint64_t(mFile.tellp()); }
 
+  ///
+  /// Delete the (Sub)TimeFrame file on error
+  ///
+  void remove();
+
+  ///
+  /// Close the (Sub)TimeFrame file on error
+  ///
+  void close();
+
  private:
+
+
   void visit(const SubTimeFrame& pStf) override;
 
   /// Writes a (Sub)TimeFrame
@@ -67,6 +79,7 @@ class SubTimeFrameFileWriter : public ISubTimeFrameConstVisitor
   static constexpr std::streamsize sChunkSize = 512;
   boost::filesystem::path mFileName;
   std::ofstream mFile;
+  bool mRemoved = false;
 
   bool mWriteInfo;
   std::ofstream mInfoFile;

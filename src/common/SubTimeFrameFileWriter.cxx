@@ -132,20 +132,49 @@ SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pF
   }
 }
 
-SubTimeFrameFileWriter::~SubTimeFrameFileWriter()
+void SubTimeFrameFileWriter::close()
 {
   try {
     mFile.close();
-    boost::filesystem::rename(mFileName.string() + ".part"s, mFileName.string());
     if (mWriteInfo) {
       mInfoFile.close();
-      boost::filesystem::rename(mFileName.string() + ".info.part"s, mFileName.string() + ".info"s);
     }
   } catch (std::ifstream::failure& eCloseErr) {
-    EDDLOG("Closing TF file failed. error={}", eCloseErr.what());
+    EDDLOG("Closing TimeFrame file failed. error={}", eCloseErr.what());
   } catch (...) {
-    EDDLOG("Closing TF file failed.");
+    EDDLOG("Closing TimeFrame file failed.");
   }
+}
+
+void SubTimeFrameFileWriter::remove()
+{
+  // final cleanup
+  try {
+    boost::filesystem::remove(mFileName.string() + ".part"s);
+    boost::filesystem::remove(mFileName.string() + ".info.part"s);
+  } catch (...) { }
+
+  mRemoved = true;
+}
+
+SubTimeFrameFileWriter::~SubTimeFrameFileWriter()
+{
+  close();
+
+  // rename files
+  if (!mRemoved) {
+    try {
+      boost::filesystem::rename(mFileName.string() + ".part"s, mFileName.string());
+      if (mWriteInfo) {
+        boost::filesystem::rename(mFileName.string() + ".info.part"s, mFileName.string() + ".info"s);
+      }
+    } catch (...) {
+      EDDLOG("Renaming of TimeFrame file failed.");
+    }
+  }
+
+  // make sure partial files are removed
+  remove();
 }
 
 void SubTimeFrameFileWriter::visit(const SubTimeFrame& pStf)

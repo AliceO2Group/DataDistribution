@@ -138,19 +138,26 @@ bool SubTimeFrameFileSink::makeDirectory()
     return true;
   }
 
-  fmt::memory_buffer lDir;
-  fmt::format_to(lDir, "run{}_{}", ("0" + DataDistLogger::sRunNumberStr), FilePathUtils::getDataDirName(mRootDir));
-  mCurrentDir = (bfs::path(mRootDir) / bfs::path(lDir.begin(), lDir.end())).string();
+  try {
+    fmt::memory_buffer lDir;
+    fmt::format_to(lDir, "run{}_{}", ("0" + DataDistLogger::sRunNumberStr), FilePathUtils::getDataDirName(mRootDir));
+    mCurrentDir = (bfs::path(mRootDir) / bfs::path(lDir.begin(), lDir.end())).string();
 
-  // make the run directory
-  if (!bfs::create_directory(mCurrentDir)) {
-    EDDLOG("Directory for (Sub)TimeFrame file sink cannot be created. Disabling file sink. path={}", mCurrentDir);
-    mEnabled = false;
+    // make the run directory
+    if (!bfs::create_directory(mCurrentDir)) {
+      EDDLOG("Directory for (Sub)TimeFrame file sink cannot be created. Disabling file sink. path={}", mCurrentDir);
+      mEnabled = false;
+      return false;
+    }
+  } catch (...) {
+    EDDLOG("(Sub)TimeFrame Sink :: write directory creation failed. File sink will be disables. dir={}", mCurrentDir);
+    mReady = false;
     return false;
   }
 
   IDDLOG("(Sub)TimeFrame Sink :: write dir={:s}", mCurrentDir);
 
+  mReady = true;
   return true;
 }
 
@@ -205,7 +212,11 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       break;
     }
 
-    if (mEnabled) {
+    if (mEnabled && !mReady) {
+      EDDLOG_RL(5000, "SubTimeFrameFileSink is not ready! Missed the RUN transation?");
+    }
+
+    if (mEnabled && mReady) {
       do {
         // make sure Stf is updated before writing
         lStf->updateStf();
@@ -220,7 +231,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
             mStfWriter = std::make_unique<SubTimeFrameFileWriter>(
               bfs::path(mCurrentDir) / bfs::path(lCurrentFileName), mSidecar);
           } catch (...) {
-            mEnabled = false;
+            mStfWriter.reset();
             break;
           }
             mCurrentFileIdx++;
@@ -231,8 +242,9 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
           lCurrentFileStfs++;
           lCurrentFileSize = mStfWriter->size();
         } else {
+          mStfWriter->close();
+          mStfWriter->remove();
           mStfWriter.reset();
-          mEnabled = false;
           break;
         }
 
