@@ -31,9 +31,7 @@
 #include <variant>
 #include <mutex>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 namespace ConsulImpl {
@@ -67,16 +65,16 @@ public:
     } catch (std::exception &err) {
       EDDLOG("Error while connecting to Consul. endpoint={} what={}", mEndpoint, err.what());
     }
+
+    // tunable thread
+    mPollThread = create_thread_member("consul_params", &ConsulConfig::ConsulPollingThread, this);
   }
 
-  ConsulConfig(const ConsulConfig &pConf)
-  : ConsulConfig(pConf.getProcessType(), pConf.mEndpoint)
-  { }
   ConsulConfig(ConsulConfig &&) = default;
 
   virtual ~ConsulConfig() { cleanup(); }
 
-  bool write(bool pIinitial = false)
+  bool write(bool pInitial = false)
   {
     if (!createKeyPrefix()) {
       return false;
@@ -103,24 +101,33 @@ public:
       }
     }
 
-    return write_string(lData, pIinitial);
+    return write_string(lData, pInitial);
   }
 
   void cleanup()
   {
+    mRunning = false;
+    mTunableCV.notify_all();
+
+    if (mPollThread.joinable()) {
+      mPollThread.join();
+    }
+
     if (mConsulKey.empty()) {
       return; // nothing was written
     }
 
-    std::scoped_lock lLock(mConsulLock);
+    {
+      std::scoped_lock lLock(mConsulLock);
 
-    try {
-      Kv kv(*mConsul);
-      DDDLOG("Erasing DataDistribution discovery key: {}", mConsulKey);
-      kv.eraseAll(mConsulKey);
-    } catch (std::exception &e) {
-      EDDLOG("Consul kv erase error. what={}", e.what());
-      EDDLOG("Unable to cleanup the DataDistribution discovery configuration.");
+      try {
+        Kv kv(*mConsul);
+        DDDLOG("Erasing DataDistribution discovery key: {}", mConsulKey);
+        kv.eraseAll(mConsulKey);
+      } catch (std::exception &e) {
+        EDDLOG("Consul kv erase error. what={}", e.what());
+        EDDLOG("Unable to cleanup the DataDistribution discovery configuration.");
+      }
     }
   }
 
@@ -168,8 +175,15 @@ private:
   std::unique_ptr<ppconsul::Consul> mConsul;
   std::string mConsulKey;
 
-  T mStatus;
+  // tunable polling thread
+  std::atomic_bool mRunning = true;
+  std::thread mPollThread;
+  mutable std::mutex mTunablesLock;
+    std::condition_variable mTunableCV;
+    std::map<std::string, std::string> mTunables;
 
+
+  T mStatus;
 private:
 
   static
@@ -179,7 +193,131 @@ private:
     return "epn/data-dist/partition/"s + pPartId + "/info"s;
   }
 
+  static
+  constexpr std::string getTunablePrefix() {
+    using namespace std::string_literals;
+
+
+    if constexpr (std::is_same_v<T, TfSchedulerInstanceConfigStatus>) {
+      return "epn/data-dist/parameters/TfScheduler/"s;
+    }
+
+    if constexpr (std::is_same_v<T, StfSenderConfigStatus>) {
+      return "epn/data-dist/parameters/StfSender/"s;
+    }
+
+    if constexpr (std::is_same_v<T, TfBuilderConfigStatus>) {
+      return "epn/data-dist/parameters/TfBuilder/"s;
+    }
+
+    return ""s;
+  }
+
+  void ConsulPollingThread()
+  {
+    using namespace std::chrono_literals;
+    using namespace std::string_literals;
+
+    const std::string cTunablesPrefix = getTunablePrefix();
+    if (cTunablesPrefix.empty()) {
+      return;
+    }
+
+    while (mRunning) {
+      std::unique_lock lLock(mTunablesLock);
+      mTunableCV.wait_for(lLock, 5s);
+
+      try {
+        std::scoped_lock lKVLock(mConsulLock);
+        Kv kv(*mConsul);
+
+        std::vector<KeyValue> lReqItems = kv.items(cTunablesPrefix);
+
+        if (lReqItems.empty()) {
+          kv.set(cTunablesPrefix, ""s);
+        } else {
+
+          const auto lPrevValues = std::move(mTunables);
+          mTunables.clear();
+
+          for (const auto &lKeyVal : lReqItems) {
+            if (lKeyVal.valid() && !lKeyVal.value.empty()) {
+
+              // remove full key prefix
+              const auto lParamName = lKeyVal.key.substr(cTunablesPrefix.length());
+
+              if ((lPrevValues.count(lParamName)) > 0 && (lPrevValues.at(lParamName) != lKeyVal.value)) {
+                IDDLOG("Consul: Updating parameter {}. old_value={} new_value={}"s,
+                  lParamName, lPrevValues.at(lParamName), lKeyVal.value);
+              } else if (lPrevValues.count(lParamName) == 0) {
+                IDDLOG("Consul: Setting parameter {}. value={}", lParamName, lKeyVal.value);
+              }
+
+              mTunables[lParamName] = lKeyVal.value;
+            }
+          }
+        }
+      } catch (std::exception &e) {
+        EDDLOG("Consul kv param retrieve error. what={}", e.what());
+      }
+    }
+
+    DDDLOG("Exiting params ConsulPollingThread.");
+  }
+
 public:
+  std::string getStringParam(const std::string_view &pKeySv, const std::string pDefault) const
+  {
+    const std::string lKey(pKeySv);
+
+    std::unique_lock lLock(mTunablesLock);
+    if (mTunables.count(lKey) == 0) {
+      return pDefault;
+    } else {
+      return mTunables.at(lKey);
+    }
+  }
+
+  std::int64_t getInt64Param(const std::string_view &pKeySv, const std::int64_t pDefault) const
+  {
+    const std::string lKey(pKeySv);
+
+    std::unique_lock lLock(mTunablesLock);
+    if (mTunables.count(lKey) == 0) {
+      return pDefault;
+    } else {
+
+      try {
+        return boost::lexical_cast<std::int64_t>(mTunables.at(lKey));
+      } catch( boost::bad_lexical_cast const &e) {
+        EDDLOG("Error parsing consul parameter (int64) {}. str_value={} what={}", pKeySv, mTunables.at(lKey), e.what());
+      }
+    }
+    return pDefault;
+  }
+
+  std::uint64_t getUInt64Param(const std::string_view &pKeySv, const std::uint64_t pDefault) const
+  {
+    const std::string lKey(pKeySv);
+
+    std::unique_lock lLock(mTunablesLock);
+    if (mTunables.count(lKey) == 0) {
+      return pDefault;
+    } else {
+
+      try {
+        const auto &lVal = mTunables.at(lKey);
+        if (!lVal.empty() && lVal.at(0) == '-') {
+          throw boost::bad_lexical_cast();
+        }
+        return boost::lexical_cast<std::uint64_t>(mTunables.at(lKey));
+      } catch( boost::bad_lexical_cast const &e) {
+        EDDLOG("Error parsing consul parameter (uint64) {}. str_value={} what={}", pKeySv, mTunables.at(lKey), e.what());
+      }
+    }
+    return pDefault;
+  }
+
   bool getNewPartitionRequest(PartitionRequest &pNewPartitionRequest)
   {
     using namespace std::string_literals;
@@ -464,7 +602,6 @@ using ConsulStfSender = ConsulImpl::ConsulConfig<StfSenderConfigStatus>;
 using ConsulTfBuilder = ConsulImpl::ConsulConfig<TfBuilderConfigStatus>;
 
 
-}
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_DATADIST_CONFIGCONSUL_H_ */
