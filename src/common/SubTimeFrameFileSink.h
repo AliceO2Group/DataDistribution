@@ -28,9 +28,7 @@
 #include <fstream>
 #include <vector>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 namespace bpo = boost::program_options;
@@ -95,6 +93,7 @@ class SubTimeFrameFileSink
   /// Configuration
   bool mEnabled = false;
   bool mRunning = false;
+  bool mReady = false;
   std::string mRootDir;
   std::string mCurrentDir;
   std::string mFileNamePattern;
@@ -110,7 +109,7 @@ class SubTimeFrameFileSink
   /// variables
   unsigned mCurrentFileIdx = 0;
 };
-}
+
 } /* o2::DataDistribution */
 
 #endif /* ALICEO2_SUBTIMEFRAME_FILE_SINK_H_ */
