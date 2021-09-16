@@ -133,8 +133,6 @@ bool TfSchedulerTfBuilderInfo::findTfBuilderForTf(const std::uint64_t pSize, std
   static std::atomic_uint64_t sNoMemoryAvailable = 0;
   static std::atomic_uint64_t sTfNumExceeeded = 0;
 
-  const std::size_t cMaxTfsInBuilding = 8;
-
   // NOTE: we will overestimate memory requirement by a factor, until TfBuilder updates
   //       us with the actual size.
   const std::uint64_t lTfEstSize = pSize * (sTfSizeOverestimatePercent + 100) / 100;
@@ -147,7 +145,7 @@ bool TfSchedulerTfBuilderInfo::findTfBuilderForTf(const std::uint64_t pSize, std
   for (; lIt != mReadyTfBuilders.end(); ++lIt) {
     lMaxMem = std::max(lMaxMem, (*lIt)->mEstimatedFreeMemory);
 
-    if ((*lIt)->mTfsInBuilding >= cMaxTfsInBuilding) {
+    if ((*lIt)->mTfsInBuilding >= mMaxTfsInBuilding) {
       lMaxTfExceeded = true;
       continue;
     }
@@ -256,6 +254,9 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
 
   while (mRunning) {
     std::this_thread::sleep_for(2000ms);
+
+    // update scheduling parameters
+    setMaxTfsInBuilding(mDiscoveryConfig->getUInt64Param(cMaxTfsInBuildingKey, 16));
 
     {
       std::scoped_lock lLock(mGlobalInfoLock);

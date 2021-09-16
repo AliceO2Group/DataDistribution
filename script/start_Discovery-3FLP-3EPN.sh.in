@@ -77,7 +77,8 @@ eval "$ARGS"
 # make sure consul is running
 docker start consul-datadist
 # delete everything
-docker exec -it consul-datadist consul kv delete -recurse /epn/data-dist
+docker exec -it consul-datadist consul kv delete -recurse /epn/data-dist/request/
+docker exec -it consul-datadist consul kv delete -recurse /epn/data-dist/partition/
 
 # start processes and then add a new partition request
 PARTITION="##=test_partition=##"
