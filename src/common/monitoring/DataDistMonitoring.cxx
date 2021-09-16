@@ -38,7 +38,7 @@ DataDistMonitoring::DataDistMonitoring(const o2::monitoring::tags::Value pProc, 
     mO2Monitoring = o2::monitoring::MonitoringFactory::Get(pUriList);
     mO2Monitoring->addGlobalTag(tags::Key::Subsystem, tags::Value::DataDistribution);
     mO2Monitoring->addGlobalTag(tags::Key::Rolename, mSubSystem);
-    mO2Monitoring->enableBuffering(1024);
+    mO2Monitoring->enableBuffering(4096);
   }
 
   mRunning = true;
