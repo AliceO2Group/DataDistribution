@@ -55,3 +55,12 @@ Make sure that only a single instance of the proxy is started.
   - `DATADIST_FILE_READ_COUNT=N`     Terminate after injecting set number of TF files. Data set will be repeated if necessary. Number of TimeFrames will be `DATADIST_FILE_READ_COUNT x Number of TFs per file`.
 
   - `DATADIST_DEBUG_DPL_CHAN` When defined, data sent to DPL will be checked for consistency with the O2 data model. Note: will be slow with larger TimeFrames.
+
+
+
+
+## Consul parameters (tuning option)
+
+### TfScheduler
+   *MaxNumTfInBuilding* (`epn/data-dist/parameters/TfScheduler/MaxNumTfInBuilding`)
+   Override the number of TFs each TfBuilder is allowed to build concurrently. This variable can be increased if a small number of EPNs is used.

@@ -81,6 +81,9 @@ bool operator==(const TfBuilderTopoInfo& lhs, const TfBuilderTopoInfo& rhs);
 class TfSchedulerTfBuilderInfo
 {
  public:
+
+  static constexpr std::string_view cMaxTfsInBuildingKey = "MaxNumTfInBuilding";
+
   TfSchedulerTfBuilderInfo() = delete;
   TfSchedulerTfBuilderInfo(std::shared_ptr<ConsulTfSchedulerInstance> pDiscoveryConfig)
   : mDiscoveryConfig(pDiscoveryConfig)
@@ -164,6 +167,15 @@ class TfSchedulerTfBuilderInfo
   /// Topological distribution
   bool findTfBuilderForTopoStf(const std::string_view pDataOrigin, const std::uint64_t pSubSpec, std::string& pTfBuilderId /*out*/);
 
+  void setMaxTfsInBuilding(const std::size_t pMaxTfsInBuilding) {
+    const auto lNewVal = std::clamp(pMaxTfsInBuilding, std::size_t(1), std::size_t(512));
+
+    if (mMaxTfsInBuilding != lNewVal) {
+      IDDLOG("Parameter Update: MaxTfsInBuilding old_value={} new_value={}", mMaxTfsInBuilding, lNewVal);
+      mMaxTfsInBuilding = lNewVal;
+    }
+  }
+
 private:
   /// Overestimation of actual size for TF building
   static constexpr std::uint64_t sTfSizeOverestimatePercent = std::uint64_t(10);
@@ -177,6 +189,9 @@ private:
   /// Housekeeping thread
   std::atomic_bool mRunning = false;
   std::thread mHousekeepingThread;
+
+  // Maximum number of TFs each TfBuilder is allowed to aggregate concurrently
+  std::atomic_uint64_t mMaxTfsInBuilding = 16;
 
   /// TfSender global info
   mutable std::recursive_mutex mGlobalInfoLock;
