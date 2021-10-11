@@ -191,6 +191,7 @@ void TfSchedulerStfInfo::StaleCleanupThread()
 
           std::string lMissingIds = boost::algorithm::join(lMissingStfSenders, ", ");
           DDDLOG("Missing STFs from StfSender IDs: {}", lMissingIds);
+          EDDLOG_RL(5000, "Missing STFs from StfSender IDs: {}", lMissingIds);
 
           for (const auto &lStf : lMissingStfSenders) {
             lStfSenderMissingCnt[lStf]++;

@@ -100,6 +100,7 @@ class SubTimeFrameFileSink
   std::uint64_t mStfsPerFile;
   std::uint64_t mFileSize;
   bool mSidecar = false;
+  std::string mHostname;
 
   /// Thread for file writing
   std::thread mSinkThread;
