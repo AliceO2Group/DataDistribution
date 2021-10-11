@@ -18,6 +18,7 @@
 
 #include <fairmq/ProgOptions.h>
 
+#include <boost/asio/ip/host_name.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/filesystem.hpp>
@@ -39,6 +40,8 @@ namespace bpo = boost::program_options;
 void SubTimeFrameFileSink::start()
 {
   if (enabled()) {
+    const auto lHostname = boost::asio::ip::host_name();
+    mHostname = lHostname.substr(0, lHostname.find('.'));
     mRunning = true;
     mSinkThread = create_thread_member("stf_sink", &SubTimeFrameFileSink::DataHandlerThread, this, 0);
   }
@@ -67,8 +70,8 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
     "Specifies a destination directory where (Sub)TimeFrames are to be written. "
     "Note: A new directory will be created here for all output files.")(
     OptionKeyStfSinkFileName,
-    bpo::value<std::string>()->default_value("run%r_tf%i.tf"),
-    "Specifies file name pattern: %n - file index, %r - run number, %i - starting (S)TF id, %D - date, %T - time.")(
+    bpo::value<std::string>()->default_value("o2_rawtf_run%r_tf%i_%h.tf"),
+    "Specifies file name pattern: %n - file index, %r - run number, %i - (S)TF id, %D - date, %T - time, %h - hostname.")(
     OptionKeyStfSinkStfsPerFile,
     bpo::value<std::uint64_t>()->default_value(1),
     "Specifies number of (Sub)TimeFrames per file. Default: 1")(
@@ -192,6 +195,9 @@ std::string SubTimeFrameFileSink::newStfFileName(const std::uint64_t pStfId) con
   // time
   strftime(lTimeBuf, sizeof(lTimeBuf), "%H_%M_%S", localtime(&lNow));
   boost::replace_all(lFileName, "%T", lTimeBuf);
+
+  // hostname
+  boost::replace_all(lFileName, "%h", mHostname);
 
   return lFileName;
 }
