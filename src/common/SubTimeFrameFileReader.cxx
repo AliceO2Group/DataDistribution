@@ -21,9 +21,7 @@
 #include <sys/mman.h>
 #endif
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace o2::header;
@@ -85,10 +83,13 @@ std::size_t SubTimeFrameFileReader::getHeaderStackSize() // throws ios_base::fai
   auto lNumHeaders = 0;
   while (readNextHeader && (++lNumHeaders <= cMaxHeaders)) {
     // read BaseHeader only!
+    const auto lBaseHdrPos = position();
     if(!read_advance(&lBaseHdr, sizeof(BaseHeader))) {
       return 0;
     }
 
+    // go back, and read the whole O2 header (Base+Derived)
+    set_position(lBaseHdrPos);
     if (!ignore_nbytes(lBaseHdr.size())) {
       return 0;
     }
@@ -307,7 +308,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
         lStf->updateFirstOrbit(R.getOrbit());
       }
     } catch (...) {
-      EDDLOG("Error getting RDHReader instace. Not setting firstOrbit for file data");
+      EDDLOG("Error getting RDHReader instance. Not setting firstOrbit for file data");
     }
 
     mStfData.emplace_back(std::move(lHdrStackMsg), std::move(lDataMsg));
@@ -326,5 +327,5 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
 
   return lStf;
 }
-}
+
 } /* o2::DataDistribution */

@@ -23,9 +23,7 @@
 #include <fstream>
 #include <vector>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 class SubTimeFrameFileBuilder;
@@ -142,7 +140,7 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
   static std::uint64_t sStfId; // TODO: add id to files metadata
 
 };
-}
+
 } /* o2::DataDistribution */
 
 #endif /* ALICEO2_SUBTIMEFRAME_FILE_READER_H_ */
