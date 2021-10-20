@@ -218,9 +218,6 @@ bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const
     lOutputObj.mThread.join();
   }
   DDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending channel. tfb_id={}", pTfBuilderId);
-  if (lOutputObj.mChannel->IsValid() ) {
-    lOutputObj.mChannel->GetSocket().Close();
-  }
 
   // update our connection status
   auto &lSocketMap = *(mDiscoveryConfig->status().mutable_sockets()->mutable_map());
