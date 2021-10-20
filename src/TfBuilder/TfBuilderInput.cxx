@@ -238,7 +238,6 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
       continue;
     }
     lFmqChannelPtr->GetSocket().SetLinger(0);
-    lFmqChannelPtr->GetSocket().Close();
   }
   mStfSenderChannels.clear();
   IDDLOG("TfBuilderInput::stop: All input channels are closed.");
