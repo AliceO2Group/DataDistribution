@@ -76,6 +76,8 @@ struct TopoStfInfo {
 
 class TfSchedulerStfInfo
 {
+  static constexpr std::string_view cStaleStfTimeoutMsKey = "StaleStfTimeoutMs";
+
 public:
   TfSchedulerStfInfo() = delete;
   TfSchedulerStfInfo(std::shared_ptr<ConsulTfSchedulerInstance> pDiscoveryConfig,
