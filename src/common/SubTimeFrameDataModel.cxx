@@ -95,27 +95,29 @@ std::vector<EquipmentIdentifier> SubTimeFrame::getEquipmentIdentifiers() const
   return lKeys;
 }
 
-void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf)
+void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf, const std::string &mStfSenderId)
 {
   // make sure header values match
   if (mHeader.mOrigin != pStf->header().mOrigin) {
-    EDDLOG("Merging STFs error: STF origins do not match origin={} new_origin={}",
-      mHeader.mOrigin,  pStf->header().mOrigin);
+    EDDLOG_RL(1000, "Merging STFs error: STF origins do not match origin={} new_origin={} new_stfs_id={}",
+      mHeader.mOrigin,  pStf->header().mOrigin, mStfSenderId);
   }
 
   if (mHeader.mFirstOrbit != pStf->header().mFirstOrbit) {
-    EDDLOG("Merging STFs error: STF first orbits do not match firstOrbit={} new_firstOrbit={}",
-      mHeader.mFirstOrbit,  pStf->header().mFirstOrbit);
+    EDDLOG_RL(1000,"Merging STFs error: STF first orbits do not match firstOrbit={} new_firstOrbit={} diff={} new_stfs_id={}",
+      mHeader.mFirstOrbit,  pStf->header().mFirstOrbit, (std::int64_t(pStf->header().mFirstOrbit) - std::int64_t(mHeader.mFirstOrbit)),
+      mStfSenderId);
   }
 
   // make sure data equipment does not repeat
   std::set<EquipmentIdentifier> lUnionSet;
-  for (const auto& lId : getEquipmentIdentifiers())
+  for (const auto& lId : getEquipmentIdentifiers()) {
     lUnionSet.emplace(lId);
+  }
 
   for (const auto& lId : pStf->getEquipmentIdentifiers()) {
     if (lUnionSet.emplace(lId).second == false /* not inserted */) {
-      EDDLOG_RL(1000, "Merging STFs error: Equipment already present: fee={}", lId.info());
+      EDDLOG_RL(1000, "Merging STFs error: Equipment already present: fee={} new_stfs_id={}", lId.info(), mStfSenderId);
     }
   }
 

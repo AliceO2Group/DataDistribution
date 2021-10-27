@@ -300,7 +300,7 @@ class SubTimeFrame : public IDataModelObject
   SubTimeFrame& operator=(SubTimeFrame&& a) = default;
 
   // adopt all data from another STF
-  void mergeStf(std::unique_ptr<SubTimeFrame> pStf);
+  void mergeStf(std::unique_ptr<SubTimeFrame> pStf, const std::string &mStfSenderId);
 
   // get data size (not including o2 headers)
   std::uint64_t getDataSize() const { updateStf(); return mDataSize; }

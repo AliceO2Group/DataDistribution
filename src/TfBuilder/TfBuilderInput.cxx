@@ -532,7 +532,7 @@ void TfBuilderInput::StfMergerThread()
 
     // Add the rest of STFs
     for (auto lStfIter = std::next(lStfVector.begin()); lStfIter != lStfVector.end(); ++lStfIter) {
-      lTf->mergeStf(std::move(lStfIter->mStf));
+      lTf->mergeStf(std::move(lStfIter->mStf), lStfIter->mStfSenderId);
     }
     lNumBuiltTfs++;
 
