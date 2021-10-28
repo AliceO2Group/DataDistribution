@@ -119,14 +119,16 @@ void InterleavedHdrDataDeserializer::visit(SubTimeFrame& pStf)
 
   // iterate over all incoming HBFrame data sources
   for (size_t i = 2; i < mMessages.size(); i += 2) {
-
+    auto &lHdrMsg = mMessages[i];
     auto &lDataMsg = mMessages[i + 1];
 
     if (lDataMsg->GetSize() == 0) {
-      EDDLOG("Received STF data payload with zero size");
+      DataHeader *lHdrPtr = reinterpret_cast<DataHeader*>(lHdrMsg->GetData());
+      DDDLOG_RL(10000, "Received STF data payload with zero size. origin={} description={} subspec={}",
+        std::string(lHdrPtr->dataOrigin.str, 4), std::string(lHdrPtr->dataDescription.str, 16), lHdrPtr->subSpecification);
     }
 
-    pStf.addStfData({ std::move(mMessages[i]), std::move(lDataMsg) });
+    pStf.addStfData({ std::move(lHdrMsg), std::move(lDataMsg) });
   }
 }
 
@@ -343,12 +345,13 @@ void CoalescedHdrDataDeserializer::visit(SubTimeFrame& pStf)
 {
   // iterate over all incoming HBFrame data sources
   for (size_t i = 0; i < mData.size(); i += 1) {
-
     auto &lHdrMsg = mHdrs[i];
     auto &lDataMsg = mData[i];
 
     if (lDataMsg->GetSize() == 0) {
-      EDDLOG("Received STF data payload with zero size");
+      DataHeader *lHdrPtr = reinterpret_cast<DataHeader*>(lHdrMsg->GetData());
+      DDDLOG_RL(10000, "Received STF data payload with zero size. origin={} description={} subspec={}",
+        std::string(lHdrPtr->dataOrigin.str, 4), std::string(lHdrPtr->dataDescription.str, 16), lHdrPtr->subSpecification);
     }
 
 #if !defined(NDEBUG)
