@@ -97,14 +97,18 @@ std::vector<EquipmentIdentifier> SubTimeFrame::getEquipmentIdentifiers() const
 
 void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf, const std::string &mStfSenderId)
 {
+  if (pStf->header().mOrigin == Header::Origin::eNull) {
+    return; // nothing to do for an empty STF
+  }
+
   // make sure header values match
   if (mHeader.mOrigin != pStf->header().mOrigin) {
-    EDDLOG_RL(1000, "Merging STFs error: STF origins do not match origin={} new_origin={} new_stfs_id={}",
+    EDDLOG_RL(5000, "Merging STFs error: STF origins do not match origin={} new_origin={} new_stfs_id={}",
       mHeader.mOrigin,  pStf->header().mOrigin, mStfSenderId);
   }
 
   if (mHeader.mFirstOrbit != pStf->header().mFirstOrbit) {
-    EDDLOG_RL(1000,"Merging STFs error: STF first orbits do not match firstOrbit={} new_firstOrbit={} diff={} new_stfs_id={}",
+    EDDLOG_RL(5000,"Merging STFs error: STF first orbits do not match firstOrbit={} new_firstOrbit={} diff={} new_stfs_id={}",
       mHeader.mFirstOrbit,  pStf->header().mFirstOrbit, (std::int64_t(pStf->header().mFirstOrbit) - std::int64_t(mHeader.mFirstOrbit)),
       mStfSenderId);
   }
@@ -117,7 +121,7 @@ void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf, const std::strin
 
   for (const auto& lId : pStf->getEquipmentIdentifiers()) {
     if (lUnionSet.emplace(lId).second == false /* not inserted */) {
-      EDDLOG_RL(1000, "Merging STFs error: Equipment already present: fee={} new_stfs_id={}", lId.info(), mStfSenderId);
+      IDDLOG_RL(5000, "Merging STFs error: Equipment already present: fee={} new_stfs_id={}", lId.info(), mStfSenderId);
     }
   }
 
