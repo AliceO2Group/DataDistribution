@@ -21,9 +21,7 @@
 #include <algorithm>
 #include <future>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -82,7 +80,7 @@ void TfSchedulerConnManager::connectTfBuilder(const TfBuilderConfigStatus &pTfBu
 
     ConnectTfBuilderResponse lResponse;
     if(!lRpcClient->ConnectTfBuilderRequest(lParam, lResponse).ok()) {
-      EDDLOG("TfBuilder Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={}",
+      EDDLOG_RL(1000, "TfBuilder Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={}",
         lStfSenderId, lTfBuilderId);
       pResponse.set_status(ERROR_GRPC_STF_SENDER);
       lConnectionsOk = false;
@@ -91,7 +89,7 @@ void TfSchedulerConnManager::connectTfBuilder(const TfBuilderConfigStatus &pTfBu
 
     // check StfSender status
     if (lResponse.status() != OK) {
-      EDDLOG("TfBuilder Connection error: cannot connect. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
+      EDDLOG_RL(1000, "TfBuilder Connection error: cannot connect. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
       pResponse.set_status(lResponse.status());
       lConnectionsOk = false;
       break;
@@ -146,13 +144,13 @@ void TfSchedulerConnManager::disconnectTfBuilder(const TfBuilderConfigStatus &pT
 
       auto &lRpcClient = mStfSenderRpcClients[lSocketInfo.peer_id()];
       if(!lRpcClient->DisconnectTfBuilderRequest(lParam, lResponse).ok()) {
-        EDDLOG("StfSender Connection error: gRPC error. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
+        IDDLOG_RL(1000, "StfSender disconnection error: gRPC error. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
         pResponse.set_status(ERROR_GRPC_STF_SENDER);
         continue;
       }
       // check StfSender status
       if (lResponse.status() != 0) {
-        EDDLOG("TfBuilder Connection error. stfs_id={} tfb_id={} response={}", lStfSenderId, lTfBuilderId, lResponse.status());
+        IDDLOG_RL(1000, "TfBuilder disconnection error. stfs_id={} tfb_id={} response={}", lStfSenderId, lTfBuilderId, lResponse.status());
         pResponse.set_status(ERROR_STF_SENDER_CONNECTING);
         continue;
       }
@@ -375,5 +373,4 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
   DDDLOG("Exiting StfSender RPC Monitoring thread.");
 }
 
-}
 } /* o2::DataDistribution */

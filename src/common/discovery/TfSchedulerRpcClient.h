@@ -54,7 +54,7 @@ public:
       // check for terminal states and exit
       if (mTfSchedulerConf.partition_state() == PartitionState::PARTITION_ERROR ||
           mTfSchedulerConf.partition_state() == PartitionState::PARTITION_TERMINATED) {
-        WDDLOG("Partition State: {}", PartitionState_Name(mTfSchedulerConf.partition_state()));
+        WDDLOG_RL(1000, "Partition State: {}", PartitionState_Name(mTfSchedulerConf.partition_state()));
         mShouldRetryStart = false;
         return false;
       }

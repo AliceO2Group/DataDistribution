@@ -18,9 +18,7 @@
 #include <set>
 
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 bool TfSchedulerRpcClient::is_ready() const {
@@ -65,7 +63,7 @@ bool TfSchedulerRpcClient::HeartBeat(const BasicInfo &pInfo) {
 // rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
 bool TfSchedulerRpcClient::NumStfSendersInPartitionRequest(std::uint32_t &pNumStfSenders) {
   if (!mStub || !is_alive()) {
-    EDDLOG_GRL(1000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+    WDDLOG_GRL(2000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
     return false;
   }
 
@@ -100,7 +98,7 @@ bool TfSchedulerRpcClient::NumStfSendersInPartitionRequest(std::uint32_t &pNumSt
 // rpc TfBuilderConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderConnectionResponse) { }
 bool TfSchedulerRpcClient::TfBuilderConnectionRequest(TfBuilderConfigStatus &pParam, TfBuilderConnectionResponse &pRet /*out*/) {
   if (!mStub || !is_alive()) {
-    EDDLOG_GRL(1000, "TfBuilderConnectionRequest: no gRPC connection to scheduler");
+    WDDLOG_GRL(2000, "TfBuilderConnectionRequest: no gRPC connection to scheduler");
     return false;
   }
 
@@ -155,7 +153,7 @@ bool TfSchedulerRpcClient::TfBuilderConnectionRequest(TfBuilderConfigStatus &pPa
 // rpc TfBuilderDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
 bool TfSchedulerRpcClient::TfBuilderDisconnectionRequest(TfBuilderConfigStatus &pParam, StatusResponse &pRet /*out*/) {
   if (!mStub || !is_alive()) {
-    EDDLOG_GRL(1000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+    WDDLOG_GRL(2000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
     return false;
   }
 
@@ -173,7 +171,7 @@ bool TfSchedulerRpcClient::TfBuilderDisconnectionRequest(TfBuilderConfigStatus &
 // rpc TfBuilderUpdate(TfBuilderUpdateMessage) returns (google.protobuf.Empty) { }
 bool TfSchedulerRpcClient::TfBuilderUpdate(TfBuilderUpdateMessage &pMsg) {
   if (!mStub || !is_alive()) {
-    EDDLOG_GRL(1000, "TfBuilderUpdate: no gRPC connection to scheduler");
+    WDDLOG_GRL(2000, "TfBuilderUpdate: no gRPC connection to scheduler");
     return false;
   }
 
@@ -198,7 +196,7 @@ bool TfSchedulerRpcClient::TfBuilderUpdate(TfBuilderUpdateMessage &pMsg) {
 // rpc StfSenderStfUpdate(StfSenderStfInfo) returns (SchedulerStfInfoResponse) { }
 bool TfSchedulerRpcClient::StfSenderStfUpdate(StfSenderStfInfo &pMsg, SchedulerStfInfoResponse &pRet) {
   if (!mStub || !is_alive()) {
-    EDDLOG_GRL(2000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
+    WDDLOG_GRL(2000, "NumStfSendersInPartitionRequest: no gRPC connection to scheduler");
     return false;
   }
 
@@ -216,6 +214,4 @@ bool TfSchedulerRpcClient::StfSenderStfUpdate(StfSenderStfInfo &pMsg, SchedulerS
   return false;
 }
 
-
-}
 }

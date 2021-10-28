@@ -113,8 +113,7 @@ public:
     // get a set of missing StfSenders
     TfSchedulerInstanceConfigStatus lSchedulerInst;
     if (! mDiscoveryConfig->getTfSchedulerConfig(lPartId, lSchedulerInst /*out*/)) {
-      EDDLOG("TfScheduler is not running. partition={}", lPartId);
-
+      IDDLOG_RL(2000, "TfScheduler is not running. partition={}", lPartId);
       return false;
     }
 
@@ -157,14 +156,14 @@ public:
 
       if (mClients.size() < lNumStfSenders) {
         lWaitForStfSenders = true;
-        WDDLOG_RL(1000, "gRPC: Connected to {} out of {} StfSenders", mClients.size(), lNumStfSenders);
+        IDDLOG_RL(1000, "gRPC: Connected to {} out of {} StfSenders", mClients.size(), lNumStfSenders);
       }
 
       // check the connection on existing clients
       for (auto &[ mCliId, lClient] : mClients) {
         if (!lClient->is_ready()) {
           lAllConnReady = false;
-          WDDLOG("StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
+          IDDLOG_RL(1000, "StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
         }
       }
     }
