@@ -52,6 +52,7 @@ public:
   static bool sInfologgerEnabled;
   static std::uint64_t sRunNumber;
   static std::string sRunNumberStr;
+  static std::string sPartitionIdStr;
 
   static spdlog::logger& I() {
     static std::shared_ptr<spdlog::logger> sTheLogger = nullptr;
@@ -438,6 +439,8 @@ static inline void InitInfoLogger() {
     DataDistLogger::sInfoLoggerFacility);
   lInfoLoggerCtx.setField(AliceO2::InfoLogger::InfoLoggerContext::FieldName::Run,
     DataDistLogger::sRunNumberStr);
+  lInfoLoggerCtx.setField(AliceO2::InfoLogger::InfoLoggerContext::FieldName::Partition,
+    DataDistLogger::sPartitionIdStr);
 
   lIlogger.setContext(lInfoLoggerCtx);
 

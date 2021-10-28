@@ -103,6 +103,22 @@ int main(int argc, char* argv[])
 
       // Install listener for Logging options
       fmqtools::HandleFMQOptions(r);
+
+      // Install listener for discovery partition key
+      r.fConfig.Subscribe<std::string>("discovery-partition", [&](const std::string& pKey, std::string pValue) {
+
+        if (pKey == "partition_id" || pKey == "partition-id" || pKey == "environment-id" || pKey == "environment_id") {
+
+          IDDLOG("Config::PartitionIdSubscribe received key-value pair. {}=<{}>", pKey, pValue);
+          DataDistLogger::sPartitionIdStr = pValue;
+
+          if (r.fConfig.GetProperty<std::string>(Config::OptionKeyDiscoveryPartition) == "") {
+            r.fConfig.SetProperty<std::string>(Config::OptionKeyDiscoveryPartition, pValue);
+            IDDLOG("Config::PartitionIdSubscribe changed to: {}", pValue);
+          }
+        }
+      });
+
       // reset unsupported options
       r.fConfig.SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 4u));
       r.fConfig.SetProperty<float>("rate", 0.f);

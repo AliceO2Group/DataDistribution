@@ -45,6 +45,7 @@ bool DataDistLogger::sInfologgerEnabled = false;
 DataDistSeverity DataDistLogger::sInfologgerSeverity = DataDistSeverity::nolog;
 std::uint64_t DataDistLogger::sRunNumber = 0;
 std::string DataDistLogger::sRunNumberStr = "";
+std::string DataDistLogger::sPartitionIdStr = "";
 
 
 // this is a static object that will interpose early into FairLogger
