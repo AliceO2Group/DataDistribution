@@ -48,7 +48,7 @@ public:
 
     mTfBuilderConf.Clear();
     if (!pConfig->getTfBuilderConfig(lPartitionId, pTfBuilderId, mTfBuilderConf)) {
-     WDDLOG("TfBuilder information is not discoverable.");
+      IDDLOG_RL(2000, "TfBuilder information is not discoverable. tfb_id={}", pTfBuilderId);
       return false;
     }
 
@@ -94,7 +94,7 @@ public:
       return true;
     }
 
-    EDDLOG("gRPC request error. code={:d} message={:s}", lStatus.error_code(), lStatus.error_message());
+    EDDLOG_RL(1000, "gRPC request error. code={} message={}", lStatus.error_code(), lStatus.error_message());
 
     return false;
   }
