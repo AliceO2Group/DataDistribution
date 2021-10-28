@@ -74,7 +74,7 @@ int main(int argc, char* argv[])
       r.fConfig.Subscribe<std::string>("discovery-partition", [&](const std::string& pKey, std::string pValue) {
 
         if (pKey == "partition_id" || pKey == "partition-id" || pKey == "environment-id" || pKey == "environment_id") {
-
+          DataDistLogger::sPartitionIdStr = pValue;
           if (r.fConfig.GetProperty<std::string>("discovery-partition") == "") {
             r.fConfig.SetProperty<std::string>("discovery-partition", pValue);
             IDDLOG("Config::Subscribe received key-value pair. {}=<{}>", pKey, pValue);

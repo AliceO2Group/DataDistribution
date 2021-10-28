@@ -90,6 +90,7 @@ int main(int argc, char* argv[])
         if (pKey == "partition_id" || pKey == "partition-id" || pKey == "environment-id" || pKey == "environment_id") {
 
           IDDLOG("Config::PartitionIdSubscribe received key-value pair. {}=<{}>", pKey, pValue);
+          DataDistLogger::sPartitionIdStr = pValue;
 
           if (r.fConfig.GetProperty<std::string>(Config::OptionKeyDiscoveryPartition) == "") {
             r.fConfig.SetProperty<std::string>(Config::OptionKeyDiscoveryPartition, pValue);
