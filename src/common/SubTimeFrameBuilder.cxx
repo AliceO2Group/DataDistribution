@@ -23,6 +23,8 @@
 #include <fairmq/FairMQDevice.h>
 #include <fairmq/FairMQUnmanagedRegion.h>
 
+#include <optional>
+
 namespace o2::DataDistribution
 {
 
@@ -195,9 +197,11 @@ bool SubTimeFrameReadoutBuilder::addHbFrames(
     lDataHdr.payloadSize = pHbFramesBegin[i]->GetSize();
 
     if (mDplEnabled) {
+      auto lDplHdr = o2::framework::DataProcessingHeader{mStf->header().mId};
+      lDplHdr.creation = mStf->header().mCreationTimeMs;
       auto lStack = Stack(
         lDataHdr,
-        o2::framework::DataProcessingHeader{mStf->header().mId}
+        lDplHdr
       );
 
       lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
@@ -343,11 +347,9 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
         auto lDplHdrConst = o2::header::get<o2::framework::DataProcessingHeader*>(lHeader->GetData(), lHeader->GetSize());
 
         if (lDplHdrConst != nullptr) {
-          if (lDplHdrConst->startTime != pStf->header().mId) {
-
             auto lDplHdr = const_cast<o2::framework::DataProcessingHeader*>(lDplHdrConst);
             lDplHdr->startTime = pStf->header().mId;
-          }
+          lDplHdr->creation = pStf->header().mCreationTimeMs;
         } else {
           // make the stack with an DPL header
           // get the DataHeader
@@ -358,9 +360,11 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
           }
 
           if (mDplEnabled) {
+            auto lDplHdr = o2::framework::DataProcessingHeader{pStf->header().mId};
+            lDplHdr.creation = pStf->header().mCreationTimeMs;
             auto lStack = Stack(
               *lDHdr, /* TODO: add complete existing header lStfDataIter.mHeader */
-              o2::framework::DataProcessingHeader{pStf->header().mId}
+              lDplHdr
             );
 
             lStfDataIter.mHeader = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
@@ -490,6 +494,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
         if (lDplHdrConst != nullptr) {
           auto lDplHdr = const_cast<o2::framework::DataProcessingHeader*>(lDplHdrConst);
           lDplHdr->startTime = pStf->header().mId;
+          lDplHdr->creation = pStf->header().mCreationTimeMs;
         } else {
           // make the stack with an DPL header
           // get the DataHeader
@@ -505,9 +510,11 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
           }
 
           if (mDplEnabled) {
+            auto lDplHdr = o2::framework::DataProcessingHeader{pStf->header().mId};
+            lDplHdr.creation = pStf->header().mCreationTimeMs;
             auto lStack = Stack(
               reinterpret_cast<std::byte*>(lHeader->GetData()),
-              o2::framework::DataProcessingHeader{pStf->header().mId}
+              lDplHdr
             );
 
             WDDLOG_RL(5000, "Reallocation of Header messages is not optimal. orig_size={} new_size={}",

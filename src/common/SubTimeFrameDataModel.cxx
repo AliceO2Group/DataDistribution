@@ -31,6 +31,7 @@ using namespace o2::header;
 SubTimeFrame::SubTimeFrame(uint64_t pStfId)
   : mHeader(pStfId)
 {
+  updateCreationTimeMs(); // set the current creation time
 }
 
 void SubTimeFrame::updateStf() const
