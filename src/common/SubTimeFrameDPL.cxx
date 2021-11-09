@@ -43,8 +43,9 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
   lStfDistDataHeader.firstTForbit = pStf.header().mFirstOrbit;
 
   o2::framework::DataProcessingHeader lDplHeader(pStf.header().mId);
+  lDplHeader.creation = pStf.header().mCreationTimeMs;
 
-  {
+  { // prepare DistDataHeader
     auto lHdrStack = Stack(lStfDistDataHeader, lDplHeader);
 
     auto lDataHeaderMsg = mChan.NewMessage(lHdrStack.size());

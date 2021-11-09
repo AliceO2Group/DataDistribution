@@ -308,16 +308,17 @@ class SubTimeFrame : public IDataModelObject
   std::vector<EquipmentIdentifier> getEquipmentIdentifiers() const;
 
   struct Header {
+    static constexpr std::uint64_t sInvalidTimeMs = std::numeric_limits<std::uint64_t>::max();
     TimeFrameIdType mId = sInvalidTimeFrameId;
     std::uint32_t mFirstOrbit = std::numeric_limits<std::uint32_t>::max();
     std::uint32_t mRunNumber = 0;
-
     enum Origin {
       eInvalid = -1,
       eReadout = 1,
       eReadoutTopology, // MFT/ITS topology run
       eNull
     } mOrigin = eInvalid;
+    std::uint64_t mCreationTimeMs = sInvalidTimeMs; // miliseconds since unix epoch
 
     Header() = default;
     explicit Header(TimeFrameIdType pId)
@@ -384,6 +385,14 @@ public:
       mHeader.mRunNumber = pRunNum;
       mDataUpdated = false;
     }
+  }
+
+  void updateCreationTimeMs() {
+    mHeader.mCreationTimeMs = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()).time_since_epoch().count();
+  }
+
+  void updateCreationTimeMs(const std::uint64_t pTimeMs) {
+    mHeader.mCreationTimeMs = pTimeMs;
   }
 
 private:

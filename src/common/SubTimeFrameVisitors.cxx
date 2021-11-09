@@ -464,7 +464,7 @@ std::unique_ptr<SubTimeFrame> CoalescedHdrDataDeserializer::deserialize_impl()
       }
 
       if (m == 1) { // STF::Header is not an o2 message
-        std::memcpy(&(lStf->mHeader), lFullHdrMsgAddr + lHdrOff, sizeof(SubTimeFrame::Header));
+        std::memcpy(&(lStf->mHeader), lFullHdrMsgAddr + lHdrOff, lHdrInfo.len);
       } else if (m > 1) {
         auto lNewHdr = mTfBld.newHeaderMessage(lFullHdrMsgAddr + lHdrOff, lHdrInfo.len);
         mHdrs.push_back(std::move(lNewHdr));
