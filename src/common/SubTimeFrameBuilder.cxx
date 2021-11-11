@@ -478,6 +478,14 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
 
   const auto lOutChannelType = fair::mq::Transport::SHM;
 
+  { // check if we have a vaild creation time
+    const auto lCreationTimeMs = pStf->header().mCreationTimeMs;
+    if ((lCreationTimeMs == SubTimeFrame::Header::sInvalidTimeMs) || (lCreationTimeMs == 0)) {
+      pStf->updateCreationTimeMs(); // use the current time
+    }
+  }
+
+  const auto lCreationTimeMs = pStf->header().mCreationTimeMs;
   // adapt headers for DPL
   for (auto& lDataIdentMapIter : pStf->mData) {
     for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
@@ -491,25 +499,17 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
           continue;
         }
 
-        auto lDataHdrConst = o2::header::get<o2::header::DataHeader*>(
-          lHeader->GetData(),
-          lHeader->GetSize()
-        );
-
+        auto lDataHdrConst = o2::header::get<o2::header::DataHeader*>(lHeader->GetData(), lHeader->GetSize());
         if (!lDataHdrConst) {
           EDDLOG("Adapting TF headers: Missing DataHeader get<DataHeader*>().");
           continue;
         }
 
-        auto lDplHdrConst = o2::header::get<o2::framework::DataProcessingHeader*>(
-          lHeader->GetData(),
-          lHeader->GetSize()
-        );
-
+        auto lDplHdrConst = o2::header::get<o2::framework::DataProcessingHeader*>(lHeader->GetData(), lHeader->GetSize());
         if (lDplHdrConst != nullptr) {
           auto lDplHdr = const_cast<o2::framework::DataProcessingHeader*>(lDplHdrConst);
           lDplHdr->startTime = pStf->header().mId;
-          lDplHdr->creation = pStf->header().mCreationTimeMs;
+          lDplHdr->creation = lCreationTimeMs;
         } else {
           // make the stack with an DPL header
           // get the DataHeader
@@ -526,7 +526,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
 
           if (mDplEnabled) {
             auto lDplHdr = o2::framework::DataProcessingHeader{pStf->header().mId};
-            lDplHdr.creation = pStf->header().mCreationTimeMs;
+            lDplHdr.creation = lCreationTimeMs;
             auto lStack = Stack(
               reinterpret_cast<std::byte*>(lHeader->GetData()),
               lDplHdr
