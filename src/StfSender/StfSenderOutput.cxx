@@ -298,7 +298,7 @@ void StfSenderOutput::StfSchedulerThread()
           continue;
         }
 
-        lInfoPtr->set_data_origin(std::string(lStfEquip.begin()->mDataOrigin.str, 3));
+        lInfoPtr->set_data_origin(lStfEquip.begin()->mDataOrigin.as<std::string>());
         lInfoPtr->set_data_subspec(lStfEquip.begin()->mSubSpecification);
         break;
       }

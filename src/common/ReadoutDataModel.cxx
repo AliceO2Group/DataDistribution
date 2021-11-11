@@ -47,7 +47,7 @@ ReadoutDataUtils::getDataOrigin(const RDHReader &R)
       return lOrig;
     } else {
         EDDLOG_RL(1000, "Data origin in RDH is invalid: {}. Please configure the correct SYSTEM_ID in the hardware."
-          " Using the configuration value {}.", R.getSystemID(), std::string(sSpecifiedDataOrigin.str));
+          " Using the configuration value {}.", R.getSystemID(), sSpecifiedDataOrigin.as<std::string>());
     }
   }
 

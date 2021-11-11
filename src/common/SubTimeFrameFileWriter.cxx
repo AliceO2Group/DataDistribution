@@ -316,8 +316,8 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
         impl::sInfoVal(lValRow, impl::TF_ID, l1StfId);
         impl::sInfoVal(lValRow, impl::TF_OFFSET, l2StfFileOff);
         impl::sInfoVal(lValRow, impl::TF_SIZE, l3StfFileSize);
-        impl::sInfoVal(lValRow, impl::ORIGIN, l4DataOrigin.str);
-        impl::sInfoVal(lValRow, impl::DESC, l5DataDescription.str);
+        impl::sInfoVal(lValRow, impl::ORIGIN, l4DataOrigin.as<std::string>());
+        impl::sInfoVal(lValRow, impl::DESC, l5DataDescription.as<std::string>());
         impl::sInfoVal(lValRow, impl::SUBSPEC, l6SubSpec);
         impl::sInfoVal(lValRow, impl::DATA_IDX, l7DataIndex);
         impl::sInfoVal(lValRow, impl::HDR_OFF, l8HdrOff);

@@ -135,7 +135,7 @@ void StfBuilderDevice::InitTask()
       (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginMFT))) {
 
       EDDLOG("Run type paramter 'topology' is supported only for ITS and MFT. Please specify the detector option. detector={}",
-        std::string(ReadoutDataUtils::sSpecifiedDataOrigin.str));
+        ReadoutDataUtils::sSpecifiedDataOrigin.as<std::string>());
       throw std::logic_error("Run type paramter 'topology' is supported only for ITS and MFT. Please specify the detector option.");
     }
   }
@@ -207,7 +207,7 @@ void StfBuilderDevice::InitTask()
         "readout and not using RDHv6 or greater.");
       std::this_thread::sleep_for(1s); exit(-1);
     } else {
-      IDDLOG("READOUT INTERFACE: Configured detector: {}", ReadoutDataUtils::sSpecifiedDataOrigin.str);
+      IDDLOG("READOUT INTERFACE: Configured detector: {}", ReadoutDataUtils::sSpecifiedDataOrigin.as<std::string>());
     }
 
     if (ReadoutDataUtils::sRdhVersion == ReadoutDataUtils::RdhVersion::eRdhInvalid) {

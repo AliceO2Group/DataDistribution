@@ -166,8 +166,8 @@ void StfToDplAdapter::inspect() const
       // check origin
       if (lOrigin != lSplitDh->dataOrigin || lType != lSplitDh->dataDescription || lSubSpec != lSplitDh->subSpecification) {
         EDDLOG("DPL output: origin of the split-payload message is invalid. "
-          "[0]=<{}{}{}> [{}]=<{}{}{}>", lOrigin.str, lType.str, lSubSpec,
-          lSplitI, lSplitDh->dataOrigin.str, lSplitDh->dataDescription.str, lSplitDh->subSpecification);
+          "[0]=<{}{}{}> [{}]=<{}{}{}>", lOrigin.as<std::string>(), lType.as<std::string>(), lSubSpec,
+          lSplitI, lSplitDh->dataOrigin.as<std::string>(), lSplitDh->dataDescription.as<std::string>(), lSplitDh->subSpecification);
         break;
       }
 
@@ -291,7 +291,8 @@ void DplToStfAdapter::visit(SubTimeFrame& pStf)
   }
 
   if (!lStfHeaderFound) {
-    throw std::runtime_error("STF receive error: missing SubTimeFrame::Header missing_o2_hdr=" + std::string(gDataDescSubTimeFrame.str));
+    throw std::runtime_error("STF receive error: missing SubTimeFrame::Header missing_o2_hdr=" +
+      gDataDescSubTimeFrame.as<std::string>());
   }
 }
 

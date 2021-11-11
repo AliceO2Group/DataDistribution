@@ -172,8 +172,8 @@ struct EquipmentIdentifier {
   const std::string info() const
   {
     return fmt::format("{}/{}/{}",
-      std::string(mDataOrigin.str),
-      std::string(mDataDescription.str),
+      mDataOrigin.as<std::string>(),
+      mDataDescription.as<std::string>(),
       mSubSpecification);
   }
 };
