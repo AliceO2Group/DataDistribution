@@ -161,6 +161,7 @@ void StfSenderDevice::PreRun()
   if (!standalone() && I().mDiscoveryConfig) {
     auto& lStatus = I().mDiscoveryConfig->status();
     lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
+    lStatus.mutable_partition()->set_run_number(DataDistLogger::sRunNumber);
     I().mDiscoveryConfig->write();
   }
 

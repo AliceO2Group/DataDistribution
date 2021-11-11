@@ -171,6 +171,7 @@ void TfBuilderDevice::PreRun()
   // update running state
   auto& lStatus = mDiscoveryConfig->status();
   lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
+  lStatus.mutable_partition()->set_run_number(DataDistLogger::sRunNumber);
   mDiscoveryConfig->write();
 
   // make directory for the file sink

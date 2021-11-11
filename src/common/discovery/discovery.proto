@@ -47,15 +47,14 @@ message BasicInfo {
 }
 
 message PartitionInfo {
-  string environment_id     = 1;
-  // AliECS environment ID (required)
-  string partition_id       = 2;
-  // Partition ID. (required)
+  string environment_id = 1;    // AliECS environment ID (required)
+  string partition_id   = 2;    // Partition ID. (required)
+  uint64 run_number     = 3;
 }
 
 message TfSchedulerServiceConfigStatus {
-  BasicInfo   info                  = 1;
-  uint32      number_instances      = 2;
+  BasicInfo   info             = 1;
+  uint32      number_instances = 2;
 }
 
 message TfSchedulerInstanceConfigStatus {
