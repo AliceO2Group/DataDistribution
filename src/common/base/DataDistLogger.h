@@ -285,6 +285,22 @@ private:
   if(DataDistLogger::LogEnabled(severity)) DataDistLogger(severity)
 
 
+#define DDDLOG_ONCE(...) DDLOGF_ONCE(DataDistSeverity::debug, __VA_ARGS__)
+#define IDDLOG_ONCE(...) DDLOGF_ONCE(DataDistSeverity::info, __VA_ARGS__)
+#define WDDLOG_ONCE(...) DDLOGF_ONCE(DataDistSeverity::warn, __VA_ARGS__)
+#define EDDLOG_ONCE(...) DDLOGF_ONCE(DataDistSeverity::error, __VA_ARGS__)
+
+// Log with fmt using ratelimiting (per thread)
+#define DDLOGF_ONCE(severity, ...)                                                                                     \
+do {                                                                                                                   \
+  static thread_local bool sLogged__NoShadow = false;                                                                  \
+  if (!sLogged__NoShadow && DataDistLogger::LogEnabled(severity)) {                                                    \
+    o2::DataDistribution::DataDistLogger(severity, o2::DataDistribution::DataDistLogger::log_fmt{}, __VA_ARGS__);      \
+    sLogged__NoShadow = true;                                                                                          \
+  }                                                                                                                    \
+} while(0)
+
+
 #define DDDLOG(...) DDLOGF(DataDistSeverity::debug, __VA_ARGS__)
 #define IDDLOG(...) DDLOGF(DataDistSeverity::info, __VA_ARGS__)
 #define WDDLOG(...) DDLOGF(DataDistSeverity::warn, __VA_ARGS__)

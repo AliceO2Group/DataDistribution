@@ -125,7 +125,7 @@ void InterleavedHdrDataDeserializer::visit(SubTimeFrame& pStf)
     if (lDataMsg->GetSize() == 0) {
       DataHeader *lHdrPtr = reinterpret_cast<DataHeader*>(lHdrMsg->GetData());
       DDDLOG_RL(10000, "Received STF data payload with zero size. origin={} description={} subspec={}",
-        std::string(lHdrPtr->dataOrigin.str, 4), std::string(lHdrPtr->dataDescription.str, 16), lHdrPtr->subSpecification);
+        lHdrPtr->dataOrigin.as<std::string>(), lHdrPtr->dataDescription.as<std::string>(), lHdrPtr->subSpecification);
     }
 
     pStf.addStfData({ std::move(lHdrMsg), std::move(lDataMsg) });
@@ -221,6 +221,7 @@ void CoalescedHdrDataSerializer::visit(SubTimeFrame& pStf)
   lHdrPtr->runNumber = pStf.header().mRunNumber;
   lHdrPtr->payloadSerializationMethod = gSerializationMethodNone;
 
+  // pack the stf header
   auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
   if (!lDataMsg) {
     EDDLOG("Allocation error: Stf::Header. size={}", sizeof(SubTimeFrame::Header));
@@ -351,7 +352,7 @@ void CoalescedHdrDataDeserializer::visit(SubTimeFrame& pStf)
     if (lDataMsg->GetSize() == 0) {
       DataHeader *lHdrPtr = reinterpret_cast<DataHeader*>(lHdrMsg->GetData());
       DDDLOG_RL(10000, "Received STF data payload with zero size. origin={} description={} subspec={}",
-        std::string(lHdrPtr->dataOrigin.str, 4), std::string(lHdrPtr->dataDescription.str, 16), lHdrPtr->subSpecification);
+        lHdrPtr->dataOrigin.as<std::string>(), lHdrPtr->dataDescription.as<std::string>(), lHdrPtr->subSpecification);
     }
 
 #if !defined(NDEBUG)

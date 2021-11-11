@@ -377,8 +377,11 @@ void TfBuilderInput::StfPacingThread()
       if (lTfId > mMaxMergedTfId) {
         mStfMergeMap[lTfId].push_back(std::move(lStfInfo));
       } else {
-        EDDLOG_RL(1000, "StfPacingThread: Received STF ID is larger than the last built STF. stfs_id={} stf_id={} last_stf_id={}",
+        EDDLOG_RL(1000, "StfPacingThread: Received STF ID is smaller than the last built STF. stfs_id={} stf_id={} last_stf_id={}",
           lStfInfo.mStfSenderId, lTfId, mMaxMergedTfId);
+
+        // reordered or duplicated STF ? Cleanup the merge map.
+        mStfMergeMap.erase(lTfId);
       }
     }
     // wake up the merging thread
@@ -537,7 +540,10 @@ void TfBuilderInput::StfMergerThread()
 
     const auto lTfId = lTf->id();
 
-    mMaxMergedTfId = std::max(mMaxMergedTfId, lTfId);
+    { // Push the STF into the merger queue
+      std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
+      mMaxMergedTfId = std::max(mMaxMergedTfId, lTfId);
+    }
 
     // account the size of received TF
     mRpc->recordTfBuilt(*lTf);

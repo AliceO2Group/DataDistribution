@@ -69,6 +69,8 @@ bool SubTimeFrameReadoutBuilder::addHbFrames(
 
   if (!mStf) {
     mStf = std::make_unique<SubTimeFrame>(pHdr.mTimeFrameId);
+    mStf->updateRunNumber(pHdr.mRunNumber);
+
     mAcceptStfData = true;
     mFirstFiltered.clear();
   }
@@ -85,8 +87,6 @@ bool SubTimeFrameReadoutBuilder::addHbFrames(
       return false;
     }
   }
-
-  mStf->updateRunNumber(pHdr.mRunNumber);
 
   // filter empty trigger
   lRemoveBlocks.clear();
@@ -347,8 +347,8 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
         auto lDplHdrConst = o2::header::get<o2::framework::DataProcessingHeader*>(lHeader->GetData(), lHeader->GetSize());
 
         if (lDplHdrConst != nullptr) {
-            auto lDplHdr = const_cast<o2::framework::DataProcessingHeader*>(lDplHdrConst);
-            lDplHdr->startTime = pStf->header().mId;
+          auto lDplHdr = const_cast<o2::framework::DataProcessingHeader*>(lDplHdrConst);
+          lDplHdr->startTime = pStf->header().mId;
           lDplHdr->creation = pStf->header().mCreationTimeMs;
         } else {
           // make the stack with an DPL header

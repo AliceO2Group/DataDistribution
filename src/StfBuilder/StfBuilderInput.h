@@ -49,7 +49,7 @@ public:
 
   void StfReceiverThread();
   void StfBuilderThread();
-  void EquipmentBuilderThread(); // threshold scans
+  void TopologicalStfBuilderThread(); // threshold scans
   void StfSequencerThread();
 
  private:
