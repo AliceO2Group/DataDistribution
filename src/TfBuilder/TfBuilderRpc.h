@@ -29,6 +29,7 @@
 #include <ConcurrentQueue.h>
 
 #include <vector>
+#include <deque>
 #include <map>
 #include <thread>
 #include <mutex>
@@ -137,7 +138,7 @@ private:
   std::mutex mStfReqMapLock;
     std::condition_variable mStfReqMapCV;
     std::int64_t mNumReqInFlight = 0;
-    std::map<std::uint64_t, std::vector<StfRequests>> mStfRequestMap;
+    std::deque<std::pair<std::uint64_t, std::vector<StfRequests>> > mStfRequestDeque; // <tfid, stf_reuests>
 
   // monitor how long it takes to fetch stfs from each FLP
   std::mutex mStfDurationMapLock;
