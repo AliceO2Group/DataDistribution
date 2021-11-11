@@ -45,11 +45,11 @@ class SubTimeFrameReadoutBuilder
     const ReadoutSubTimeframeHeader& pHdr,
     std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen);
 
-
-  bool addEquipmentData(const o2::header::DataOrigin &pDataOrig,
+  std::optional<std::unique_ptr<SubTimeFrame>> addTopoStfData(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
     const ReadoutSubTimeframeHeader& pHdr,
-    std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen);
+    std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen,
+    const std::uint64_t pMaxNumMessages);
 
   std::optional<std::uint32_t> getCurrentStfId() const {
     return (mStf) ? std::optional<std::uint32_t>(mStf->header().mId) : std::nullopt;
@@ -71,6 +71,21 @@ class SubTimeFrameReadoutBuilder
     return (lStf) ? std::optional<std::unique_ptr<SubTimeFrame>>(std::move(lStf)) : std::nullopt;
   }
 
+  // fo aggregation of threshold scan data
+  std::optional<std::unique_ptr<SubTimeFrame>> getTopoStf() {
+    if (mTopoStfMap.empty()) {
+      return std::nullopt;
+    }
+
+    const auto lBegin = mTopoStfMap.begin();
+    std::unique_ptr<SubTimeFrame> lStf = std::move(lBegin->second.second);
+
+    mTopoStfMap.erase(lBegin);
+
+    mAcceptStfData = true;
+    return (lStf) ? std::optional<std::unique_ptr<SubTimeFrame>>(std::move(lStf)) : std::nullopt;
+  }
+
   inline void stop() {
     mRunning = false;
     mMemRes.stop();
@@ -80,6 +95,10 @@ class SubTimeFrameReadoutBuilder
   bool mRunning = true;
 
   std::unique_ptr<SubTimeFrame> mStf;
+
+  // Build Stfs for topological scans
+  std::unordered_map<header::DataHeader::SubSpecificationType, std::pair<std::uint64_t, std::unique_ptr<SubTimeFrame>> > mTopoStfMap;
+
   bool mAcceptStfData = true;        // toggle on allocation issues
 
   // filtering: keep info if the first HBFrame is already kept back

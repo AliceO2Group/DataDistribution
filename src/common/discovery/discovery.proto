@@ -69,6 +69,11 @@ message TfSchedulerInstanceConfigStatus {
             PartitionState  partition_state     = 6;
 }
 
+message StfBuilderConfigStatus {
+  BasicInfo           info          = 1;
+  PartitionInfo       partition     = 2;
+}
+
 message StfSenderSocketMap {
   message StfSenderSocket {
     string peer_id          = 1;

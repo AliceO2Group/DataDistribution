@@ -182,15 +182,11 @@ public:
   std::string getEndpointOption(const FairMQProgOptions& pFMQProgOpt)
   {
     auto lOpt = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryEndpoint);
-    if (lOpt.empty()) {
-      WDDLOG("Endpoint for DataDistribution discovery must be provided.");
-      WDDLOG("Connection to local endpoint will be attempted... Not suitable for production!");
-    }
     return lOpt;
   }
 
   static
-  std::string getIdOption(const ProcessType pProcType, const FairMQProgOptions& pFMQProgOpt)
+  std::string getIdOption(const ProcessType pProcType, const FairMQProgOptions& pFMQProgOpt, const bool pRequired = true)
   {
     // check cmdline first
     {
@@ -200,8 +196,8 @@ public:
         return lId;
       }
 
-      if (pProcType == ProcessType::StfSender) {
-        const auto lErrorMsg = fmt::format("Parameter <{}> for StfSender must be provided on command line.",
+      if (pRequired && (pProcType == ProcessType::StfSender)) {
+        const auto lErrorMsg = fmt::format("Parameter '{}' for StfSender must be provided on command line.",
           OptionKeyDiscoveryId);
         EDDLOG(lErrorMsg);
         throw std::invalid_argument(lErrorMsg);
@@ -227,9 +223,9 @@ public:
   std::optional<std::string> getPartitionOption(const FairMQProgOptions& pFMQProgOpt)
   {
     // check cmdline first
-    std::string lPartId = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryPartition);
+    const std::string lPartId = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryPartition);
     if (!lPartId.empty()) {
-      IDDLOG("Parameter <{}> provided on command line. value={}", OptionKeyDiscoveryPartition, lPartId);
+      IDDLOG("Parameter '{}' provided on command line. value={}", OptionKeyDiscoveryPartition, lPartId);
       return lPartId;
     }
     return std::nullopt;

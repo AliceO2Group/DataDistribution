@@ -170,6 +170,33 @@ void StfBuilderDevice::InitTask()
     std::this_thread::sleep_for(1s); exit(-1);
   }
 
+  // Discovery. Verify other parameters when running online and !standalone
+  {
+    // Require consul and discovery options when not using file source or running standalone
+    const bool lConsulRequired = !(I().mFileSource->enabled() || I().mStandalone);
+    const auto lConsulEndpoint = Config::getEndpointOption(*GetConfig());
+    I().mDiscoveryConfig = std::make_shared<ConsulStfBuilder>(ProcessType::StfBuilder, lConsulEndpoint, lConsulRequired);
+    if (I().mDiscoveryConfig->enabled()) {
+      auto& lStatus = I().mDiscoveryConfig->status();
+      lStatus.mutable_info()->set_type(StfBuilder);
+      lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
+      lStatus.mutable_info()->set_process_id(Config::getIdOption(StfBuilder, *GetConfig(), lConsulRequired));
+
+      // wait for "partition-id"
+      while (!Config::getPartitionOption(*GetConfig())) {
+        WDDLOG_RL(1000, "StfBuilder waiting on 'discovery-partition' config parameter.");
+        std::this_thread::sleep_for(250ms);
+      }
+      if (I().mPartitionId.empty()) {
+        WDDLOG("StfBuilder 'discovery-partition' parameter not set.");
+        std::this_thread::sleep_for(1s); exit(-1);
+      }
+      I().mPartitionId = Config::getPartitionOption(*GetConfig()).value();
+      lStatus.mutable_partition()->set_partition_id(I().mPartitionId);
+      I().mDiscoveryConfig->write();
+    }
+  }
+
   I().mState.mRunning = true;
 
   // make sure we have detector if not using files
@@ -249,7 +276,7 @@ void StfBuilderDevice::InitTask()
 
   // start a thread for readout process
   if (!I().mFileSource->enabled()) {
-    I().mReadoutInterface->start(ReadoutDataUtils::sRunType == ReadoutDataUtils::RunType::ePhysics);
+    I().mReadoutInterface->start(ReadoutDataUtils::sRunType == ReadoutDataUtils::RunType::ePhysics, I().mDiscoveryConfig);
   }
 
   IDDLOG("InitTask() done... ");
@@ -413,7 +440,60 @@ void StfBuilderDevice::StfOutputThread()
   DDDLOG("Exiting StfOutputThread...");
 }
 
+void StfBuilderDevice::PreRun()
+{
+  // update running state
+  if (I().mDiscoveryConfig->enabled()) {
+    auto& lStatus = I().mDiscoveryConfig->status();
+    lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
+    I().mDiscoveryConfig->write();
+  }
 
+  if (I().mReadoutInterface) {
+    I().mReadoutInterface->setRunningState(true);
+  }
+
+  I().mState.mPaused = false;
+  if (I().mFileSource) {
+    I().mFileSource->resume();
+    IDDLOG("Restarting file source.");
+  }
+  I().mRestartRateCounter = true;
+
+  // make directory for file sink
+  if (I().mFileSink) {
+    I().mFileSink->makeDirectory();
+  }
+
+  // enable monitoring
+  DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, GetConfig()->GetProperty<std::string>("discovery-partition", "-"));
+
+  IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
+}
+
+void StfBuilderDevice::PostRun() {
+  if (I().mReadoutInterface) {
+    I().mReadoutInterface->setRunningState(false);
+  }
+
+  I().mState.mPaused = true;
+  if (I().mFileSource) {
+    I().mFileSource->pause();
+    IDDLOG("Pausing file source.");
+  }
+
+  // update running state
+  if (I().mDiscoveryConfig->enabled()) {
+    auto& lStatus = I().mDiscoveryConfig->status();
+    lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
+    I().mDiscoveryConfig->write();
+  }
+
+  // disable monitoring
+  DataDistMonitor::disable_datadist();
+
+  IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
+}
 
 bool StfBuilderDevice::ConditionalRun()
 {

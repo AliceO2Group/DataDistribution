@@ -128,6 +128,7 @@ STF_BUILDER+=" --detector-rdh 4"
 STF_BUILDER+=" --monitoring-interval=1.0"
 STF_BUILDER+=" --monitoring-log"
 STF_BUILDER+=" --discovery-partition=$PARTITION"
+STF_BUILDER+=" --discovery-endpoint=http://localhost:8500"
 # STF_BUILDER+=" --run-type=topology"
 
 if [[ ! -z $STF_BUILDER_DPL_CHAN ]]; then
@@ -149,6 +150,7 @@ fi
 STF_SENDER="StfSender"
 STF_SENDER+=" --discovery-net-if=$FLP_NETIF"
 STF_SENDER+=" --discovery-partition=$PARTITION"
+STF_SENDER+=" --discovery-endpoint=http://localhost:8500"
 STF_SENDER+=" --mq-config $chainConfig"
 STF_SENDER+=" --monitoring-interval=2.0"
 STF_SENDER+=" --monitoring-log"
@@ -156,6 +158,7 @@ STF_SENDER+=" --monitoring-log"
 TF_BUILDER="TfBuilder"
 TF_BUILDER+=" --discovery-net-if=$EPN_NETIF"
 TF_BUILDER+=" --discovery-partition=$PARTITION"
+TF_BUILDER+=" --discovery-endpoint=http://localhost:8500"
 TF_BUILDER+=" --mq-config $chainConfig"
 TF_BUILDER+=" --monitoring-interval=5.0"
 TF_BUILDER+=" --monitoring-log"
@@ -179,6 +182,7 @@ fi
 
 TF_SCHEDULER="TfScheduler"
 TF_SCHEDULER+=" --discovery-net-if=$EPN_NETIF"
+TF_SCHEDULER+=" --discovery-endpoint=http://localhost:8500"
 TF_SCHEDULER+=" --monitoring-interval=2.0"
 TF_SCHEDULER+=" --monitoring-log"
 

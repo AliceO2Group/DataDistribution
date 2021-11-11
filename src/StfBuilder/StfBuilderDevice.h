@@ -33,6 +33,7 @@
 #include <stdexcept>
 
 #include <DataDistLogger.h>
+#include <ConfigConsul.h>
 
 namespace o2
 {
@@ -108,47 +109,8 @@ class StfBuilderDevice : public DataDistDevice
   virtual bool ConditionalRun() override final;
 
   // stop/restart file source
-  virtual void PreRun() override final {
-
-    if (I().mReadoutInterface) {
-      I().mReadoutInterface->setRunningState(true);
-    }
-
-    I().mState.mPaused = false;
-    if (I().mFileSource) {
-      I().mFileSource->resume();
-      IDDLOG("Restarting file source.");
-    }
-    I().mRestartRateCounter = true;
-
-    // make directory for file sink
-    if (I().mFileSink) {
-      I().mFileSink->makeDirectory();
-    }
-
-    // enable monitoring
-    DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, GetConfig()->GetProperty<std::string>("discovery-partition", "-"));
-
-    IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
-  }
-
-  virtual void PostRun() override final {
-
-    if (I().mReadoutInterface) {
-      I().mReadoutInterface->setRunningState(false);
-    }
-
-    I().mState.mPaused = true;
-    if (I().mFileSource) {
-      I().mFileSource->pause();
-      IDDLOG("Pausing file source.");
-    }
-
-    // disable monitoring
-    DataDistMonitor::disable_datadist();
-
-    IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
-  }
+  virtual void PreRun() override final;
+  virtual void PostRun() override final;
 
   void StfOutputThread();
   void InfoThread();
@@ -168,6 +130,9 @@ class StfBuilderDevice : public DataDistDevice
     std::int64_t mMaxStfsInPipeline;
     std::uint64_t mMaxBuiltStfs;
     bool mPipelineLimit;
+
+    /// Discovery configuration
+    std::shared_ptr<ConsulStfBuilder> mDiscoveryConfig;
 
     /// Input Interface handler
     std::unique_ptr<StfInputInterface> mReadoutInterface;

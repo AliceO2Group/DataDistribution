@@ -45,6 +45,7 @@ void StfSenderDevice::Init()
 
   I().mFileSink = std::make_unique<SubTimeFrameFileSink>(*this, *mI, eFileSinkIn, eFileSinkOut);
   I().mOutputHandler = std::make_unique<StfSenderOutput>(*this, *mI);
+  I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
 }
 
 void StfSenderDevice::Reset()
@@ -63,39 +64,39 @@ void StfSenderDevice::InitTask()
   DataDistLogger::SetThreadName("stfs-main");
 
   I().mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
-  I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
 
   // start monitoring
   DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfSender, GetConfig()->GetProperty<std::string>("monitoring-backend"));
   DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
   DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
 
-  // partition id is used for monitoring.
+
   I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("-");
 
-  if (!standalone()) {
-    // Discovery
-    I().mDiscoveryConfig = std::make_shared<ConsulStfSender>(ProcessType::StfSender, Config::getEndpointOption(*GetConfig()));
+  { // Discovery
+    const bool lConsulRequired = !standalone();
+    I().mDiscoveryConfig = std::make_shared<ConsulStfSender>(ProcessType::StfSender, Config::getEndpointOption(*GetConfig()), lConsulRequired);
 
-    auto& lStatus = I().mDiscoveryConfig->status();
-    lStatus.mutable_info()->set_type(StfSender);
-    lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
-    lStatus.mutable_info()->set_process_id(Config::getIdOption(StfSender, *GetConfig()));
-    lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
+    if (I().mDiscoveryConfig->enabled()) {
+      auto& lStatus = I().mDiscoveryConfig->status();
+      lStatus.mutable_info()->set_type(StfSender);
+      lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
+      lStatus.mutable_info()->set_process_id(Config::getIdOption(StfSender, *GetConfig(), lConsulRequired));
+      lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
+      // wait for "partition-id"
+      while (!Config::getPartitionOption(*GetConfig())) {
+        WDDLOG_RL(1000, "StfSender waiting on 'discovery-partition' config parameter.");
+        std::this_thread::sleep_for(250ms);
+      }
 
-    // wait for "partition-id"
-    while (!Config::getPartitionOption(*GetConfig())) {
-      WDDLOG("StfSender waiting on 'discovery-partition' config parameter.");
-      std::this_thread::sleep_for(1s);
+      if (I().mPartitionId.empty()) {
+        WDDLOG("StfSender 'discovery-partition' parameter not set.");
+        std::this_thread::sleep_for(1s); exit(-1);
+      }
+
+      lStatus.mutable_partition()->set_partition_id(I().mPartitionId);
+      I().mDiscoveryConfig->write();
     }
-
-    if (I().mPartitionId.empty()) {
-      WDDLOG("StfSender 'discovery-partition' parameter not set.");
-      std::this_thread::sleep_for(1s); exit(-1);
-    }
-
-    lStatus.mutable_partition()->set_partition_id(I().mPartitionId);
-    I().mDiscoveryConfig->write();
   }
 
   try {

@@ -17,6 +17,7 @@
 #include <SubTimeFrameBuilder.h>
 #include <ConcurrentQueue.h>
 #include <Utilities.h>
+#include <ConfigConsul.h>
 
 #include <Headers/DataHeader.h>
 
@@ -30,6 +31,8 @@ class StfBuilderDevice;
 
 class StfInputInterface
 {
+  // consul options
+  static constexpr std::string_view cNumPagesInTopologicalStfKey = "NumPagesInTopologicalStf"; // default 128
 
 public:
   static constexpr uint8_t sReadoutInterfaceVersion = 2;
@@ -38,8 +41,7 @@ public:
   StfInputInterface(StfBuilderDevice &pStfBuilderDev)
     : mDevice(pStfBuilderDev)
   { }
-
-  void start(bool pBuildStf);
+  void start(bool pBuildStf, std::shared_ptr<ConsulStfBuilder> pDiscoveryConfig);
   void stop();
 
   void setRunningState(bool pRunning) {
@@ -55,6 +57,9 @@ public:
  private:
   /// Main SubTimeBuilder O2 device
   StfBuilderDevice &mDevice;
+
+  /// Discovery configuration
+  std::shared_ptr<ConsulStfBuilder> mDiscoveryConfig;
 
   /// Thread for the input channel
   bool mRunning = false;

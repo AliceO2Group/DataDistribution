@@ -61,9 +61,14 @@ Make sure that only a single instance of the proxy is started.
 
 ## Consul parameters (tuning option)
 
+### StfBuilder
+  **NumPagesInTopologicalStf** (`epn/data-dist/parameters/StfBuilder/NumPagesInTopologicalStf`)
+  Set how many pages are to be aggregated for each link in the topological data distribution mode. Default is 128.
+
+
 ### TfScheduler
-  *MaxNumTfInBuilding* (`epn/data-dist/parameters/TfScheduler/MaxNumTfInBuilding`)
+  **MaxNumTfInBuilding** (`epn/data-dist/parameters/TfScheduler/MaxNumTfInBuilding`)
   Override the number of TFs each TfBuilder is allowed to build concurrently. This variable can be increased if a small number of EPNs is used.
 
-  *StaleStfTimeoutMs* (`epn/data-dist/parameters/TfScheduler/StaleStfTimeoutMs`)
+  **StaleStfTimeoutMs** (`epn/data-dist/parameters/TfScheduler/StaleStfTimeoutMs`)
   Timeout (milliseconds) at which point the non-complete TFs will be scheduled for building or deletion. Default is 5000 (5s)
