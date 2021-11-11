@@ -46,7 +46,7 @@ void StfInputInterface::start(bool pBuildStf)
   if (pBuildStf) {
     mBuilderThread = create_thread_member("stfb_builder", &StfInputInterface::StfBuilderThread, this);
   } else  {
-    mBuilderThread = create_thread_member("equip_builder", &StfInputInterface::EquipmentBuilderThread, this);
+    mBuilderThread = create_thread_member("equip_builder", &StfInputInterface::TopologicalStfBuilderThread, this);
   }
 
   mInputThread = create_thread_member("stfb_input", &StfInputInterface::StfReceiverThread, this);
@@ -425,7 +425,7 @@ void StfInputInterface::StfBuilderThread()
 
 
 /// StfBuilding thread for ITS/MFT threshold scan
-void StfInputInterface::EquipmentBuilderThread()
+void StfInputInterface::TopologicalStfBuilderThread()
 {
   using namespace std::chrono_literals;
   using hres_clock = std::chrono::high_resolution_clock;

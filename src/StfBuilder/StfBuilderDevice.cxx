@@ -58,7 +58,6 @@ StfBuilderDevice::~StfBuilderDevice()
       mI.reset();
     }
 
-
     mMemI.reset();
   }
 }
@@ -98,7 +97,7 @@ void StfBuilderDevice::InitTask()
   I().mMaxStfsInPipeline = GetConfig()->GetValue<std::int64_t>(OptionKeyMaxBufferedStfs);
   I().mMaxBuiltStfs = GetConfig()->GetValue<std::uint64_t>(OptionKeyMaxBuiltStfs);
 
-  // partition id is used for monitoring.
+  // partition id
   I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("-");
 
   // start monitoring

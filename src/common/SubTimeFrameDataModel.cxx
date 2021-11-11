@@ -98,8 +98,14 @@ std::vector<EquipmentIdentifier> SubTimeFrame::getEquipmentIdentifiers() const
 
 void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf, const std::string &mStfSenderId)
 {
-  if (pStf->header().mOrigin == Header::Origin::eNull) {
+  // incoming empty STF
+  if ((pStf->header().mOrigin == Header::Origin::eNull) && (pStf->getDataSize() == 0)) {
     return; // nothing to do for an empty STF
+  }
+
+  // are we starting with an empty STF? ... use the next valied one for the header
+  if (mHeader.mOrigin == Header::Origin::eNull) {
+    mHeader = pStf->header();
   }
 
   // make sure header values match
