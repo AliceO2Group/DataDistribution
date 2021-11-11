@@ -404,10 +404,6 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
 
   if (pStfInfo.stf_source() == StfSource::TOPOLOGICAL) {
     assert (pStfInfo.stf_source_info_size() == 1);
-
-    auto &lStfSourceInfo = pStfInfo.stf_source_info()[0]; // only one is valid
-    DDDLOG_GRL(10000, "Received a topological STF info: {}/{}", lStfSourceInfo.data_origin(), lStfSourceInfo.data_subspec());
-
     return addTopologyStfInfo(pStfInfo, pResponse);
   }
 

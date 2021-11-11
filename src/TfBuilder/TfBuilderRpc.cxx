@@ -318,10 +318,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
   // add the vector to the stf request map
   {
     std::scoped_lock lLock(mStfReqMapLock);
-
-    assert (mStfRequestMap.count(lTfId) == 0);
-
-    mStfRequestMap.emplace(lTfId, std::move(lStfRequestVector));
+    mStfRequestDeque.emplace_back(lTfId, std::move(lStfRequestVector));
   }
 
   mStfReqMapCV.notify_one();
@@ -349,12 +346,12 @@ void TfBuilderRpcImpl::StfRequestThread()
 
       DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);
 
-      if (!mRunning || mStfRequestMap.empty() || mNumReqInFlight >= mMaxNumReqInFlight) {
+      if (!mRunning || mStfRequestDeque.empty() || mNumReqInFlight >= mMaxNumReqInFlight) {
         mStfReqMapCV.wait_for(lLock, 50ms);
         continue; // reevaluate the conditions
       }
 
-      auto &lReqVector = mStfRequestMap.begin()->second;
+      auto &lReqVector = mStfRequestDeque.begin()->second;
       assert (!lReqVector.empty());
 
       // save request for outside the lock
@@ -388,7 +385,7 @@ void TfBuilderRpcImpl::StfRequestThread()
 
       // are we done with the TF
       if (lReqVector.empty()) {
-        mStfRequestMap.erase(mStfRequestMap.cbegin());
+        mStfRequestDeque.pop_front();
       }
     }
 
