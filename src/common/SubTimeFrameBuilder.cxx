@@ -435,7 +435,7 @@ FairMQMessagePtr TimeFrameBuilder::newHeaderMessage(const char *pData, const std
     // Get the DH
     DataHeader *lDataHdr = const_cast<DataHeader*>(reinterpret_cast<const DataHeader*>(pData));
     if (lDataHdr->description != DataHeader::sHeaderType) {
-      EDDLOG_RL(1000, "TimeFrameBuilder: Unknown header type {}", std::string(lDataHdr->description.str));
+      EDDLOG_RL(1000, "TimeFrameBuilder: Unknown header type {}", lDataHdr->description.as<std::string>());
       return nullptr;
     }
 
