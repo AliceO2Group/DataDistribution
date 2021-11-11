@@ -49,26 +49,39 @@ template<typename T>
 class ConsulConfig : public Config {
 
 public:
-
   ConsulConfig() = delete;
 
-  ConsulConfig(const ProcessType pProcessType, const std::string &pEndpoint)
+  ConsulConfig(const ProcessType pProcessType, const std::string &pEndpoint, const bool pRequired = true)
   : Config(pProcessType), mEndpoint(pEndpoint)
   {
-    if (mEndpoint.empty()) {
-      mEndpoint = "http://127.0.0.1:8500";
+    bool lLocalConsul = false;
+
+    if (pEndpoint.empty()) {
+      if (pRequired) {
+        EDDLOG("Consul endpoint is mandatory for {}.", pProcessType.to_string());
+        throw std::invalid_argument("discovery-endpoint parameter is not provided");
+      }
+
+      IDDLOG("Not connecting to a consul instance.");
+      mConsul = nullptr;
+      return;
     }
 
     try {
       mConsul = std::make_unique<ppconsul::Consul>(mEndpoint);
       IDDLOG("Connecting to Consul. endpoint={}", mEndpoint);
-    } catch (std::exception &err) {
-      EDDLOG("Error while connecting to Consul. endpoint={} what={}", mEndpoint, err.what());
-    }
 
-    // tunable thread
-    mPollThread = create_thread_member("consul_params", &ConsulConfig::ConsulPollingThread, this);
+      // thread for fetching the tunables
+      mPollThread = create_thread_member("consul_params", &ConsulConfig::ConsulPollingThread, this);
+    } catch (std::exception &err) {
+      mConsul = nullptr;
+      if (!lLocalConsul) {
+        EDDLOG("Error while connecting to Consul. endpoint={} what={}", mEndpoint, err.what());
+      }
+    }
   }
+
+  bool enabled() const { return (mConsul != nullptr); }
 
   ConsulConfig(ConsulConfig &&) = default;
 
@@ -76,7 +89,7 @@ public:
 
   bool write(bool pInitial = false)
   {
-    if (!createKeyPrefix()) {
+    if (!mConsul || !createKeyPrefix()) {
       return false;
     }
 
@@ -113,13 +126,12 @@ public:
       mPollThread.join();
     }
 
-    if (mConsulKey.empty()) {
+    if (!mConsul || mConsulKey.empty()) {
       return; // nothing was written
     }
 
     {
       std::scoped_lock lLock(mConsulLock);
-
       try {
         Kv kv(*mConsul);
         DDDLOG("Erasing DataDistribution discovery key: {}", mConsulKey);
@@ -139,6 +151,10 @@ private:
 
   bool write_string(const std::string &lData, const bool pInitial = false)
   {
+    if (!mConsul) {
+      return false;
+    }
+
     std::unique_ptr<ppconsul::kv::Kv> kv;
 
     std::scoped_lock lLock(mConsulLock);
@@ -202,6 +218,10 @@ private:
       return "epn/data-dist/parameters/TfScheduler/"s;
     }
 
+    if constexpr (std::is_same_v<T, StfBuilderConfigStatus>) {
+      return "epn/data-dist/parameters/StfBuilder/"s;
+    }
+
     if constexpr (std::is_same_v<T, StfSenderConfigStatus>) {
       return "epn/data-dist/parameters/StfSender/"s;
     }
@@ -258,7 +278,7 @@ private:
           }
         }
       } catch (std::exception &e) {
-        EDDLOG("Consul kv param retrieve error. what={}", e.what());
+        WDDLOG_ONCE("Consul kv param retrieve error. what={}", e.what());
       }
     }
 
@@ -594,6 +614,9 @@ using ConsulTfSchedulerInstance = ConsulImpl::ConsulConfig<TfSchedulerInstanceCo
 
 // TfSchedulerService
 using ConsulTfSchedulerService = ConsulImpl::ConsulConfig<TfSchedulerServiceConfigStatus>;
+
+// StfBuilder
+using ConsulStfBuilder = ConsulImpl::ConsulConfig<StfBuilderConfigStatus>;
 
 // StfSender
 using ConsulStfSender = ConsulImpl::ConsulConfig<StfSenderConfigStatus>;

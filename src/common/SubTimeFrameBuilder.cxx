@@ -226,34 +226,38 @@ bool SubTimeFrameReadoutBuilder::addHbFrames(
   return true;
 }
 
-bool SubTimeFrameReadoutBuilder::addEquipmentData(
+std::optional<std::unique_ptr<SubTimeFrame>> SubTimeFrameReadoutBuilder::addTopoStfData(
   const o2::header::DataOrigin &pDataOrig,
   const o2::header::DataHeader::SubSpecificationType pSubSpecification,
   const ReadoutSubTimeframeHeader& pHdr,
-  std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen)
+  std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen,
+  const std::uint64_t pMaxNumMessages)
 {
   static uint32_t sTfId = 1;
 
   if (!mRunning) {
     WDDLOG("Adding HBFrames while STFBuilder is not running!");
-    return false;
+    return std::nullopt;
   }
 
   if (!mAcceptStfData) {
-    return false;
+    return std::nullopt;
   }
 
-  if (!mStf) {
-    mStf = std::make_unique<SubTimeFrame>(sTfId);
+  auto &lStftuple = mTopoStfMap[pSubSpecification];
+  auto &lStfNumMessages = lStftuple.first;
+  auto &lStf = lStftuple.second;
+
+  if (!lStf) {
+    lStf = std::make_unique<SubTimeFrame>(sTfId);
+    lStfNumMessages = 0;
     sTfId++;
-    mFirstFiltered.clear();
-  }
 
-  if (pHdr.mTimeframeOrbitFirst != 0) {
-    mStf->updateFirstOrbit(pHdr.mTimeframeOrbitFirst);
+    lStf->updateRunNumber(pHdr.mRunNumber);
+    if (pHdr.mTimeframeOrbitFirst != 0) {
+      lStf->updateFirstOrbit(pHdr.mTimeframeOrbitFirst);
+    }
   }
-
-  mStf->updateRunNumber(pHdr.mRunNumber);
 
   DataHeader lDataHdr(
     o2::header::gDataDescriptionRawData,
@@ -269,9 +273,11 @@ bool SubTimeFrameReadoutBuilder::addEquipmentData(
     lDataHdr.payloadSize = pHbFramesBegin[i]->GetSize();
 
     if (mDplEnabled) {
+      auto lDplHdr = o2::framework::DataProcessingHeader{lStf->header().mId};
+      lDplHdr.creation = lStf->header().mCreationTimeMs;
       auto lStack = Stack(
         lDataHdr,
-        o2::framework::DataProcessingHeader{mStf->header().mId}
+        lDplHdr
       );
 
       lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
@@ -281,20 +287,29 @@ bool SubTimeFrameReadoutBuilder::addEquipmentData(
 
     if (!lHdrMsg) {
       WDDLOG_RL(1000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
-
       // clear data of the partial STF
       mAcceptStfData = false;
-      mStf->clear();
+      lStf->clear();
 
-      return false;
+      return std::nullopt;
     }
 
-    mStf->addStfData(lDataHdr,
-      SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFramesBegin[i]) }
-    );
+    lStf->addStfData(lDataHdr, SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFramesBegin[i]) } );
+    lStfNumMessages += 1;
   }
 
-  return true;
+  if (lStfNumMessages >= pMaxNumMessages) {
+    lStf->setOrigin(SubTimeFrame::Header::Origin::eReadoutTopology);
+    std::optional<std::unique_ptr<SubTimeFrame>> lRetStf = std::move(lStf);
+
+    IDDLOG_RL(1000, "addTopoStfData: leaving and returning STF: numMessages={}", lStfNumMessages);
+    lStfNumMessages = 0;
+    return lRetStf;
+  }
+
+  IDDLOG_RL(1000, "addTopoStfData: leaving without returning STF: numMessages={}", lStfNumMessages);
+
+  return std::nullopt;
 }
 
 

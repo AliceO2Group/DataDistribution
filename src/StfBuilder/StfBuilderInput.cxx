@@ -16,6 +16,7 @@
 
 #include <SubTimeFrameBuilder.h>
 #include <Utilities.h>
+#include <ConfigConsul.h>
 
 #include <DataDistLogger.h>
 
@@ -29,10 +30,11 @@
 namespace o2::DataDistribution
 {
 
-void StfInputInterface::start(bool pBuildStf)
+void StfInputInterface::start(bool pBuildStf, std::shared_ptr<ConsulStfBuilder> pStfBuilderConfig)
 {
   mRunning = true;
   mBuildStf = pBuildStf;
+  mDiscoveryConfig = pStfBuilderConfig;
 
   mBuilderInputQueue = std::make_unique<ConcurrentFifo<std::vector<FairMQMessagePtr>>>();
   mStfBuilder = std::make_unique<SubTimeFrameReadoutBuilder>(mDevice.MemI(), mDevice.dplEnabled());
@@ -457,10 +459,22 @@ void StfInputInterface::TopologicalStfBuilderThread()
   // Stf builder
   SubTimeFrameReadoutBuilder &lStfBuilder = *mStfBuilder;
 
-  // insert and mask the feeid
-  auto lInsertWithFeeIdMasking = [&lStfBuilder, lFeeIdMask] (const header::DataOrigin &pDataOrigin,
-    const header::DataHeader::SubSpecificationType &pSubSpec, const ReadoutSubTimeframeHeader &pRdoHeader,
-    const FairMQParts::iterator pStartHbf, const std::size_t pInsertCnt) {
+  // get number of pages for per link aggregation
+  uint64_t lNumPagesInThresholdScanStf = std::clamp(
+    mDiscoveryConfig->getUInt64Param(cNumPagesInTopologicalStfKey, 128),
+    std::uint64_t(1),
+    std::uint64_t(50000)
+  );
+
+  IDDLOG("Aggregating {} pages for each link in topological STF building.", lNumPagesInThresholdScanStf);
+
+  // insert and mask the feeid. Return the Stf if aggregation is reached
+  auto lInsertTopoWithFeeIdMasking = [&lStfBuilder, lFeeIdMask, &lNumPagesInThresholdScanStf] (
+    const header::DataOrigin &pDataOrigin,
+    const header::DataHeader::SubSpecificationType &pSubSpec,
+    const ReadoutSubTimeframeHeader &pRdoHeader,
+    const FairMQParts::iterator pStartHbf,
+    const std::size_t pInsertCnt) {
 
     // mask the subspecification if the fee mode is used
     auto lMaskedSubspec = pSubSpec;
@@ -468,32 +482,44 @@ void StfInputInterface::TopologicalStfBuilderThread()
       lMaskedSubspec &= lFeeIdMask;
     }
 
-    lStfBuilder.addEquipmentData(pDataOrigin, lMaskedSubspec, pRdoHeader, pStartHbf, pInsertCnt);
-
-    return pInsertCnt;
+    return lStfBuilder.addTopoStfData(pDataOrigin, lMaskedSubspec, pRdoHeader, pStartHbf, pInsertCnt, lNumPagesInThresholdScanStf);
   };
 
   const auto cStfDataWaitFor = 500ms;
   std::chrono::time_point<hres_clock, std::chrono::duration<double>> lStartSec = hres_clock::now();
 
-  while (mRunning) {
+  auto queueStf = [&] (std::unique_ptr<SubTimeFrame> pStf) {
+    static std::uint64_t sStfId = 0;
+    if (pStf) {
+      // make sure we queue STFs in ascending order
+      sStfId += 1;
+      pStf->updateId(sStfId);
+      pStf->setOrigin(SubTimeFrame::Header::Origin::eReadoutTopology);
 
-    // Lambda for completing the Stf
-    auto finishBuildingCurrentStf = [&]() {
-      // Finished: queue the current STF and start a new one
-      if (auto lStf = lStfBuilder.getStf(); lStf.has_value()) {
-        // start the new STF
-        (*lStf)->setOrigin(SubTimeFrame::Header::Origin::eReadoutTopology);
-
-        mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
-        {
-          auto lNow = hres_clock::now();
-          std::chrono::duration<double> lTimeDiff = lNow - lStartSec;
-          lStartSec = lNow;
-          DDMON("stfbuilder", "stf_input.rate", (1.0 / lTimeDiff.count()));
-        }
+      mDevice.I().queue(eStfBuilderOut, std::move(pStf));
+      {
+        auto lNow = hres_clock::now();
+        std::chrono::duration<double> lTimeDiff = lNow - lStartSec;
+        lStartSec = lNow;
+        DDMON("stfbuilder", "stf_input.rate", (1.0 / lTimeDiff.count()));
       }
-    };
+    }
+  };
+
+  // Lambda for completing the Stf
+  auto finishBuildingCurrentStfs = [&]() {
+    // Finished: queue the current STF and start a new one
+    while (true) {
+      auto lStfOpt = lStfBuilder.getTopoStf();
+      if (!lStfOpt) {
+        break;
+      }
+      // queue if not null
+      queueStf(std::move(*lStfOpt));
+    }
+  };
+
+  while (mRunning) {
 
     // Equipment ID for the HBFrames (from the header)
     lReadoutMsgs.clear();
@@ -503,8 +529,15 @@ void StfInputInterface::TopologicalStfBuilderThread()
     if (!lRet && mRunning) {
       if (lStarted) {
         // finish on a timeout
-        finishBuildingCurrentStf();
+        finishBuildingCurrentStfs();
       }
+      // update config
+      lNumPagesInThresholdScanStf = std::clamp(
+        mDiscoveryConfig->getUInt64Param(cNumPagesInTopologicalStfKey, 128),
+        std::uint64_t(1),
+        std::uint64_t(50000)
+      );
+
       continue;
     } else if (!lRet && !mRunning) {
       break;
@@ -554,10 +587,10 @@ void StfInputInterface::TopologicalStfBuilderThread()
     std::size_t lInsertCnt = lReadoutMsgs.size() - 1;
 
     // insert all HBFs
-    lInsertWithFeeIdMasking(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
-
-    // finish and send the STF
-    finishBuildingCurrentStf();
+    auto lStfOpt = lInsertTopoWithFeeIdMasking(lDataOrigin, lSubSpecification, lReadoutHdr, lStartHbf, lInsertCnt);
+    if (lStfOpt) {
+      queueStf(std::move(*lStfOpt));
+    }
   }
 
   DDDLOG("Exiting EquipmentBuilderThread thread.");
