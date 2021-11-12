@@ -44,6 +44,8 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
 
   void sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf);
 
+  void sendEosToDpl();
+
   inline void stop() { mRunning = false; }
 
  protected:

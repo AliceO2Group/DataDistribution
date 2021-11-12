@@ -143,8 +143,9 @@ class StfBuilderDevice : public DataDistDevice
     /// Internal threads
     std::thread mOutputThread;
     struct alignas(64) {
-      std::atomic_bool mRunning = false;
-      std::atomic_bool mPaused = false;
+      std::atomic_bool mRunning = false;         // Task initialized
+      std::atomic_bool mInRunningState = false;  // FMQ in running state
+      std::atomic_bool mPaused = false;          // paused state for File reader
     } mState;
 
     /// File sink

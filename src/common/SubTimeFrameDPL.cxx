@@ -16,6 +16,7 @@
 #include "DataDistLogger.h"
 
 #include <Framework/DataProcessingHeader.h>
+#include <Framework/SourceInfoHeader.h>
 #include <Headers/Stack.h>
 
 namespace o2::DataDistribution
@@ -225,7 +226,27 @@ void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
 }
 
 
+void StfToDplAdapter::sendEosToDpl()
+{
+  o2::framework::SourceInfoHeader lDplExitHdr;
+  lDplExitHdr.state = o2::framework::InputChannelState::Completed;
+  const auto lDoneStack = o2::header::Stack(
+    o2::header::DataHeader(o2::header::gDataDescriptionInfo, o2::header::gDataOriginAny, 0, 0),
+    o2::framework::DataProcessingHeader(),
+    lDplExitHdr
+  );
 
+  // Send a multiparts
+  for (auto lEosCnt = 0U; lEosCnt < mChan.GetNumberOfConnectedPeers(); lEosCnt++) {
+    FairMQParts lCompletedMsg;
+    auto lNoFree = [](void*, void*) { /* stack */ };
+    lCompletedMsg.AddPart(mChan.NewMessage(lDoneStack.data(), lDoneStack.size(), lNoFree));
+    lCompletedMsg.AddPart(mChan.NewMessage());
+    auto lRet = mChan.Send(lCompletedMsg, 2000);
+
+    IDDLOG("End of stream (EoS) message sent to DPL. eos_id={} send_ret={}", lEosCnt, lRet);
+  }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// DplToStfAdapter
@@ -302,6 +323,16 @@ std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize_impl()
   std::unique_ptr<SubTimeFrame> lStf = std::make_unique<SubTimeFrame>(0);
 
   try {
+    // check for EoS message
+    if (mMessages.size() == 2) {
+      auto lEoSHeader = header::get<o2::framework::SourceInfoHeader*>(mMessages[0]->GetData(), mMessages[0]->GetSize());
+      if (lEoSHeader) {
+        mMessages.clear();
+        IDDLOG_RL(1000, "End of stream (EoS) message received.");
+        return nullptr;
+      }
+    }
+
     lStf->accept(*this);
   } catch (std::runtime_error& e) {
     EDDLOG("SubTimeFrame deserialization failed. reason={}", e.what());

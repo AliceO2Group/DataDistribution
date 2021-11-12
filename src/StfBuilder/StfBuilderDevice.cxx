@@ -23,7 +23,6 @@
 #include <ConfigConsul.h>
 
 #include <options/FairMQProgOptions.h>
-#include <Framework/SourceInfoHeader.h>
 
 #include <chrono>
 #include <thread>
@@ -324,6 +323,8 @@ void StfBuilderDevice::StfOutputThread()
   std::unique_ptr<InterleavedHdrDataSerializer> lStfSerializer;
   std::unique_ptr<StfToDplAdapter> lStfDplAdapter;
 
+  bool lShouldSendEos = false;
+
   if (!isStandalone()) {
     // cannot get the channels in standalone mode
     auto& lOutputChan = getOutputChannel();
@@ -339,14 +340,33 @@ void StfBuilderDevice::StfOutputThread()
   decltype(hres_clock::now()) lStfStartTime = hres_clock::now();
 
   while (I().mState.mRunning) {
-    // Get a STF ready for sending
-    std::unique_ptr<SubTimeFrame> lStf = I().dequeue(eStfSendIn);
-    if (!lStf) {
+    // Get a STF ready for sending, or nullopt
+    auto lStfOpt = I().dequeue_for(eStfSendIn, 100ms);
+    if (!I().mState.mRunning) {
+      break;
+    } else if (!I().is_running(eStfSendIn)) {
+      break;
+    } else if (!I().mState.mInRunningState) {
+      if (lStfOpt) {
+        WDDLOG_RL(1000, "Dropping a raw SubTimeFrame because stop of the run is requested.");
+      }
+
+      if (dplEnabled() && lShouldSendEos) {
+        lShouldSendEos = false;
+        lStfDplAdapter->sendEosToDpl();
+      }
+      continue;
+    }
+
+    lShouldSendEos = true;
+    if (lStfOpt == std::nullopt) {
       DDMON("stfbuilder", "stf_output.rate", 0);
       DDMON("stfbuilder", "stf_output.size", 0);
       DDMON("stfbuilder", "data_output.rate", 0);
-      break;
+      continue;
     }
+
+    auto &lStf = lStfOpt.value();
 
     // decrement the stf counter
     I().mCounters.mNumStfs--;
@@ -412,26 +432,8 @@ void StfBuilderDevice::StfOutputThread()
   }
 
   // leaving the output thread, send end of the stream info
-  if (dplEnabled()) {
-    o2::framework::SourceInfoHeader lDplExitHdr;
-    lDplExitHdr.state = o2::framework::InputChannelState::Completed;
-    auto lDoneStack = Stack(
-      DataHeader(gDataDescriptionInfo, gDataOriginAny, 0, 0),
-      o2::framework::DataProcessingHeader(),
-      lDplExitHdr
-    );
-
-    // Send a multipart
-    auto& lOutputChan = getOutputChannel();
-    FairMQParts lCompletedMsg;
-    auto lNoFree = [](void*, void*) { /* stack */ };
-    lCompletedMsg.AddPart(lOutputChan.NewMessage(lDoneStack.data(), lDoneStack.size(), lNoFree));
-    lCompletedMsg.AddPart(lOutputChan.NewMessage());
-    lOutputChan.Send(lCompletedMsg);
-
-    IDDLOG("Source Completed message sent to DPL.");
-    // NOTE: no guarantees this will be sent out
-    std::this_thread::sleep_for(2s);
+  if (dplEnabled() && lShouldSendEos) {
+    lStfDplAdapter->sendEosToDpl();
   }
 
   I().mState.mRunning = false; // trigger stop via CondRun()
@@ -457,7 +459,7 @@ void StfBuilderDevice::PreRun()
   I().mState.mPaused = false;
   if (I().mFileSource) {
     I().mFileSource->resume();
-    IDDLOG("Restarting file source.");
+    DDDLOG("Restarting file source.");
   }
   I().mRestartRateCounter = true;
 
@@ -470,9 +472,16 @@ void StfBuilderDevice::PreRun()
   DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, GetConfig()->GetProperty<std::string>("discovery-partition", "-"));
 
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
+
+  // In Running state
+  I().mState.mInRunningState = true;
 }
 
-void StfBuilderDevice::PostRun() {
+void StfBuilderDevice::PostRun()
+{
+  // Not in Running state
+  I().mState.mInRunningState = false;
+
   if (I().mReadoutInterface) {
     I().mReadoutInterface->setRunningState(false);
   }
@@ -480,7 +489,7 @@ void StfBuilderDevice::PostRun() {
   I().mState.mPaused = true;
   if (I().mFileSource) {
     I().mFileSource->pause();
-    IDDLOG("Pausing file source.");
+    DDDLOG("Pausing file source.");
   }
 
   // update running state

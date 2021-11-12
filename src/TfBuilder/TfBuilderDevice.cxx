@@ -18,7 +18,6 @@
 
 #include <ConfigConsul.h>
 #include <SubTimeFrameDPL.h>
-#include <Framework/SourceInfoHeader.h>
 
 #include <chrono>
 #include <thread>
@@ -166,28 +165,6 @@ void TfBuilderDevice::InitTask()
   DDDLOG("InitTask completed.");
 }
 
-void TfBuilderDevice::PreRun()
-{
-  // update running state
-  auto& lStatus = mDiscoveryConfig->status();
-  lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
-  lStatus.mutable_partition()->set_run_number(DataDistLogger::sRunNumber);
-  mDiscoveryConfig->write();
-
-  // make directory for the file sink
-  mFileSink.makeDirectory();
-
-  // enable monitoring
-  DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, mPartitionId);
-
-  DDMON("tfbuilder", "running", 1);
-
-  IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
-
-  mTfFwdTotalDataSize = 0;
-  mTfFwdTotalTfCount = 0;
-}
-
 bool TfBuilderDevice::start()
 {
   while (!mRpc->start(mTfBufferSize)) {
@@ -283,9 +260,35 @@ void TfBuilderDevice::ResetTask()
   DDDLOG("ResetTask()");
 }
 
+void TfBuilderDevice::PreRun()
+{
+  // update running state
+  auto& lStatus = mDiscoveryConfig->status();
+  lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
+  lStatus.mutable_partition()->set_run_number(DataDistLogger::sRunNumber);
+  mDiscoveryConfig->write();
+
+  // make directory for the file sink
+  mFileSink.makeDirectory();
+
+  // enable monitoring
+  DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, mPartitionId);
+
+  IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
+
+  mTfFwdTotalDataSize = 0;
+  mTfFwdTotalTfCount = 0;
+
+  // In Running state
+  mInRunningState = true;
+  DDMON("tfbuilder", "running", 1);
+}
+
 // Get here when ConditionalRun returns false
 void TfBuilderDevice::PostRun()
 {
+  // Not in Running state
+  mInRunningState = false;
   DDMON("tfbuilder", "running", 0);
 
   // update running state
@@ -302,7 +305,6 @@ void TfBuilderDevice::PostRun()
 bool TfBuilderDevice::ConditionalRun()
 {
   if (mShouldExit || mRpc->isTerminateRequested()) {
-    // mRunning = false;
     return false;
   }
   // nothing to do here sleep for awhile
@@ -322,13 +324,30 @@ void TfBuilderDevice::TfForwardThread()
   using hres_clock = std::chrono::high_resolution_clock;
   auto lRateStartTime = hres_clock::now();
   std::uint64_t lTfOutCnt = 0;
+  bool lShouldSendEos = false;
 
   while (mRunning) {
-    std::optional<std::unique_ptr<SubTimeFrame>> lTfOpt = dequeue_for(eTfFwdIn, 1000ms);
+    std::optional<std::unique_ptr<SubTimeFrame>> lTfOpt = dequeue_for(eTfFwdIn, 100ms);
     if (!mRunning) {
-      IDDLOG("TfForwardThread(): Queue closed. Exiting... ");
+      DDDLOG("TfForwardThread: Not running... ");
       break;
+    } else if (!is_running(eTfFwdIn)) {
+      DDDLOG("TfForwardThread: Queue closed. Exiting... ");
+      break;
+    } else if (!mInRunningState) {
+      if (lTfOpt) {
+        WDDLOG_RL(1000, "Dropping a raw TimeFrame because stop of the run is requested.");
+      }
+
+      if (dplEnabled() && lShouldSendEos) {
+        lShouldSendEos = false;
+        mTfDplAdapter->sendEosToDpl();
+      }
+      continue;
     }
+
+    // Make sure to send EoS if in running state
+    lShouldSendEos = true;
 
     if (lTfOpt == std::nullopt) {
       DDMON("tfbuilder", "data_output.rate", 0);
@@ -337,8 +356,7 @@ void TfBuilderDevice::TfForwardThread()
       continue;
     }
 
-    std::unique_ptr<SubTimeFrame> lTf = std::move(lTfOpt.value());
-
+    auto &lTf = lTfOpt.value();
     const auto lTfId = lTf->id();
     {
       const auto lStfDur = std::chrono::duration<double>(hres_clock::now() - lRateStartTime);
@@ -384,27 +402,8 @@ void TfBuilderDevice::TfForwardThread()
   }
 
   // leaving the output thread, send end of the stream info
-  if (!mStandalone && dplEnabled()) {
-    o2::framework::SourceInfoHeader lDplExitHdr;
-    lDplExitHdr.state = o2::framework::InputChannelState::Completed;
-    auto lDoneStack = o2::header::Stack(
-      o2::header::DataHeader(o2::header::gDataDescriptionInfo, o2::header::gDataOriginAny, 0, 0),
-      o2::framework::DataProcessingHeader(),
-      lDplExitHdr
-    );
-
-    // Send a multipart
-    auto& lOutputChan = GetChannel(getDplChannelName(), 0);
-    FairMQParts lCompletedMsg;
-    auto lNoFree = [](void*, void*) { /* stack */ };
-    lCompletedMsg.AddPart(lOutputChan.NewMessage(lDoneStack.data(), lDoneStack.size(), lNoFree));
-    lCompletedMsg.AddPart(lOutputChan.NewMessage());
-    lOutputChan.Send(lCompletedMsg);
-    lOutputChan.Send(lCompletedMsg); // FIXME: send EOS on PULL
-
-    IDDLOG("Source Completed message sent to DPL.");
-    // NOTE: no guarantees this will be sent out
-    std::this_thread::sleep_for(2s);
+  if (dplEnabled() && lShouldSendEos) {
+    mTfDplAdapter->sendEosToDpl();
   }
 
   DDDLOG("Exiting TF forwarding thread.");

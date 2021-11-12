@@ -131,9 +131,9 @@ STF_BUILDER+=" --discovery-partition=$PARTITION"
 STF_BUILDER+=" --discovery-endpoint=http://localhost:8500"
 # STF_BUILDER+=" --run-type=topology"
 
-if [[ ! -z $STF_BUILDER_DPL_CHAN ]]; then
-  STF_BUILDER+=" --dpl-channel-name=$STF_BUILDER_DPL_CHAN"
-fi
+# use DPL serialization on FLPs
+STF_BUILDER+=" --dpl-channel-name=dpl-stf-channel"
+
 
 if [[ ! -z $STF_BUILDER_SINK_DIR ]]; then
   if [[ ! -d $STF_BUILDER_SINK_DIR ]]; then
