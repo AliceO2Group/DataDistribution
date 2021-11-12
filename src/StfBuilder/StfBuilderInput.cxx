@@ -87,11 +87,8 @@ mRunning = false;
 void StfInputInterface::StfReceiverThread()
 {
   using namespace std::chrono_literals;
-  constexpr std::uint32_t cInvalidStfId = ~0;
   std::vector<FairMQMessagePtr> lReadoutMsgs;
   lReadoutMsgs.reserve(4096);
-  // current TF Id
-  std::uint32_t lCurrentStfId = cInvalidStfId;
 
   // Reference to the input channel
   auto& lInputChan = mDevice.GetChannel(mDevice.getInputChannelName());
@@ -104,19 +101,18 @@ void StfInputInterface::StfReceiverThread()
       lReadoutMsgs.clear();
 
       // receive readout messages
-      const std::int64_t lRet = lInputChan.Receive(lReadoutMsgs);
+      const std::int64_t lRet = lInputChan.Receive(lReadoutMsgs, 100);
 
       // timeout ok
       if (lRet == static_cast<int64_t>(fair::mq::TransferCode::timeout)) {
         continue;
       }
-
       // interrupted
       if (lRet == static_cast<int64_t>(fair::mq::TransferCode::interrupted)) {
         if (mAcceptingData) {
           IDDLOG_RL(1000, "READOUT INTERFACE: Receive failed. FMQ state interrupted.");
         }
-        std::this_thread::sleep_for(10ms);
+        std::this_thread::sleep_for(100ms);
         continue;
       }
 
@@ -160,37 +156,22 @@ void StfInputInterface::StfReceiverThread()
 
       // check for backward/forward tf jumps
       if (mBuildStf) {
-        if (lCurrentStfId != cInvalidStfId) {
-          static std::uint64_t sNumNonContIncStfs = 0;
-          static std::uint64_t sNumNonContDecStfs = 0;
+        // backward jump
+        if (lReadoutHdr.mTimeFrameId < mStfIdReceiving) {
+          EDDLOG_RL(1000, "READOUT INTERFACE: STF ID decreased, data cannot be aggregated! {} -> {}",
+            mStfIdReceiving, lReadoutHdr.mTimeFrameId);
+          continue;
+        }
 
-          // backward jump
-          if (lReadoutHdr.mTimeFrameId < lCurrentStfId) {
-            sNumNonContIncStfs++;
-            std::stringstream lErrMsg;
-            lErrMsg << "READOUT INTERFACE: "
-                "TF ID decreased! (" << lCurrentStfId << ") -> (" << lReadoutHdr.mTimeFrameId << ") "
-                "o2-readout-exe sent messages with non-monotonic TF id! SubTimeFrames will be incomplete! "
-                "Total occurrences: " << sNumNonContIncStfs;
-
-            EDDLOG_RL(200, lErrMsg.str());
-            DDDLOG(lErrMsg.str());
-
-            // TODO: accout for lost data
-            continue;
-          }
-
-          // forward jump
-          if (lReadoutHdr.mTimeFrameId > (lCurrentStfId + 1)) {
-            sNumNonContDecStfs++;
-            WDDLOG_RL(200, "READOUT INTERFACE: TF ID non-contiguous increase! ({}) -> ({}). Total occurrences: {}",
-              lCurrentStfId, lReadoutHdr.mTimeFrameId, sNumNonContDecStfs);
-          }
+        // forward jump
+        if (lReadoutHdr.mTimeFrameId > (mStfIdReceiving + 1)) {
+          WDDLOG_RL(1000, "READOUT INTERFACE: Non-contiguous increase of STF ID! {} -> {}",
+            mStfIdReceiving, lReadoutHdr.mTimeFrameId);
           // we keep the data since this might be a legitimate jump
         }
 
         // get the current TF id
-        lCurrentStfId = lReadoutHdr.mTimeFrameId;
+        mStfIdReceiving = lReadoutHdr.mTimeFrameId;
       }
 
       mBuilderInputQueue->push(std::move(lReadoutMsgs));
@@ -210,9 +191,6 @@ void StfInputInterface::StfBuilderThread()
   using namespace std::chrono_literals;
 
   static constexpr bool cBuildOnTimeout = false;
-  // current TF Id
-  constexpr std::uint32_t cInvalidStfId = ~0;
-  std::uint32_t lCurrentStfId = cInvalidStfId;
   bool lStarted = false;
   std::vector<FairMQMessagePtr> lReadoutMsgs;
   lReadoutMsgs.reserve(1U << 20);
@@ -344,17 +322,17 @@ void StfInputInterface::StfBuilderThread()
     }
 
     const auto lIdInBuilding = lStfBuilder.getCurrentStfId();
-    lCurrentStfId = lIdInBuilding ? *lIdInBuilding : lReadoutHdr.mTimeFrameId;
+    mStfIdBuilding = lIdInBuilding ? *lIdInBuilding : lReadoutHdr.mTimeFrameId;
 
     // check for the new TF marker
-    if (lReadoutHdr.mTimeFrameId != lCurrentStfId) {
+    if (lReadoutHdr.mTimeFrameId != mStfIdBuilding) {
       // we expect to be notified about new TFs
       if (lIdInBuilding) {
         EDDLOG_RL(1000, "READOUT INTERFACE: Update with a new STF ID but the Stop flag was not set for the current STF."
-          " current_id={} new_id={}", lCurrentStfId, lReadoutHdr.mTimeFrameId);
+          " current_id={} new_id={}", mStfIdBuilding, lReadoutHdr.mTimeFrameId);
         finishBuildingCurrentStf();
       }
-      lCurrentStfId = lReadoutHdr.mTimeFrameId;
+      mStfIdBuilding = lReadoutHdr.mTimeFrameId;
     }
 
     const bool lFinishStf = lReadoutHdr.mFlags.mLastTFMessage;

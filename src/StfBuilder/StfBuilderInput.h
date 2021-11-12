@@ -45,7 +45,13 @@ public:
   void stop();
 
   void setRunningState(bool pRunning) {
-    mLastSeqStfId = 0;
+    // reset counters when starting the run
+    if (pRunning && !mAcceptingData) {
+      mStfIdReceiving = 0;
+      mStfIdBuilding = 0;
+      mLastSeqStfId = 0;
+    }
+
     mAcceptingData = pRunning;
   }
 
@@ -65,11 +71,13 @@ public:
   bool mRunning = false;
   bool mAcceptingData = false;
   bool mBuildStf = true; // STF or equipment (threshold scan)
+  std::uint32_t mStfIdReceiving = 0;
   std::thread mInputThread;
 
   /// StfBuilding thread and queues
   std::unique_ptr<ConcurrentFifo<std::vector<FairMQMessagePtr>>> mBuilderInputQueue = nullptr;
   std::unique_ptr<SubTimeFrameReadoutBuilder> mStfBuilder = nullptr;
+  std::uint32_t mStfIdBuilding = 0;
   std::thread mBuilderThread;
 
   /// StfSequencer thread
