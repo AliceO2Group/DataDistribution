@@ -203,7 +203,7 @@ bool TfBuilderRpcImpl::recordTfBuilt(const SubTimeFrame &pTf)
     if (mCurrentTfBufferSize >= lTfSize) {
       mCurrentTfBufferSize -= lTfSize;
     } else {
-      EDDLOG("TimeFrame memory buffer overrun! size=0 missing={}", (lTfSize - mCurrentTfBufferSize));
+      EDDLOG_RL(5000, "TimeFrame memory buffer overrun! size=0 missing={}", (lTfSize - mCurrentTfBufferSize));
       mCurrentTfBufferSize = 0;
     }
 

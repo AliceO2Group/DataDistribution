@@ -388,6 +388,8 @@ class IFifoPipeline
     return mPipelineQueues[pStage].try_pop(t);
   }
 
+  bool is_running(const unsigned pStage) const { return mPipelineQueues[pStage].is_running(); }
+
  protected:
   virtual unsigned getNextPipelineStage(unsigned pStage) = 0;
 

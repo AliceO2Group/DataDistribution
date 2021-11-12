@@ -152,7 +152,8 @@ class TfBuilderDevice : public DataDistDevice,
   std::uint64_t mTfFwdTotalDataSize;
   std::uint64_t mTfFwdTotalTfCount;
 
-  std::atomic_bool mRunning = false;
+  std::atomic_bool mRunning = false;         // Task initialized
+  std::atomic_bool mInRunningState = false;  // FMQ in running state
   std::atomic_bool mShouldExit = false;
 };
 
