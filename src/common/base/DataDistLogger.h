@@ -19,6 +19,7 @@
 
 #include <fmt/format.h>
 #include <fmt/core.h>
+#include <fmt/ostream.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/async.h>
