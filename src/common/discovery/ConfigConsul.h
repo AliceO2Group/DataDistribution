@@ -25,6 +25,7 @@
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/trim.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 
 #include <ppconsul/kv.h>
 #include <string>
@@ -54,12 +55,35 @@ public:
   ConsulConfig(const ProcessType pProcessType, const std::string &pEndpoint, const bool pRequired = true)
   : Config(pProcessType), mEndpoint(pEndpoint)
   {
-    bool lLocalConsul = false;
+    const bool lEmpty = pEndpoint.empty();
+    const bool lNoOp = boost::starts_with(pEndpoint, "no-op");
 
-    if (pEndpoint.empty()) {
-      if (pRequired) {
+    // if not configured and not needed
+    if (!pRequired && (lEmpty || lNoOp)) {
+      IDDLOG("Not connecting to a consul instance.");
+      mConsul = nullptr;
+      return;
+    }
+
+    // error if not provided and required
+    if (pRequired && lEmpty) {
+      if (pProcessType == ProcessType::StfBuilder) {
+        EDDLOG("Consul endpoint is required for StfSender production use. Use 'discovery-endpoint=no-op://' for testing.");
+      } else {
         EDDLOG("Consul endpoint is mandatory for {}.", pProcessType.to_string());
-        throw std::invalid_argument("discovery-endpoint parameter is not provided");
+      }
+      throw std::invalid_argument("discovery-endpoint parameter is not provided");
+    }
+
+    //
+    if (lNoOp) {  // Support for CI setups without consul
+      WDDLOG("Consul endpoint is configured as 'no-op'. Use only for testing!");
+
+      if (pRequired &&
+        ( pProcessType == ProcessType::StfSender ||
+          pProcessType == ProcessType::TfBuilder ||
+          pProcessType == ProcessType::TfSchedulerInstance) ) {
+        throw std::invalid_argument("Error: A valid discovery-endpoint (consul) parameter must be provided.");
       }
 
       IDDLOG("Not connecting to a consul instance.");
@@ -75,9 +99,7 @@ public:
       mPollThread = create_thread_member("consul_params", &ConsulConfig::ConsulPollingThread, this);
     } catch (std::exception &err) {
       mConsul = nullptr;
-      if (!lLocalConsul) {
-        EDDLOG("Error while connecting to Consul. endpoint={} what={}", mEndpoint, err.what());
-      }
+      EDDLOG("Error while connecting to Consul. endpoint={} what={}", mEndpoint, err.what());
     }
   }
 
