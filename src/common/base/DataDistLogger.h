@@ -84,7 +84,7 @@ private:
     try {
       fmt::vformat_to(std::back_inserter(mLogMessage), format, args);
     } catch (const fmt::format_error &e) {
-      fmt::format_to(mLogMessage, "FORMAT ERROR: {}. provided_format_string={}", e.what(), format);
+      fmt::format_to(std::back_inserter(mLogMessage), FMT_STRING("FORMAT ERROR: {}. provided_format_string={}"), e.what(), format);
     }
   }
 
@@ -102,7 +102,7 @@ public:
     fair::Logger::SetConsoleSeverity(fair::Severity::nolog);
 
     if (mSeverity <= DataDistSeverity::debug && sThisThreadName) {
-      fmt::format_to(mLogMessage, "<{}> ", sThisThreadName);
+      fmt::format_to(std::back_inserter(mLogMessage), "<{}> ", sThisThreadName);
     }
 
     do_vformat(format, fmt::make_format_args(pArgs...));
@@ -124,14 +124,14 @@ public:
     fair::Logger::SetConsoleSeverity(fair::Severity::nolog);
 
     if (mSeverity <= DataDistSeverity::debug && sThisThreadName) {
-      fmt::format_to(mLogMessage, "<{}> ", sThisThreadName);
+      fmt::format_to(std::back_inserter(mLogMessage), "<{}> ", sThisThreadName);
     }
 
     if constexpr (sizeof...(Args) > 0) {
       static_assert(!std::is_same_v<typename std::tuple_element<0, std::tuple<Args...>>::type, log_fmt>,
         "First parameter to DDLOGF must be format string (const char*).");
 
-      (fmt::format_to(mLogMessage, "{}", pArgs), ...);
+      (fmt::format_to(std::back_inserter(mLogMessage), "{}", pArgs), ...);
     }
   }
 
@@ -240,13 +240,13 @@ public:
 
   template<typename T>
   DataDistLogger& operator<<(const T& pTObj) {
-    fmt::format_to(mLogMessage, "{}", pTObj);
+    fmt::format_to(std::back_inserter(mLogMessage), "{}", pTObj);
     return *this;
   }
 
   DataDistLogger& operator<<(const char* cstr) {
     if (cstr != NULL) {
-        fmt::format_to(mLogMessage, cstr);
+        fmt::format_to(std::back_inserter(mLogMessage), cstr);
     }
     return *this;
   }
