@@ -161,12 +161,12 @@ void DataDistMonitoring::MonitorThread()
         // log
         if (mLogMetric) {
           fmt::memory_buffer lLine;
-          fmt::format_to(std::back_inserter(lLine), "Metric={}", lMetric.getName());
+          fmt::format_to(fmt::appender(lLine), "Metric={}", lMetric.getName());
 
           for (const auto &lIter : lMetric.getValues()) {
             const std::string &lName = lIter.first;
             const auto lVal = std::get<double>(lIter.second);
-            fmt::format_to(std::back_inserter(lLine), " {}={:.3}", lName, lVal);
+            fmt::format_to(fmt::appender(lLine), " {}={:.3}", lName, lVal);
           }
 
           IDDLOG("{}", std::string(lLine.begin(), lLine.end()));

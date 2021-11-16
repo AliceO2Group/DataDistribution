@@ -82,9 +82,9 @@ private:
 
   inline void do_vformat(fmt::string_view format, fmt::format_args args) {
     try {
-      fmt::vformat_to(std::back_inserter(mLogMessage), format, args);
+      fmt::vformat_to(fmt::appender(mLogMessage), format, args);
     } catch (const fmt::format_error &e) {
-      fmt::format_to(std::back_inserter(mLogMessage), FMT_STRING("FORMAT ERROR: {}. provided_format_string={}"), e.what(), format);
+      fmt::format_to(fmt::appender(mLogMessage), "FORMAT ERROR: {}. provided_format_string={}", e.what(), format);
     }
   }
 
@@ -96,44 +96,22 @@ public:
     sThisThreadName = strdup(sThrName.c_str());
   }
 
-  template<typename... Args>
-  DataDistLogger(const DataDistSeverity pSeverity, const log_fmt&, const char* format, const Args&... pArgs)
+  template<typename S, typename... Args>
+  DataDistLogger(const DataDistSeverity pSeverity, const log_fmt&, const S &format, Args&&... pArgs)
   : mSeverity(pSeverity) {
     fair::Logger::SetConsoleSeverity(fair::Severity::nolog);
 
     if (mSeverity <= DataDistSeverity::debug && sThisThreadName) {
-      fmt::format_to(std::back_inserter(mLogMessage), "<{}> ", sThisThreadName);
+      fmt::format_to(fmt::appender(mLogMessage), "<{:s}> ", sThisThreadName);
     }
 
-    do_vformat(format, fmt::make_format_args(pArgs...));
+    do_vformat(format, fmt::make_args_checked<Args...>(format, pArgs...));
   }
-
-  template<typename... Args>
-  DataDistLogger(const DataDistSeverity pSeverity, const log_fmt&, const std::string &format, const Args&... pArgs)
-  : DataDistLogger(pSeverity, log_fmt{}, format.c_str(), pArgs...)
-  {}
 
   template<typename... Args>
   DataDistLogger(const DataDistSeverity pSeverity, const log_fmq&, const std::string &pMsg)
   : DataDistLogger(pSeverity, log_fmt{}, "[FMQ] {}", pMsg)
   {}
-
-  template<class... Args>
-  DataDistLogger(const DataDistSeverity pSeverity, const Args&... pArgs)
-  : mSeverity(pSeverity) {
-    fair::Logger::SetConsoleSeverity(fair::Severity::nolog);
-
-    if (mSeverity <= DataDistSeverity::debug && sThisThreadName) {
-      fmt::format_to(std::back_inserter(mLogMessage), "<{}> ", sThisThreadName);
-    }
-
-    if constexpr (sizeof...(Args) > 0) {
-      static_assert(!std::is_same_v<typename std::tuple_element<0, std::tuple<Args...>>::type, log_fmt>,
-        "First parameter to DDLOGF must be format string (const char*).");
-
-      (fmt::format_to(std::back_inserter(mLogMessage), "{}", pArgs), ...);
-    }
-  }
 
   ~DataDistLogger() {
     try {
@@ -240,13 +218,13 @@ public:
 
   template<typename T>
   DataDistLogger& operator<<(const T& pTObj) {
-    fmt::format_to(std::back_inserter(mLogMessage), "{}", pTObj);
+    fmt::format_to(fmt::appender(mLogMessage), "{}", pTObj);
     return *this;
   }
 
   DataDistLogger& operator<<(const char* cstr) {
     if (cstr != NULL) {
-        fmt::format_to(std::back_inserter(mLogMessage), cstr);
+        fmt::format_to(fmt::appender(mLogMessage), cstr);
     }
     return *this;
   }
@@ -427,8 +405,6 @@ struct DataDistLoggerCtx {
       mInfoLoggerThread.join();
     }
   }
-
-
 
   // InfoLogger Options
   static boost::program_options::options_description getProgramOptions() {
