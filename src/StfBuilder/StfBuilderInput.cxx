@@ -190,7 +190,6 @@ void StfInputInterface::StfBuilderThread()
 {
   using namespace std::chrono_literals;
 
-  static constexpr bool cBuildOnTimeout = false;
   bool lStarted = false;
   std::vector<FairMQMessagePtr> lReadoutMsgs;
   lReadoutMsgs.reserve(1U << 20);
@@ -270,7 +269,7 @@ void StfInputInterface::StfBuilderThread()
     if (!lRet && mRunning) {
       if (lStarted) {
         // finish on a timeout
-        finishBuildingCurrentStf(cBuildOnTimeout);
+        finishBuildingCurrentStf(true /* timeout */);
       }
       continue;
     } else if (!lRet && !mRunning) {
@@ -345,7 +344,7 @@ void StfInputInterface::StfBuilderThread()
         lDataOrigin = ReadoutDataUtils::getDataOrigin(R1);
         lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
       } catch (RDHReaderException &e) {
-        EDDLOG_RL(1000, "READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
+        EDDLOG_RL(1000, "READOUT INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
         // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
         continue;
       }
@@ -556,7 +555,7 @@ void StfInputInterface::TopologicalStfBuilderThread()
       lDataOrigin = ReadoutDataUtils::getDataOrigin(R1);
       lSubSpecification = ReadoutDataUtils::getSubSpecification(R1);
     } catch (RDHReaderException &e) {
-      EDDLOG_RL(1000, "READOUT_INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
+      EDDLOG_RL(1000, "READOUT INTERFACE: Cannot parse RDH of received HBFs. what={}", e.what());
       // TODO: the whole ReadoutMsg is discarded. Account and report the data size.
       continue;
     }
@@ -598,7 +597,7 @@ void StfInputInterface::StfSequencerThread()
       const auto lCurrId = (*lStf)->id();
 
       if (lCurrId <= mLastSeqStfId) {
-        EDDLOG_RL(500, "READOUT_INTERFACE: Repeated STF will be rejected. previous_stf_id={} current_stf_id={}",
+        EDDLOG_RL(500, "READOUT INTERFACE: Repeated STF will be rejected. previous_stf_id={} current_stf_id={}",
           mLastSeqStfId, lCurrId);
         // reject this STF.
         continue;
@@ -616,7 +615,7 @@ void StfInputInterface::StfSequencerThread()
       const auto lMissingCnt = lCurrId - lMissingIdStart;
 
       if (lMissingCnt < sMaxMissingStfsForSeq) {
-        WDDLOG_RL(1000, "READOUT_INTERFACE: Creating empty (missing) STFs. previous_stf_id={} num_missing={}",
+        WDDLOG_RL(1000, "READOUT INTERFACE: Creating empty (missing) STFs. previous_stf_id={} num_missing={}",
           mLastSeqStfId, lMissingCnt);
         // create the missing ones and continue
         for (std::uint64_t lStfIdIdx = lMissingIdStart; lStfIdIdx < lCurrId; lStfIdIdx++) {
@@ -627,7 +626,7 @@ void StfInputInterface::StfSequencerThread()
           lMissingStfs++;
         }
       } else {
-        WDDLOG_RL(1000, "READOUT_INTERFACE: Large STF gap. previous_stf_id={} current_stf_id={} num_missing={}",
+        WDDLOG_RL(1000, "READOUT INTERFACE: Large STF gap. previous_stf_id={} current_stf_id={} num_missing={}",
           mLastSeqStfId, lCurrId, lMissingCnt);
       }
 
