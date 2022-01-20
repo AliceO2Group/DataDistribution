@@ -91,6 +91,7 @@ bool TfSchedulerInstanceHandler::start()
 
 void TfSchedulerInstanceHandler::stop()
 {
+  DDDLOG("TfSchedulerInstanceHandler::stop()");
   // stop monitoring
   DataDistMonitor::stop_datadist();
 

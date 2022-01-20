@@ -289,11 +289,9 @@ void TfSchedulerStfInfo::HighWatermarkThread()
 
       DDMON("tfscheduler", "stfsender.buffer.max_util", lBuffUtilMax);
 
-      if (lBuffUtilMax <= 0.90) {
-        continue;
-      }
-
-      if (lStfsToFree.empty()) {
+      if (lStfsToFree.empty() || lBuffUtilMax <= 0.90) {
+        // make sure the info is regenerated fresh after clearing
+        mStfSenderInfoMap.clear();
         continue;
       }
 

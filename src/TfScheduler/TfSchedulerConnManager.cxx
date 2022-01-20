@@ -26,6 +26,46 @@ namespace o2::DataDistribution
 
 using namespace std::chrono_literals;
 
+bool TfSchedulerConnManager::start()
+{
+  using namespace std::chrono_literals;
+
+  while (!mStfSenderRpcClients.start()) {
+    return false; // we'll be called back
+  }
+
+  mRunning = true;
+
+  // start gRPC client monitoring thread
+  mStfSenderMonitoringThread = create_thread_member("sched_stfs_mon",
+    &TfSchedulerConnManager::StfSenderMonitoringThread, this);
+
+  // start async future wit thread
+  mDropFutureWaitThread = create_thread_member("sched_await",
+    &TfSchedulerConnManager::DropWaitThread, this);
+
+  return true;
+}
+
+void TfSchedulerConnManager::stop()
+{
+    DDDLOG("TfSchedulerConnManager::stop()");
+
+    mRunning = false;
+    mStfDropFuturesCV.notify_one();
+
+    if (mStfSenderMonitoringThread.joinable()) {
+      mStfSenderMonitoringThread.join();
+    }
+
+    if (mDropFutureWaitThread.joinable()) {
+      mDropFutureWaitThread.join();
+    }
+
+    // delete all rpc clients
+    mStfSenderRpcClients.stop();
+  }
+
 std::size_t TfSchedulerConnManager::checkStfSenders()
 {
   std::size_t lReadyCnt = 0;
