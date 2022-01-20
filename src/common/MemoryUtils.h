@@ -65,8 +65,9 @@ class RegionAllocatorResource
 public:
   RegionAllocatorResource() = delete;
 
-  RegionAllocatorResource(std::string pSegmentName, FairMQTransportFactory& pShmTrans,
-                          std::size_t pSize, const RegionAllocStrategy pStrategy, std::uint64_t pRegionFlags = 0,
+  RegionAllocatorResource(const std::string &pSegmentName, const std::optional<uint16_t> pSegmentId, std::size_t pSize,
+                          FairMQTransportFactory& pShmTrans,
+                          const RegionAllocStrategy pStrategy, std::uint64_t pRegionFlags = 0,
                           bool pCanFail = false)
   : mSegmentName(pSegmentName),
     mStrategy(pStrategy),
@@ -74,7 +75,8 @@ public:
     mTransport(pShmTrans)
   {
     static_assert(ALIGN && !(ALIGN & (ALIGN - 1)), "Alignment must be power of 2");
-    fair::mq::RegionConfig lRegionCfg(true /*mlock*/, true /*bzero*/);
+
+    fair::mq::RegionConfig lRegionCfg;
 
     pSize = align_size_up(pSize);
 
@@ -139,73 +141,86 @@ public:
       } while (false);
     }
 
-    IDDLOG("Creating new UnmanagedRegion name={} path={} size={}",
-      mSegmentName, lSegmentRoot, pSize);
+    if (pSegmentId.has_value()) {
+      IDDLOG("Opening an existing UnmanagedRegion name={} path={} size={} id={}", mSegmentName, lSegmentRoot, pSize, pSegmentId.value());
+      lRegionCfg.id = pSegmentId;
+      lRegionCfg.lock = false;
+      lRegionCfg.zero = false;
+      lRegionCfg.removeOnDestruction = false;
+    } else {
+      IDDLOG("Creating new UnmanagedRegion name={} path={} size={}", mSegmentName, lSegmentRoot, pSize);
+      lRegionCfg.lock = true;
+      lRegionCfg.zero = false;
+      lRegionCfg.removeOnDestruction = true;
+    }
+
+
+    auto lReclaimFn = [this](const std::vector<FairMQRegionBlock>& pBlkVect) {
+      icl::interval_map<std::size_t, std::size_t> lIntMap;
+      static thread_local double sMergeRatio = 0.5;
+
+      std::uint64_t lReclaimed = 0;
+
+      for (const auto &lInt : pBlkVect) {
+        if (lInt.size == 0) {
+          continue;
+        }
+
+        // align up the message size for correct interval merging
+        const auto lASize = align_size_up(lInt.size);
+        lIntMap += std::make_pair(
+          icl::discrete_interval<std::size_t>::right_open(
+            std::size_t(lInt.ptr), std::size_t(lInt.ptr) + lASize), std::size_t(1));
+      }
+
+      {
+        // callback to be called when message buffers no longer needed by transports
+        std::scoped_lock lock(mReclaimLock);
+
+        for (const auto &lIntMerged : lIntMap) {
+          if (lIntMerged.second > 1) {
+            EDDLOG("CreateUnmanagedRegion reclaim BUG! Multiple overlapping intervals:");
+            for (const auto &i : lIntMap) {
+              EDDLOG("- [{},{}) : count={}", i.first.lower(), i.first.upper(), i.second);
+            }
+
+            continue; // skip the overlapping thing
+          }
+
+          const std::size_t lLen = lIntMerged.first.upper() - lIntMerged.first.lower();
+          lReclaimed += lLen;
+
+          // zero and reclaim
+          void *lStart = (void *) lIntMerged.first.lower();
+
+          // clear the memory
+          memset(lStart, 0x00, lLen);
+
+          // recover the merged region
+          reclaimSHMMessage(lStart, lLen);
+        }
+
+        mFree += lReclaimed;
+        mGeneration += 1;
+      }
+
+      // weighted average merge ratio
+      sMergeRatio = sMergeRatio * 0.75 + double(pBlkVect.size() - lIntMap.iterative_size()) /
+        double(pBlkVect.size()) * 0.25;
+      DDDLOG_RL(5000, "Memory segment '{}'::block merging ratio average={:.4}", mSegmentName, sMergeRatio);
+    };
 
     mRegion = pShmTrans.CreateUnmanagedRegion(
       pSize,
       pRegionFlags,
-      [this](const std::vector<FairMQRegionBlock>& pBlkVect) {
-        icl::interval_map<std::size_t, std::size_t> lIntMap;
-        static thread_local double sMergeRatio = 0.5;
-
-        std::uint64_t lReclaimed = 0;
-
-        for (const auto &lInt : pBlkVect) {
-          if (lInt.size == 0) {
-            continue;
-          }
-
-          // align up the message size for correct interval merging
-          const auto lASize = align_size_up(lInt.size);
-          lIntMap += std::make_pair(
-            icl::discrete_interval<std::size_t>::right_open(
-              std::size_t(lInt.ptr), std::size_t(lInt.ptr) + lASize), std::size_t(1));
-        }
-
-        {
-          // callback to be called when message buffers no longer needed by transports
-          std::scoped_lock lock(mReclaimLock);
-
-          for (const auto &lIntMerged : lIntMap) {
-            if (lIntMerged.second > 1) {
-              EDDLOG("CreateUnmanagedRegion reclaim BUG! Multiple overlapping intervals:");
-              for (const auto &i : lIntMap) {
-                EDDLOG("- [{},{}) : count={}", i.first.lower(), i.first.upper(), i.second);
-              }
-
-              continue; // skip the overlapping thing
-            }
-
-            const std::size_t lLen = lIntMerged.first.upper() - lIntMerged.first.lower();
-            lReclaimed += lLen;
-
-            // zero and reclaim
-            void *lStart = (void *) lIntMerged.first.lower();
-
-            // clear the memory
-            memset(lStart, 0x00, lLen);
-
-            // recover the merged region
-            reclaimSHMMessage(lStart, lLen);
-          }
-
-          mFree += lReclaimed;
-          mGeneration += 1;
-        }
-
-        // weighted average merge ratio
-        sMergeRatio = sMergeRatio * 0.75 + double(pBlkVect.size() - lIntMap.iterative_size()) /
-          double(pBlkVect.size()) * 0.25;
-        DDDLOG_RL(5000, "Memory segment '{}'::block merging ratio average={:.4}", mSegmentName, sMergeRatio);
-      },
+      lReclaimFn,
       lSegmentRoot.c_str(),
       lMapFlags,
       lRegionCfg
     );
 
     if (!mRegion) {
-      EDDLOG("Creation of new memory region failed. name={} size={} path={}",
+      EDDLOG("Creation of memory region failed. name={} size={} path={}",
       mSegmentName, pSize, lSegmentRoot);
       throw std::bad_alloc();
     }

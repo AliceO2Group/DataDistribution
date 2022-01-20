@@ -175,7 +175,8 @@ class TimeFrameBuilder
   TimeFrameBuilder(SyncMemoryResources &pMemRes, bool pDplEnabled);
 
   // make allocate the memory here
-  void allocate_memory(const std::size_t pDataSegSize, const std::size_t pHdrSegSize);
+  void allocate_memory(const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId,
+                       const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId);
 
   void adaptHeaders(SubTimeFrame *pStf);
 

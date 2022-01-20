@@ -49,12 +49,18 @@ int main(int argc, char* argv[])
         o2::DataDistribution::TfBuilderDevice::OptionKeyStandalone,
         bpo::bool_switch()->default_value(false),
         "Standalone operation. TimeFrames will not be forwarded to other processes.")(
-        o2::DataDistribution::TfBuilderDevice::OptionKeyTfMemorySize,
+        o2::DataDistribution::TfBuilderDevice::OptionKeyTfDataRegionSize,
         bpo::value<std::uint64_t>()->default_value(1024),
-        "Memory buffer reserved for building and buffering TimeFrames (in MiB).")(
-        o2::DataDistribution::TfBuilderDevice::OptionKeyTfHdrMemorySize,
+        "Memory buffer (shm region) reserved for building and buffering TimeFrames (in MiB).")(
+        o2::DataDistribution::TfBuilderDevice::OptionKeyTfDataRegionId,
+        bpo::value<std::uint16_t>()->default_value(std::uint16_t(~0)),
+        "Optional shm id for reusing existing TimeFrame regions. (default will create a new region)")(
+        o2::DataDistribution::TfBuilderDevice::OptionKeyTfHdrRegionSize,
         bpo::value<std::uint64_t>()->default_value(512),
-        "Memory buffer reserved for TimeFrame O2 headers (in MiB).");
+        "Memory buffer (shm region) reserved for TimeFrame O2 headers (in MiB).")(
+        o2::DataDistribution::TfBuilderDevice::OptionKeyTfHdrRegionId,
+        bpo::value<std::uint16_t>()->default_value(std::uint16_t(~0)),
+        "Optional shm id for reusing existing TimeFrame header regions. (default will create a new region)");
 
       bpo::options_description lTfBuilderDplOptions("TfBuilder DPL options", 120);
       lTfBuilderDplOptions.add_options()(
