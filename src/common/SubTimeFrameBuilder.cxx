@@ -318,24 +318,26 @@ std::optional<std::unique_ptr<SubTimeFrame>> SubTimeFrameReadoutBuilder::addTopo
 ////////////////////////////////////////////////////////////////////////////////
 
 SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(MemoryResources &pMemRes,
-  const std::size_t pDataSegSize, const std::size_t pHdrSegSize, bool pDplEnabled)
+  const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId,
+  const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId,
+  bool pDplEnabled)
   : mMemRes(pMemRes), mDplEnabled(pDplEnabled)
 {
+  mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
+    "O2DataRegion_FileSource",
+    pDataSegId, pDataSegSize,
+    *mMemRes.mShmTransport,
+    RegionAllocStrategy::eFindLongest,
+    0 // TODO: GPU flags
+  );
+
   mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
     "O2HeadersRegion_FileSource",
-    std::nullopt, pHdrSegSize,
+    pHdrSegId, pHdrSegSize,
     *mMemRes.mShmTransport,
     RegionAllocStrategy::eFindFirst,
     0, /* GPU flags */
     false /* cannot fail */
-  );
-
-  mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
-    "O2DataRegion_FileSource",
-    std::nullopt, pDataSegSize,
-    *mMemRes.mShmTransport,
-    RegionAllocStrategy::eFindLongest,
-    0 // TODO: GPU flags
   );
 
   mMemRes.start();

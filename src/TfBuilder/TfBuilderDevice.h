@@ -59,7 +59,7 @@ class TfBuilderDevice : public DataDistDevice,
   static constexpr const char* OptionKeyTfDataRegionSize = "tf-data-region-size";
   static constexpr const char* OptionKeyTfDataRegionId = "tf-data-region-id";
   static constexpr const char* OptionKeyTfHdrRegionSize = "tf-hdr-region-size";
-  static constexpr const char* OptionKeyTfHdrRegionId = "tf-hdr-region-Id";
+  static constexpr const char* OptionKeyTfHdrRegionId = "tf-hdr-region-id";
   static constexpr const char* OptionKeyDplChannelName = "dpl-channel-name";
 
   /// Default constructor
