@@ -102,6 +102,7 @@ class TfSchedulerTfBuilderInfo
   }
 
   void stop() {
+    DDDLOG("TfSchedulerTfBuilderInfo::stop()");
     mRunning = false;
 
     if (mHousekeepingThread.joinable()) {

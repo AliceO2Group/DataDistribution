@@ -109,7 +109,7 @@ public:
 
     // this is best effort only. ECS could have already stopped them
     DDDLOG("TerminatePartition: TfBuilder. tfb_id={} state={} message={}",
-      mTfBuilderConf.info().process_id(), lResponse.partition_state(), lStatus.error_message());
+      mTfBuilderConf.info().process_id(), PartitionState_Name(lResponse.partition_state()), lStatus.error_message());
     return lStatus.ok();
   }
 

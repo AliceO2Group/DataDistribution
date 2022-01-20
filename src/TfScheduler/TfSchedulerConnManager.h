@@ -56,42 +56,8 @@ class TfSchedulerConnManager
 
   ~TfSchedulerConnManager() { }
 
-  bool start() {
-    using namespace std::chrono_literals;
-
-    while (!mStfSenderRpcClients.start()) {
-      return false; // we'll be called back
-    }
-
-    mRunning = true;
-
-    // start gRPC client monitoring thread
-    mStfSenderMonitoringThread = create_thread_member("sched_stfs_mon",
-      &TfSchedulerConnManager::StfSenderMonitoringThread, this);
-
-    // start async future wit thread
-    mDropFutureWaitThread = create_thread_member("sched_await",
-      &TfSchedulerConnManager::DropWaitThread, this);
-
-    return true;
-  }
-
-  void stop() {
-    mRunning = false;
-    mStfDropFuturesCV.notify_one();
-
-    if (mStfSenderMonitoringThread.joinable()) {
-      mStfSenderMonitoringThread.join();
-    }
-
-    if (mDropFutureWaitThread.joinable()) {
-      mDropFutureWaitThread.join();
-    }
-
-    // delete all rpc clients
-    mStfSenderRpcClients.stop();
-  }
-
+  bool start();
+  void stop();
   std::size_t checkStfSenders();
 
   bool stfSendersReady() { return mStfSenderRpcClients.size() == mPartitionInfo.mStfSenderIdList.size(); }

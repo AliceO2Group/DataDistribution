@@ -69,6 +69,7 @@ bool TfSchedulerInstanceRpcImpl::start()
 
 void TfSchedulerInstanceRpcImpl::stop()
 {
+  DDDLOG("TfSchedulerInstanceRpcImpl::stop()");
   mConnManager.stop();
   mStfInfo.stop();
   mTfBuilderInfo.stop();
