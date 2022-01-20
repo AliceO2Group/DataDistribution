@@ -164,6 +164,8 @@ TF_BUILDER+=" --monitoring-interval=5.0"
 TF_BUILDER+=" --monitoring-log"
 TF_BUILDER+=" --stand-alone"
 
+TF_BUILDER+=" --shm-monitor=false"
+TF_BUILDER+=" --tf-data-region-size 2048"
 if [[ ! -z $TF_BUILDER_DPL_CHAN ]]; then
   TF_BUILDER+=" --dpl-channel-name=$TF_BUILDER_DPL_CHAN"
 fi

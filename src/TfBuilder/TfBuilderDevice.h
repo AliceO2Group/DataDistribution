@@ -56,8 +56,10 @@ class TfBuilderDevice : public DataDistDevice,
 {
  public:
   static constexpr const char* OptionKeyStandalone = "stand-alone";
-  static constexpr const char* OptionKeyTfMemorySize = "tf-memory-size";
-  static constexpr const char* OptionKeyTfHdrMemorySize = "tf-hdr-memory-size";
+  static constexpr const char* OptionKeyTfDataRegionSize = "tf-data-region-size";
+  static constexpr const char* OptionKeyTfDataRegionId = "tf-data-region-id";
+  static constexpr const char* OptionKeyTfHdrRegionSize = "tf-hdr-region-size";
+  static constexpr const char* OptionKeyTfHdrRegionId = "tf-hdr-region-Id";
   static constexpr const char* OptionKeyDplChannelName = "dpl-channel-name";
 
   /// Default constructor
@@ -126,8 +128,10 @@ class TfBuilderDevice : public DataDistDevice,
   /// Configuration
   std::string mDplChannelName;
   bool mStandalone;
-  std::uint64_t mTfBufferSize;
-  std::uint64_t mTfHdrBufferSize;
+  std::uint64_t mTfDataRegionSize;
+  std::optional<std::uint16_t> mTfDataRegionId = std::nullopt;
+  std::uint64_t mTfHdrRegionSize;
+  std::optional<std::uint16_t> mTfHdrRegionId = std::nullopt;
   std::string mPartitionId;
   bool mDplEnabled = false;
 

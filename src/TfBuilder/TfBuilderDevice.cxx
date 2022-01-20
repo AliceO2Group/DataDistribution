@@ -57,11 +57,22 @@ void TfBuilderDevice::InitTask()
 
   mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
   mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
-  mTfBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfMemorySize);
-  mTfBufferSize <<= 20; /* input parameter is in MiB */
+  mTfDataRegionSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfDataRegionSize);
+  mTfDataRegionSize <<= 20; /* input parameter is in MiB */
+  mTfDataRegionId = GetConfig()->GetValue<std::uint16_t>(OptionKeyTfDataRegionId);
 
-  mTfHdrBufferSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfHdrMemorySize);
-  mTfHdrBufferSize <<= 20; /* input parameter is in MiB */
+
+  if (mTfDataRegionId.value() == std::uint16_t(~0)) {
+    mTfDataRegionId.reset();
+  }
+
+  mTfHdrRegionSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyTfHdrRegionSize);
+  mTfHdrRegionSize <<= 20; /* input parameter is in MiB */
+  mTfHdrRegionId = GetConfig()->GetValue<std::uint16_t>(OptionKeyTfHdrRegionId);
+
+  if (mTfHdrRegionId.value() == std::uint16_t(~0)) {
+    mTfHdrRegionId = std::nullopt;
+  }
 
   // start monitoring
   DataDistMonitor::start_datadist(o2::monitoring::tags::Value::TfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend"));
@@ -89,7 +100,7 @@ void TfBuilderDevice::InitTask()
     const auto lBufferStart = hres_clock::now();
 
     try {
-      mTfBuilder->allocate_memory(mTfBufferSize, mTfHdrBufferSize);
+      mTfBuilder->allocate_memory(mTfDataRegionSize, mTfDataRegionId, mTfHdrRegionSize, mTfHdrRegionId);
     } catch (std::exception &e) {
       IDDLOG("InitTask::MemorySegment allocation failed. what={}", e.what());
       // pass the failure
@@ -167,7 +178,7 @@ void TfBuilderDevice::InitTask()
 
 bool TfBuilderDevice::start()
 {
-  while (!mRpc->start(mTfBufferSize)) {
+  while (!mRpc->start(mTfDataRegionSize)) {
     // check if should stop looking for TfScheduler
     if (mRpc->isTerminateRequested()) {
       mShouldExit = true;
