@@ -155,9 +155,17 @@ to files, before they are sent out.
 :   Size of the memory region for (Sub)TimeFrames data in MiB. Note: make sure the
     region can fit several (Sub)TimeFrames to avoid deadlocks.
 
+**--data-source-region-shmid**
+:   Optional shm id for reusing existing TimeFrame regions.
+    (default will create a new region)
+
 **--data-source-headersize** arg (=512)
 :   Size of the memory region for (Sub)TimeFrames O2 headers in MiB. Note: make
     sure the region can fit several (Sub)TimeFrames to avoid deadlocks.
+
+**--data-source-header-shmid**
+:   Optional shm id for reusing existing TimeFrame header region.
+    (default will create a new region)
 
 **--data-source-file-list** arg
 :   File name which contains the list of files at remote location, e.g. a list of

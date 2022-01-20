@@ -100,7 +100,9 @@ class SubTimeFrameFileSource
   static constexpr const char* OptionKeyStfLoadPreRead = "data-source-preread";
   static constexpr const char* OptionKeyStfSourceRepeat = "data-source-repeat";
   static constexpr const char* OptionKeyStfSourceRegionSize = "data-source-regionsize";
+  static constexpr const char* OptionKeyStfSourceRegionId = "data-source-region-shmid";
   static constexpr const char* OptionKeyStfHeadersRegionSize = "data-source-headersize";
+  static constexpr const char* OptionKeyStfHeadersRegionId = "data-source-header-shmid";
 
   static constexpr const char* OptionKeyStfFileList = "data-source-file-list";
   static constexpr const char* OptionKeyStfCopyCmd = "data-source-copy-cmd";
@@ -163,7 +165,9 @@ class SubTimeFrameFileSource
   double mLoadRate = 1.f;
   std::uint32_t mPreReadStfs = 1;
   std::size_t mRegionSizeMB = 1024; /* 1GB in MiB */
+  std::optional<std::uint16_t> mTfDataRegionId = std::nullopt;
   std::size_t mHdrRegionSizeMB = 256;
+  std::optional<std::uint16_t> mTfHdrRegionId = std::nullopt;
 
   /// Thread for file writing
   std::atomic_bool mRunning = false;

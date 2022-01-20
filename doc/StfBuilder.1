@@ -226,10 +226,22 @@ deadlocks.
 .RS
 .RE
 .TP
+.B \f[B]\[en]data\-source\-region\-shmid\f[]
+Optional shm id for reusing existing TimeFrame regions.
+(default will create a new region)
+.RS
+.RE
+.TP
 .B \f[B]\[en]data\-source\-headersize\f[] arg (=512)
 Size of the memory region for (Sub)TimeFrames O2 headers in MiB.
 Note: make sure the region can fit several (Sub)TimeFrames to avoid
 deadlocks.
+.RS
+.RE
+.TP
+.B \f[B]\[en]data\-source\-header\-shmid\f[]
+Optional shm id for reusing existing TimeFrame header region.
+(default will create a new region)
 .RS
 .RE
 .TP

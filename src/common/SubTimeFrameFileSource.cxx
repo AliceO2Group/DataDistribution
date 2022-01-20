@@ -54,8 +54,8 @@ void SubTimeFrameFileSource::start(MemoryResources &pMemRes, const bool pDplEnab
 
     mFileBuilder = std::make_unique<SubTimeFrameFileBuilder>(
       pMemRes,
-      mRegionSizeMB << 20,
-      mHdrRegionSizeMB << 20,
+      mRegionSizeMB << 20, mTfDataRegionId,
+      mHdrRegionSizeMB << 20, mTfHdrRegionId,
       mDplEnabled
     );
 
@@ -127,10 +127,16 @@ bpo::options_description SubTimeFrameFileSource::getProgramOptions()
     bpo::value<std::uint64_t>()->default_value(1024),
     "Size of the memory region for (Sub)TimeFrames data in MiB. "
     "Note: make sure the region can fit several (Sub)TimeFrames to avoid deadlocks.")(
+    OptionKeyStfSourceRegionId,
+    bpo::value<std::uint16_t>()->default_value(std::uint16_t(~0)),
+    "Optional shm id for reusing existing TimeFrame regions. (default will create a new region)")(
     OptionKeyStfHeadersRegionSize,
     bpo::value<std::uint64_t>()->default_value(256),
     "Size of the memory region for (Sub)TimeFrames O2 headers in MiB. "
     "Note: make sure the region can fit several (Sub)TimeFrames to avoid deadlocks.")(
+    OptionKeyStfHeadersRegionId,
+    bpo::value<std::uint16_t>()->default_value(std::uint16_t(~0)),
+    "Optional shm id for reusing existing TimeFrame header region. (default will create a new region)")(
     OptionKeyStfFileList,
     bpo::value<std::string>()->default_value(""),
     "File name which contains the list of files at remote location, e.g. a list of files on EOS, or a remote server. "
@@ -189,7 +195,16 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
   mLoadRate = pFMQProgOpt.GetValue<double>(OptionKeyStfLoadRate);
   mPreReadStfs = pFMQProgOpt.GetValue<std::uint32_t>(OptionKeyStfLoadPreRead);
   mRegionSizeMB = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSourceRegionSize);
+  mTfDataRegionId = pFMQProgOpt.GetValue<std::uint16_t>(OptionKeyStfSourceRegionId);
+  if (mTfDataRegionId.value() == std::uint16_t(~0)) {
+    mTfDataRegionId = std::nullopt;
+  }
+
   mHdrRegionSizeMB = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfHeadersRegionSize);
+  mTfHdrRegionId = pFMQProgOpt.GetValue<std::uint16_t>(OptionKeyStfHeadersRegionId);
+  if (mTfHdrRegionId.value() == std::uint16_t(~0)) {
+    mTfHdrRegionId = std::nullopt;
+  }
 
   mCopyFileList = pFMQProgOpt.GetValue<std::string>(OptionKeyStfFileList);
   mCopyCmd = pFMQProgOpt.GetValue<std::string>(OptionKeyStfCopyCmd);
@@ -308,7 +323,9 @@ bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgO
   IDDLOG("(Sub)TimeFrame source :: (s)tf pre reads         = {}", mPreReadStfs);
   IDDLOG("(Sub)TimeFrame source :: repeat data             = {}", mRepeat);
   IDDLOG("(Sub)TimeFrame source :: num files in dataset    = {}", mFilesVector.size());
+  IDDLOG("(Sub)TimeFrame source :: data region id          = {}", mTfDataRegionId.has_value() ? std::to_string(mTfDataRegionId.value()) : "");
   IDDLOG("(Sub)TimeFrame source :: data region size(MiB)   = {}", mRegionSizeMB);
+  IDDLOG("(Sub)TimeFrame source :: header region id        = {}", mTfHdrRegionId.has_value() ? std::to_string(mTfHdrRegionId.value()) : "");
   IDDLOG("(Sub)TimeFrame source :: header region size(MiB) = {}", mHdrRegionSizeMB);
 
   return true;
