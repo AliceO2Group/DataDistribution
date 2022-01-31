@@ -109,6 +109,16 @@ public:
 
   ::grpc::Status TerminatePartition(::grpc::ServerContext* context, const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response) override;
 
+  /// reset counters on each new run
+  void reset_run_counters() {
+    mTfIdSizes.clear();
+    mCurrentTfBufferSize = mBufferSize;
+    mLastBuiltTfId = 0;
+    mNumBufferedTfs = 0;
+    mNumTfsInBuilding = 0;
+    mTfBuildRequests->flush();
+  }
+
 private:
   std::atomic_bool mRunning = false;
   std::atomic_bool mTerminateRequested = false;

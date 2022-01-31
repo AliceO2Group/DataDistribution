@@ -159,6 +159,7 @@ class TfBuilderDevice : public DataDistDevice,
   std::atomic_bool mRunning = false;         // Task initialized
   std::atomic_bool mInRunningState = false;  // FMQ in running state
   std::atomic_bool mShouldExit = false;
+  std::atomic_bool mShouldSendEos = false; // toggle in post run
 };
 
 } /* namespace o2::DataDistribution */
