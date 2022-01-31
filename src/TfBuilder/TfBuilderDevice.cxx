@@ -285,6 +285,12 @@ void TfBuilderDevice::PreRun()
   // enable monitoring
   DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, mPartitionId);
 
+  // reset tf counters and start accepting tfs
+  // NOTE: TfBuilder accepts TFs in both READY and RUNNING state.
+  mFlpInputHandler->reset();
+  mRpc->reset_run_counters();
+  mRpc->startAcceptingTfs();
+
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 
   mTfFwdTotalDataSize = 0;
@@ -298,6 +304,12 @@ void TfBuilderDevice::PreRun()
 // Get here when ConditionalRun returns false
 void TfBuilderDevice::PostRun()
 {
+  // stop accepting tfs until the state is clear in-between runs
+  mRpc->stopAcceptingTfs();
+
+  // send EOS
+  mShouldSendEos = true;
+
   // Not in Running state
   mInRunningState = false;
   DDMON("tfbuilder", "running", 0);
@@ -309,6 +321,9 @@ void TfBuilderDevice::PostRun()
 
   // disable monitoring
   DataDistMonitor::disable_datadist();
+
+  // start accepting tfs for the next run
+  mRpc->startAcceptingTfs();
 
   IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
@@ -334,8 +349,6 @@ void TfBuilderDevice::TfForwardThread()
 {
   using hres_clock = std::chrono::high_resolution_clock;
   auto lRateStartTime = hres_clock::now();
-  std::uint64_t lTfOutCnt = 0;
-  bool lShouldSendEos = false;
 
   while (mRunning) {
     std::optional<std::unique_ptr<SubTimeFrame>> lTfOpt = dequeue_for(eTfFwdIn, 100ms);
@@ -350,15 +363,13 @@ void TfBuilderDevice::TfForwardThread()
         WDDLOG_RL(1000, "Dropping a raw TimeFrame because stop of the run is requested.");
       }
 
-      if (dplEnabled() && lShouldSendEos) {
-        lShouldSendEos = false;
+      // send EOS if exiting the running state
+      if (dplEnabled() && mShouldSendEos) {
         mTfDplAdapter->sendEosToDpl();
+        mShouldSendEos = false;
       }
       continue;
     }
-
-    // Make sure to send EoS if in running state
-    lShouldSendEos = true;
 
     if (lTfOpt == std::nullopt) {
       DDMON("tfbuilder", "data_output.rate", 0);
@@ -386,9 +397,8 @@ void TfBuilderDevice::TfForwardThread()
 
     if (!mStandalone) {
       try {
-        lTfOutCnt++;
         IDDLOG_RL(5000, "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={:d}",
-          lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), lTfOutCnt);
+          lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), mTfFwdTotalTfCount);
 
         if (dplEnabled()) {
           // adapt headers to include DPL processing header on the stack
@@ -413,8 +423,9 @@ void TfBuilderDevice::TfForwardThread()
   }
 
   // leaving the output thread, send end of the stream info
-  if (dplEnabled() && lShouldSendEos) {
+  if (dplEnabled() && mShouldSendEos) {
     mTfDplAdapter->sendEosToDpl();
+    mShouldSendEos = false;
   }
 
   DDDLOG("Exiting TF forwarding thread.");

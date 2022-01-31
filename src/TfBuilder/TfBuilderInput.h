@@ -46,6 +46,13 @@ class TfBuilderInput
 
   bool start(std::shared_ptr<ConsulTfBuilder> pConfig);
   void stop(std::shared_ptr<ConsulTfBuilder> pConfig);
+  void reset() {
+    mReceivedData.flush();
+    mStfsForMerging.flush();
+    std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
+    mStfMergeMap.clear();
+    mMaxMergedTfId = 0;
+  }
 
   void DataHandlerThread(const std::uint32_t pFlpIndex, const std::string pStfSenderId);
   void StfPacingThread();

@@ -99,9 +99,7 @@ void TfBuilderRpcImpl::stop()
   mStfSenderRpcClients.stop();
   mTfSchedulerRpcClient.stop();
 
-  mCurrentTfBufferSize = 0;
-  mNumBufferedTfs = 0;
-  mLastBuiltTfId = 0;
+  reset_run_counters();
 }
 
 // make sure these are sent immediately
@@ -223,7 +221,7 @@ bool TfBuilderRpcImpl::recordTfBuilt(const SubTimeFrame &pTf)
   }
   mUpdateCondition.notify_one();
 
-  { // record the current TP
+  { // record the current TF
     std::unique_lock lLock(mStfDurationMapLock);
     mStfReqDuration.erase(lTfId);
   }
