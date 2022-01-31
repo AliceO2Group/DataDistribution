@@ -52,6 +52,8 @@ namespace o2::DataDistribution
 static constexpr const char *ENV_NOLOCK = "DATADIST_NO_MLOCK";
 static constexpr const char *ENV_SHM_PATH = "DATADIST_SHM_PATH";
 static constexpr const char *ENV_SHM_DELAY = "DATADIST_SHM_DELAY";
+static constexpr const char *ENV_SHM_ZERO = "DATADIST_SHM_ZERO";
+static constexpr const char *ENV_SHM_ZERO_CHECK = "DATADIST_SHM_ZERO_CHECK";
 
 enum RegionAllocStrategy {
   eFindLongest,
@@ -141,21 +143,24 @@ public:
       } while (false);
     }
 
+    // Get the environment variable for memory zeroing on init and reclaim
+    const bool lZeroShmMemory = !!std::getenv(ENV_SHM_ZERO);
+    const bool lZeroCheckShmMemory = !!std::getenv(ENV_SHM_ZERO_CHECK);
+
     if (pSegmentId.has_value()) {
       IDDLOG("Opening an existing UnmanagedRegion name={} path={} size={} id={}", mSegmentName, lSegmentRoot, pSize, pSegmentId.value());
       lRegionCfg.id = pSegmentId;
       lRegionCfg.lock = false;
-      lRegionCfg.zero = false;
+      lRegionCfg.zero = lZeroShmMemory;
       lRegionCfg.removeOnDestruction = false;
     } else {
       IDDLOG("Creating new UnmanagedRegion name={} path={} size={}", mSegmentName, lSegmentRoot, pSize);
       lRegionCfg.lock = true;
-      lRegionCfg.zero = false;
+      lRegionCfg.zero = lZeroShmMemory;
       lRegionCfg.removeOnDestruction = true;
     }
 
-
-    auto lReclaimFn = [this](const std::vector<FairMQRegionBlock>& pBlkVect) {
+    auto lReclaimFn = [this, lZeroShmMemory, lZeroCheckShmMemory](const std::vector<FairMQRegionBlock>& pBlkVect) {
       icl::interval_map<std::size_t, std::size_t> lIntMap;
       static thread_local double sMergeRatio = 0.5;
 
@@ -168,6 +173,16 @@ public:
 
         // align up the message size for correct interval merging
         const auto lASize = align_size_up(lInt.size);
+
+        // check for buffer sentinel value
+        if (lZeroCheckShmMemory && lASize > lInt.size) {
+          const auto lTrailer = reinterpret_cast<const char*>(lInt.ptr)[lInt.size];
+          if (lTrailer != char(0xAA)) {
+            EDDLOG_RL(10000, "Memory corruption in returned message. Overwritten trailer. region={} value={}",
+            mSegmentName, lTrailer);
+          }
+        }
+
         lIntMap += std::make_pair(
           icl::discrete_interval<std::size_t>::right_open(
             std::size_t(lInt.ptr), std::size_t(lInt.ptr) + lASize), std::size_t(1));
@@ -194,7 +209,9 @@ public:
           void *lStart = (void *) lIntMerged.first.lower();
 
           // clear the memory
-          memset(lStart, 0x00, lLen);
+          if (lZeroShmMemory) {
+            memset(lStart, 0x00, lLen);
+          }
 
           // recover the merged region
           reclaimSHMMessage(lStart, lLen);
@@ -302,7 +319,7 @@ protected:
     return (pSize + ALIGN - 1) / ALIGN * ALIGN;
   }
 
-  void* do_allocate(std::size_t pSize)
+  void* do_allocate(const std::size_t pSize)
   {
     if (!mRunning) {
       return nullptr;
@@ -314,16 +331,16 @@ protected:
     }
 
     // align up
-    pSize = align_size_up(pSize);
+    const auto pSizeUp = align_size_up(pSize);
 
-    auto lRet = try_alloc(pSize);
+    auto lRet = try_alloc(pSizeUp);
 
     while (!lRet && mRunning) {
       auto lGen = mGeneration.load();
       // try to reclaim if possible
-      if (try_reclaim(pSize)) {
+      if (try_reclaim(pSizeUp)) {
         // try again
-        lRet = try_alloc(pSize);
+        lRet = try_alloc(pSizeUp);
       }
 
       if (lRet) {
@@ -356,13 +373,18 @@ protected:
       return nullptr;
     }
 
-    mFree -= pSize;
+    mFree -= pSizeUp;
     assert (mFree > 0);
 
     static thread_local std::size_t sLogRateLimit = 0;
     if (sLogRateLimit++ % 1024 == 0) {
       const std::int64_t lFree = mFree;
       DDDLOG_GRL(2000, "DataRegionResource {} memory free={} allocated={}", mSegmentName, lFree, (mSegmentSize - lFree));
+    }
+
+    // If the allocated message was aligned up, set a first byte after the buffer to 0
+    if (pSizeUp > pSize) {
+      reinterpret_cast<char*>(lRet)[pSize] = char(0xAA);
     }
 
     return lRet;

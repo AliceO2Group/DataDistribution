@@ -56,7 +56,13 @@ Make sure that only a single instance of the proxy is started.
 
   - `DATADIST_DEBUG_DPL_CHAN` When defined, data sent to DPL will be checked for consistency with the O2 data model. Note: will be slow with larger TimeFrames.
 
+### Shared memory:
 
+  - `DATADIST_NO_MLOCK` Disable locking of the shared memory segments. Only use in testing and development!
+
+  - `DATADIST_SHM_ZERO` When defined, shared memory segment will be zeroed before use. Because of large performance impact, only use to check for memory corruption, not in production.
+
+  - `ENV_SHM_ZERO_CHECK` Define to enable checking for memory corruption in unmanaged region. Each de-allocated message will be checked for write-past-end corruption.
 
 
 ## Consul parameters (tuning option)
