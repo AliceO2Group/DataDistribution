@@ -177,11 +177,26 @@ private:
     std::condition_variable mMemWatermarkCondition;
     std::map<std::uint64_t, std::vector<StfInfo>> mStfInfoMap;
     std::map<std::string, StfSenderInfo> mStfSenderInfoMap;
+    std::uint64_t mRunNumber = 0;
     std::uint64_t mLastStfId = 0;
     std::uint64_t mMaxCompletedTfId = 0;
     std::uint64_t mNotScheduledTfsCount = 0;
     EventRecorder mDroppedStfs;
     EventRecorder mBuiltTfs;
+
+    void reset() {
+      // NOTE: only call when holding mGlobalStfInfoLock
+
+      mLastStfId = 0;
+      mMaxCompletedTfId = 0;
+      mNotScheduledTfsCount = 0;
+      mDroppedStfs.reset();
+      mBuiltTfs.reset();
+
+      if (!mStfInfoMap.empty()) {
+        WDDLOG("TfSchedulerStfInfo::reset(): StfInfoMap not empty. size={}", mStfInfoMap.size());
+      }
+    }
 
     inline void requestDropAllLocked(const std::uint64_t lStfId) {
       assert (mDroppedStfs.GetEvent(lStfId) == false);

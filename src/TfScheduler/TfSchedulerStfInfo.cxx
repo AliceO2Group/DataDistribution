@@ -394,10 +394,8 @@ void TfSchedulerStfInfo::DropThread()
 
 void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse)
 {
-  static std::chrono::duration<double, std::milli> sCompleteTfDurAvg = std::chrono::duration<double, std::milli>(0);
-  static std::chrono::duration<double, std::milli> sCompleteTfDurMax = std::chrono::duration<double, std::milli>(0);
-
   const auto lNumStfSenders = mDiscoveryConfig->status().stf_sender_count();
+  const std::uint64_t lRunNumber = pStfInfo.partition().run_number();
   const auto lStfId = pStfInfo.stf_id();
 
   if (pStfInfo.stf_source() == StfSource::TOPOLOGICAL) {
@@ -408,8 +406,23 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
   {
     std::unique_lock lLock(mGlobalStfInfoLock);
 
+    DDDLOG_RL(5000, "addStfInfo: stf info received. stf_id={}", lStfId);
+
     // always record latest stfsender status for high watermark thread
     mStfSenderInfoMap[pStfInfo.info().process_id()] = pStfInfo.stfs_info();
+
+    // check if we need to restart tf counters for a new run
+    if (mRunNumber < lRunNumber) {
+      DDDLOG("New RunNumber received. run_number={}", lRunNumber);
+      // reset internal counters
+      reset();
+      mRunNumber = lRunNumber;
+    } else if (mRunNumber > lRunNumber) {
+      EDDLOG("New RunNumber is smaller than the previous. run_number={} prev_run_number={}", lRunNumber, mRunNumber);
+      pResponse.set_status((!mRunning) ? SchedulerStfInfoResponse::DROP_NOT_RUNNING :
+        SchedulerStfInfoResponse::DROP_SCHED_DISCARDED);
+      return;
+    }
 
     // check if already dropped?
     if (mDroppedStfs.GetEvent(lStfId)) {
@@ -466,7 +479,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
     // Sanity check for delayed Stf info
     // TODO: define tolerable delay here
     // seq consistency: FLPs are driving streams independently
-    const std::uint64_t lMaxDelayTf = sStfDiscardTimeout.count() * 44;
+    const std::uint64_t lMaxDelayTf = sStfDiscardTimeout.count() * 88;
     const std::uint64_t lMinAccept = mLastStfId < lMaxDelayTf ? 0 : (mLastStfId - lMaxDelayTf);
 
     DDDLOG_GRL(5000, "TfScheduler: Currently accepting STF id range: start_id={} current_id={}",
