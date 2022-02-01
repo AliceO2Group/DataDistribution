@@ -13,7 +13,6 @@ set (LIB_COMMON_SOURCES
   SubTimeFrameBuilder
   SubTimeFrameDataModel
   SubTimeFrameVisitors
-  SubTimeFrameUtils
   SubTimeFrameFile
   SubTimeFrameFileWriter
   SubTimeFrameFileSink

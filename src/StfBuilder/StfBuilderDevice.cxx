@@ -14,13 +14,14 @@
 #include "StfBuilderDevice.h"
 
 #include <DataDistLogger.h>
-#include <SubTimeFrameUtils.h>
 #include <SubTimeFrameVisitors.h>
 #include <ReadoutDataModel.h>
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameDPL.h>
 #include <Utilities.h>
 #include <ConfigConsul.h>
+
+#include <Headers/DataHeader.h>
 
 #include <options/FairMQProgOptions.h>
 
@@ -201,7 +202,7 @@ void StfBuilderDevice::InitTask()
   // make sure we have detector if not using files
   if (!I().mFileSource->enabled()) {
     if ((ReadoutDataUtils::sRdhVersion < ReadoutDataUtils::RdhVersion::eRdhVer6) &&
-      (ReadoutDataUtils::sSpecifiedDataOrigin == gDataOriginInvalid)) {
+      (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginInvalid)) {
       EDDLOG("Detector string parameter must be specified when receiving the data from the "
         "readout and not using RDHv6 or greater.");
       std::this_thread::sleep_for(1s); exit(-1);
