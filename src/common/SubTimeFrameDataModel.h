@@ -178,25 +178,6 @@ struct EquipmentIdentifier {
   }
 };
 
-struct HBFrameHeader : public o2hdr::BaseHeader {
-
-  // Required to do the lookup
-  static const o2hdr::HeaderType sHeaderType;
-  static const uint32_t sVersion = 1;
-
-  uint32_t mHBFrameId;
-
-  HBFrameHeader(uint32_t pId)
-    : BaseHeader(sizeof(HBFrameHeader), sHeaderType, o2hdr::gSerializationMethodNone, sVersion),
-      mHBFrameId(pId)
-  {
-  }
-
-  HBFrameHeader()
-    : HBFrameHeader(0)
-  {
-  }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Visitor friends
@@ -205,15 +186,12 @@ struct HBFrameHeader : public o2hdr::BaseHeader {
   friend class SubTimeFrameReadoutBuilder;     \
   friend class SubTimeFrameFileBuilder;        \
   friend class TimeFrameBuilder;               \
-  friend class InterleavedHdrDataSerializer;   \
-  friend class InterleavedHdrDataDeserializer; \
-  friend class DataIdentifierSplitter;         \
   friend class SubTimeFrameFileWriter;         \
   friend class SubTimeFrameFileReader;         \
   friend class StfToDplAdapter;                \
   friend class DplToStfAdapter;                \
-  friend class CoalescedHdrDataSerializer;     \
-  friend class CoalescedHdrDataDeserializer;
+  friend class IovSerializer;                  \
+  friend class IovDeserializer;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// SubTimeFrame
@@ -243,25 +221,41 @@ class SubTimeFrame : public IDataModelObject
       // this is fine since we created the DataHeader there
       return reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
     }
+  };
 
-    inline void setPayloadIndex_TfCounter_RunNumber(
-      const o2hdr::DataHeader::SplitPayloadIndexType pIdx,
-      const o2hdr::DataHeader::SplitPayloadPartsType pTotal,
-      const std::uint32_t pTfCounter,
-      const std::uint32_t pRunNumber
-      )
+  struct StfMessage {
+
+    StfMessage() = delete;
+
+    StfMessage(std::unique_ptr<FairMQMessage> &&pHeader)
+      : mHeader(std::move(pHeader))
     {
-      assert(pIdx < pTotal);
+      assert(mHeader);
+    }
 
+    std::unique_ptr<FairMQMessage> mHeader;
+    std::vector<std::unique_ptr<FairMQMessage>> mDataParts;
+
+    inline o2hdr::DataHeader* getDataHeaderMutable() {
+      if (!mHeader) {
+        return nullptr;
+      }
+      // this is fine since we created the DataHeader there
+      return reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
+    }
+
+    inline o2hdr::DataHeader getDataHeaderCopy() const
+    {
+      return *reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
+    }
+
+    inline void setTfCounter_RunNumber(const std::uint32_t pTfCounter, const std::uint32_t pRunNumber) {
       // can be removed if redundant
       if (!mHeader) {
         return;
       }
-
       // DataHeader must be first in the stack
       o2hdr::DataHeader *lDataHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
-      lDataHdr->splitPayloadIndex = pIdx;
-      lDataHdr->splitPayloadParts = pTotal;
       lDataHdr->tfCounter = pTfCounter;
       lDataHdr->runNumber = pRunNumber;
     }
@@ -281,8 +275,8 @@ class SubTimeFrame : public IDataModelObject
 
   // we SHOULD be able to get away with this
   // make sure the vector has sufficient initial capacity
-  struct StfDataVectorT : public std::vector<StfData> {
-    StfDataVectorT() : std::vector<StfData>() { reserve(512); }
+  struct StfDataVectorT : public std::vector<StfMessage> {
+    StfDataVectorT() : std::vector<StfMessage>() { reserve(512); }
 
     StfDataVectorT(const StfDataVectorT&) = delete;
     StfDataVectorT(StfDataVectorT&&) = default;
@@ -337,10 +331,6 @@ class SubTimeFrame : public IDataModelObject
   void clear() { mData.clear(); mDataUpdated = false; }
   // NOTE: method declared const to work with const visitors, manipulated fields are mutable
   void updateStf() const;
-
-  // remove redundant o2 headers in split-payload messages
-  // NOTE: Only remove headers while waiting to be copied to TfBuilder!
-  void removeRedundantHeaders();
 
  protected:
   void accept(ISubTimeFrameVisitor& v) override { updateStf(); v.visit(*this); }
@@ -399,23 +389,71 @@ private:
   ///
   /// helper methods
   ///
-  inline void addStfData(const o2hdr::DataHeader& pDataHeader, StfData&& pStfData)
-  {
-    const o2hdr::DataIdentifier lDataId = impl::getDataIdentifier(pDataHeader);
-    auto& lDataVector = mData[lDataId][pDataHeader.subSpecification];
 
-    lDataVector.push_back(std::move(pStfData));
+  // This is only to be used with the data building from readout
+  // in this case, only a single split-payload will be present in the data vector
+  // If any other header is provided, it can be discarded
+  inline auto addStfDataReadout(const o2hdr::DataIdentifier &pDataId, const o2::header::DataHeader::SubSpecificationType pSubSpec, StfData&& pStfData)
+  {
+    auto &lDataVec = mData[pDataId][pSubSpec];
+
+    if (lDataVec.empty()) {
+      assert(pStfData.mHeader);
+
+      lDataVec.emplace_back(StfMessage(std::move(pStfData.mHeader)));
+    }
+
+    if (!lDataVec.empty()) {
+      // remove the header
+      pStfData.mHeader = nullptr;
+    }
+
+    auto &lNewMsg = lDataVec.back();
+
+    lNewMsg.mDataParts.reserve(512); // usually HBFs
+    lNewMsg.mDataParts.emplace_back(std::move(pStfData.mData));
     mDataUpdated = false;
-  }
 
-  inline void addStfData(StfData&& pStfData)
+    return &(lNewMsg.mDataParts);
+  }
+  // optimized version without vector lookup
+  inline void addStfDataReadout(std::vector<FairMQMessagePtr> *pInVector, FairMQMessagePtr &&pData)
   {
-    const o2hdr::DataHeader* lDataHeader = pStfData.getDataHeader();
-    if (!lDataHeader) {
+    if (!pInVector || pInVector->empty()) {
+      EDDLOG("BUG: addStfDataAppend: No header message.");
       return;
     }
 
-    addStfData(*lDataHeader, std::move(pStfData));
+    pInVector->emplace_back(std::move(pData));
+    mDataUpdated = false;
+  }
+
+
+  // Start a new single or split-payload message
+  // e.g. when deserializing a channel or a file
+  inline auto addStfDataStart(const o2hdr::DataIdentifier &pDataId, const o2::header::DataHeader::SubSpecificationType pSubSpec, StfData&& pStfData)
+  {
+    auto &lDataVec = mData[pDataId][pSubSpec];
+    auto &lNewMsg = lDataVec.emplace_back(StfMessage(std::move(pStfData.mHeader)));
+
+    lNewMsg.mDataParts.reserve(512);
+    lNewMsg.mDataParts.emplace_back(std::move(pStfData.mData));
+
+    mDataUpdated = false;
+    return &(lNewMsg.mDataParts);
+  }
+
+  // Append a split-payload message
+  // e.g. when deserializing a channel or a file
+  inline void addStfDataAppend(std::vector<FairMQMessagePtr> *pInVector, FairMQMessagePtr &&pData)
+  {
+    if (!pInVector || pInVector->empty()) {
+      EDDLOG("BUG: addStfDataAppend: No header message");
+      return;
+    }
+
+    pInVector->emplace_back(std::move(pData));
+    mDataUpdated = false;
   }
 
 };

@@ -179,7 +179,7 @@ SubTimeFrameFileWriter::~SubTimeFrameFileWriter()
 
 void SubTimeFrameFileWriter::visit(const SubTimeFrame& pStf)
 {
-  assert(mStfData.empty() && mStfSize == 0);
+  mStfData.clear();
   assert(mStfDataIndex.empty());
 
   // Write data in lexicographical order of DataIdentifier + subSpecification
@@ -194,20 +194,24 @@ void SubTimeFrameFileWriter::visit(const SubTimeFrame& pStf)
 
     const auto& lEquipDataVec = pStf.mData.at(lEquip).at(lEquip.mSubSpecification);
 
-    for (const auto& lData : lEquipDataVec) {
+    for (const auto& lDataMsgs : lEquipDataVec) {
+
       // NOTE: get only pointers to <hdr, data> struct
-      mStfData.push_back(&lData);
-      // account the size
-      // NOTE: only take data header. if DPL is enabled the header stack will already have the processing header
-      const auto lHdrDataSize = sizeof(DataHeader) + lData.mData->GetSize();
+      mStfData.push_back(&lDataMsgs);
 
-      // total size
-      mStfSize += lHdrDataSize;
+      for (const auto &lDataPtr : lDataMsgs.mDataParts) {
 
-      // calculate the size for the index
-      auto & [ lSize, lCnt ] = lDataIdSizeCnt[lEquip];
-      lSize += lHdrDataSize;
-      lCnt++;
+        // account the size
+        const auto lHdrDataSize = sizeof(DataHeader) + lDataPtr->GetSize();
+
+        // total size
+        mStfSize += lHdrDataSize;
+
+        // calculate the size for the index
+        auto & [ lSize, lCnt ] = lDataIdSizeCnt[lEquip];
+        lSize += lHdrDataSize;
+        lCnt += 1;
+      }
     }
   }
 
@@ -267,14 +271,27 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
 
     lDataOffset = size(); // save for the info file
 
-    for (const auto& lStfData : mStfData) {
-      // only write DataHeader (make a local DataHeader copy to clear flagsNextHeader bit)
-      const DataHeader *lDhPtr = lStfData->getDataHeader();
-      DataHeader lDh = (lDhPtr) ? *lDhPtr : DataHeader() ;
+    for (const auto &lStfMsg : mStfData) {
 
-      lDh.flagsNextHeader = 0;
-      buffered_write(reinterpret_cast<const char*>(&lDh), sizeof (DataHeader));
-      buffered_write(lStfData->mData->GetData(), lStfData->mData->GetSize());
+      if (!lStfMsg->mHeader) {
+        EDDLOG("BUG: FileWriter: No header in DataMsg");
+        continue;
+      }
+
+      // only write DataHeader (make a local DataHeader copy to clear flagsNextHeader bit)
+      DataHeader lDhToWrite = lStfMsg->getDataHeaderCopy();
+      lDhToWrite.flagsNextHeader = 0;
+
+      for (std::size_t i = 0; i < lStfMsg->mDataParts.size(); i++) {
+        const auto &lDataPtr = lStfMsg->mDataParts[i];
+
+        // update payload size and index
+        lDhToWrite.payloadSize = lDataPtr->GetSize();
+        lDhToWrite.splitPayloadIndex = i;
+
+        buffered_write(reinterpret_cast<const char*>(&lDhToWrite), sizeof (DataHeader));
+        buffered_write(lDataPtr->GetData(), lDhToWrite.payloadSize);
+      }
     }
 
     // flush the buffer and check the state
@@ -296,57 +313,65 @@ std::uint64_t SubTimeFrameFileWriter::_write(const SubTimeFrame& pStf)
       const auto l2StfFileOff = lPrevSize;
       const auto l3StfFileSize = lStfSizeInFile;
 
-      for (const auto& lStfData : mStfData) {
-        fmt::memory_buffer lValRow;
+      for (const auto& lStfMsg : mStfData) {
 
-        const DataHeader &lDH = *lStfData->getDataHeader();
+        DataHeader lDH = lStfMsg->getDataHeaderCopy();
 
-        const auto& l4DataOrigin = lDH.dataOrigin;
-        const auto& l5DataDescription = lDH.dataDescription;
-        const auto l6SubSpec = lDH.subSpecification;
-        const auto l7DataIndex = lDH.splitPayloadIndex;
+        for (std::size_t i = 0; i < lStfMsg->mDataParts.size(); i++) {
+          const auto &lDataPtr = lStfMsg->mDataParts[i];
 
-        const auto l8HdrOff = lDataOffset;
-        lDataOffset += lStfData->mHeader->GetSize();
-        const auto l9HdrSize = lStfData->mHeader->GetSize();
-        const auto l10DataOff = lDataOffset;
-        lDataOffset += lStfData->mData->GetSize();
-        const auto l11DataSize = lStfData->mData->GetSize();
+          lDH.splitPayloadIndex = i;
+          lDH.payloadSize = lDataPtr->GetSize();
 
-        impl::sInfoVal(lValRow, impl::TF_ID, l1StfId);
-        impl::sInfoVal(lValRow, impl::TF_OFFSET, l2StfFileOff);
-        impl::sInfoVal(lValRow, impl::TF_SIZE, l3StfFileSize);
-        impl::sInfoVal(lValRow, impl::ORIGIN, l4DataOrigin.as<std::string>());
-        impl::sInfoVal(lValRow, impl::DESC, l5DataDescription.as<std::string>());
-        impl::sInfoVal(lValRow, impl::SUBSPEC, l6SubSpec);
-        impl::sInfoVal(lValRow, impl::DATA_IDX, l7DataIndex);
-        impl::sInfoVal(lValRow, impl::HDR_OFF, l8HdrOff);
-        impl::sInfoVal(lValRow, impl::HDR_SIZE, l9HdrSize);
-        impl::sInfoVal(lValRow, impl::DATA_OFF, l10DataOff);
-        impl::sInfoVal(lValRow, impl::DATA_SIZE, l11DataSize);
+          fmt::memory_buffer lValRow;
 
-        // only if the O2 header is RAWDATA
-        if (lDH.dataDescription == gDataDescriptionRawData) {
-          try {
-            const auto R = RDHReader(lStfData->mData);
-            const auto [l12MemSize, l13StopBit] = ReadoutDataUtils::getHBFrameMemorySize(lStfData->mData);
-            const auto l14FeeId = R.getFeeID();
-            const auto l15Orbit = R.getOrbit();
-            const auto l16Bc = R.getBC();
-            const auto l17Trig = R.getTriggerType();
+          const auto& l4DataOrigin = lDH.dataOrigin;
+          const auto& l5DataDescription = lDH.dataDescription;
+          const auto l6SubSpec = lDH.subSpecification;
+          const auto l7DataIndex = lDH.splitPayloadIndex;
 
-            impl::sInfoVal(lValRow, impl::RDH_MEM_SIZE, l12MemSize);
-            impl::sInfoVal(lValRow, impl::RDH_STOP_BIT, l13StopBit ? 1 : 0);
-            impl::sInfoVal(lValRow, impl::RDH_FEE_ID, l14FeeId);
-            impl::sInfoVal(lValRow, impl::RDH_ORBIT, l15Orbit);
-            impl::sInfoVal(lValRow, impl::RDH_BC, l16Bc);
-            impl::sInfoVal(lValRow, impl::RDH_TRG, l17Trig);
-          } catch (RDHReaderException &e) {
-            EDDLOG( e.what());
+          const auto l8HdrOff = lDataOffset;
+          lDataOffset += sizeof(DataHeader);
+          const auto l9HdrSize = sizeof(DataHeader);
+          const auto l10DataOff = lDataOffset;
+          lDataOffset += lDH.payloadSize;
+          const auto l11DataSize = lDH.payloadSize;
+
+          impl::sInfoVal(lValRow, impl::TF_ID, l1StfId);
+          impl::sInfoVal(lValRow, impl::TF_OFFSET, l2StfFileOff);
+          impl::sInfoVal(lValRow, impl::TF_SIZE, l3StfFileSize);
+          impl::sInfoVal(lValRow, impl::ORIGIN, l4DataOrigin.as<std::string>());
+          impl::sInfoVal(lValRow, impl::DESC, l5DataDescription.as<std::string>());
+          impl::sInfoVal(lValRow, impl::SUBSPEC, l6SubSpec);
+          impl::sInfoVal(lValRow, impl::DATA_IDX, l7DataIndex);
+          impl::sInfoVal(lValRow, impl::HDR_OFF, l8HdrOff);
+          impl::sInfoVal(lValRow, impl::HDR_SIZE, l9HdrSize);
+          impl::sInfoVal(lValRow, impl::DATA_OFF, l10DataOff);
+          impl::sInfoVal(lValRow, impl::DATA_SIZE, l11DataSize);
+
+          // only if the O2 header is RAWDATA
+          if (lDH.dataDescription == gDataDescriptionRawData) {
+            try {
+              const auto R = RDHReader(lDataPtr);
+              const auto [l12MemSize, l13StopBit] = ReadoutDataUtils::getHBFrameMemorySize(lDataPtr);
+              const auto l14FeeId = R.getFeeID();
+              const auto l15Orbit = R.getOrbit();
+              const auto l16Bc = R.getBC();
+              const auto l17Trig = R.getTriggerType();
+
+              impl::sInfoVal(lValRow, impl::RDH_MEM_SIZE, l12MemSize);
+              impl::sInfoVal(lValRow, impl::RDH_STOP_BIT, l13StopBit ? 1 : 0);
+              impl::sInfoVal(lValRow, impl::RDH_FEE_ID, l14FeeId);
+              impl::sInfoVal(lValRow, impl::RDH_ORBIT, l15Orbit);
+              impl::sInfoVal(lValRow, impl::RDH_BC, l16Bc);
+              impl::sInfoVal(lValRow, impl::RDH_TRG, l17Trig);
+            } catch (RDHReaderException &e) {
+              EDDLOG( e.what());
+            }
           }
-        }
 
-        mInfoFile << std::string_view(lValRow.begin(), lValRow.size()) << '\n';
+          mInfoFile << std::string_view(lValRow.begin(), lValRow.size()) << '\n';
+        }
       }
       mInfoFile.flush();
     } catch (const std::ios_base::failure& eFailExc) {

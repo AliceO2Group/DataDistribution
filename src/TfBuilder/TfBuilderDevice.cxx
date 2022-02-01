@@ -81,17 +81,15 @@ void TfBuilderDevice::InitTask()
 
   // Using DPL?
   if (mDplChannelName != "") {
-    mDplEnabled = true;
     mStandalone = false;
     IDDLOG("Using DPL channel. channel_name={}", mDplChannelName);
   } else {
-    mDplEnabled = false;
     mStandalone = true;
     IDDLOG("Not sending to DPL.");
   }
 
   // start buffer creation in an async thread
-  mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI(), dplEnabled());
+  mTfBuilder = std::make_unique<TimeFrameBuilder>(MemI());
   std::promise<bool> lBuffersAllocated;
   std::future<bool> lBuffersAllocatedFuture = lBuffersAllocated.get_future();
 
@@ -197,7 +195,7 @@ bool TfBuilderDevice::start()
   // we reached the scheduler instance, initialize everything else
   mRunning = true;
 
-  if (!mStandalone && dplEnabled()) {
+  if (!mStandalone) {
     auto& lOutputChan = GetChannel(getDplChannelName(), 0);
     mTfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
   }
@@ -364,7 +362,7 @@ void TfBuilderDevice::TfForwardThread()
       }
 
       // send EOS if exiting the running state
-      if (dplEnabled() && mShouldSendEos) {
+      if (mShouldSendEos) {
         mTfDplAdapter->sendEosToDpl();
         mShouldSendEos = false;
       }
@@ -400,15 +398,14 @@ void TfBuilderDevice::TfForwardThread()
         IDDLOG_RL(5000, "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={:d}",
           lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), mTfFwdTotalTfCount);
 
-        if (dplEnabled()) {
-          // adapt headers to include DPL processing header on the stack
-          assert(mTfBuilder);
-          TfBuilderI().adaptHeaders(lTf.get());
+        // adapt headers to include DPL processing header on the stack
+        assert(mTfBuilder);
+        TfBuilderI().adaptHeaders(lTf.get());
 
-          // Send to DPL
-          assert (mTfDplAdapter);
-          mTfDplAdapter->sendToDpl(std::move(lTf));
-        }
+        // Send to DPL
+        assert (mTfDplAdapter);
+        mTfDplAdapter->sendToDpl(std::move(lTf));
+
       } catch (std::exception& e) {
         if (IsRunningState()) {
           EDDLOG("StfOutputThread: exception on send. exception_what={:s}", e.what());
@@ -423,7 +420,7 @@ void TfBuilderDevice::TfForwardThread()
   }
 
   // leaving the output thread, send end of the stream info
-  if (dplEnabled() && mShouldSendEos) {
+  if (!mStandalone && mShouldSendEos && mTfDplAdapter) {
     mTfDplAdapter->sendEosToDpl();
     mShouldSendEos = false;
   }

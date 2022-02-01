@@ -37,7 +37,7 @@ void StfInputInterface::start(bool pBuildStf, std::shared_ptr<ConsulStfBuilder> 
   mDiscoveryConfig = pStfBuilderConfig;
 
   mBuilderInputQueue = std::make_unique<ConcurrentFifo<std::vector<FairMQMessagePtr>>>();
-  mStfBuilder = std::make_unique<SubTimeFrameReadoutBuilder>(mDevice.MemI(), mDevice.dplEnabled());
+  mStfBuilder = std::make_unique<SubTimeFrameReadoutBuilder>(mDevice.MemI());
 
   // sequence thread only needed when building physics STFs
   if (pBuildStf) {

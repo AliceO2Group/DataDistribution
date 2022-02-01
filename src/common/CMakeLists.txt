@@ -32,6 +32,8 @@ target_link_libraries(common
   PUBLIC
     base
     fmqtools
+    discovery
+    protobuf::libprotobuf
     Boost::iostreams
     FairMQ::FairMQ
     AliceO2::Headers

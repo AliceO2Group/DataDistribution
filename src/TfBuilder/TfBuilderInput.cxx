@@ -285,52 +285,49 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex, const std:
   auto& lInputChan = *mStfSenderChannels[pFlpIndex];
 
   // Deserialization object (stf ID)
-  CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
+  IovDeserializer lStfReceiver(mDevice.TfBuilderI());
 
   while (mState == RUNNING) {
-    std::unique_ptr<std::vector<FairMQMessagePtr>> lStfData = std::make_unique<std::vector<FairMQMessagePtr>>();
+
+    std::unique_ptr<std::vector<FairMQMessagePtr>> lStfData;
+
+
+    lStfData = std::make_unique<std::vector<FairMQMessagePtr>>();
 
     const std::int64_t lRet = lInputChan.Receive(*lStfData, 1000 /* ms */);
+    if (static_cast<std::int64_t>(fair::mq::TransferCode::timeout) == lRet) {
+      continue;
+    } else if (static_cast<std::int64_t>(fair::mq::TransferCode::interrupted) == lRet) {
+      if (mState == RUNNING) {
+        WDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::interrupted pStfSenderId={}", pStfSenderId);
+      }
+      continue;
+    } else if (static_cast<std::int64_t>(fair::mq::TransferCode::error) == lRet) {
+      EDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::error err={} errno={} error={}",
+        int(lRet), errno, std::string(strerror(errno)));
+      continue;
+    }
 
-    switch (lRet) {
-      case static_cast<std::int64_t>(fair::mq::TransferCode::timeout):
-        continue;
-        break;
-      case static_cast<std::int64_t>(fair::mq::TransferCode::interrupted):
-        if (mState == RUNNING) {
-          IDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::interrupted pStfSenderId={}", pStfSenderId);
-        }
-        continue;
-        break;
-      case static_cast<std::int64_t>(fair::mq::TransferCode::error):
-        EDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::error err={} errno={} error={}",
-          int(lRet), errno, std::string(strerror(errno)));
-        continue;
-        break;
-      default: // data or zero
-        if (lRet <= 0) {
-          WDDLOG_RL(1000, "STF receive failed. what=zero_size");
-          continue;
-        }
-        break;
+    if (lRet <= 0) {
+      WDDLOG_RL(1000, "STF receive failed. size={}", lRet);
+      continue;
     }
 
     // move data to the dedicated region if required
-    if (std::size_t(lRet) > mDevice.TfBuilderI().freeData()) {
-      EDDLOG_GRL(1000, "TfBuilderInput::DataHandlerThread: Data region size too small for received data. received={} region_free={}",
-        lRet, mDevice.TfBuilderI().freeData());
-    }
     lStfReceiver.copy_to_region(*lStfData);
 
     // get Stf ID
-    const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(*lStfData);
+    FairMQMessagePtr lHdrMessage = std::move(lStfData->back()); lStfData->pop_back();
+    const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(lHdrMessage);
     const std::uint64_t lTfId = lStfHeader.mId;
+
+    // WDDLOG("STF received. hdr_size={} num_data={}", lHdrMessage->GetSize(), lStfData->size());
 
     // signal in flight STF is finished (or error)
     mRpc->recordStfReceived(pStfSenderId, lTfId);
 
     // send to deserializer thread so that we can keep receiving
-    mReceivedData.push(lTfId, lStfHeader.mOrigin, pStfSenderId, std::move(lStfData));
+    mReceivedData.push(lTfId, lStfHeader.mOrigin, pStfSenderId, std::move(lHdrMessage), std::move(lStfData));
     lNumStfs++;
   }
 
@@ -341,7 +338,7 @@ void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex, const std:
 void TfBuilderInput::StfPacingThread()
 {
   // Deserialization object (stf ID)
-  CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
+  IovDeserializer lStfReceiver(mDevice.TfBuilderI());
   std::uint64_t lTopoStfId = 0;
 
   while (mState == RUNNING) {
@@ -358,7 +355,7 @@ void TfBuilderInput::StfPacingThread()
     // Rename STF id if this is a Topological TF
     if (lStfInfo.mStfOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
       // deserialize here to be able to rename the stf
-      lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfdata));
+      lStfInfo.mStf = std::move(lStfReceiver.deserialize(lStfInfo.mRecvStfHeaderMeta, *lStfInfo.mRecvStfdata));
       lStfInfo.mRecvStfdata = nullptr;
 
       const std::uint64_t lNewTfId = ++lTopoStfId;
@@ -395,7 +392,7 @@ void TfBuilderInput::StfPacingThread()
 void TfBuilderInput::deserialize_headers(std::vector<ReceivedStfMeta> &pStfs)
 {
   // Deserialization object
-  CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
+  IovDeserializer lStfReceiver(mDevice.TfBuilderI());
 
   for (auto &lStfInfo : pStfs) {
     if (lStfInfo.mStf) {
@@ -403,7 +400,7 @@ void TfBuilderInput::deserialize_headers(std::vector<ReceivedStfMeta> &pStfs)
     }
 
     // deserialize the data
-    lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfdata));
+    lStfInfo.mStf = std::move(lStfReceiver.deserialize(lStfInfo.mRecvStfHeaderMeta, *lStfInfo.mRecvStfdata));
     lStfInfo.mRecvStfdata = nullptr;
   }
 }
@@ -436,7 +433,7 @@ bool TfBuilderInput::is_topo_stf(const std::vector<ReceivedStfMeta> &pStfs) cons
 void TfBuilderInput::StfDeserializingThread()
 {
   // Deserialization object
-  CoalescedHdrDataDeserializer lStfReceiver(mDevice.TfBuilderI());
+  IovDeserializer lStfReceiver(mDevice.TfBuilderI());
 
   while (mState == RUNNING) {
 

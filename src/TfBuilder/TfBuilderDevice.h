@@ -117,10 +117,7 @@ class TfBuilderDevice : public DataDistDevice,
 
   void TfForwardThread();
 
-
   const std::string& getDplChannelName() const { return mDplChannelName; }
-
-  bool dplEnabled() const noexcept { return mDplEnabled; }
 
   /// Memory region singletons
   std::unique_ptr<SyncMemoryResources> mMemI;
@@ -133,7 +130,6 @@ class TfBuilderDevice : public DataDistDevice,
   std::uint64_t mTfHdrRegionSize;
   std::optional<std::uint16_t> mTfHdrRegionId = std::nullopt;
   std::string mPartitionId;
-  bool mDplEnabled = false;
 
   /// Discovery configuration
   std::shared_ptr<ConsulTfBuilder> mDiscoveryConfig;

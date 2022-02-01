@@ -47,16 +47,14 @@ std::mutex SubTimeFrameFileSource::StfFileMeta::sLiveFilesLock;
 std::map<std::size_t, std::shared_ptr<SubTimeFrameFileSource::StfFileMeta>> SubTimeFrameFileSource::StfFileMeta::mLiveFiles;
 
 
-void SubTimeFrameFileSource::start(MemoryResources &pMemRes, const bool pDplEnabled)
+void SubTimeFrameFileSource::start(MemoryResources &pMemRes)
 {
   if (enabled()) {
-    mDplEnabled = pDplEnabled;
 
     mFileBuilder = std::make_unique<SubTimeFrameFileBuilder>(
       pMemRes,
       mRegionSizeMB << 20, mTfDataRegionId,
-      mHdrRegionSizeMB << 20, mTfHdrRegionId,
-      mDplEnabled
+      mHdrRegionSizeMB << 20, mTfHdrRegionId
     );
 
     mRunning = true;

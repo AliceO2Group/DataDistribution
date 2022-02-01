@@ -322,3 +322,27 @@ message PartitionResponse {
   string info_message = 2;
   // Optional information message.
 }
+
+
+// IovSerializer
+message IovStfHeader {
+  uint64    stf_id                      = 1;
+  uint64    stf_size                    = 2;
+  bytes     stf_dd_header               = 3;
+
+  // o2 headers
+  message IovO2HdrMeta {
+    bytes   hdr_data            = 1;
+    uint32  num_data_parts      = 2;
+  }
+  repeated IovO2HdrMeta stf_hdr_iov     = 10;
+
+
+  // o2 data messages
+  message IovO2DataMeta {
+    uint64      iov_idx         = 1;
+    uint64      iov_start       = 2;
+    uint64      iov_size        = 3;
+  }
+  repeated IovO2DataMeta stf_data_iov   = 20;
+}

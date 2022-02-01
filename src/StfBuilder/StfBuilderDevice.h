@@ -87,14 +87,13 @@ class StfBuilderDevice : public DataDistDevice
   /// Default destructor
   ~StfBuilderDevice() override;
 
-  bool dplEnabled() const noexcept { return I().mDplEnabled; }
   bool isStandalone() const noexcept { return I().mStandalone; }
 
   const std::string& getInputChannelName() const { return I().mInputChannelName; }
   const std::string& getDplChannelName() const { return I().mDplChannelName; }
 
   auto& getOutputChannel() {
-    if (dplEnabled()) {
+    if (!I().mDplChannelName.empty()) {
       return this->GetChannel(I().mDplChannelName);
     }
 
@@ -126,7 +125,6 @@ class StfBuilderDevice : public DataDistDevice
     std::string mOutputChannelName;
     std::string mDplChannelName;
     bool mStandalone;
-    bool mDplEnabled;
     std::int64_t mMaxStfsInPipeline;
     std::uint64_t mMaxBuiltStfs;
     bool mPipelineLimit;

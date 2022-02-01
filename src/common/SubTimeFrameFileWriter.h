@@ -120,7 +120,7 @@ class SubTimeFrameFileWriter : public ISubTimeFrameConstVisitor
   std::uint64_t getSizeInFile() const;
 
   // vector of <headers, data> elements of a Stf to be written
-  std::vector<const SubTimeFrame::StfData*> mStfData;
+  std::vector<const SubTimeFrame::StfMessage*> mStfData;
   SubTimeFrameFileDataIndex mStfDataIndex;
   std::uint64_t mStfSize = std::uint64_t(0); // meta + index + data (and all headers)
 };
