@@ -38,7 +38,7 @@ class SubTimeFrameReadoutBuilder
 {
  public:
   SubTimeFrameReadoutBuilder() = delete;
-  SubTimeFrameReadoutBuilder(MemoryResources &pMemRes, bool pDplEnabled);
+  SubTimeFrameReadoutBuilder(MemoryResources &pMemRes);
 
   bool addHbFrames(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
@@ -104,8 +104,6 @@ class SubTimeFrameReadoutBuilder
   // filtering: keep info if the first HBFrame is already kept back
   std::unordered_map<o2::header::DataHeader::SubSpecificationType, bool> mFirstFiltered;
 
-  bool mDplEnabled;
-
   MemoryResources &mMemRes;
 };
 
@@ -120,8 +118,7 @@ class SubTimeFrameFileBuilder
   SubTimeFrameFileBuilder() = delete;
   SubTimeFrameFileBuilder(MemoryResources &pMemRes,
     const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId,
-    const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId,
-    bool pDplEnabled);
+    const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId);
 
   void adaptHeaders(SubTimeFrame *pStf);
 
@@ -130,21 +127,14 @@ class SubTimeFrameFileBuilder
   FairMQMessagePtr newHeaderMessage(const o2::header::Stack &pIncomingStack, const std::uint64_t pTfId) {
     std::unique_ptr<FairMQMessage> lMsg;
 
-    if (mDplEnabled) {
-      auto lStack = o2::header::Stack(
-        pIncomingStack,
-        o2::framework::DataProcessingHeader{pTfId}
-      );
+    auto lStack = o2::header::Stack(
+      pIncomingStack,
+      o2::framework::DataProcessingHeader{pTfId}
+    );
 
-      lMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
-      if (!lMsg) {
-        return nullptr;
-      }
-    } else {
-      lMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(pIncomingStack.data()), pIncomingStack.size());
-      if (!lMsg) {
-        return nullptr;
-      }
+    lMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+    if (!lMsg) {
+      return nullptr;
     }
 
     return lMsg;
@@ -162,8 +152,6 @@ class SubTimeFrameFileBuilder
 
  private:
   MemoryResources &mMemRes;
-
-  bool mDplEnabled;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -174,7 +162,7 @@ class TimeFrameBuilder
 {
  public:
   TimeFrameBuilder() = delete;
-  TimeFrameBuilder(SyncMemoryResources &pMemRes, bool pDplEnabled);
+  TimeFrameBuilder(SyncMemoryResources &pMemRes);
 
   // make allocate the memory here
   void allocate_memory(const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId,
@@ -207,8 +195,6 @@ class TimeFrameBuilder
   inline auto freeData() const { return mMemRes.freeData(); }
 
  private:
-
-  bool mDplEnabled;
 
   SyncMemoryResources &mMemRes;
 };

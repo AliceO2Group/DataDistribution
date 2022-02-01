@@ -19,6 +19,11 @@
 
 #include <Headers/DataHeader.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <discovery.pb.h>
+#pragma GCC diagnostic pop
+
 #include <vector>
 
 #include <fairmq/FwdDecls.h>
@@ -28,75 +33,23 @@ namespace o2
 namespace DataDistribution
 {
 
-////////////////////////////////////////////////////////////////////////////////
-/// InterleavedHdrDataSerializer
-////////////////////////////////////////////////////////////////////////////////
-
-class InterleavedHdrDataSerializer : public ISubTimeFrameVisitor
-{
- public:
-  InterleavedHdrDataSerializer() = delete;
-  InterleavedHdrDataSerializer(FairMQChannel& pChan)
-    : mChan(pChan)
-  {
-    mMessages.reserve(1024);
-  }
-
-  virtual ~InterleavedHdrDataSerializer() = default;
-
-  void serialize(std::unique_ptr<SubTimeFrame>&& pStf);
-
- protected:
-  void visit(SubTimeFrame& pStf) override;
-
- private:
-  std::vector<FairMQMessagePtr> mMessages;
-  FairMQChannel& mChan;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
-/// InterleavedHdrDataDeserializer
+/// IovSerializer
 ////////////////////////////////////////////////////////////////////////////////
 
-class InterleavedHdrDataDeserializer : public ISubTimeFrameVisitor
-{
- public:
-  InterleavedHdrDataDeserializer() = default;
-  virtual ~InterleavedHdrDataDeserializer() = default;
-
-  std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan, bool pLogError = false);
-  std::unique_ptr<SubTimeFrame> deserialize(FairMQParts& pMsgs);
-
- protected:
-  std::unique_ptr<SubTimeFrame> deserialize_impl();
-  void visit(SubTimeFrame& pStf) override;
-
- private:
-  std::vector<FairMQMessagePtr> mMessages;
-};
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// CoalescedHdrDataSerializer
-////////////////////////////////////////////////////////////////////////////////
-
-class CoalescedHdrDataSerializer : public ISubTimeFrameVisitor
+class IovSerializer : public ISubTimeFrameVisitor
 {
  public:
 
-  struct header_info {
-    std::size_t start;
-    std::size_t len;
-  };
-
-  CoalescedHdrDataSerializer() = delete;
-  CoalescedHdrDataSerializer(FairMQChannel& pChan)
+  IovSerializer() = delete;
+  IovSerializer(FairMQChannel& pChan)
     : mChan(pChan)
   {
     mData.reserve(25600);
   }
 
-  virtual ~CoalescedHdrDataSerializer() = default;
+  virtual ~IovSerializer() = default;
 
   void serialize(std::unique_ptr<SubTimeFrame>&& pStf);
 
@@ -107,28 +60,31 @@ class CoalescedHdrDataSerializer : public ISubTimeFrameVisitor
 
  private:
   std::atomic_bool mRunning = true;
-  std::vector<FairMQMessagePtr> mHdrs;
+
   std::vector<FairMQMessagePtr> mData;
+
+  IovStfHeader mIovHeader;
 
   FairMQChannel& mChan;
 };
 
+
 ////////////////////////////////////////////////////////////////////////////////
-/// CoalescedHdrDataDeserializer
+/// IovDeserializer
 ////////////////////////////////////////////////////////////////////////////////
 
-class CoalescedHdrDataDeserializer : public ISubTimeFrameVisitor
+class IovDeserializer : public ISubTimeFrameVisitor
 {
  public:
-  CoalescedHdrDataDeserializer() = delete;
-  CoalescedHdrDataDeserializer(TimeFrameBuilder &pTfBld)
+  IovDeserializer() = delete;
+  IovDeserializer(TimeFrameBuilder &pTfBld)
   : mTfBld(pTfBld) { }
-  virtual ~CoalescedHdrDataDeserializer() = default;
+  virtual ~IovDeserializer() = default;
 
   std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan, bool pLogError = false);
-  std::unique_ptr<SubTimeFrame> deserialize(std::vector<FairMQMessagePtr>& pMsgs);
+  std::unique_ptr<SubTimeFrame> deserialize(FairMQMessagePtr &pHdrMetaMsg, std::vector<FairMQMessagePtr>& pDataMsgs);
 
-  SubTimeFrame::Header peek_tf_header(const std::vector<FairMQMessagePtr>& pMsgs) const;
+  SubTimeFrame::Header peek_tf_header(FairMQMessagePtr& pHeaderMsg) const;
 
   bool copy_to_region(std::vector<FairMQMessagePtr>& pMsgs /* in/out */);
 
@@ -137,6 +93,7 @@ class CoalescedHdrDataDeserializer : public ISubTimeFrameVisitor
   void visit(SubTimeFrame& pStf) override;
 
  private:
+  IovStfHeader mIovHeader;
   std::vector<FairMQMessagePtr> mHdrs;
   std::vector<FairMQMessagePtr> mData;
 

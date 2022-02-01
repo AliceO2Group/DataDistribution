@@ -159,7 +159,7 @@ StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::stri
     std::snprintf(lThreadName, 127, "to_%s", pTfBuilderId.c_str());
     lThreadName[15] = '\0'; // kernel limitation
 
-    auto lSer = std::make_unique<CoalescedHdrDataSerializer>(*lNewChannel);
+    auto lSer = std::make_unique<IovSerializer>(*lNewChannel);
 
     mOutputMap.try_emplace(
       pTfBuilderId,
@@ -244,9 +244,6 @@ void StfSenderOutput::StfSchedulerThread()
     const auto lStfId = lStf->id();
     const auto lStfSize = lStf->getDataSize();
 
-    // remove split-payload headers
-    lStf->removeRedundantHeaders();
-
     // update buffer sizes
     StdSenderOutputCounters lCounters;
     {
@@ -260,7 +257,7 @@ void StfSenderOutput::StfSchedulerThread()
     assert (!mDevice.standalone());
 
     if (!mDevice.TfSchedRpcCli().is_ready()) {
-      EDDLOG_RL(1000, "StfSchedulerThread: TfScheduler gRPC connection is not ready stf_id={}", lStfId);
+      IDDLOG_RL(10000, "StfSchedulerThread: TfScheduler gRPC connection is not ready stf_id={}", lStfId);
       mDropQueue.push(std::move(lStf));
       continue;
     }
@@ -330,6 +327,7 @@ void StfSenderOutput::StfSchedulerThread()
 
     // Send STF info to scheduler
     {
+      DDDLOG_RL(5000, "StfSchedulerThread: Sending an STF announce... stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
       const auto lSentOK = mDevice.TfSchedRpcCli().StfSenderStfUpdate(lStfInfo, lSchedResponse);
       // check if the scheduler rejected the data
       if (!lSentOK || (lSchedResponse.status() != SchedulerStfInfoResponse::OK)) {
@@ -346,7 +344,7 @@ void StfSenderOutput::StfSchedulerThread()
         WDDLOG_RL(5000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
           lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
       }
-      DDDLOG_RL(5000, "Sent STF announce, stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
+      DDDLOG_RL(5000, "StfSchedulerThread: Sent an STF announce. stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
     }
   }
 
@@ -411,7 +409,7 @@ void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
   if (nice(2)) {}
 #endif
 
-  CoalescedHdrDataSerializer *lStfSerializer = nullptr;
+  IovSerializer *lStfSerializer = nullptr;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> *lInputStfQueue = nullptr;
   {
     // get the thread data. MapLock prevents races on the map operation

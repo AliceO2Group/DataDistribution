@@ -34,6 +34,7 @@ SubTimeFrame::SubTimeFrame(uint64_t pStfId)
   updateCreationTimeMs(); // set the current creation time
 }
 
+// Reindex split payload parts
 void SubTimeFrame::updateStf() const
 {
   if (mDataUpdated) {
@@ -47,37 +48,54 @@ void SubTimeFrame::updateStf() const
   for (auto &lIdentSubSpecVect : mData) {
     StfSubSpecMap &lSubSpecMap = lIdentSubSpecVect.second;
 
-    for (auto &lSubSpecDataVector : lSubSpecMap) {
-      StfDataVector &lDataVector = lSubSpecDataVector.second;
+    for (auto &lSubSpecMsgVector : lSubSpecMap) {
+      StfDataVector &lMsgVector = lSubSpecMsgVector.second;
 
-      const auto lTotalCount = lDataVector.size();
-      for (StfDataVector::size_type i = 0; i < lTotalCount; i++) {
+      // make sure all messages are updated
+      // note: each vector can contain mix of single- or split-payload messages
+       for (auto &lStfMsg : lMsgVector) {
 
-        lDataVector[i].setPayloadIndex_TfCounter_RunNumber(i, lTotalCount, mHeader.mId, mHeader.mRunNumber);
+        if (!lStfMsg.mHeader) {
+          EDDLOG("BUG: unexpected null header in STF size={}", lStfMsg.mDataParts.size());
+          continue;
+        }
 
+        if (lStfMsg.mDataParts.empty()) {
+          EDDLOG("BUG: no data in StfMessage");
+          continue;
+        }
+
+        auto lDataHdr = lStfMsg.getDataHeaderMutable();
+        if (!lDataHdr) {
+          EDDLOG("BUG: unexpected null header in STF size={}", lStfMsg.mDataParts.size());
+          continue;
+        }
+
+        // update tf meta to all data headers
+        lStfMsg.setTfCounter_RunNumber(mHeader.mId, mHeader.mRunNumber);
         // update first orbit if not present in the data (old tf files)
         // update tfCounter
         if (mHeader.mFirstOrbit != std::numeric_limits<std::uint32_t>::max()) {
-          lDataVector[i].setFirstOrbit(mHeader.mFirstOrbit);
+          lStfMsg.setFirstOrbit(mHeader.mFirstOrbit);
         }
 
-        // sum up only data size
-        mDataSize += lDataVector[i].mData->GetSize();
-      }
+        // sum up data size (header data)
+        for (auto &lDataMsg : lStfMsg.mDataParts) {
+          mDataSize += lDataMsg->GetSize();
+        }
 
-      assert(lDataVector.empty() ? true :
-        lDataVector.front().getDataHeader().splitPayloadIndex == 0
-      );
-      assert(lDataVector.empty() ? true :
-        lDataVector.back().getDataHeader().splitPayloadIndex == (lTotalCount - 1)
-      );
-      assert(lDataVector.empty() ? true :
-        lDataVector.front().getDataHeader().splitPayloadParts == lTotalCount
-      );
-      assert(lDataVector.empty() ? true :
-        lDataVector.front().getDataHeader().splitPayloadParts ==
-        lDataVector.back().getDataHeader().splitPayloadParts
-      );
+        // update the split payload counters
+        const auto cNumParts = lStfMsg.mDataParts.size();
+        if (cNumParts > 1) {
+          lDataHdr->splitPayloadIndex = cNumParts;
+          lDataHdr->splitPayloadParts = cNumParts;
+        } else if (cNumParts == 1) {
+          lDataHdr->splitPayloadIndex = 0;
+          lDataHdr->splitPayloadParts = 1;
+        } else {
+          EDDLOG("BUG: SubTimeFrame::updateStf(): zero data parts");
+        }
+      }
     }
   }
   mDataUpdated = true;
@@ -152,35 +170,6 @@ void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf, const std::strin
 
   // delete pStf
   pStf.reset();
-}
-
-void SubTimeFrame::removeRedundantHeaders()
-{
-  // Update data block indexes
-  for (auto &lIdentSubSpecVect : mData) {
-    StfSubSpecMap &lSubSpecMap = lIdentSubSpecVect.second;
-
-    for (auto &lSubSpecDataVector : lSubSpecMap) {
-      StfDataVector &lDataVector = lSubSpecDataVector.second;
-
-      // Only remove if RAWDATA
-      if (!lDataVector.empty() && lDataVector[0].mHeader) {
-        o2hdr::DataHeader *lDataHdr = reinterpret_cast<o2hdr::DataHeader*>(lDataVector[0].mHeader->GetData());
-        if (lDataHdr->dataDescription != gDataDescriptionRawData) {
-          continue;
-        }
-      }
-
-      // leave the first header
-      for (StfDataVector::size_type i = 1; i < lDataVector.size(); i++) {
-
-        if(lDataVector[i].mHeader) {
-
-          lDataVector[i].mHeader.reset(nullptr);
-        }
-      }
-    }
-  }
 }
 
 } /* o2::DataDistribution */

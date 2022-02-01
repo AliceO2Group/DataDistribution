@@ -77,27 +77,27 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
 
     auto& lHBFrameVector = pStf.mData.at(lEquip).at(lEquip.mSubSpecification);
 
-    for (std::size_t i = 0; i < lHBFrameVector.size(); i++) {
-
-      // O2 messages belonging to a single STF:
-      //  - DataProcessingHeader::startTime == STF ID
-      //  - DataHeader(origin, description, subspecification) can repeat
-      //  - DataHeader(origin, description, subspecification, splitPayloadIndex) is unique
-
-      assert(lHBFrameVector[i].getDataHeader().splitPayloadIndex == i);
-      assert(lHBFrameVector[i].getDataHeader().splitPayloadParts == lHBFrameVector.size());
-
-      mMessages.push_back(std::move(lHBFrameVector[i].mHeader));
-      mMessages.push_back(std::move(lHBFrameVector[i].mData));
+    if (lHBFrameVector.empty()) {
+      continue;
     }
+
+    // all messages are already in the correct format
+    for (std::size_t i = 0; i < lHBFrameVector.size(); i++) {
+      mMessages.push_back(std::move(lHBFrameVector[i].mHeader));
+
+      std::move(std::begin(lHBFrameVector[i].mDataParts), std::end(lHBFrameVector[i].mDataParts),
+        std::back_inserter(mMessages));
+    }
+
     lHBFrameVector.clear();
   }
+
+  pStf.clear();
 }
 
 void StfToDplAdapter::inspect() const
 {
   // check validity of the TF message sequence
-  const auto cMsgSize = mMessages.size() / 2;
 
   DataHeader::TForbitType lFirstTForbit = ~  DataHeader::TForbitType{0};
   DataHeader::TFCounterType lTfCounter = ~ DataHeader::TFCounterType{0};
@@ -105,8 +105,16 @@ void StfToDplAdapter::inspect() const
 
   o2::framework::DataProcessingHeader::StartTime lProcStart = ~ o2::framework::DataProcessingHeader::StartTime{0};
 
-  for (size_t lIdx = 0; lIdx < cMsgSize; ) {
-    const DataHeader *lDh = reinterpret_cast<DataHeader*>(mMessages[lIdx*2]->GetData());
+  size_t lIdx = 0;
+  while (lIdx < mMessages.size()) {
+
+    // Check the O2 DataHeader
+    const DataHeader *lDh = o2::header::get<DataHeader*>(mMessages[lIdx]->GetData(), mMessages[lIdx]->GetSize());
+    if (!lDh) {
+      EDDLOG("DPL output: wrong message instead of DataHeader. index={} size={}", lIdx, mMessages[lIdx]->GetSize());
+      lIdx++;
+      continue;
+    }
 
     if (lTfCounter == ~DataHeader::TFCounterType{0}) {
       lFirstTForbit = lDh->firstTForbit;
@@ -128,7 +136,13 @@ void StfToDplAdapter::inspect() const
       EDDLOG("DPL output: run number is different first={} != current={}", lRunNumber, lDh->runNumber);
     }
 
-    const auto *lProcHdr = o2::header::get<o2::framework::DataProcessingHeader*>(mMessages[lIdx*2]->GetData(), mMessages[lIdx*2]->GetSize());
+    // Check the DPL header
+    const auto *lProcHdr = o2::header::get<o2::framework::DataProcessingHeader*>(mMessages[lIdx]->GetData(), mMessages[lIdx]->GetSize());
+    if (!lProcHdr){
+      EDDLOG("DPL output: Mising processing header (DPL). index={} size={}", lIdx, mMessages[lIdx]->GetSize());
+      lIdx += 2;
+      continue;
+    }
 
     if (lProcStart == ~ o2::framework::DataProcessingHeader::StartTime{0}) {
       lProcStart = lProcHdr->startTime;
@@ -138,58 +152,31 @@ void StfToDplAdapter::inspect() const
       }
     }
 
-    const auto& [ lOrigin, lType, lSubSpec ] = std::tie( lDh->dataOrigin, lDh->dataDescription, lDh->subSpecification );
+    if (lDh->splitPayloadParts == 0) {
+      WDDLOG("DPLcheck: splitPayloadParts=1");
+    }
 
-    if (lDh->splitPayloadParts == 1) {
-      // TODO: this combination of origin cannot appear again!
-      lIdx++;
+    if (lDh->splitPayloadParts == 1) { // skip single message + data
+      lIdx+=2;
       continue;
     }
 
     // check we have enough messsages
-    if (lDh->splitPayloadParts > cMsgSize - lIdx ) {
+    if (lDh->splitPayloadParts > (mMessages.size() - lIdx) ) {
       EDDLOG("DPL output: the multi-part is too short for the split-payload message. "
-        "splitpayload_size={} tf_available={} tf_total={}", lDh->splitPayloadParts, (cMsgSize - lIdx), cMsgSize);
+        "splitpayload_size={} tf_available={} tf_total={}", lDh->splitPayloadParts, (mMessages.size() - lIdx), mMessages.size());
       break;
     }
 
     // check the first message
-    if (lDh->splitPayloadIndex != 0) {
-      EDDLOG("DPL output: index of the first split-payload message is invalid. index={}",
-        lDh->splitPayloadIndex);
+    if (! ((lDh->splitPayloadIndex == 0) || (lDh->splitPayloadIndex == lDh->splitPayloadParts)) ) {
+      EDDLOG("DPL output: index of the first split-payload message is invalid. index={} parts={}",
+        lDh->splitPayloadIndex, lDh->splitPayloadParts);
       break;
     }
 
-    // check all split parts
-    for (size_t lSplitI = 1; lSplitI < lDh->splitPayloadParts; lSplitI++) {
-      const DataHeader *lSplitDh = reinterpret_cast<DataHeader*>(mMessages[(lIdx+lSplitI)*2]->GetData());
-
-      // check origin
-      if (lOrigin != lSplitDh->dataOrigin || lType != lSplitDh->dataDescription || lSubSpec != lSplitDh->subSpecification) {
-        EDDLOG("DPL output: origin of the split-payload message is invalid. "
-          "[0]=<{}{}{}> [{}]=<{}{}{}>", lOrigin.as<std::string>(), lType.as<std::string>(), lSubSpec,
-          lSplitI, lSplitDh->dataOrigin.as<std::string>(), lSplitDh->dataDescription.as<std::string>(), lSplitDh->subSpecification);
-        break;
-      }
-
-      // check the count value
-      if (lDh->splitPayloadParts != lSplitDh->splitPayloadParts) {
-        EDDLOG("DPL output: number of payload parts in split-payload message invalid. "
-          "split_pos={} number={} original_number={}", lSplitI, lSplitDh->splitPayloadParts, lDh->splitPayloadParts);
-        break;
-      }
-
-      // check the index value
-      if (lSplitDh->splitPayloadIndex != lSplitI) {
-        EDDLOG("DPL output: index of the split-payload message is invalid. "
-          "split_pos={} != index={} parts_count={}", lSplitI, lSplitDh->splitPayloadIndex, lDh->splitPayloadParts);
-        break;
-      }
-    }
-
-    // advance to the next o2 message
-    // TODO: record the origin
-    lIdx += lDh->splitPayloadParts;
+    // skip split part messages + hdr
+    lIdx += (lDh->splitPayloadParts + 1);
   }
 }
 
@@ -271,44 +258,95 @@ void DplToStfAdapter::visit(SubTimeFrame& pStf)
     throw std::runtime_error("SubTimeFrame::MessageNumber");
   }
 
-  if (mMessages.size() % 2 != 0) {
-    // stf meta messages must be even
-    EDDLOG("DPL interface: expected even number of messages received={}", mMessages.size());
-    mMessages.clear();
-    pStf.clear();
+  auto lAddFullSplitPayload = [this, &pStf](std::size_t &idx, const std::size_t count) {
 
-    throw std::runtime_error("SubTimeFrame::MessageNumber");
-  }
+    DDDLOG("DPL Deserialize: converting full split payload");
+
+    const auto lStopIdx = idx + (2 * count);
+
+    auto &lHdr = mMessages[idx++];
+    auto &lData = mMessages[idx++];
+
+    DataHeader *lHdrPtr = reinterpret_cast<DataHeader*>(lHdr->GetData());
+    const auto lSubSpec = lHdrPtr->subSpecification;
+    const o2hdr::DataIdentifier lDataId = impl::getDataIdentifier(*lHdrPtr);
+
+    // convert to reduced header type
+    lHdrPtr->splitPayloadIndex = lHdrPtr->splitPayloadParts;
+
+    auto *lVec = pStf.addStfDataStart(lDataId, lSubSpec, {std::move(lHdr), std::move(lData)});
+
+    for (; idx < mMessages.size() && idx < lStopIdx; idx +=2) {
+      pStf.addStfDataAppend(lVec, std::move(mMessages[idx+1]));
+    }
+  };
+
+  auto lAddReducedSplitPayload = [this, &pStf](std::size_t &idx, const std::size_t count) {
+
+    const auto lStopIdx = idx + (1 + count);
+
+    auto &lHdr = mMessages[idx++];
+    auto &lData = mMessages[idx++];
+
+    DataHeader *lHdrPtr = reinterpret_cast<DataHeader*>(lHdr->GetData());
+    const auto lSubSpec = lHdrPtr->subSpecification;
+    const o2hdr::DataIdentifier lDataId = impl::getDataIdentifier(*lHdrPtr);
+
+    auto *lVec = pStf.addStfDataStart(lDataId, lSubSpec, {std::move(lHdr), std::move(lData)});
+
+    // add the rest of data
+    for (; idx < mMessages.size() && idx < lStopIdx; idx++) {
+      pStf.addStfDataAppend(lVec, std::move(mMessages[idx]));
+    }
+  };
 
   // iterate over all incoming HBFrame data sources
-  for (size_t i = 0; i < mMessages.size(); i += 2) {
+  for (size_t i = 0; i < mMessages.size(); ) {
 
-    auto& lHdrMsg = mMessages[i + 0];
-    auto& lDataMsg = mMessages[i + 1];
+    const DataHeader *lHdrPtr = reinterpret_cast<o2::header::DataHeader*>(mMessages[i]->GetData());
 
-    if (!lStfHeaderFound && (sizeof(SubTimeFrame::Header) == lDataMsg->GetSize())) {
-      // this is too slow to do here
-      // const DataHeader* lStfDataHdr = o2::header::get<DataHeader*>(lHdrMsg->GetData(), lHdrMsg->GetSize());
-      // NOTE: DataHeader MUST be at position 0
-      const DataHeader* lStfDataHdr = reinterpret_cast<o2::header::DataHeader*>(lHdrMsg->GetData());
-      if (lHdrMsg->GetSize() < sizeof(o2::header::DataHeader)) {
-        EDDLOG("DPL interface: cannot find DataHeader in header stack");
-        mMessages.clear();
-        pStf.clear();
-        throw std::runtime_error("SubTimeFrame::Header::DataHeader");
+    // Ordinary (single) message
+    if (lHdrPtr->splitPayloadParts <= 1) {
+      auto& lHdrMsg = mMessages[i + 0];
+      auto& lDataMsg = mMessages[i + 1];
+
+      // check for DD STF header
+      if (!lStfHeaderFound && (sizeof(SubTimeFrame::Header) == lDataMsg->GetSize())) {
+        if (lHdrMsg->GetSize() < sizeof(o2::header::DataHeader)) {
+          EDDLOG("DPL interface: cannot find DataHeader in header stack");
+          mMessages.clear();
+          pStf.clear();
+          throw std::runtime_error("SubTimeFrame::Header::DataHeader");
+        }
       }
 
       // check if StfHeader
-      if (gDataDescSubTimeFrame == lStfDataHdr->dataDescription) {
+      if (gDataDescSubTimeFrame == lHdrPtr->dataDescription) {
         // copy the contents
         std::memcpy(&pStf.mHeader, lDataMsg->GetData(), sizeof(SubTimeFrame::Header));
         lStfHeaderFound = true;
-        continue;
+      } else {
+        // Insert ordinary (single) message
+        const auto lDataId = impl::getDataIdentifier(*lHdrPtr);
+        pStf.addStfDataStart(lDataId, lHdrPtr->subSpecification, {std::move(lHdrMsg), std::move(lDataMsg)});
       }
+
+      i += 2;
+      continue;
     }
 
-    // add the data to the STF
-    pStf.addStfData({ std::move(lHdrMsg), std::move(lDataMsg) });
+    // split payload message
+    if (lHdrPtr->splitPayloadParts > 1) {
+      if (lHdrPtr->splitPayloadIndex == 0) {
+        // FullHeader Split payload
+        lAddFullSplitPayload(i, lHdrPtr->splitPayloadParts);
+      } else if (lHdrPtr->splitPayloadIndex == lHdrPtr->splitPayloadParts) {
+        // Reduced Split payload type
+        lAddReducedSplitPayload(i, lHdrPtr->splitPayloadParts);
+      } else {
+        EDDLOG_RL(1000, "Invalid split payload header message");
+      }
+    }
   }
 
   if (!lStfHeaderFound) {
@@ -326,7 +364,7 @@ std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize_impl()
     // check for EoS message
     if (mMessages.size() == 2) {
       auto lEoSHeader = header::get<o2::framework::SourceInfoHeader*>(mMessages[0]->GetData(), mMessages[0]->GetSize());
-      if (lEoSHeader) {
+      if (lEoSHeader && (lEoSHeader->state == o2::framework::InputChannelState::Completed)) {
         mMessages.clear();
         IDDLOG_RL(1000, "End of stream (EoS) message received.");
         return nullptr;

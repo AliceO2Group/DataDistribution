@@ -59,8 +59,22 @@ SubTimeFrameFileReader::~SubTimeFrameFileReader()
 
 void SubTimeFrameFileReader::visit(SubTimeFrame& pStf)
 {
+
+  DataIdentifier lDataId;
+  DataHeader::SubSpecificationType lSubSpec;
+  std::vector<FairMQMessagePtr> *lVec = nullptr;
+
   for (auto& lStfDataPair : mStfData) {
-    pStf.addStfData(std::move(lStfDataPair));
+    if (lStfDataPair.mHeader) {
+      const auto *lDh = lStfDataPair.getDataHeader();
+      lDataId = impl::getDataIdentifier(*lDh);
+      lSubSpec = lDh->subSpecification;
+
+      lVec = pStf.addStfDataStart(lDataId, lSubSpec, {std::move(lStfDataPair.mHeader), std::move(lStfDataPair.mData)});
+    } else {
+      assert (lVec);
+      pStf.addStfDataAppend(lVec, std::move(lStfDataPair.mData));
+    }
   }
 }
 
@@ -281,13 +295,6 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
       return nullptr;
     }
 
-    auto lHdrStackMsg = pFileBuilder.newHeaderMessage(lDataHeaderStack, lStf->id());
-    if (!lHdrStackMsg) {
-      DDDLOG_RL(1000, "Header memory resource stopped. Exiting.");
-      mFileMap.close();
-      return nullptr;
-    }
-
     // read the data
     const std::uint64_t lDataSize = lDataHeader->payloadSize;
 
@@ -313,7 +320,22 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
       EDDLOG("Error getting RDHReader instance. Not setting firstOrbit for file data");
     }
 
-    mStfData.emplace_back(std::move(lHdrStackMsg), std::move(lDataMsg));
+    // only create o2 hdr for the first message of split payload or single messages
+    if (lDataHeader->splitPayloadIndex == 0 || lDataHeader->splitPayloadParts <= 1) {
+      // header stack will add DHL header
+      auto lHdrStackMsg = pFileBuilder.newHeaderMessage(lDataHeaderStack, lStf->id());
+      if (!lHdrStackMsg) {
+        DDDLOG_RL(1000, "Header memory resource stopped. Exiting.");
+        mFileMap.close();
+        return nullptr;
+      }
+
+      mStfData.emplace_back(std::move(lHdrStackMsg), std::move(lDataMsg));
+
+    } else {
+      assert (!mStfData.empty());
+      mStfData.emplace_back(nullptr, std::move(lDataMsg));
+    }
 
     // update the counter
     lLeftToRead -= (lDataHeaderStackSize + lDataSize);

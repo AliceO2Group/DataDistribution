@@ -130,7 +130,7 @@ class SubTimeFrameFileSource
 
   bool enabled() const { return mEnabled; }
 
-  void start(MemoryResources &pMemRes, const bool pDplEnabled);
+  void start(MemoryResources &pMemRes);
   void pause() { mPaused = true; }
   void resume() { mPaused = false; }
   void stop();
@@ -150,7 +150,6 @@ class SubTimeFrameFileSource
 
   /// Configuration
   bool mEnabled = false;
-  bool mDplEnabled = false;
   std::string mDir;
   std::vector<std::string> mFilesVector;
   bool mRepeat = false;

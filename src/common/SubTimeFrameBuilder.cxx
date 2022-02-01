@@ -34,8 +34,9 @@ using namespace o2::header;
 /// SubTimeFrameReadoutBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(MemoryResources &pMemRes, bool pDplEnabled)
-  : mStf(nullptr), mDplEnabled(pDplEnabled),mMemRes(pMemRes)
+SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(MemoryResources &pMemRes)
+  : mStf(nullptr),
+    mMemRes(pMemRes)
 {
   mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
     "O2HeadersRegion",
@@ -186,42 +187,42 @@ bool SubTimeFrameReadoutBuilder::addHbFrames(
   );
   lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
 
+  const o2hdr::DataIdentifier lDataId(o2::header::gDataDescriptionRawData.str,  pDataOrig.str);
+
+  // Speed up adding messages by saving the vector of split-payloads
+  std::vector<FairMQMessagePtr> *pInVector = nullptr;
+
   for (size_t i = 0; i < pHBFrameLen; i++) {
 
     if (lRemoveBlocks[i]) {
       continue; // already filtered out
     }
 
-    std::unique_ptr<FairMQMessage> lHdrMsg;
+    // we need at least one header per equipment
+    if (!pInVector) {
+      lDataHdr.payloadSize = pHbFramesBegin[i]->GetSize();
 
-    lDataHdr.payloadSize = pHbFramesBegin[i]->GetSize();
-
-    if (mDplEnabled) {
       auto lDplHdr = o2::framework::DataProcessingHeader{mStf->header().mId};
       lDplHdr.creation = mStf->header().mCreationTimeMs;
-      auto lStack = Stack(
-        lDataHdr,
-        lDplHdr
-      );
+      auto lStack = Stack(lDataHdr, lDplHdr);
 
-      lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+      auto lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+      if (!lHdrMsg) {
+        WDDLOG_RL(1000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
+
+        // clear data of the partial STF
+        mAcceptStfData = false;
+        mStf->clear();
+
+        return false;
+      }
+
+      pInVector = mStf->addStfDataReadout(lDataId, pSubSpecification, {std::move(lHdrMsg), std::move(pHbFramesBegin[i])});
     } else {
-      lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(&lDataHdr), sizeof(lDataHdr));
+      // add the rest of messages
+      assert (pInVector);
+      mStf->addStfDataReadout(pInVector, std::move(pHbFramesBegin[i]));
     }
-
-    if (!lHdrMsg) {
-      WDDLOG_RL(1000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
-
-      // clear data of the partial STF
-      mAcceptStfData = false;
-      mStf->clear();
-
-      return false;
-    }
-
-    mStf->addStfData(lDataHdr,
-      SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFramesBegin[i]) }
-    );
   }
   return true;
 }
@@ -267,12 +268,16 @@ std::optional<std::unique_ptr<SubTimeFrame>> SubTimeFrameReadoutBuilder::addTopo
   );
   lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
 
+  const o2hdr::DataIdentifier lDataId(o2::header::gDataDescriptionRawData.str,  pDataOrig.str);
+
+  bool lIncludeO2Hdr = true;
   for (size_t i = 0; i < pHBFrameLen; i++) {
-    std::unique_ptr<FairMQMessage> lHdrMsg;
+    // we need at least one header per equipment
+    if (lIncludeO2Hdr) {
+      lIncludeO2Hdr = false; // only provide one header message
 
-    lDataHdr.payloadSize = pHbFramesBegin[i]->GetSize();
+      lDataHdr.payloadSize = pHbFramesBegin[i]->GetSize();
 
-    if (mDplEnabled) {
       auto lDplHdr = o2::framework::DataProcessingHeader{lStf->header().mId};
       lDplHdr.creation = lStf->header().mCreationTimeMs;
       auto lStack = Stack(
@@ -280,34 +285,35 @@ std::optional<std::unique_ptr<SubTimeFrame>> SubTimeFrameReadoutBuilder::addTopo
         lDplHdr
       );
 
-      lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+      auto lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+      if (!lHdrMsg) {
+        WDDLOG_RL(1000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
+        // clear data of the partial STF
+        mAcceptStfData = false;
+        lStf->clear();
+
+        return std::nullopt;
+      }
+
+      lStf->addStfDataReadout(lDataId, pSubSpecification, SubTimeFrame::StfData{std::move(lHdrMsg), std::move(pHbFramesBegin[i])});
     } else {
-      lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(&lDataHdr), sizeof(lDataHdr));
+      lStf->addStfDataReadout(lDataId, pSubSpecification, SubTimeFrame::StfData{nullptr, std::move(pHbFramesBegin[i])});
     }
-
-    if (!lHdrMsg) {
-      WDDLOG_RL(1000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
-      // clear data of the partial STF
-      mAcceptStfData = false;
-      lStf->clear();
-
-      return std::nullopt;
-    }
-
-    lStf->addStfData(lDataHdr, SubTimeFrame::StfData{ std::move(lHdrMsg), std::move(pHbFramesBegin[i]) } );
-    lStfNumMessages += 1;
   }
+
+  // update number of messages per topo stf
+  lStfNumMessages += pHBFrameLen;
 
   if (lStfNumMessages >= pMaxNumMessages) {
     lStf->setOrigin(SubTimeFrame::Header::Origin::eReadoutTopology);
     std::optional<std::unique_ptr<SubTimeFrame>> lRetStf = std::move(lStf);
 
-    IDDLOG_RL(1000, "addTopoStfData: leaving and returning STF: numMessages={}", lStfNumMessages);
+    DDDLOG_RL(1000, "addTopoStfData: leaving and returning STF: numMessages={}", lStfNumMessages);
     lStfNumMessages = 0;
     return lRetStf;
   }
 
-  IDDLOG_RL(1000, "addTopoStfData: leaving without returning STF: numMessages={}", lStfNumMessages);
+  DDDLOG_RL(1000, "addTopoStfData: leaving without returning STF: numMessages={}", lStfNumMessages);
 
   return std::nullopt;
 }
@@ -319,9 +325,8 @@ std::optional<std::unique_ptr<SubTimeFrame>> SubTimeFrameReadoutBuilder::addTopo
 
 SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(MemoryResources &pMemRes,
   const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId,
-  const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId,
-  bool pDplEnabled)
-  : mMemRes(pMemRes), mDplEnabled(pDplEnabled)
+  const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId)
+  : mMemRes(pMemRes)
 {
   mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
     "O2DataRegion_FileSource",
@@ -376,19 +381,18 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
             return;
           }
 
-          if (mDplEnabled) {
-            auto lDplHdr = o2::framework::DataProcessingHeader{pStf->header().mId};
-            lDplHdr.creation = pStf->header().mCreationTimeMs;
-            auto lStack = Stack(
-              *lDHdr, /* TODO: add complete existing header lStfDataIter.mHeader */
-              lDplHdr
-            );
+          auto lDplHdr = o2::framework::DataProcessingHeader{pStf->header().mId};
+          lDplHdr.creation = pStf->header().mCreationTimeMs;
+          auto lStack = Stack(
+            *lDHdr, /* TODO: add complete existing header lStfDataIter.mHeader */
+            lDplHdr
+          );
 
-            lStfDataIter.mHeader = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
-            if (!lStfDataIter.mHeader) {
-              return;
-            }
+          lStfDataIter.mHeader = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+          if (!lStfDataIter.mHeader) {
+            return;
           }
+
         }
       }
     }
@@ -399,8 +403,8 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
 /// TimeFrameBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-TimeFrameBuilder::TimeFrameBuilder(SyncMemoryResources &pMemRes, bool pDplEnabled)
-  : mDplEnabled(pDplEnabled), mMemRes(pMemRes)
+TimeFrameBuilder::TimeFrameBuilder(SyncMemoryResources &pMemRes)
+  : mMemRes(pMemRes)
 {
 }
 
@@ -442,32 +446,9 @@ FairMQMessagePtr TimeFrameBuilder::newHeaderMessage(const char *pData, const std
       return nullptr;
     }
 
-    // clear last bit set in data header
-    if (pSize == sizeof(DataHeader)) {
-      lDataHdr->flagsNextHeader = 0; // DataHeader is alone
-    }
-
-    // check if already have DataProcessing header
-    const o2::framework::DataProcessingHeader* lDplHdr = nullptr;
-    try {
-      lDplHdr = o2::header::get<o2::framework::DataProcessingHeader*>(pData, pSize);
-    } catch(...) {
-      lDplHdr = nullptr;
-    }
-
-    if (mDplEnabled && !lDplHdr) {
-      auto lStack = Stack(
-        *lDataHdr,
-        o2::framework::DataProcessingHeader{lDataHdr->tfCounter}
-      );
-      return mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
-    }
-
-    if (!mDplEnabled && lDplHdr) {
-      // remove processing header
-      const auto lNewSize = reinterpret_cast<const char*>(lDplHdr) - pData;
-      lDataHdr->flagsNextHeader = 0; // DataHeader is alone
-      return mMemRes.newHeaderMessage(pData, lNewSize);
+    // quick check for missing DPL header
+    if (pSize < (sizeof(DataHeader) + sizeof(o2::framework::DataProcessingHeader))) {
+      EDDLOG("BUG: TimeFrameBuilder: missing DPL header");
     }
 
     return mMemRes.newHeaderMessage(pData, pSize);
@@ -481,7 +462,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
 
   const auto lOutChannelType = fair::mq::Transport::SHM;
 
-  { // check if we have a vaild creation time
+  { // check if we have a valid creation time
     const auto lCreationTimeMs = pStf->header().mCreationTimeMs;
     if ((lCreationTimeMs == SubTimeFrame::Header::sInvalidTimeMs) || (lCreationTimeMs == 0)) {
       pStf->updateCreationTimeMs(); // use the current time
@@ -527,22 +508,19 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
             continue;
           }
 
-          if (mDplEnabled) {
-            auto lDplHdr = o2::framework::DataProcessingHeader{pStf->header().mId};
-            lDplHdr.creation = lCreationTimeMs;
-            auto lStack = Stack(
-              reinterpret_cast<std::byte*>(lHeader->GetData()),
-              lDplHdr
-            );
+          // add DPL header
+          auto lDplHdr = o2::framework::DataProcessingHeader{pStf->header().mId};
+          lDplHdr.creation = lCreationTimeMs;
+          auto lStack = Stack(reinterpret_cast<std::byte*>(lHeader->GetData()), lDplHdr);
 
-            WDDLOG_RL(5000, "Reallocation of Header messages is not optimal. orig_size={} new_size={}",
-              lHeader->GetSize(), lStack.size());
+          WDDLOG_RL(5000, "Reallocation of Header messages is not optimal. orig_size={} new_size={}",
+            lHeader->GetSize(), lStack.size());
 
-            lStfDataIter.mHeader = newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
-            if (!lStfDataIter.mHeader) {
-              return;
-            }
+          lStfDataIter.mHeader = newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+          if (!lStfDataIter.mHeader) {
+            return;
           }
+
         }
       }
     }
@@ -570,8 +548,8 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
           }
 
           // data
-          {
-            const auto &lDataMsg = lStfDataIter.mData;
+          for (auto &lDataMsg : lStfDataIter.mDataParts) {
+            // const auto &lDataMsg = lStfDataIter.mData;
             if (lDataMsg->GetType() != fair::mq::Transport::SHM) {
               auto lNewDataMsg = newDataMessage(lDataMsg->GetSize());
               WDDLOG_RL(1000, "adaptHeaders: Moving data message to SHM. size={}", lDataMsg->GetSize());
@@ -580,7 +558,7 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
               } else {
                 return;
               }
-              lStfDataIter.mData.swap(lNewDataMsg);
+              lDataMsg.swap(lNewDataMsg);
             }
           }
         }

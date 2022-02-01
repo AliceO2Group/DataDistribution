@@ -116,7 +116,7 @@ public:
   struct OutputChannelObjects {
     std::string mTfBuilderEndpoint;
     std::unique_ptr<FairMQChannel> mChannel;
-    std::unique_ptr<CoalescedHdrDataSerializer> mStfSerializer;
+    std::unique_ptr<IovSerializer> mStfSerializer;
     std::unique_ptr<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>> mStfQueue;
     std::thread mThread;
   };

@@ -232,10 +232,8 @@ void StfBuilderDevice::InitTask()
 
   // Using DPL?
   if (I().mDplChannelName != "" && !I().mStandalone) {
-    I().mDplEnabled = true;
     IDDLOG("DPL Channel name: {}",  I().mDplChannelName);
   } else {
-    I().mDplEnabled = false;
     I().mDplChannelName = "";
     IDDLOG("Not sending data to DPL.");
   }
@@ -258,9 +256,9 @@ void StfBuilderDevice::InitTask()
 
     try {
       if (!isStandalone()) {
-        GetChannel(I().mDplEnabled ? I().mDplChannelName : I().mOutputChannelName);
+        GetChannel( !I().mDplChannelName.empty() ? I().mDplChannelName : I().mOutputChannelName);
       }
-    } catch(std::exception &) {
+    } catch(std::exception &e) {
       EDDLOG("Output channel (to DPL or StfSender) must be configured if not running in stand-alone mode.");
       std::this_thread::sleep_for(1s); exit(-1);
     }
@@ -272,7 +270,7 @@ void StfBuilderDevice::InitTask()
   I().mFileSink->start();
 
   // start file source
-  I().mFileSource->start(MemI(), I().mDplEnabled);
+  I().mFileSource->start(MemI());
 
   // start a thread for readout process
   if (!I().mFileSource->enabled()) {
@@ -321,7 +319,6 @@ void StfBuilderDevice::StfOutputThread()
 {
   using hres_clock = std::chrono::high_resolution_clock;
 
-  std::unique_ptr<InterleavedHdrDataSerializer> lStfSerializer;
   std::unique_ptr<StfToDplAdapter> lStfDplAdapter;
 
   bool lShouldSendEos = false;
@@ -331,11 +328,7 @@ void StfBuilderDevice::StfOutputThread()
     auto& lOutputChan = getOutputChannel();
     IDDLOG("StfOutputThread: sending data to channel: {}", lOutputChan.GetName());
 
-    if (!dplEnabled()) {
-      lStfSerializer = std::make_unique<InterleavedHdrDataSerializer>(lOutputChan);
-    } else {
-      lStfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
-    }
+    lStfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
   }
 
   decltype(hres_clock::now()) lStfStartTime = hres_clock::now();
@@ -352,7 +345,7 @@ void StfBuilderDevice::StfOutputThread()
         WDDLOG_RL(1000, "Dropping a raw SubTimeFrame because stop of the run is requested.");
       }
 
-      if (dplEnabled() && lShouldSendEos) {
+      if (lShouldSendEos) {
         lShouldSendEos = false;
         lStfDplAdapter->sendEosToDpl();
       }
@@ -390,14 +383,9 @@ void StfBuilderDevice::StfOutputThread()
 
     if (!isStandalone()) {
       try {
-        if (!dplEnabled()) {
-          assert (lStfSerializer);
-          lStfSerializer->serialize(std::move(lStf));
-        } else {
-          // Send to DPL bridge
-          assert (lStfDplAdapter);
-          lStfDplAdapter->sendToDpl(std::move(lStf));
-        }
+        assert (lStfDplAdapter);
+        lStfDplAdapter->sendToDpl(std::move(lStf));
+
       } catch (std::exception& e) {
         if (IsReadyOrRunningState()) {
           EDDLOG("StfOutputThread: exception on send: what={}", e.what());
@@ -417,7 +405,7 @@ void StfBuilderDevice::StfOutputThread()
 
       I().mSentOutStfs++;
       I().mSentOutStfsTotal++;
-      DDMON("stfbuilder", "stf_output.total", I().mSentOutStfsTotal);
+      DDMON("stfbuilder", "stf_output.total", I().mSentOutStfs);
 
       const auto lNow = hres_clock::now();
       I().mSentOutRate = double(I().mSentOutStfs) / std::chrono::duration<double>(lNow - sStartOfStfSending).count();
@@ -433,7 +421,7 @@ void StfBuilderDevice::StfOutputThread()
   }
 
   // leaving the output thread, send end of the stream info
-  if (dplEnabled() && lShouldSendEos) {
+  if (!isStandalone() && lStfDplAdapter && lShouldSendEos) {
     lStfDplAdapter->sendEosToDpl();
   }
 
