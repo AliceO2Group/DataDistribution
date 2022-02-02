@@ -202,7 +202,7 @@ void StfBuilderDevice::InitTask()
   // make sure we have detector if not using files
   if (!I().mFileSource->enabled()) {
     if ((ReadoutDataUtils::sRdhVersion < ReadoutDataUtils::RdhVersion::eRdhVer6) &&
-      (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginInvalid)) {
+      (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginAny)) {
       EDDLOG("Detector string parameter must be specified when receiving the data from the "
         "readout and not using RDHv6 or greater.");
       std::this_thread::sleep_for(1s); exit(-1);
@@ -605,8 +605,11 @@ o2::header::DataOrigin StfBuilderDevice::getDataOriginFromOption(const std::stri
   else if (lDetStr == "TST") {
     return o2::header::gDataOriginTST;
   }
+  else if (lDetStr == "NIL") {
+    return o2::header::gDataOriginInvalid;
+  }
 
-  return o2::header::gDataOriginInvalid;
+  return o2::header::gDataOriginAny;
 }
 
 } /* namespace o2::DataDistribution */
