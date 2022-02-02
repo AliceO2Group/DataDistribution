@@ -48,9 +48,9 @@ class SubTimeFrameFileSink
   static constexpr const char* OptionKeyStfSinkDir = "data-sink-dir";
   static constexpr const char* OptionKeyStfSinkFileName = "data-sink-file-name";
   static constexpr const char* OptionKeyStfSinkStfsPerFile = "data-sink-max-stfs-per-file";
+  static constexpr const char* OptionKeyStfSinkStfPercent = "data-sink-stf-percentage";
   static constexpr const char* OptionKeyStfSinkFileSize = "data-sink-max-file-size";
   static constexpr const char* OptionKeyStfSinkSidecar = "data-sink-sidecar";
-
   static bpo::options_description getProgramOptions();
 
   SubTimeFrameFileSink() = delete;
@@ -98,6 +98,7 @@ class SubTimeFrameFileSink
   std::string mCurrentDir;
   std::string mFileNamePattern;
   std::uint64_t mStfsPerFile;
+  unsigned mPercentage = 100;
   std::uint64_t mFileSize;
   bool mSidecar = false;
   std::string mHostname;

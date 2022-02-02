@@ -124,8 +124,11 @@ to files, before they are sent out.
 :   Limit the number of (Sub)TimeFrames per file.s
     The default value of this parameter is '*1*'.
 
-**--data-sink-max-file-size** arg (=4294967296)
-:   Limit the target size for (Sub)TimeFrame files.'
+**--data-sink-stf-percentage** percentage
+:   Specifies probabilistic acceptance percentage for saving of each (Sub)TimeFrames, between 0 to 100. Default: '*100*'
+
+**--data-sink-max-file-size** arg (=4096)
+:   Limit the target size for (Sub)TimeFrame files. Value in MiB'
     Note: Actual file size might exceed the limit since the (Sub)TimeFrames are written as a whole.
 
 **--data-sink-sidecar**

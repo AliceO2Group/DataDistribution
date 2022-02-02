@@ -174,9 +174,17 @@ parameter is `\f[I]1\f[]'.
 .RS
 .RE
 .TP
-.B \f[B]\[en]data\-sink\-max\-file\-size\f[] arg (=4294967296)
-Limit the target size for (Sub)TimeFrame files.' Note: Actual file size
-might exceed the limit since the (Sub)TimeFrames are written as a whole.
+.B \f[B]\[en]data\-sink\-stf\-percentage\f[] percentage
+Specifies probabilistic acceptance percentage for saving of each
+(Sub)TimeFrames, between 0 to 100.
+Default: `\f[I]100\f[]'
+.RS
+.RE
+.TP
+.B \f[B]\[en]data\-sink\-max\-file\-size\f[] arg (=4096)
+Limit the target size for (Sub)TimeFrame files.
+Value in MiB' Note: Actual file size might exceed the limit since the
+(Sub)TimeFrames are written as a whole.
 .RS
 .RE
 .TP

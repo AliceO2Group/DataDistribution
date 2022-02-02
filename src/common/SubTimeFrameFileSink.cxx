@@ -27,6 +27,7 @@
 #include <ctime>
 #include <iostream>
 #include <iomanip>
+#include <random>
 
 namespace o2::DataDistribution
 {
@@ -75,6 +76,9 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
     OptionKeyStfSinkStfsPerFile,
     bpo::value<std::uint64_t>()->default_value(1),
     "Specifies number of (Sub)TimeFrames per file. Default: 1")(
+    OptionKeyStfSinkStfPercent,
+    bpo::value<unsigned>()->default_value(100),
+    "Specifies probabilistic acceptance percentage for saving of each (Sub)TimeFrames, between 0 to 100. Default: 100")(
     OptionKeyStfSinkFileSize,
     bpo::value<std::uint64_t>()->default_value(std::uint64_t(4) << 10), /* 4GiB */
     "Specifies target size for (Sub)TimeFrame files in MiB.")(
@@ -110,6 +114,7 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   mFileNamePattern = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSinkFileName);
   mStfsPerFile = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSinkStfsPerFile);
   mFileSize = std::max(std::uint64_t(1), pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSinkFileSize));
+  mPercentage = std::clamp(pFMQProgOpt.GetValue<unsigned>(OptionKeyStfSinkStfPercent), 0U, 100U);
   mFileSize <<= 20; /* in MiB */
   mSidecar = pFMQProgOpt.GetValue<bool>(OptionKeyStfSinkSidecar);
 
@@ -124,12 +129,13 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   mEnabled = true;
 
   // print options
-  IDDLOG("(Sub)TimeFrame Sink :: enabled       = {:s}", (mEnabled ? "yes" : "no"));
-  IDDLOG("(Sub)TimeFrame Sink :: root dir      = {:s}", mRootDir);
-  IDDLOG("(Sub)TimeFrame Sink :: file pattern  = {:s}", mFileNamePattern);
-  IDDLOG("(Sub)TimeFrame Sink :: stfs per file = {:s}", (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" ));
-  IDDLOG("(Sub)TimeFrame Sink :: max file size = {:d}", mFileSize);
-  IDDLOG("(Sub)TimeFrame Sink :: sidecar files = {:s}", (mSidecar ? "yes" : "no"));
+  IDDLOG("(Sub)TimeFrame Sink :: enabled         = {}", (mEnabled ? "yes" : "no"));
+  IDDLOG("(Sub)TimeFrame Sink :: root dir        = {}", mRootDir);
+  IDDLOG("(Sub)TimeFrame Sink :: file pattern    = {}", mFileNamePattern);
+  IDDLOG("(Sub)TimeFrame Sink :: stfs per file   = {}", (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" ));
+  IDDLOG("(Sub)TimeFrame Sink :: stfs percentage = {}", (mPercentage));
+  IDDLOG("(Sub)TimeFrame Sink :: max file size   = {}", mFileSize);
+  IDDLOG("(Sub)TimeFrame Sink :: sidecar files   = {}", (mSidecar ? "yes" : "no"));
   return mEnabled;
 }
 
@@ -205,6 +211,11 @@ std::string SubTimeFrameFileSink::newStfFileName(const std::uint64_t pStfId) con
 /// File writing thread
 void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 {
+  std::default_random_engine lGen;
+  std::uniform_int_distribution<unsigned> lUniformDist(0, 99);
+  std::uint64_t lAcceptedStfs = 0;
+  std::uint64_t lTotalStfs = 0;
+
   std::uint64_t lCurrentFileSize = 0;
   std::uint64_t lCurrentFileStfs = 0;
 
@@ -217,13 +228,18 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       // input queue is stopped, bail out
       break;
     }
+    lTotalStfs += 1;
 
     if (mEnabled && !mReady) {
       EDDLOG_RL(5000, "SubTimeFrameFileSink is not ready! Missed the RUN transation?");
     }
 
-    if (mEnabled && mReady) {
+    // apply rejection rules
+    bool lStfAccepted = (lUniformDist(lGen) < mPercentage) ? true : false;
+
+    if (mEnabled && mReady && lStfAccepted) {
       do {
+        lAcceptedStfs += 1;
         // make sure Stf is updated before writing
         lStf->updateStf();
 
@@ -273,6 +289,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       break;
     }
   }
+  IDDLOG("(Sub)TimeFrame file sink: saved={} total={}", lAcceptedStfs, lTotalStfs);
   DDDLOG("Exiting file sink thread [{}]", pIdx);
 }
 
