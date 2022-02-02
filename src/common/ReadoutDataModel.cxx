@@ -46,7 +46,7 @@ ReadoutDataUtils::getDataOrigin(const RDHReader &R)
     if (lOrig != o2::header::DAQID::DAQtoO2(o2::header::DAQID::INVALID)) {
       return lOrig;
     } else {
-        EDDLOG_RL(1000, "Data origin in RDH is invalid: {}. Please configure the correct SYSTEM_ID in the hardware."
+        EDDLOG_ONCE("Data origin in RDH is invalid: {}. Please configure the correct SYSTEM_ID in the hardware."
           " Using the configuration value {}.", R.getSystemID(), sSpecifiedDataOrigin.as<std::string>());
     }
   }
