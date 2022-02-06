@@ -49,20 +49,17 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
   { // prepare DistDataHeader
     auto lHdrStack = Stack(lStfDistDataHeader, lDplHeader);
 
-    auto lDataHeaderMsg = mChan.NewMessage(lHdrStack.size());
+    auto lDataHeaderMsg = mMemRes.newHeaderMessage(lHdrStack.data(), lHdrStack.size());
     if (!lDataHeaderMsg) {
       EDDLOG("Allocation error: Stf DataHeader. size={}", sizeof(DataHeader));
       throw std::bad_alloc();
     }
 
-    std::memcpy(lDataHeaderMsg->GetData(), lHdrStack.data(), lHdrStack.size());
-
-    auto lDataMsg = mChan.NewMessage(sizeof(SubTimeFrame::Header));
+    auto lDataMsg = mMemRes.newHeaderMessage(&pStf.header(), sizeof(SubTimeFrame::Header));
     if (!lDataMsg) {
       EDDLOG("Allocation error: Stf::Header. size={}", sizeof(SubTimeFrame::Header));
       throw std::bad_alloc();
     }
-    std::memcpy(lDataMsg->GetData(), &pStf.header(), sizeof(SubTimeFrame::Header));
 
     mMessages.push_back(std::move(lDataHeaderMsg));
     mMessages.push_back(std::move(lDataMsg));
@@ -83,10 +80,51 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf)
 
     // all messages are already in the correct format
     for (std::size_t i = 0; i < lHBFrameVector.size(); i++) {
-      mMessages.push_back(std::move(lHBFrameVector[i].mHeader));
 
-      std::move(std::begin(lHBFrameVector[i].mDataParts), std::end(lHBFrameVector[i].mDataParts),
-        std::back_inserter(mMessages));
+      if (mReducedHdr) {
+        mMessages.push_back(std::move(lHBFrameVector[i].mHeader));
+
+        std::move(std::begin(lHBFrameVector[i].mDataParts), std::end(lHBFrameVector[i].mDataParts),
+          std::back_inserter(mMessages));
+      } else {
+        auto &lMssg = lHBFrameVector[i];
+
+        // single messages
+        if (lMssg.mDataParts.size() == 1) {
+          auto lDhPtr = lMssg.getDataHeaderMutable();
+          lDhPtr->splitPayloadIndex = 0;
+          lDhPtr->splitPayloadParts = 1;
+          lDhPtr->payloadSize = lMssg.mDataParts.front()->GetSize();
+
+          mMessages.push_back(std::move(lMssg.mHeader));
+          mMessages.push_back(std::move(lMssg.mDataParts.front()));
+        } else {
+          // non-reduced headers
+          auto lDhPtr = lMssg.getDataHeaderMutable();
+
+          // take all but last data message to reuse the existing hdr message
+          for (std::size_t iSp = 0; iSp < lMssg.mDataParts.size() - 1; iSp += 1) {
+            auto &lDataMsg = lMssg.mDataParts[iSp];
+            lDhPtr->splitPayloadIndex = iSp;
+            lDhPtr->splitPayloadParts = lMssg.mDataParts.size();
+            lDhPtr->payloadSize = lDataMsg->GetSize();
+
+            auto lSpHdr = mMemRes.newHeaderMessage(lMssg.mHeader->GetData(), lMssg.mHeader->GetSize());
+            if (!lSpHdr) {
+              throw std::bad_alloc();
+            }
+            mMessages.push_back(std::move(lSpHdr));
+            mMessages.push_back(std::move(lDataMsg));
+          }
+          // add the last message
+          lDhPtr->splitPayloadIndex = lMssg.mDataParts.size() - 1;
+          lDhPtr->splitPayloadParts = lMssg.mDataParts.size();
+          lDhPtr->payloadSize = lMssg.mDataParts.back()->GetSize();
+
+          mMessages.push_back(std::move(lMssg.mHeader));
+          mMessages.push_back(std::move(lMssg.mDataParts.back()));
+        }
+      }
     }
 
     lHBFrameVector.clear();
@@ -99,9 +137,9 @@ void StfToDplAdapter::inspect() const
 {
   // check validity of the TF message sequence
 
-  DataHeader::TForbitType lFirstTForbit = ~  DataHeader::TForbitType{0};
-  DataHeader::TFCounterType lTfCounter = ~ DataHeader::TFCounterType{0};
-  DataHeader::RunNumberType lRunNumber = ~ DataHeader::RunNumberType{0};
+  DataHeader::TForbitType lFirstTForbit = ~DataHeader::TForbitType{0};
+  DataHeader::TFCounterType lTfCounter = ~DataHeader::TFCounterType{0};
+  DataHeader::RunNumberType lRunNumber = ~DataHeader::RunNumberType{0};
 
   o2::framework::DataProcessingHeader::StartTime lProcStart = ~ o2::framework::DataProcessingHeader::StartTime{0};
 
@@ -269,7 +307,7 @@ void DplToStfAdapter::visit(SubTimeFrame& pStf)
 
   auto lAddFullSplitPayload = [this, &pStf](std::size_t &idx, const std::size_t count) {
 
-    DDDLOG("DPL Deserialize: converting full split payload");
+    DDDLOG_RL(10000, "DPL Deserialize: converting full split payload");
 
     const auto lStopIdx = idx + (2 * count);
 

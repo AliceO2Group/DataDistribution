@@ -34,7 +34,7 @@ using namespace o2::header;
 /// SubTimeFrameReadoutBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(MemoryResources &pMemRes)
+SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(SyncMemoryResources &pMemRes)
   : mStf(nullptr),
     mMemRes(pMemRes)
 {
@@ -206,7 +206,7 @@ bool SubTimeFrameReadoutBuilder::addHbFrames(
       lDplHdr.creation = mStf->header().mCreationTimeMs;
       auto lStack = Stack(lDataHdr, lDplHdr);
 
-      auto lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+      auto lHdrMsg = mMemRes.newHeaderMessage(lStack.data(), lStack.size());
       if (!lHdrMsg) {
         WDDLOG_RL(1000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
 
@@ -285,7 +285,7 @@ std::optional<std::unique_ptr<SubTimeFrame>> SubTimeFrameReadoutBuilder::addTopo
         lDplHdr
       );
 
-      auto lHdrMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+      auto lHdrMsg = mMemRes.newHeaderMessage(lStack.data(), lStack.size());
       if (!lHdrMsg) {
         WDDLOG_RL(1000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
         // clear data of the partial STF
@@ -323,7 +323,7 @@ std::optional<std::unique_ptr<SubTimeFrame>> SubTimeFrameReadoutBuilder::addTopo
 /// SubTimeFrameFileBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(MemoryResources &pMemRes,
+SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(SyncMemoryResources &pMemRes,
   const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId,
   const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId)
   : mMemRes(pMemRes)
@@ -388,7 +388,7 @@ void SubTimeFrameFileBuilder::adaptHeaders(SubTimeFrame *pStf)
             lDplHdr
           );
 
-          lStfDataIter.mHeader = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+          lStfDataIter.mHeader = mMemRes.newHeaderMessage(lStack.data(), lStack.size());
           if (!lStfDataIter.mHeader) {
             return;
           }

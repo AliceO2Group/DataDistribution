@@ -282,8 +282,10 @@ public:
     }
   }
 
+  template<typename T>
   inline
-  std::unique_ptr<FairMQMessage> NewFairMQMessage(const char *pData, const std::size_t pSize) {
+  std::unique_ptr<FairMQMessage> NewFairMQMessage(const T pData, const std::size_t pSize) {
+    static_assert(std::is_pointer_v<T>, "Require pointer");
     auto* lMem = do_allocate(pSize);
     if (lMem) {
       std::memcpy(lMem, pData, pSize);
@@ -456,7 +458,7 @@ private:
     }
 
     if (lMaxIter->second > 1) {
-      EDDLOG("RegionAllocator BUG: Overlapping interval found: ptr={:p} length={} overlaps={}",
+      EDDLOG_RL(1000, "RegionAllocator BUG: Overlapping interval found: ptr={:p} length={} overlaps={}",
         reinterpret_cast<char*>(lMaxIter->first.lower()), lFoundSize, lMaxIter->second);
 
       // erase this segment
@@ -502,7 +504,7 @@ private:
 #if !defined(NDEBUG)
     for (const auto &lInt : mFreeRanges) {
       if (lInt.second > 1) {
-        EDDLOG("RegionAllocator BUG: Overlapping interval found on reclaim: ptr={:p} length={} overlaps={}",
+        EDDLOG_RL(1000, "RegionAllocator BUG: Overlapping interval found on reclaim: ptr={:p} length={} overlaps={}",
           reinterpret_cast<char*>(lInt.first.lower()), lInt.first.upper() - lInt.first.lower(), lInt.second);
       }
     }
@@ -546,10 +548,12 @@ public:
     mShmTransport.reset();
   }
 
+  template<typename T>
   inline
-  FairMQMessagePtr newHeaderMessage(const char *pData, const std::size_t pSize) {
+  FairMQMessagePtr newHeaderMessage(const T pData, const std::size_t pSize) {
+    static_assert(std::is_pointer_v<T>, "Require pointer");
     assert(mHeaderMemRes);
-    return mHeaderMemRes->NewFairMQMessage(pData, pSize);
+    return mHeaderMemRes->NewFairMQMessage(reinterpret_cast<const char*>(pData), pSize);
   }
 
   inline
@@ -605,8 +609,10 @@ public:
 
   virtual ~SyncMemoryResources() {}
 
+  template<typename T>
   inline
-  FairMQMessagePtr newHeaderMessage(const char *pData, const std::size_t pSize) {
+  FairMQMessagePtr newHeaderMessage(const T pData, const std::size_t pSize) {
+    static_assert(std::is_pointer_v<T>, "Require pointer");
     assert(mHeaderMemRes);
     std::scoped_lock lock(mHdrLock);
     return mHeaderMemRes->NewFairMQMessage(pData, pSize);
@@ -619,8 +625,10 @@ public:
     return mDataMemRes->NewFairMQMessage(pSize);
   }
 
+  template <typename T>
   inline
-  FairMQMessagePtr newDataMessage(const char *pData, const std::size_t pSize) {
+  FairMQMessagePtr newDataMessage(const T pData, const std::size_t pSize) {
+    static_assert(std::is_pointer_v<T>, "Require pointer");
     assert(mDataMemRes);
     FairMQMessagePtr lMsg;
     {

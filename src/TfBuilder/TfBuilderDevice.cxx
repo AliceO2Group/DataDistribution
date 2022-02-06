@@ -193,7 +193,7 @@ bool TfBuilderDevice::start()
 
   if (!mStandalone) {
     auto& lOutputChan = GetChannel(getDplChannelName(), 0);
-    mTfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
+    mTfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan, MemI());
   }
 
   // start TF forwarding thread

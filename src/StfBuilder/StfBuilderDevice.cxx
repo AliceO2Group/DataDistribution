@@ -66,7 +66,7 @@ void StfBuilderDevice::Init()
 {
   DDDLOG("StfBuilderDevice::Init()");
   mI = std::make_unique<StfBuilderInstance>();
-  mMemI = std::make_unique<MemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
+  mMemI = std::make_unique<SyncMemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
 
   I().mFileSource = std::make_unique<SubTimeFrameFileSource>(*mI, eStfFileSourceOut);
   I().mReadoutInterface = std::make_unique<StfInputInterface>(*this);
@@ -328,7 +328,7 @@ void StfBuilderDevice::StfOutputThread()
     auto& lOutputChan = getOutputChannel();
     IDDLOG("StfOutputThread: sending data to channel: {}", lOutputChan.GetName());
 
-    lStfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan);
+    lStfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan, MemI());
   }
 
   decltype(hres_clock::now()) lStfStartTime = hres_clock::now();
@@ -388,11 +388,11 @@ void StfBuilderDevice::StfOutputThread()
 
       } catch (std::exception& e) {
         if (IsReadyOrRunningState()) {
-          EDDLOG("StfOutputThread: exception on send: what={}", e.what());
+          EDDLOG_RL(10000, "StfOutputThread: exception on send: what={}", e.what());
         } else {
-          IDDLOG("StfOutputThread(NOT_RUNNING): shutting down: what={}", e.what());
+          IDDLOG_RL(10000, "StfOutputThread(NOT_RUNNING): shutting down: what={}", e.what());
         }
-        break;
+        continue;
       }
 
       // record time spent in sending

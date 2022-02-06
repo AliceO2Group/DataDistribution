@@ -38,7 +38,7 @@ class SubTimeFrameReadoutBuilder
 {
  public:
   SubTimeFrameReadoutBuilder() = delete;
-  SubTimeFrameReadoutBuilder(MemoryResources &pMemRes);
+  SubTimeFrameReadoutBuilder(SyncMemoryResources &pMemRes);
 
   bool addHbFrames(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
@@ -104,7 +104,7 @@ class SubTimeFrameReadoutBuilder
   // filtering: keep info if the first HBFrame is already kept back
   std::unordered_map<o2::header::DataHeader::SubSpecificationType, bool> mFirstFiltered;
 
-  MemoryResources &mMemRes;
+  SyncMemoryResources &mMemRes;
 };
 
 
@@ -116,7 +116,7 @@ class SubTimeFrameFileBuilder
 {
  public:
   SubTimeFrameFileBuilder() = delete;
-  SubTimeFrameFileBuilder(MemoryResources &pMemRes,
+  SubTimeFrameFileBuilder(SyncMemoryResources &pMemRes,
     const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId,
     const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId);
 
@@ -132,7 +132,7 @@ class SubTimeFrameFileBuilder
       o2::framework::DataProcessingHeader{pTfId}
     );
 
-    lMsg = mMemRes.newHeaderMessage(reinterpret_cast<char*>(lStack.data()), lStack.size());
+    lMsg = mMemRes.newHeaderMessage(lStack.data(), lStack.size());
     if (!lMsg) {
       return nullptr;
     }
@@ -151,7 +151,7 @@ class SubTimeFrameFileBuilder
   }
 
  private:
-  MemoryResources &mMemRes;
+  SyncMemoryResources &mMemRes;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -35,9 +35,7 @@
 #include <DataDistLogger.h>
 #include <ConfigConsul.h>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 enum StfBuilderPipeline {
@@ -225,14 +223,14 @@ class StfBuilderDevice : public DataDistDevice
   };
 
   std::unique_ptr<StfBuilderInstance> mI;
-  std::unique_ptr<MemoryResources> mMemI;
+  std::unique_ptr<SyncMemoryResources> mMemI;
   const StfBuilderInstance& I() const { return *mI; }
 public:
   StfBuilderInstance& I() { return *mI; }
-  MemoryResources& MemI() { return *mMemI; }
+  SyncMemoryResources& MemI() { return *mMemI; }
 };
 
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_STFBUILDER_DEVICE_H_ */
