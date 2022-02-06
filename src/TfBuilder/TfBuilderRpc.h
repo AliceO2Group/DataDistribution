@@ -23,10 +23,10 @@
 #include <ConfigConsul.h>
 #include <TfSchedulerRpcClient.h>
 #include <StfSenderRpcClient.h>
-
 #include <SubTimeFrameDataModel.h>
 
 #include <ConcurrentQueue.h>
+#include <DataDistributionOptions.h>
 
 #include <vector>
 #include <deque>
@@ -36,7 +36,6 @@
 
 namespace o2::DataDistribution
 {
-
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
@@ -47,9 +46,6 @@ class SyncMemoryResources;
 class TfBuilderRpcImpl final : public TfBuilderRpc::Service
 {
 public:
-  static constexpr const char* OptionKeyMaxNumTransfers = "max-inflight";
-  static boost::program_options::options_description getTfBuilderRpcProgramOptions();
-
   TfBuilderRpcImpl(std::shared_ptr<ConsulTfBuilder> pDiscoveryConfig, SyncMemoryResources &pMemI)
   : mMemI(pMemI),
     mDiscoveryConfig(pDiscoveryConfig),
@@ -75,24 +71,6 @@ public:
   bool recordTfForwarded(const std::uint64_t &pTfId);
   bool sendTfBuilderUpdate();
 
-  void setMaxNumReqInFlight(const std::int64_t pMaxNum) { mMaxNumReqInFlight = std::max(std::int64_t(8), pMaxNum); }
-
-  void subscribeParameters(fair::mq::ProgOptions &pFMQConfig) {
-    pFMQConfig.Subscribe<std::string>(OptionKeyMaxNumTransfers, [&](const std::string &pKey, const std::string &pVal) {
-
-      if (pKey == std::string(OptionKeyMaxNumTransfers)) {
-        IDDLOG("NEW {}. val={}", OptionKeyMaxNumTransfers, pVal);
-
-        try {
-          const auto lNumVal = boost::lexical_cast<std::int64_t>(pVal);
-          setMaxNumReqInFlight(lNumVal);
-        } catch( boost::bad_lexical_cast const &e) {
-          EDDLOG("NEW max-inflight value is not numeric.");
-        }
-      }
-    });
-  }
-
   bool getNewTfBuildingRequest(TfBuildingInformation &pNewTfRequest)
   { if (!mTfBuildRequests) {
       return false;
@@ -117,6 +95,22 @@ public:
     mNumBufferedTfs = 0;
     mNumTfsInBuilding = 0;
     mTfBuildRequests->flush();
+  }
+
+  std::optional<std::uint64_t> getNumberOfStfs(const TimeFrameIdType pTfId) {
+    std::scoped_lock lLock(mStfsCountMapLock);
+    if (mStfsCountMap.count(pTfId) == 0) {
+      return std::nullopt;
+    }
+    return mStfsCountMap[pTfId];
+  }
+  void setNumberOfStfs(const TimeFrameIdType pTfId, const std::optional<std::uint64_t> &pNumStfsOpt) {
+    std::scoped_lock lLock(mStfsCountMapLock);
+    if (pNumStfsOpt == std::nullopt) {
+      mStfsCountMap.erase(pTfId);
+    } else {
+      mStfsCountMap[pTfId] = pNumStfsOpt.value();
+    }
   }
 
 private:
@@ -145,10 +139,12 @@ private:
     };
 
   std::atomic_int64_t mMaxNumReqInFlight = 64;
-  std::mutex mStfReqMapLock;
-    std::condition_variable mStfReqMapCV;
-    std::int64_t mNumReqInFlight = 0;
-    std::deque<std::pair<std::uint64_t, std::vector<StfRequests>> > mStfRequestDeque; // <tfid, stf_reuests>
+  std::atomic_int64_t mNumReqInFlight = 0;
+  ConcurrentFifo<std::pair<std::uint64_t, std::vector<StfRequests>> >  mStfRequestDeque; // <tfid, stf_reuests>
+
+  // Store how many STFs were requested per TfID. nullopt if requests are not finished
+  std::mutex mStfsCountMapLock;
+    std::map<TimeFrameIdType, std::uint64_t> mStfsCountMap;
 
   // monitor how long it takes to fetch stfs from each FLP
   std::mutex mStfDurationMapLock;

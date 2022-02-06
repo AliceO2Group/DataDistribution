@@ -71,9 +71,6 @@ int main(int argc, char* argv[])
       r.fConfig.AddToCmdLineOptions(lTfBuilderOptions);
       r.fConfig.AddToCmdLineOptions(lTfBuilderDplOptions);
 
-      // Add options for TfBuilderRPC
-      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::TfBuilderRpcImpl::getTfBuilderRpcProgramOptions());
-
       // Add options for TF file sink
       r.fConfig.AddToCmdLineOptions(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());
       // Add options for Data Distribution discovery

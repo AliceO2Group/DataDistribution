@@ -139,10 +139,6 @@ void TfBuilderDevice::InitTask()
   mRpc = std::make_shared<TfBuilderRpcImpl>(mDiscoveryConfig, *mMemI);
   mFlpInputHandler = std::make_unique<TfBuilderInput>(*this, mRpc, eTfBuilderOut);
 
-  // set max number of request in flight
-  mRpc->setMaxNumReqInFlight(GetConfig()->GetValue<std::int64_t>(TfBuilderRpcImpl::OptionKeyMaxNumTransfers));
-  mRpc->subscribeParameters(*GetConfig());
-
   {
     // finish discovery information: gRPC server
     int lRpcRealPort = 0;

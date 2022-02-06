@@ -106,8 +106,15 @@ class TfBuilderInput
 
   std::mutex mStfMergerQueueLock;
     std::condition_variable mStfMergerCondition;
-    std::map<TimeFrameIdType, std::vector<ReceivedStfMeta>> mStfMergeMap;
+    std::atomic_bool mStfMergerRun = false;
+    std::map<TimeFrameIdType, std::vector<ReceivedStfMeta> > mStfMergeMap;
+    std::map<TimeFrameIdType, std::uint64_t> mStfMergeCountMap; // contains number of stfs when all Stfsenders are reached
     std::uint64_t mMaxMergedTfId = 0;
+
+    inline void triggerStfMerger() {
+      mStfMergerRun = true;
+      mStfMergerCondition.notify_one();
+    }
 
   /// Stf Deserializer (add O2 headers etc)
   void deserialize_headers(std::vector<ReceivedStfMeta> &pStfs); // only the leading split-payload hdr message
