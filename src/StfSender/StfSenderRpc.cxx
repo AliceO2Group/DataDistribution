@@ -12,6 +12,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "StfSenderRpc.h"
+#include "StfSenderOutputDefs.h"
 #include "StfSenderOutput.h"
 #include <grpcpp/grpcpp.h>
 
@@ -67,13 +68,13 @@ void StfSenderRpcImpl::stop()
 
   const auto lStatus = mOutput->connectTfBuilder(lTfBuilderId, lTfBuilderEndpoint);
   switch (lStatus) {
-    case StfSenderOutput::ConnectStatus::eOK:
+    case ConnectStatus::eOK:
       response->set_status(OK);
       break;
-    case StfSenderOutput::ConnectStatus::eCONNERR:
+    case ConnectStatus::eCONNERR:
       response->set_status(ERROR_STF_SENDER_CONNECTING);
       break;
-    case StfSenderOutput::ConnectStatus::eEXISTS:
+    case ConnectStatus::eEXISTS:
       response->set_status(ERROR_STF_SENDER_EXISTS);
       break;
   }
