@@ -24,6 +24,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include <Utilities.h>
+#include <DataDistributionOptions.h>
 
 #include <vector>
 #include <map>
@@ -81,8 +82,6 @@ bool operator==(const TfBuilderTopoInfo& lhs, const TfBuilderTopoInfo& rhs);
 class TfSchedulerTfBuilderInfo
 {
  public:
-
-  static constexpr std::string_view cMaxTfsInBuildingKey = "MaxNumTfInBuilding";
 
   TfSchedulerTfBuilderInfo() = delete;
   TfSchedulerTfBuilderInfo(std::shared_ptr<ConsulTfSchedulerInstance> pDiscoveryConfig)
