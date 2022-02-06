@@ -255,7 +255,7 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
       std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
       mStfMergeMap.clear();
       IDDLOG("TfBuilderInput::stop: Merger queue emptied.");
-      mStfMergerCondition.notify_all();
+      triggerStfMerger();
     }
 
     if (mStfDeserThread.joinable()) {
@@ -382,7 +382,7 @@ void TfBuilderInput::StfPacingThread()
       }
     }
     // wake up the merging thread
-    mStfMergerCondition.notify_one();
+    triggerStfMerger();
   }
 
   DDDLOG("Exiting StfPacingThread.");
@@ -438,63 +438,39 @@ void TfBuilderInput::StfDeserializingThread()
   while (mState == RUNNING) {
 
     std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
-    mStfMergerCondition.wait_for(lQueueLock, 500ms);
+    mStfMergerCondition.wait_for(lQueueLock, 10ms, [this]{ return mStfMergerRun.load(); });
+    mStfMergerRun = false;
 
     if (mStfMergeMap.empty()) {
+      continue; // re-evaluate conditions
+    }
+
+    //  Try to complete TF with the smallest ID
+    auto lMinTfInfo = mStfMergeMap.begin();
+    const auto lStfId = lMinTfInfo->first;
+    auto &lStfVector = lMinTfInfo->second;
+
+    // deserialize headers of any new STFs
+    deserialize_headers(lStfVector);
+
+    // Check the number of expected STFs
+    const auto lNumStfsOpt = mRpc->getNumberOfStfs(lStfId);
+    if (lNumStfsOpt == std::nullopt) {
+      // STF request thread has not finished requesting all STFs yet
+      triggerStfMerger();
       continue;
     }
 
-    // 1.1 deserialize all topological or completed TFs with the smallest ID
-    {
-      auto lMinTfInfo = mStfMergeMap.begin();
-      const auto lStfId = lMinTfInfo->first;
-      auto &lStfVector = lMinTfInfo->second;
+    // Check if the TF is completed
+    if ((lStfVector.size() == lNumStfsOpt)) {
+      mStfsForMerging.push(std::move(lStfVector));
 
-      deserialize_headers(lStfVector);
-
-      // 1.2 check if the oldest TF is completed or topological STF?
-      if ((lStfVector.size() == mNumStfSenders) || is_topo_stf(lStfVector)) {
-        mStfsForMerging.push(std::move(lStfVector));
-        mStfMergeMap.erase(lStfId);
-        continue;
-      }
+      mStfMergeMap.erase(lStfId);
+      mStfMergeCountMap.erase(lStfId);
+      mRpc->setNumberOfStfs(lStfId, std::nullopt);
     }
 
-    // 3.1 check out of order completions
-    TimeFrameIdType lMergedStf = 0;
-    for (auto &lStfInfosIter : mStfMergeMap) {
-      const auto lStfId = lStfInfosIter.first;
-      auto &lStfVector = lStfInfosIter.second;
-
-      if (lStfVector.size() == mNumStfSenders) {
-        lMergedStf = lStfId;
-        break;
-      }
-    }
-
-    // 3.2 Merge incomplete larger STFs
-    if (lMergedStf != 0) {
-      while (!mStfMergeMap.empty()) {
-        // Get the TF with lowest ID
-        auto lMinTfInfo = mStfMergeMap.begin();
-        const auto lMinStfId = lMinTfInfo->first;
-        auto &lStfVector = lMinTfInfo->second;
-
-        // If stop if TF Id is after the just completed TF
-        if (lMinStfId < lMergedStf) {
-          break;
-        }
-
-        if (lStfVector.size() < mNumStfSenders) {
-          WDDLOG_RL(1000, "StfDeserializingThread: Merging a TF with incomplete number of STFs. stf_num={} stfs_num={}",
-            lStfVector.size(), mNumStfSenders);
-        }
-
-        deserialize_headers(lStfVector);
-        mStfsForMerging.push(std::move(lStfVector));
-        mStfMergeMap.erase(lMinStfId);
-      }
-    }
+    // TODO: add timeout for non-completed TFs?
   }
 
   IDDLOG("Exiting stf deserializer thread.");

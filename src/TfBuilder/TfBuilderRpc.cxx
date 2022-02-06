@@ -314,12 +314,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
   });
 
   // add the vector to the stf request map
-  {
-    std::scoped_lock lLock(mStfReqMapLock);
-    mStfRequestDeque.emplace_back(lTfId, std::move(lStfRequestVector));
-  }
-
-  mStfReqMapCV.notify_one();
+  mStfRequestDeque.push(lTfId, std::move(lStfRequestVector));
 
   response->set_status(BuildTfResponse::OK);
   return ::grpc::Status::OK;
@@ -331,7 +326,7 @@ void TfBuilderRpcImpl::StfRequestThread()
   using hres_clock = std::chrono::steady_clock;
 
   std::random_device lRd;
-  std::mt19937 lGen(lRd());
+  std::mt19937_64 lGen(lRd());
 
   DDDLOG("Starting Stf requesting thread.");
 
@@ -340,81 +335,88 @@ void TfBuilderRpcImpl::StfRequestThread()
   while (mRunning) {
     StfRequests lStfRequest;
     {
-      std::unique_lock lLock(mStfReqMapLock);
-
-      DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);
-
-      if (!mRunning || mStfRequestDeque.empty() || mNumReqInFlight >= mMaxNumReqInFlight) {
-        mStfReqMapCV.wait_for(lLock, 50ms);
-        continue; // reevaluate the conditions
+      std::optional<std::pair<std::uint64_t, std::vector<StfRequests>> > lReqOpt;
+      if ((lReqOpt = mStfRequestDeque.pop_wait_for(100ms)) == std::nullopt) {
+        continue;
       }
 
-      auto &lReqVector = mStfRequestDeque.begin()->second;
-      assert (!lReqVector.empty());
+      assert (lReqOpt);
+      const auto lTfId = lReqOpt.value().first;
+      auto &lReqVector = lReqOpt.value().second;
 
-      // save request for outside the lock
-      std::size_t lIdx = lReqVector.size() - 1;
-      if (lIdx > 8) {
-        std::array<double, 4> i{
-          0,
-          double(lReqVector.size() / 3),
-          double(lReqVector.size() * 2 / 3),
-          double(lReqVector.size())        // return values from [ 0, lReqVector.size )
-        };
+      mMaxNumReqInFlight = std::clamp(mDiscoveryConfig->getUInt64Param(MaxNumStfTransfersKey, MaxNumStfTransferDefault),
+        std::uint64_t(10), std::uint64_t(200));
 
-        std::array<double, 4> w{
-          double(lReqVector[0].mStfDataSize + 1.0),
-          double(lReqVector[lReqVector.size() / 3].mStfDataSize + 1.0),
-          double(lReqVector[lReqVector.size() * 2 / 3].mStfDataSize + 1.0),
-          double(lReqVector.rbegin()->mStfDataSize + 1.0)
-        };
+      std::uint64_t lNumExpectedStfs = 0;
+      while (mRunning && !lReqVector.empty()) {
+        // wait for the stf slots to become free
+        if (mNumReqInFlight.load() >= mMaxNumReqInFlight) {
+          std::this_thread::sleep_for(5ms);
+          continue; // reevaluate the max TF conditions
+        }
 
-        std::piecewise_linear_distribution<> lDist(i.begin(), i.end(), w.begin());
+        // select the stfsender to contact first based on the stf size
+        std::size_t lIdx = 0;
 
-        lIdx = std::min(std::size_t(lDist(lGen)), lReqVector.size() - 1);
+        const auto lIdx3_3 = lReqVector.size();
+        const auto lIdx1_3 = lIdx3_3 / 3;
+        const auto lIdx2_3 = 2 * lIdx1_3;
+
+        if (lIdx > 8) {
+          std::array<double, 4> i{
+            double(0.0),
+            double(lIdx1_3),
+            double(lIdx2_3),
+            double(lIdx3_3)        // return index from [ 0, lReqVector.size )
+          };
+
+          std::array<double, 4> w{
+            double(lReqVector[0].mStfDataSize + 1.0),
+            double(lReqVector[lIdx1_3].mStfDataSize + 1.0),
+            double(lReqVector[lIdx2_3].mStfDataSize + 1.0),
+            double(lReqVector[lIdx3_3].mStfDataSize + 1.0)
+          };
+
+          std::piecewise_linear_distribution<> lDist(i.begin(), i.end(), w.begin());
+
+          lIdx = std::min(std::size_t(lDist(lGen)), lReqVector.size() - 1);
+        } else {
+          lIdx = lGen() % lReqVector.size();
+        }
+
+        DDMON("tfbuilder", "merge.request_idx", double(lIdx3_3) / double(lIdx + 1));
+
+        lStfRequest = std::move(lReqVector[lIdx]);
+        lReqVector.erase(lReqVector.cbegin() + lIdx);
+
+        { // record the current TP
+          std::unique_lock lLock(mStfDurationMapLock);
+          mStfReqDuration[lTfId][lStfRequest.mStfSenderId] = hres_clock::now();
+        }
+
+        StfDataResponse lStfResponse;
+        grpc::Status lStatus = StfSenderRpcClients()[lStfRequest.mStfSenderId]->StfDataRequest(lStfRequest.mRequest, lStfResponse);
+        if (!lStatus.ok()) {
+          // gRPC problem... continue asking for other STFs
+          EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={}",
+            lStfRequest.mStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize);
+          continue;
+        }
+
+        if (lStfResponse.status() != StfDataResponse::OK) {
+          EDDLOG("StfSender did not sent data. stfs_id={} reason={}",
+            lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
+          continue;
+        }
+
+        lNumExpectedStfs += 1;
+
+        mNumReqInFlight += 1;
+        DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);
       }
 
-      DDMON("tfbuilder", "merge.request_idx", double(lReqVector.size()) / double(lIdx + 1));
-
-      lStfRequest = std::move(lReqVector[lIdx]);
-      lReqVector.erase(lReqVector.cbegin() + lIdx);
-
-      mNumReqInFlight += 1;
-
-      // are we done with the TF
-      if (lReqVector.empty()) {
-        mStfRequestDeque.pop_front();
-      }
-    }
-
-    const auto lTfId = lStfRequest.mRequest.stf_id();
-
-    { // record the current TP
-      std::unique_lock lLock(mStfDurationMapLock);
-      mStfReqDuration[lTfId][lStfRequest.mStfSenderId] = hres_clock::now();
-    }
-
-    StfDataResponse lStfResponse;
-    grpc::Status lStatus = StfSenderRpcClients()[lStfRequest.mStfSenderId]->StfDataRequest(lStfRequest.mRequest, lStfResponse);
-    if (!lStatus.ok()) {
-      // gRPC problem... continue asking for other STFs
-      EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={}",
-        lStfRequest.mStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize);
-      {
-        std::unique_lock lLock(mStfReqMapLock);
-        mNumReqInFlight -= 1;
-      }
-      continue;
-    }
-
-    if (lStfResponse.status() != StfDataResponse::OK) {
-      EDDLOG("StfSender did not sent data. stfs_id={} reason={}",
-        lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
-      {
-        std::unique_lock lLock(mStfReqMapLock);
-        mNumReqInFlight -= 1;
-      }
-      continue;
+      // set the number of STFs for merging thread
+      setNumberOfStfs(lTfId, lNumExpectedStfs);
     }
   }
   // send disconnect update
@@ -425,12 +427,8 @@ void TfBuilderRpcImpl::StfRequestThread()
 bool TfBuilderRpcImpl::recordStfReceived(const std::string &pStfSenderId, const std::uint64_t pTfId)
 {
   using hres_clock = std::chrono::steady_clock;
-
-  { // unblock the next request
-    std::scoped_lock lLock(mStfReqMapLock);
-    mNumReqInFlight -= 1;
-  }
-  mStfReqMapCV.notify_one();
+  // unblock the next request
+  mNumReqInFlight -= 1;
 
   // record completion time
   double lStfFetchDurationMs = 0.0;
@@ -461,17 +459,5 @@ bool TfBuilderRpcImpl::recordStfReceived(const std::string &pStfSenderId, const 
   return ::grpc::Status::OK;
 }
 
-namespace bpo = boost::program_options;
-
-bpo::options_description TfBuilderRpcImpl::getTfBuilderRpcProgramOptions() {
-  bpo::options_description lStfBuildingOptions("Options controlling TimeFrame building", 120);
-
-  lStfBuildingOptions.add_options() (
-    OptionKeyMaxNumTransfers,
-    bpo::value<std::int64_t>()->default_value(32),
-    "Maximal number of simultaneous transfers.");
-
-  return lStfBuildingOptions;
-}
 
 } /* o2::DataDistribution */

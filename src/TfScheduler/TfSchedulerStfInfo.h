@@ -76,8 +76,6 @@ struct TopoStfInfo {
 
 class TfSchedulerStfInfo
 {
-  static constexpr std::string_view cStaleStfTimeoutMsKey = "StaleStfTimeoutMs";
-
 public:
   TfSchedulerStfInfo() = delete;
   TfSchedulerStfInfo(std::shared_ptr<ConsulTfSchedulerInstance> pDiscoveryConfig,
@@ -181,6 +179,7 @@ private:
     std::uint64_t mLastStfId = 0;
     std::uint64_t mMaxCompletedTfId = 0;
     std::uint64_t mNotScheduledTfsCount = 0;
+    std::uint64_t mStaleTfCount = 0;
     EventRecorder mDroppedStfs;
     EventRecorder mBuiltTfs;
 
@@ -190,6 +189,7 @@ private:
       mLastStfId = 0;
       mMaxCompletedTfId = 0;
       mNotScheduledTfsCount = 0;
+      mStaleTfCount = 0;
       mDroppedStfs.reset();
       mBuiltTfs.reset();
 

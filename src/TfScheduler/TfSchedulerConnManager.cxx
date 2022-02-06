@@ -380,7 +380,7 @@ void TfSchedulerConnManager::DropWaitThread()
     sort(lDroppedStfs.begin(), lDroppedStfs.end());
     for (auto &lDroppedId : lDroppedStfs) {
       lDroppedTotal++;
-      DDDLOG_GRL(2000, "Dropped SubTimeFrame (cannot schedule). stf_id={} total={}", lDroppedId, lDroppedTotal);
+      DDDLOG_GRL(2000, "DropWaitThread: Dropped SubTimeFrame (cannot schedule). stf_id={} total={}", lDroppedId, lDroppedTotal);
     }
     lDroppedStfs.clear();
   }

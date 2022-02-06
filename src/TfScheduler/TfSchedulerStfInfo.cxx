@@ -48,6 +48,10 @@ void TfSchedulerStfInfo::SchedulingThread()
   // total number of scheduled Tfs
   std::size_t lScheduledTfs = 0;
 
+  // Build or discard
+  bool lBuildIncomplete = mDiscoveryConfig->getBoolParam(BuildStaleTfsKey, BuildStaleTfsValue);
+  IDDLOG("TfScheduler: Building of incomplete TimeFrames is {}.", lBuildIncomplete ? "enabled" : "disabled");
+
   while ((lStfInfosOpt = mCompleteStfsInfoQueue.pop()) != std::nullopt) {
 
     DDMON("tfscheduler", "tf.rejected.total", mNotScheduledTfsCount);
@@ -63,8 +67,15 @@ void TfSchedulerStfInfo::SchedulingThread()
 
     // TODO: alow incomplete TFs
     if (lStfInfos.size() != lNumStfSenders) {
-      requestDropAllFromSchedule(lTfId);
-      continue;
+      assert(lStfInfos.size() < lNumStfSenders);
+
+      if (lBuildIncomplete) {
+        DDMON("tfscheduler", "tf.scheduled.partial.stf_cnt", lStfInfos.size());
+      } else {
+        WDDLOG_RL(5000, "StaleStfDropThread: TFs have been discarded due to incomplete number of STFs. total={}", mStaleTfCount);
+        requestDropAllFromSchedule(lTfId);
+        continue;
+      }
     }
 
     // calculate combined STF size
@@ -81,7 +92,7 @@ void TfSchedulerStfInfo::SchedulingThread()
     std::string lTfBuilderId;
     if (mTfBuilderInfo.findTfBuilderForTf(lTfSize, lTfBuilderId /*out*/) ) {
       lNumTfScheds++;
-      DDDLOG_RL(1000, "Scheduling new TF. tf_id={} tfb_id={} total={}", lTfId, lTfBuilderId, lNumTfScheds);
+      DDDLOG_RL(10000, "Scheduling new TF. tf_id={} tfb_id={} total={}", lTfId, lTfBuilderId, lNumTfScheds);
 
       assert (!lTfBuilderId.empty());
       // Notify TfBuilder to build the TF
@@ -99,19 +110,19 @@ void TfSchedulerStfInfo::SchedulingThread()
               mTfBuilderInfo.markTfBuilderWithTfId(lTfBuilderId, lRequest.tf_id());
               break;
             case BuildTfResponse::ERROR_NOMEM:
-              EDDLOG("Scheduling error: selected TfBuilder returned ERROR_NOMEM. tf_id={:s}", lTfBuilderId);
+              EDDLOG_RL(1000, "Scheduling error: selected TfBuilder returned ERROR_NOMEM. tf_id={:s}", lTfBuilderId);
               requestDropAllFromSchedule(lTfId);
               break;
             case BuildTfResponse::ERROR_NOT_RUNNING:
-              EDDLOG("Scheduling error: selected TfBuilder returned ERROR_NOT_RUNNING. tf_id={:s}", lTfBuilderId);
+              EDDLOG_RL(1000, "Scheduling error: selected TfBuilder returned ERROR_NOT_RUNNING. tf_id={:s}", lTfBuilderId);
               requestDropAllFromSchedule(lTfId);
               break;
             default:
               break;
           }
         } else {
-          EDDLOG("Scheduling of TF failed. to_tfb_id={:s} reason=grpc_error", lTfBuilderId);
-          WDDLOG("Removing TfBuilder from scheduling. tfb_id={:s}", lTfBuilderId);
+          EDDLOG("Scheduling of Tf failed. to_tfb_id={} reason=grpc_error", lTfBuilderId);
+          EDDLOG("Removing TfBuilder from scheduling. tfb_id={}", lTfBuilderId);
 
           lRpcCli.put();
 
@@ -146,25 +157,27 @@ void TfSchedulerStfInfo::StaleCleanupThread()
 
   const auto lNumStfSenders = mDiscoveryConfig->status().stf_sender_count();
   const std::set<std::string> lStfSenderIdSet = mConnManager.getStfSenderSet();
-  std::vector<std::uint64_t> lStfsToErase;
-  auto lLastDiscardTime = std::chrono::steady_clock::now();
+  std::vector<std::uint64_t> lStaleStfsToComplete;
 
   // count how many time an FLP was missing STFs
   std::map<std::string, std::uint64_t> lStfSenderMissingCnt;
 
   std::vector<StfInfo> lStfInfos;
 
-  auto lStaleStfTimeoutMs = mDiscoveryConfig->getUInt64Param(cStaleStfTimeoutMsKey, 5000); // 5 seconds
+  // update housekeeping parameters
+  auto lStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(StaleStfTimeoutMsKey, StaleStfTimeoutMsValue),
+      std::uint64_t(250), std::uint64_t(60000));
+
+  IDDLOG("StaleCleanupThread: parameter (consul) {}={}", StaleStfTimeoutMsKey, lStaleStfTimeoutMs);
 
   while (mRunning) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(250));
-    lLastDiscardTime = std::chrono::steady_clock::now();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    auto lNow = std::chrono::steady_clock::now();
 
+    lStaleStfsToComplete.clear();
     // update housekeeping parameters
-    lStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(cStaleStfTimeoutMsKey, 5000), std::uint64_t(500), std::uint64_t(30000));
-    DDDLOG_RL(10000, "Dropping stale STFs parameter (consul): StaleStfCount={}", lStaleStfTimeoutMs);
-
-    lStfsToErase.clear();
+    lStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(StaleStfTimeoutMsKey, StaleStfTimeoutMsValue),
+      std::uint64_t(250), std::uint64_t(60000));
     {
       std::unique_lock lLock(mGlobalStfInfoLock);
 
@@ -177,20 +190,22 @@ void TfSchedulerStfInfo::StaleCleanupThread()
           EDDLOG_RL(1000, "Discarding TimeFrame with no STF updates. stf_id={} received={} expected={}",
             lStfId, lStfInfoVec.size(), lNumStfSenders);
 
-          lStfsToErase.push_back(lStfId);
+          lStaleStfsToComplete.push_back(lStfId);
           continue;
         }
 
         // check and reap
         const auto &lLastStfInfo = lStfInfoVec.back();
-        const auto lTimeDiff = std::chrono::abs(lLastStfInfo.mUpdateLocalTime - lLastDiscardTime);
+        const std::chrono::duration<double, std::milli> lTimeDiff = std::chrono::abs(lLastStfInfo.mUpdateLocalTime - lNow);
 
         if (lTimeDiff > std::chrono::milliseconds(lStaleStfTimeoutMs)) {
-          EDDLOG_RL(1000, "Discarding incomplete TimeFrame. stf_id={} received={} expected={} lastUpdateMs={}",
+          WDDLOG_RL(10000, "Stale incomplete TimeFrame. stf_id={} received={} expected={} size_update_ms={}",
             lStfId, lStfInfoVec.size(), lNumStfSenders, std::chrono::duration_cast<std::chrono::milliseconds>(lTimeDiff).count());
 
+          DDMON("tfscheduler", "stf.update.stale_dur_ms", lTimeDiff.count());
+
           // erase the stale stf
-          lStfsToErase.push_back(lStfId);
+          lStaleStfsToComplete.push_back(lStfId);
 
           // find missing StfSenders
           std::set<std::string> lMissingStfSenders = lStfSenderIdSet;
@@ -202,30 +217,34 @@ void TfSchedulerStfInfo::StaleCleanupThread()
             lStfSenderMissingCnt[lStf]++;
           }
 
-          DDDLOG_RL(1000, "Missing STFs from StfSender IDs: {}", boost::algorithm::join(lMissingStfSenders, ", "));
+          DDDLOG_RL(5000, "Missing STFs from StfSender IDs: {}", boost::algorithm::join(lMissingStfSenders, ", "));
         } else {
           break; // stop checking as soon the early STFs are within the stale timeout
         }
       }
 
       // drop outside of the main iteration loop
-      for(const auto &lStfIdToDrop : lStfsToErase) {
-        requestDropAllLocked(lStfIdToDrop);
+      for(const auto &lStfIdToDrop : lStaleStfsToComplete) {
+        // move info to the completed queue
+        auto lStaleInfoNode = mStfInfoMap.extract(lStfIdToDrop);
+
+        assert (lStfIdToDrop > mMaxCompletedTfId);
+        mMaxCompletedTfId = std::max(mMaxCompletedTfId, lStfIdToDrop);
+
+        // mark this as built (handled)
+        mBuiltTfs.SetEvent(lStfIdToDrop);
+        mCompleteStfsInfoQueue.push(std::move(lStaleInfoNode.mapped()));
       }
     }
 
-    if (lStfsToErase.size() > 0) {
-      static std::uint64_t mStaleTfCount = 0;
-      mStaleTfCount += lStfsToErase.size();
+    if (lStaleStfsToComplete.size() > 0) {
 
-      WDDLOG_RL(2000, "StaleStfDropThread: TFs have been discarded due to incomplete number of STFs. discarded_tf_count={} total={}",
-        lStfsToErase.size(), mStaleTfCount);
+      mStaleTfCount += lStaleStfsToComplete.size();
       DDMON("tfscheduler", "tf.rejected.stale_not_completed_stf", mStaleTfCount);
-      DDMON("tfscheduler", "tf.rejected.total", mNotScheduledTfsCount);
 
       for (const auto &lStfSenderCnt : lStfSenderMissingCnt) {
         if (lStfSenderCnt.second > 0) {
-          DDDLOG("StfSender with missing ids: stfsender_id={} missing_cnt={}",
+          DDDLOG_RL(10000, "StfSender with missing ids: stfsender_id={} missing_cnt={}",
             lStfSenderCnt.first, lStfSenderCnt.second);
         }
       }
@@ -406,7 +425,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
   {
     std::unique_lock lLock(mGlobalStfInfoLock);
 
-    DDDLOG_RL(5000, "addStfInfo: stf info received. stf_id={}", lStfId);
+    DDDLOG_GRL(5000, "addStfInfo: stf info received. stf_id={}", lStfId);
 
     // always record latest stfsender status for high watermark thread
     mStfSenderInfoMap[pStfInfo.info().process_id()] = pStfInfo.stfs_info();
@@ -463,7 +482,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
       mMemWatermarkCondition.notify_one();
     }
     // check for buffer overrun, and instruct to drop
-    if (lUsedBuffer > (lTotalBuffer * 99 / 100)) {
+    if (lUsedBuffer > (lTotalBuffer * 97 / 100)) {
       WDDLOG_GRL(1000, "addStfInfo: stfs buffer full, dropping stf. stfs_id={} buffer_used={} buffer_size={}",
         pStfInfo.info().process_id(), lUsedBuffer, lTotalBuffer);
       pResponse.set_status(SchedulerStfInfoResponse::DROP_STFS_BUFFER_FULL);
@@ -506,29 +525,54 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
 
     // add the current STF to the list
     pResponse.set_status(SchedulerStfInfoResponse::OK);
-    lStfIdVector.emplace_back(std::chrono::steady_clock::now(), pStfInfo);
+    const auto lTimeNow = std::chrono::steady_clock::now();
+    lStfIdVector.emplace_back(lTimeNow, pStfInfo);
+
+    DDMON("tfscheduler", "stf.update.parallel_tf_num", mStfInfoMap.size());
 
     // check if complete
     if (lStfIdVector.size() == lNumStfSenders) {
-      // check duration
-      const std::chrono::duration<double, std::milli> lTfSchedDur = lStfIdVector.rbegin()->mUpdateLocalTime -
-        lStfIdVector.begin()->mUpdateLocalTime;
+      // NOTE: if we have a completed TF, we have to check if there are other incomplete TFs before the current
+      //       All incomplete can be treated as stale and build or discard based on BuildStaleTfsKey config
 
-      // move info to the completed queue
-      auto lInfoNode = mStfInfoMap.extract(lStfId);
-      mMaxCompletedTfId = std::max(mMaxCompletedTfId, lStfId);
+      // queue all incomplete STFs before the complete one
+      while (mStfInfoMap.begin()->first < lStfId) {
 
-      // queue completed TFs
-      mBuiltTfs.SetEvent(lStfId);
-      mCompleteStfsInfoQueue.push(std::move(lInfoNode.mapped()));
+        auto &lStaleStfId = mStfInfoMap.begin()->first;
+        auto &lStaleStfVector = mStfInfoMap.begin()->second;
 
-      DDMON("tfscheduler", "stf.update.complete_dur_ms", lTfSchedDur.count());
+        // check how long this was stale
+        const std::chrono::duration<double, std::milli> lStaleTfDur = lTimeNow - lStaleStfVector.back().mUpdateLocalTime;
+
+        // move info to the completed queue
+        auto lStaleInfoNode = mStfInfoMap.extract(mStfInfoMap.begin());
+        mMaxCompletedTfId = std::max(mMaxCompletedTfId, lStaleStfId);
+
+        // mark this as built (handled)
+        mBuiltTfs.SetEvent(lStaleStfId);
+        mCompleteStfsInfoQueue.push(std::move(lStaleInfoNode.mapped()));
+
+        DDMON("tfscheduler", "stf.update.stale_dur_ms", lStaleTfDur.count());
+      }
+
+      // Queue the complete TF
+      {
+        // Check duration
+        const std::chrono::duration<double, std::milli> lTfSchedDur = lTimeNow - lStfIdVector.front().mUpdateLocalTime;
+
+        // move info to the completed queue
+        auto lInfoNode = mStfInfoMap.extract(lStfId);
+        mMaxCompletedTfId = std::max(mMaxCompletedTfId, lStfId);
+
+        // queue completed TFs
+        mBuiltTfs.SetEvent(lStfId);
+        mCompleteStfsInfoQueue.push(std::move(lInfoNode.mapped()));
+
+        DDMON("tfscheduler", "stf.update.complete_dur_ms", lTfSchedDur.count());
+      }
     }
-
-    DDMON("tfscheduler", "stf.update.parallel_tf_num", mStfInfoMap.size());
   }
 }
-
 
 /// TOPOLOGY RUN: Stfs global info
 void TfSchedulerStfInfo::addTopologyStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse)
