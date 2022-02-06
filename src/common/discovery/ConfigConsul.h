@@ -308,7 +308,20 @@ private:
   }
 
 public:
-  std::string getStringParam(const std::string_view &pKeySv, const std::string pDefault) const
+  inline bool getBoolParam(const std::string_view &pKeySv, const bool pDefault) const
+  {
+    const std::string lKey(pKeySv);
+
+    std::unique_lock lLock(mTunablesLock);
+    if (mTunables.count(lKey) == 0) {
+      return pDefault;
+    } else {
+      const auto &lVal = mTunables.at(lKey);
+      return (lVal == "true" || lVal == "TRUE" || lVal == "True" ||lVal == "1") ? true : false;
+    }
+  }
+
+  inline std::string getStringParam(const std::string_view &pKeySv, const std::string pDefault) const
   {
     const std::string lKey(pKeySv);
 
@@ -320,7 +333,7 @@ public:
     }
   }
 
-  std::int64_t getInt64Param(const std::string_view &pKeySv, const std::int64_t pDefault) const
+  inline std::int64_t getInt64Param(const std::string_view &pKeySv, const std::int64_t pDefault) const
   {
     const std::string lKey(pKeySv);
 
@@ -338,7 +351,7 @@ public:
     return pDefault;
   }
 
-  std::uint64_t getUInt64Param(const std::string_view &pKeySv, const std::uint64_t pDefault) const
+  inline std::uint64_t getUInt64Param(const std::string_view &pKeySv, const std::uint64_t pDefault) const
   {
     const std::string lKey(pKeySv);
 
