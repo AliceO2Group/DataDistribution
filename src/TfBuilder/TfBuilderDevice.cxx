@@ -37,7 +37,7 @@ TfBuilderDevice::TfBuilderDevice()
 
 TfBuilderDevice::~TfBuilderDevice()
 {
-  DDDLOG("TfBuilderDevice::~TfBuilderDevice()");
+  stop();
 }
 
 void TfBuilderDevice::Init()

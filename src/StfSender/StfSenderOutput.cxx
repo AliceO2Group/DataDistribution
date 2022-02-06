@@ -58,6 +58,10 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
   mDevice.GetConfig()->SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 20u));
   mZMQTransportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
 
+  // create output
+  mOutputFairmq = std::make_unique<StfSenderOutputFairmq>(pDiscoveryConfig, mCounters);
+  mOutputFairmq->start(mZMQTransportFactory);
+
   // create stf drop thread
   mStfDropThread = create_thread_member("stfs_drop", &StfSenderOutput::StfDropThread, this);
 
@@ -86,22 +90,8 @@ void StfSenderOutput::stop()
     return;
   }
 
-  // signal threads to stop
-  for (auto& lIdOutputIt : mOutputMap) {
-    lIdOutputIt.second.mStfQueue->stop();
-  }
-
-  // wait for threads to exit
-  for (auto& lIdOutputIt : mOutputMap) {
-    if (lIdOutputIt.second.mThread.joinable()) {
-      lIdOutputIt.second.mThread.join();
-    }
-  }
-
-  {
-    std::scoped_lock lLock(mOutputMapLock);
-    mOutputMap.clear();
-  }
+  // signal backends to stop
+  mOutputFairmq->stop();
 
   // wait for monitoring thread
   if (mMonitoringThread.joinable()) {
@@ -114,118 +104,14 @@ bool StfSenderOutput::running() const
   return mDevice.IsRunningState();
 }
 
-StfSenderOutput::ConnectStatus StfSenderOutput::connectTfBuilder(const std::string &pTfBuilderId,
-                                                                 const std::string &pEndpoint)
+ConnectStatus StfSenderOutput::connectTfBuilder(const std::string &pTfBuilderId, const std::string &pEndpoint)
 {
-  // Check if connection already exists
-  {
-    std::scoped_lock lLock(mOutputMapLock);
-
-    if (mOutputMap.count(pTfBuilderId) > 0) {
-      EDDLOG("StfSenderOutput::connectTfBuilder: TfBuilder is already connected. tfb_id={}", pTfBuilderId);
-      return eEXISTS;
-    }
-  }
-
-  auto lChanName = "tf_builder_" + pTfBuilderId;
-  std::replace(lChanName.begin(), lChanName.end(),'.', '_');
-
-  auto lNewChannel = std::make_unique<FairMQChannel>(
-    lChanName ,              // name
-    "push",                  // type
-    "connect",               // method
-    pEndpoint,               // address (TODO: this should only ever be the IB interface)
-    mZMQTransportFactory
-  );
-
-  lNewChannel->UpdateSndBufSize(12);
-  lNewChannel->Init();
-
-  if (!lNewChannel->Validate()) {
-    EDDLOG("Channel validation failed when connecting. tfb_id={} ep={}", pTfBuilderId, pEndpoint);
-    return eCONNERR;
-  }
-
-  if (!lNewChannel->ConnectEndpoint(pEndpoint)) {
-    EDDLOG("Cannot connect a new cannel. ep={}", pEndpoint);
-    return eCONNERR;
-  }
-
-  // create all resources for the connection
-  {
-    std::scoped_lock lLock(mOutputMapLock);
-
-    char lThreadName[128];
-    std::snprintf(lThreadName, 127, "to_%s", pTfBuilderId.c_str());
-    lThreadName[15] = '\0'; // kernel limitation
-
-    auto lSer = std::make_unique<IovSerializer>(*lNewChannel);
-
-    mOutputMap.try_emplace(
-      pTfBuilderId,
-      OutputChannelObjects {
-        pEndpoint,
-        std::move(lNewChannel),
-        std::move(lSer),
-        std::make_unique<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>>(),
-        // Note: this thread will try to access this same map. The MapLock will prevent races
-        create_thread_member(lThreadName, &StfSenderOutput::DataHandlerThread, this, pTfBuilderId)
-      }
-    );
-  }
-
-  // update our connection status
-  auto &lSocketMap = *(mDiscoveryConfig->status().mutable_sockets()->mutable_map());
-  auto &lEntry = lSocketMap[pTfBuilderId];
-  lEntry.set_peer_id(pTfBuilderId);
-  lEntry.set_peer_endpoint(pEndpoint);
-  mDiscoveryConfig->write();
-
-  return eOK;
+  return mOutputFairmq->connectTfBuilder(pTfBuilderId, pEndpoint);
 }
 
 bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const std::string &lEndpoint)
 {
-  // find and remove from map
-  OutputChannelObjects lOutputObj;
-  {
-    std::scoped_lock lLock(mOutputMapLock);
-    auto lIt = mOutputMap.find(pTfBuilderId);
-
-    if (lIt == mOutputMap.end()) {
-      WDDLOG("StfSenderOutput::disconnectTfBuilder: TfBuilder was not connected. tfb_id={}", pTfBuilderId);
-      return false; // TODO: ERRORCODE
-    }
-
-    if (!lEndpoint.empty()) {
-      // Check if the endpoint matches if provided
-      if (lEndpoint != lIt->second.mTfBuilderEndpoint) {
-        WDDLOG("StfSenderOutput::disconnectTfBuilder: TfBuilder connected with a different endpoint"
-          "current_ep={} requested_ep={}", lOutputObj.mTfBuilderEndpoint, lEndpoint);
-        return false;
-      }
-    }
-
-    lOutputObj = std::move(lIt->second);
-    mOutputMap.erase(pTfBuilderId);
-  }
-
-  // stop and teardown everything
-  DDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending thread. tfb_id={}", pTfBuilderId);
-  lOutputObj.mStfQueue->stop();
-  lOutputObj.mStfSerializer->stop();
-  if (lOutputObj.mThread.joinable()) {
-    lOutputObj.mThread.join();
-  }
-  DDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending channel. tfb_id={}", pTfBuilderId);
-
-  // update our connection status
-  auto &lSocketMap = *(mDiscoveryConfig->status().mutable_sockets()->mutable_map());
-  lSocketMap.erase(pTfBuilderId);
-  mDiscoveryConfig->write();
-
-  DDDLOG("StfSenderOutput::disconnectTfBuilder tfb_id={}", pTfBuilderId);
-  return true;
+  return mOutputFairmq->disconnectTfBuilder(pTfBuilderId, lEndpoint);
 }
 
 void StfSenderOutput::StfSchedulerThread()
@@ -245,17 +131,17 @@ void StfSenderOutput::StfSchedulerThread()
     const auto lStfSize = lStf->getDataSize();
 
     // update buffer sizes
-    StdSenderOutputCounters lCounters;
+    StdSenderOutputCounters::Values lCounters;
     {
-      std::scoped_lock lLock(mCountersLock);
+      std::scoped_lock lLock(mCounters.mCountersLock);
       // check for missing Stfs
-      mCounters.mTotalSent.mMissing += (lStfId - mLastStfId - 1);
+      mCounters.mValues.mTotalSent.mMissing += (lStfId - mLastStfId - 1);
       mLastStfId = lStfId;
 
-      mCounters.mBuffered.mSize += lStfSize;
-      mCounters.mBuffered.mCnt += 1;
+      mCounters.mValues.mBuffered.mSize += lStfSize;
+      mCounters.mValues.mBuffered.mCnt += 1;
 
-      lCounters = mCounters;
+      lCounters = mCounters.mValues;
     }
 
     assert (!mDevice.standalone());
@@ -358,7 +244,7 @@ void StfSenderOutput::StfSchedulerThread()
 void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::string &pTfBuilderId, StfDataResponse &pRes)
 {
   assert(!pTfBuilderId.empty());
-  std::scoped_lock lLock(mOutputMapLock, mScheduledStfMapLock);
+  std::scoped_lock lLock(mScheduledStfMapLock);
 
   const auto lStfIter = mScheduledStfMap.find(pStfId);
   // verify we have the STF.
@@ -377,108 +263,31 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     mDropQueue.push(std::move(lStfIter->second));
     mScheduledStfMap.erase(lStfIter);
   } else {
-    auto lTfBuilderIter = mOutputMap.find(pTfBuilderId);
-    if (lTfBuilderIter == mOutputMap.end()) {
+
+    // extract the Stf
+    auto lStf = std::move(lStfIter->second);
+    const auto lStfSize = lStf->getDataSize();
+    mScheduledStfMap.erase(lStfIter);
+
+    // send to output backend
+    const bool lOk = mOutputFairmq->sendStfToTfBuilder(pTfBuilderId, std::move(lStf));
+    if (!lOk) {
       pRes.set_status(StfDataResponse::TF_BUILDER_UNKNOWN);
-      mDropQueue.push(std::move(lStfIter->second));
-      mScheduledStfMap.erase(lStfIter);
+      mDropQueue.push(std::move(lStf));
       EDDLOG_GRL(1000, "sendStfToTfBuilder: TfBuilder not known to StfSender. tfb_id={}", pTfBuilderId);
       return;
     }
 
-    // all is well, schedule the stf and cleanup.
-    // we clean the buffer when data is sent
+    // update status and counters
     pRes.set_status(StfDataResponse::OK);
-
-    const auto lStfSize = lStfIter->second->getDataSize();
-
     {
-      std::scoped_lock lCntLock(mCountersLock);
-      mCounters.mInSending.mSize += lStfSize;
-      mCounters.mInSending.mCnt += 1;
-    }
-
-    auto lStfNode = mScheduledStfMap.extract(lStfIter);
-    lTfBuilderIter->second.mStfQueue->push(std::move(lStfNode.mapped()));
-
-    if (lTfBuilderIter->second.mStfQueue->size() > 50) {
-      WDDLOG_RL(1000, "SendToTfBuilder: STF queue backlog. queue_size={}", lTfBuilderIter->second.mStfQueue->size());
+      std::scoped_lock lCntLock(mCounters.mCountersLock);
+      mCounters.mValues.mInSending.mSize += lStfSize;
+      mCounters.mValues.mInSending.mCnt += 1;
     }
   }
 }
 
-/// Sending thread
-void StfSenderOutput::DataHandlerThread(const std::string pTfBuilderId)
-{
-  DDDLOG("StfSenderOutput[{}]: Starting the thread", pTfBuilderId);
-  // decrease the priority
-#if defined(__linux__)
-  if (nice(2)) {}
-#endif
-
-  IovSerializer *lStfSerializer = nullptr;
-  ConcurrentFifo<std::unique_ptr<SubTimeFrame>> *lInputStfQueue = nullptr;
-  {
-    // get the thread data. MapLock prevents races on the map operation
-    std::scoped_lock lLock(mOutputMapLock);
-    auto &lOutData = mOutputMap.at(pTfBuilderId);
-
-    lStfSerializer = lOutData.mStfSerializer.get();
-    lInputStfQueue = lOutData.mStfQueue.get();
-  }
-  assert(lInputStfQueue != nullptr && lInputStfQueue->is_running());
-
-  std::uint64_t lNumSentStfs = 0;
-
-  std::optional<std::unique_ptr<SubTimeFrame>> lStfOpt;
-
-  while ((lStfOpt = lInputStfQueue->pop()) != std::nullopt) {
-    std::unique_ptr<SubTimeFrame> lStf = std::move(lStfOpt.value());
-    lStfOpt.reset();
-
-    const auto lStfId = lStf->id();
-    const auto lStfSize = lStf->getDataSize();
-
-    DDDLOG_GRL(5000, "Sending an STF to TfBuilder. stf_id={} tfb_id={} stf_size={} total_sent_stf={}",
-      lStfId, pTfBuilderId, lStfSize, lNumSentStfs);
-
-    try {
-      lStfSerializer->serialize(std::move(lStf));
-    } catch (std::exception &e) {
-      if (mDevice.IsRunningState()){
-        EDDLOG("StfSenderOutput[{}]: exception on send, what={}", pTfBuilderId, e.what());
-      } else {
-        IDDLOG("StfSenderOutput[{}](NOT RUNNING): exception on send. what={}", pTfBuilderId, e.what());
-      }
-      break;
-    }
-
-    // update buffer status
-    lNumSentStfs += 1;
-
-    StdSenderOutputCounters lCounters;
-    {
-      std::scoped_lock lCntLock(mCountersLock);
-      mCounters.mBuffered.mSize -= lStfSize;
-      mCounters.mBuffered.mCnt -= 1;
-      mCounters.mInSending.mSize -= lStfSize;
-      mCounters.mInSending.mCnt -= 1;
-      mCounters.mTotalSent.mSize += lStfSize;
-      mCounters.mTotalSent.mCnt += 1;
-
-      lCounters = mCounters;
-    }
-
-    if (lCounters.mInSending.mCnt > 100) {
-      DDDLOG_RL(2000, "DataHandlerThread: Number of buffered STFs. tfb_id={} num_stfs={} num_stf_total={} size_stf_total={}",
-        pTfBuilderId, lInputStfQueue->size(), lCounters.mInSending.mCnt, lCounters.mInSending.mSize);
-    }
-
-    DDMON("stfsender", "stf_output.stf_id", lStfId);
-  }
-
-  DDDLOG("Exiting StfSenderOutput[{}]", pTfBuilderId);
-}
 
 /// Drop thread
 void StfSenderOutput::StfDropThread()
@@ -507,9 +316,9 @@ void StfSenderOutput::StfDropThread()
     // update buffer status
     lNumDroppedStfs += 1;
     {
-      std::scoped_lock lLock(mCountersLock);
-      mCounters.mBuffered.mSize -= lStfSize;
-      mCounters.mBuffered.mCnt -= 1;
+      std::scoped_lock lLock(mCounters.mCountersLock);
+      mCounters.mValues.mBuffered.mSize -= lStfSize;
+      mCounters.mValues.mBuffered.mCnt -= 1;
     }
   }
 
@@ -525,19 +334,19 @@ void StfSenderOutput::StfMonitoringThread()
   if (nice(10)) {}
 #endif
 
-  StdSenderOutputCounters lPrevCounters;
+  StdSenderOutputCounters::Values lPrevCounters;
   {
-    std::scoped_lock lLock(mCountersLock);
-    lPrevCounters = mCounters;
+    std::scoped_lock lLock(mCounters.mCountersLock);
+    lPrevCounters = mCounters.mValues;
   }
   std::chrono::high_resolution_clock::time_point lLastSent = std::chrono::high_resolution_clock::now();
 
   while (mRunning) {
     std::this_thread::sleep_for(100ms);
-    StdSenderOutputCounters lCurrCounters;
+    StdSenderOutputCounters::Values lCurrCounters;
     {
-      std::scoped_lock lLock(mCountersLock);
-      lCurrCounters = mCounters;
+      std::scoped_lock lLock(mCounters.mCountersLock);
+      lCurrCounters = mCounters.mValues;
     }
     const auto lNow = std::chrono::high_resolution_clock::now();
 

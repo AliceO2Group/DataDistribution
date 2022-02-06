@@ -14,6 +14,9 @@
 #ifndef ALICEO2_STF_SENDER_OUTPUT_H_
 #define ALICEO2_STF_SENDER_OUTPUT_H_
 
+#include "StfSenderOutputDefs.h"
+#include "StfSenderOutputFairmq.h"
+
 #include <ConfigConsul.h>
 
 #include <SubTimeFrameDataModel.h>
@@ -35,26 +38,6 @@ class StfSenderOutput
   using stf_pipeline = IFifoPipeline<std::unique_ptr<SubTimeFrame>>;
 
 public:
-  struct StdSenderOutputCounters {
-    // buffer state
-    struct alignas(128) {
-      std::uint64_t mSize = 0;
-      std::uint32_t mCnt = 0;
-    } mBuffered;
-    // buffered in sending
-    struct alignas(128) {
-      std::uint64_t mSize = 0;
-      std::uint32_t mCnt = 0;
-    } mInSending;
-
-    // total sent
-    struct alignas(128) {
-      std::uint64_t mSize = 0;
-      std::uint32_t mCnt = 0;
-      std::uint32_t mMissing = 0;
-    } mTotalSent;
-  };
-
   StfSenderOutput() = delete;
   StfSenderOutput(StfSenderDevice &pStfSenderDev, stf_pipeline &pPipelineI)
     : mDevice(pStfSenderDev),
@@ -69,25 +52,23 @@ public:
 
   void StfSchedulerThread();
   void StfDropThread();
-  void DataHandlerThread(const std::string pTfBuilderId);
   void StfMonitoringThread();
 
   /// RPC requests
-  enum ConnectStatus { eOK, eEXISTS, eCONNERR };
   ConnectStatus connectTfBuilder(const std::string &pTfBuilderId, const std::string &lEndpoint);
   bool disconnectTfBuilder(const std::string &pTfBuilderId, const std::string &lEndpoint);
 
   void sendStfToTfBuilder(const std::uint64_t pStfId, const std::string &pTfBuilderId, StfDataResponse &pRes);
 
-  StdSenderOutputCounters getCounters() {
-    std::scoped_lock lLock(mCountersLock);
-    return mCounters;
+  StdSenderOutputCounters::Values getCounters() {
+    std::scoped_lock lLock(mCounters.mCountersLock);
+    return mCounters.mValues;
   }
 
-  StdSenderOutputCounters resetCounters() {
-    std::scoped_lock lLock(mCountersLock);
-    StdSenderOutputCounters lRet = mCounters;
-    mCounters = StdSenderOutputCounters();
+  StdSenderOutputCounters::Values resetCounters() {
+    std::scoped_lock lLock(mCounters.mCountersLock);
+    auto lRet = mCounters.mValues;
+    mCounters.mValues = StdSenderOutputCounters::Values();
     mLastStfId = 0;
     return lRet;
   }
@@ -99,6 +80,8 @@ public:
 
   /// Running flag
   std::atomic_bool mRunning = false;
+
+  /// Monitoring thread
   std::thread mMonitoringThread;
 
   /// Discovery configuration
@@ -112,25 +95,16 @@ public:
     std::map<std::uint64_t, std::unique_ptr<SubTimeFrame>> mScheduledStfMap;
 
   /// Buffer utilization counters
-  std::mutex mCountersLock;
-    StdSenderOutputCounters mCounters;
-
-  /// Threads for output channels (to EPNs)
-  struct OutputChannelObjects {
-    std::string mTfBuilderEndpoint;
-    std::unique_ptr<FairMQChannel> mChannel;
-    std::unique_ptr<IovSerializer> mStfSerializer;
-    std::unique_ptr<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>> mStfQueue;
-    std::thread mThread;
-  };
-
-  mutable std::mutex mOutputMapLock;
-    std::map<std::string, OutputChannelObjects> mOutputMap;
+  StdSenderOutputCounters mCounters;
 
   // Buffer maintenance
   std::uint64_t mBufferSize = std::uint64_t(32) << 30;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mDropQueue;
   std::thread mStfDropThread;
+
+
+  /// Fairmq output
+  std::unique_ptr<StfSenderOutputFairmq> mOutputFairmq;
 };
 
 } /* namespace o2::DataDistribution */

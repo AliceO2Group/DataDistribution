@@ -4,6 +4,7 @@
 set(EXE_STFS_SOURCES
   StfSenderDevice
   StfSenderOutput
+  StfSenderOutputFairmq
   StfSenderRpc
   runStfSenderDevice
 )
