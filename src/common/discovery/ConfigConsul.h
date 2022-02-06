@@ -267,7 +267,6 @@ private:
 
     while (mRunning) {
       std::unique_lock lLock(mTunablesLock);
-      mTunableCV.wait_for(lLock, 5s);
 
       try {
         std::scoped_lock lKVLock(mConsulLock);
@@ -292,7 +291,7 @@ private:
                 IDDLOG("Consul: Updating parameter {}. old_value={} new_value={}"s,
                   lParamName, lPrevValues.at(lParamName), lKeyVal.value);
               } else if (lPrevValues.count(lParamName) == 0) {
-                IDDLOG("Consul: Setting parameter {}. value={}", lParamName, lKeyVal.value);
+                IDDLOG("Consul: Setting parameter {}={}", lParamName, lKeyVal.value);
               }
 
               mTunables[lParamName] = lKeyVal.value;
@@ -302,6 +301,8 @@ private:
       } catch (std::exception &e) {
         WDDLOG_ONCE("Consul kv param retrieve error. what={}", e.what());
       }
+
+      mTunableCV.wait_for(lLock, 5s);
     }
 
     DDDLOG("Exiting params ConsulPollingThread.");

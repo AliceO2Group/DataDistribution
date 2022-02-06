@@ -17,6 +17,8 @@
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameVisitors.h>
 
+#include <DataDistributionOptions.h>
+
 #include <fairmq/tools/Unique.h>
 
 #include <algorithm>
@@ -38,20 +40,13 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
   mDiscoveryConfig = pDiscoveryConfig;
   mRunning = true;
 
-  { // TODO: only for testing
-    const auto lStfsBuffSizeVar = getenv("DATADIST_STFS_BUFFER_SIZE");
-    if (lStfsBuffSizeVar) {
-      try {
-        auto lBuffSize = std::stoull(lStfsBuffSizeVar);
-        lBuffSize = std::max(lBuffSize, (8ULL << 30));
-        lBuffSize = std::min(lBuffSize, (48ULL << 30));
-
-        WDDLOG("StfSender buffer size override. size={}", lBuffSize);
-        mBufferSize = lBuffSize;
-      } catch (...) {
-        EDDLOG("StfSender buffer size override failed. DATADIST_STFS_BUFFER_SIZE={}", lStfsBuffSizeVar);
-      }
-    }
+  // Get DD buffer size option
+  auto lBufferSizeMB = mDiscoveryConfig->getUInt64Param(StfBufferSizeMBKey, StfBufferSizeMBValue);
+  auto lOptBufferSize = lBufferSizeMB << 20;
+  if (lOptBufferSize != mBufferSize) {
+    lOptBufferSize = std::clamp(lOptBufferSize, std::uint64_t(8ULL << 30), std::uint64_t(64ULL << 30));
+    mBufferSize = lOptBufferSize;
+    WDDLOG("StfSender buffer size override. size={}", lOptBufferSize);
   }
 
   // create a socket and connect
