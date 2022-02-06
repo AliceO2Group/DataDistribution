@@ -50,7 +50,8 @@ public:
     // total sent
     struct alignas(128) {
       std::uint64_t mSize = 0;
-      std::uint64_t mCnt = 0;
+      std::uint32_t mCnt = 0;
+      std::uint32_t mMissing = 0;
     } mTotalSent;
   };
 
@@ -87,6 +88,7 @@ public:
     std::scoped_lock lLock(mCountersLock);
     StdSenderOutputCounters lRet = mCounters;
     mCounters = StdSenderOutputCounters();
+    mLastStfId = 0;
     return lRet;
   }
 
@@ -105,6 +107,7 @@ public:
 
   /// Scheduler threads
   std::thread mSchedulerThread;
+  std::uint64_t mLastStfId = 0;
   std::mutex mScheduledStfMapLock;
     std::map<std::uint64_t, std::unique_ptr<SubTimeFrame>> mScheduledStfMap;
 

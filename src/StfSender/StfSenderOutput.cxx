@@ -248,6 +248,10 @@ void StfSenderOutput::StfSchedulerThread()
     StdSenderOutputCounters lCounters;
     {
       std::scoped_lock lLock(mCountersLock);
+      // check for missing Stfs
+      mCounters.mTotalSent.mMissing += (lStfId - mLastStfId - 1);
+      mLastStfId = lStfId;
+
       mCounters.mBuffered.mSize += lStfSize;
       mCounters.mBuffered.mCnt += 1;
 
@@ -357,12 +361,15 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
   std::scoped_lock lLock(mOutputMapLock, mScheduledStfMapLock);
 
   const auto lStfIter = mScheduledStfMap.find(pStfId);
-  // verify we have the STF: we can have
+  // verify we have the STF.
   if (lStfIter == mScheduledStfMap.end()) {
+
     if (pTfBuilderId != "-1") {
+      // request for Stf we don't have is an error
       pRes.set_status(StfDataResponse::DATA_DROPPED_UNKNOWN);
       EDDLOG_GRL(1000, "sendStfToTfBuilder: TfBuilder requested non-existing STF. stf_id={}", pStfId);
     } else {
+      // we can get a drop request for a STF we didn't have
       pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
     }
   } else if (pTfBuilderId == "-1") { // check if it is drop request from the scheduler
@@ -535,6 +542,7 @@ void StfSenderOutput::StfMonitoringThread()
     const auto lNow = std::chrono::high_resolution_clock::now();
 
     DDMON("stfsender", "stf_output.sent_count", lCurrCounters.mTotalSent.mCnt);
+    DDMON("stfsender", "stf_output.missing_cnt", lCurrCounters.mTotalSent.mMissing);
     DDMON("stfsender", "stf_output.sent_size", lCurrCounters.mTotalSent.mSize);
 
     DDMON("stfsender", "buffered.stf_cnt", lCurrCounters.mBuffered.mCnt);
