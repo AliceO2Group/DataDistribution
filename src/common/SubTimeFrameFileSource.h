@@ -25,9 +25,7 @@
 #include <fstream>
 #include <vector>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 namespace bpo = boost::program_options;
@@ -130,7 +128,7 @@ class SubTimeFrameFileSource
 
   bool enabled() const { return mEnabled; }
 
-  void start(MemoryResources &pMemRes);
+  void start(SyncMemoryResources &pMemRes);
   void pause() { mPaused = true; }
   void resume() { mPaused = false; }
   void stop();
@@ -178,7 +176,6 @@ class SubTimeFrameFileSource
   std::thread mInjectThread;
 };
 
-}
 } /* o2::DataDistribution */
 
 #endif /* ALICEO2_SUBTIMEFRAME_FILE_SOURCE_H_ */

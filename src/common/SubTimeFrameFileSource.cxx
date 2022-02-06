@@ -28,9 +28,7 @@
 #include <iostream>
 #include <iomanip>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 namespace bpo = boost::program_options;
@@ -47,7 +45,7 @@ std::mutex SubTimeFrameFileSource::StfFileMeta::sLiveFilesLock;
 std::map<std::size_t, std::shared_ptr<SubTimeFrameFileSource::StfFileMeta>> SubTimeFrameFileSource::StfFileMeta::mLiveFiles;
 
 
-void SubTimeFrameFileSource::start(MemoryResources &pMemRes)
+void SubTimeFrameFileSource::start(SyncMemoryResources &pMemRes)
 {
   if (enabled()) {
 
@@ -528,5 +526,4 @@ void SubTimeFrameFileSource::DataInjectThread()
   DDDLOG("Exiting file source inject thread...");
 }
 
-}
 } /* o2::DataDistribution */
