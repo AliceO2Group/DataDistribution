@@ -33,7 +33,8 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
   StfToDplAdapter(FairMQChannel& pDplBridgeChan)
     : mChan(pDplBridgeChan)
   {
-    mMessages.reserve(1024);
+    mMessages.reserve(1 << 20);
+
     if (getenv("DATADIST_DEBUG_DPL_CHAN")) {
       IDDLOG("Inspection of DPL messages is enabled");
       mInspectChannel = true;

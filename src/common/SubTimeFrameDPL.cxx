@@ -153,7 +153,7 @@ void StfToDplAdapter::inspect() const
     }
 
     if (lDh->splitPayloadParts == 0) {
-      WDDLOG("DPLcheck: splitPayloadParts=1");
+      WDDLOG("DPLcheck: splitPayloadParts != 1");
     }
 
     if (lDh->splitPayloadParts == 1) { // skip single message + data
@@ -175,8 +175,17 @@ void StfToDplAdapter::inspect() const
       break;
     }
 
-    // skip split part messages + hdr
-    lIdx += (lDh->splitPayloadParts + 1);
+    if (lDh->splitPayloadParts > 1 && (lDh->splitPayloadIndex == lDh->splitPayloadParts)) {
+      // skip split part messages + hdr
+      lIdx += (lDh->splitPayloadParts + 1);
+    } else if (lDh->splitPayloadParts > 1 && (lDh->splitPayloadIndex == 0)) {
+      // non-reduced split he
+      // skip split part messages + hdr
+      lIdx += (lDh->splitPayloadParts * 2);
+    } else {
+      // single message
+      lIdx += 2;
+    }
   }
 }
 
