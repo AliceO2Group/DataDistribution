@@ -50,6 +50,15 @@ static constexpr const std::string_view MaxNumStfTransfersKey = "MaxNumStfTransf
 static constexpr std::uint64_t MaxNumStfTransferDefault = 100;
 
 
+////////////////////////////////////////////////////////////////////////////////
+/// StfSender
+////////////////////////////////////////////////////////////////////////////////
+
+// Define size of DataDist buffer
+static constexpr const std::string_view StfBufferSizeMBKey = "StfBufferSizeMB";
+static constexpr std::uint64_t StfBufferSizeMBValue = (32ULL << 10);
+
+
 } /* o2::DataDistribution */
 
 #endif /* DATADIST_OPTIONS_H_ */
