@@ -52,7 +52,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
   // check for system time drifts; account for gRPC latency
   const auto lTimeDiff = lLocalTime - lUpdateTimepoint;
   if (std::chrono::abs(lTimeDiff) > 1s) {
-    WDDLOG("Large system clock drift detected. tfb_id={:s} drift_ms={:d}", lTfBuilderId,
+    WDDLOG("Large system clock drift detected. tfb_id={} drift_ms={}", lTfBuilderId,
       std::chrono::duration_cast<std::chrono::milliseconds>(lTimeDiff).count());
   }
 
@@ -69,7 +69,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
         removeReadyTfBuilder(lTfBuilderId);
         // remove from global
         mGlobalInfo.erase(lTfIter);
-        IDDLOG("TfBuilder left the partition. tfb_id={:s} reason=NOT_RUNNING", lTfBuilderId);
+        IDDLOG("TfBuilder left the partition. tfb_id={} reason=NOT_RUNNING", lTfBuilderId);
       }
       return;
     }
@@ -82,7 +82,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
       );
       addReadyTfBuilder(mGlobalInfo.at(lTfBuilderId));
 
-      IDDLOG("TfBuilder joined the partition. tfb_id={:s}", lTfBuilderId);
+      IDDLOG("TfBuilder joined the partition. tfb_id={}", lTfBuilderId);
     } else {
       auto &lInfo = mGlobalInfo.at(lTfBuilderId);
 
@@ -99,7 +99,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
 
         // verify the memory estimation is correct
         if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory()) {
-          DDDLOG("TfBuilder memory estimate is too high. tfb_id={:s} mem_estimate={}", lTfBuilderId,
+          DDDLOG("TfBuilder memory estimate is too high. tfb_id={} mem_estimate={}", lTfBuilderId,
             (double(lInfo->mEstimatedFreeMemory) / double(pTfBuilderUpdate.free_memory())));
         }
 
@@ -111,7 +111,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
         if (lInfo->mEstimatedFreeMemory > pTfBuilderUpdate.free_memory() ) {
 
           DDDLOG("Ignoring TfBuilder info (last_build < last_scheduled). Fixing the estimate ratio. "
-            "tfb_id={:s} new_mem_estimate={}", lTfBuilderId, pTfBuilderUpdate.free_memory());
+            "tfb_id={} new_mem_estimate={}", lTfBuilderId, pTfBuilderUpdate.free_memory());
 
           lInfo->mEstimatedFreeMemory = pTfBuilderUpdate.free_memory();
 
@@ -256,7 +256,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
     std::this_thread::sleep_for(2000ms);
 
     // update scheduling parameters
-    setMaxTfsInBuilding(mDiscoveryConfig->getUInt64Param(cMaxTfsInBuildingKey, 16));
+    setMaxTfsInBuilding(mDiscoveryConfig->getUInt64Param(MaxNumTfsInBuildingKey, MaxNumTfsInBuildingDevault));
 
     {
       std::scoped_lock lLock(mGlobalInfoLock);
@@ -271,7 +271,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
           lIdsToErase.push_back(lInfo->mTfBuilderUpdate.info().process_id());
         }
 
-        DDDLOG("TfBuilder information: tfb_id={:s} free_memory_est={:d} free_memory_rep={:d} num_buffered_tfs={:d} num_tf_in_building={}",
+        DDDLOG("TfBuilder information: tfb_id={} free_memory_est={} free_memory_rep={} num_buffered_tfs={} num_tf_in_building={}",
           lInfo->mTfBuilderUpdate.info().process_id(), lInfo->mEstimatedFreeMemory, lInfo->mReportedFreeMemory,
           lInfo->mTfBuilderUpdate.num_buffered_tfs(), lInfo->mTfsInBuilding);
       }
@@ -283,7 +283,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
 
         mGlobalInfo.erase(lId);
         removeReadyTfBuilder(lId);
-        WDDLOG("TfBuilder removed from the partition. reason=STALE_INFO tfb_id={:s}", lId);
+        WDDLOG("TfBuilder removed from the partition. reason=STALE_INFO tfb_id={}", lId);
       }
       lIdsToErase.clear();
     }
