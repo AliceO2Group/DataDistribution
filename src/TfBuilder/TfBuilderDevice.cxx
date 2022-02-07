@@ -21,7 +21,6 @@
 
 #include <chrono>
 #include <thread>
-#include <future>
 
 namespace o2::DataDistribution
 {
@@ -230,6 +229,7 @@ void TfBuilderDevice::stop()
   // stop output handlers
   if (mFlpInputHandler) {
     mFlpInputHandler->stop(mDiscoveryConfig);
+    mFlpInputHandler.reset();
   }
   DDDLOG("TfBuilderDevice::stop(): Input handler stopped.");
   // signal and wait for the output thread
@@ -243,14 +243,18 @@ void TfBuilderDevice::stop()
   // stop the RPCs
   if (mRpc) {
     mRpc->stop();
+    mRpc.reset();
+    DDDLOG("TfBuilderDevice::stop(): RPC clients stopped.");
   }
-  DDDLOG("TfBuilderDevice::stop(): RPC clients stopped.");
 
-  mDiscoveryConfig.reset();
+  if (mDiscoveryConfig) {
+    mDiscoveryConfig.reset();
+  }
 
   // memory resource is last to destruct
   if (mTfBuilder) {
     mTfBuilder->stop();
+    mTfBuilder.reset();
   }
 
   // stop monitoring

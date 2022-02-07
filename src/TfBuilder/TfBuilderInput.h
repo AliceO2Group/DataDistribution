@@ -14,6 +14,9 @@
 #ifndef ALICEO2_TF_BUILDER_INPUT_H_
 #define ALICEO2_TF_BUILDER_INPUT_H_
 
+#include "TfBuilderInputDefs.h"
+#include "TfBuilderInputFairMQ.h"
+
 #include <ConfigConsul.h>
 #include <discovery.pb.h>
 
@@ -37,31 +40,24 @@ class TfBuilderInput
 {
  public:
   TfBuilderInput() = delete;
-  TfBuilderInput(TfBuilderDevice& pStfBuilderDev, std::shared_ptr<TfBuilderRpcImpl> pRpc, unsigned pOutStage)
-    : mDevice(pStfBuilderDev),
-      mRpc(pRpc),
-      mOutStage(pOutStage)
-  {
-  }
+  TfBuilderInput(TfBuilderDevice& pStfBuilderDev, std::shared_ptr<TfBuilderRpcImpl> pRpc, unsigned pOutStage);
 
   bool start(std::shared_ptr<ConsulTfBuilder> pConfig);
   void stop(std::shared_ptr<ConsulTfBuilder> pConfig);
   void reset() {
-    mReceivedData.flush();
+    mReceivedDataQueue.flush();
     mStfsForMerging.flush();
     std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
     mStfMergeMap.clear();
     mMaxMergedTfId = 0;
   }
 
-  void DataHandlerThread(const std::uint32_t pFlpIndex, const std::string pStfSenderId);
   void StfPacingThread();
   void StfDeserializingThread();
   void StfMergerThread();
 
  private:
-  enum RunState { CONFIGURING, RUNNING, TERMINATED };
-  volatile RunState mState = CONFIGURING;
+  volatile InputRunState mState = CONFIGURING;
 
   /// Main TimeFrameBuilder O2 device
   TfBuilderDevice& mDevice;
@@ -72,37 +68,17 @@ class TfBuilderInput
   // Partition info
   std::uint32_t mNumStfSenders = 0;
 
-  /// StfBuilder channels
-  std::vector<std::unique_ptr<FairMQChannel>> mStfSenderChannels;
+  /// FairMQ input
+  std::unique_ptr<TfBuilderInputFairMQ> mInputFairMQ;
 
-  /// Threads for input channels (per FLP)
-  std::map<std::string, std::thread> mInputThreads;
-
-  /// Deserializing thread
-  struct ReceivedStfMeta {
-    TimeFrameIdType mStfId;
-    SubTimeFrame::Header::Origin mStfOrigin;
-    std::chrono::time_point<std::chrono::steady_clock> mTimeReceived;
-
-    FairMQMessagePtr mRecvStfHeaderMeta;
-    std::unique_ptr<std::vector<FairMQMessagePtr>> mRecvStfdata;
-    std::unique_ptr<SubTimeFrame> mStf;
-    std::string mStfSenderId;
-
-    ReceivedStfMeta(const TimeFrameIdType pStfId, const SubTimeFrame::Header::Origin pStfOrigin,
-      const std::string &pStfSenderId, FairMQMessagePtr &&pRcvHdrMsg, std::unique_ptr<std::vector<FairMQMessagePtr>> &&pRecvStfdata)
-    : mStfId(pStfId),
-      mStfOrigin(pStfOrigin),
-      mTimeReceived(std::chrono::steady_clock::now()),
-      mRecvStfHeaderMeta(std::move(pRcvHdrMsg)),
-      mRecvStfdata(std::move(pRecvStfdata)),
-      mStf(nullptr),
-      mStfSenderId(pStfSenderId)
-    { }
-  };
-
-  ConcurrentQueue<ReceivedStfMeta> mReceivedData;
+  /// Received Stfs from input stage
+  ConcurrentQueue<ReceivedStfMeta> mReceivedDataQueue;
   std::thread mStfPacingThread;
+
+  /// Stf Deserializer (add O2 headers etc)
+  void deserialize_headers(std::vector<ReceivedStfMeta> &pStfs); // only the leading split-payload hdr message
+  bool is_topo_stf(const std::vector<ReceivedStfMeta> &pStfs) const; // check if topological (S)TF
+  std::thread mStfDeserThread;
 
   std::mutex mStfMergerQueueLock;
     std::condition_variable mStfMergerCondition;
@@ -115,12 +91,6 @@ class TfBuilderInput
       mStfMergerRun = true;
       mStfMergerCondition.notify_one();
     }
-
-  /// Stf Deserializer (add O2 headers etc)
-  void deserialize_headers(std::vector<ReceivedStfMeta> &pStfs); // only the leading split-payload hdr message
-  bool is_topo_stf(const std::vector<ReceivedStfMeta> &pStfs) const; // check if topological (S)TF
-
-  std::thread mStfDeserThread;
 
   /// STF Merger
   ConcurrentQueue<std::vector<ReceivedStfMeta>> mStfsForMerging;
