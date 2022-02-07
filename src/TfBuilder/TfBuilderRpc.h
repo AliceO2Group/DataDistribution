@@ -14,6 +14,8 @@
 #ifndef ALICEO2_TF_BUILDER_RPC_H_
 #define ALICEO2_TF_BUILDER_RPC_H_
 
+#include "TfBuilderInputDefs.h"
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <grpcpp/grpcpp.h>
@@ -57,7 +59,7 @@ public:
   TfSchedulerRpcClient& TfSchedRpcCli() { return mTfSchedulerRpcClient; }
 
   void initDiscovery(const std::string pRpcSrvBindIp, int &lRealPort /*[out]*/);
-  bool start(const std::uint64_t pBufferSize);
+  bool start(const std::uint64_t pBufferSize, std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > pRecvQueue);
   void stop();
 
   void startAcceptingTfs();
@@ -89,12 +91,17 @@ public:
 
   /// reset counters on each new run
   void reset_run_counters() {
+    std::scoped_lock lLock(mTfIdSizesLock, mTopoTfIdLock);
+
     mTfIdSizes.clear();
     mCurrentTfBufferSize = mBufferSize;
     mLastBuiltTfId = 0;
     mNumBufferedTfs = 0;
     mNumTfsInBuilding = 0;
     mTfBuildRequests->flush();
+    // Reset Topo Tf Id renaming
+    mTopoStfId = 1;
+    mTopoTfIdRenameMap.clear();
   }
 
   std::optional<std::uint64_t> getNumberOfStfs(const TimeFrameIdType pTfId) {
@@ -113,6 +120,19 @@ public:
     }
   }
 
+  std::uint64_t getIdForTopoTf(const std::string &pStfSenderId, const std::uint64_t pTfId) {
+    std::scoped_lock lLock(mTopoTfIdLock);
+
+    assert (mTopoTfIdRenameMap.count(pStfSenderId) == 1);
+    assert (mTopoTfIdRenameMap[pStfSenderId].count(pTfId) == 1);
+
+    const auto lRet = mTopoTfIdRenameMap[pStfSenderId][pTfId];
+    mTopoTfIdRenameMap[pStfSenderId].erase(pTfId);
+
+    assert (lRet > 0);
+    return lRet;
+  }
+
 private:
   std::atomic_bool mRunning = false;
   std::atomic_bool mTerminateRequested = false;
@@ -125,8 +145,8 @@ private:
   std::thread mUpdateThread;
 
   // Stf request thread
-  // std::condition_variable mNewRequestCondition;
   std::thread mStfRequestThread;
+  std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > mReceivedDataQueue;
 
     struct StfRequests {
       std::string mStfSenderId;
@@ -140,7 +160,13 @@ private:
 
   std::atomic_int64_t mMaxNumReqInFlight = 64;
   std::atomic_int64_t mNumReqInFlight = 0;
-  ConcurrentFifo<std::pair<std::uint64_t, std::vector<StfRequests>> >  mStfRequestDeque; // <tfid, stf_reuests>
+
+  // <tfid, topo?, topo_id, stf_requests>
+  ConcurrentFifo<std::tuple<std::uint64_t, bool, std::uint64_t, std::vector<StfRequests>> >  mStfRequestQueue;
+
+  std::mutex mTopoTfIdLock;
+  std::uint64_t mTopoStfId = 1;
+  std::map<std::string, std::unordered_map<std::uint64_t, std::uint64_t> > mTopoTfIdRenameMap;
 
   // Store how many STFs were requested per TfID. nullopt if requests are not finished
   std::mutex mStfsCountMapLock;

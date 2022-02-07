@@ -45,12 +45,14 @@ class TfBuilderInput
   bool start(std::shared_ptr<ConsulTfBuilder> pConfig);
   void stop(std::shared_ptr<ConsulTfBuilder> pConfig);
   void reset() {
-    mReceivedDataQueue.flush();
+    mReceivedDataQueue->flush();
     mStfsForMerging.flush();
     std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
     mStfMergeMap.clear();
     mMaxMergedTfId = 0;
   }
+
+  auto getDataQueue() const { return mReceivedDataQueue; }
 
   void StfPacingThread();
   void StfDeserializingThread();
@@ -72,7 +74,7 @@ class TfBuilderInput
   std::unique_ptr<TfBuilderInputFairMQ> mInputFairMQ;
 
   /// Received Stfs from input stage
-  ConcurrentQueue<ReceivedStfMeta> mReceivedDataQueue;
+  std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > mReceivedDataQueue;
   std::thread mStfPacingThread;
 
   /// Stf Deserializer (add O2 headers etc)

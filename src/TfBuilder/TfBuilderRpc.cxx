@@ -12,6 +12,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "TfBuilderRpc.h"
+#include "TfBuilderInputDefs.h"
 #include <grpcpp/grpcpp.h>
 
 #include <MemoryUtils.h>
@@ -39,10 +40,11 @@ void TfBuilderRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, int &lReal
   IDDLOG("gRPC server is started. server_ep={}:{}", pRpcSrvBindIp, lRealPort);
 }
 
-bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize)
+bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize, std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > pRecvQueue)
 {
   mBufferSize = pBufferSize;
   mCurrentTfBufferSize = pBufferSize;
+  mReceivedDataQueue = pRecvQueue;
 
   // Interact with the scheduler
   if (!mTfSchedulerRpcClient.should_retry_start()) {
@@ -313,8 +315,29 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
     return a.mStfDataSize < b.mStfDataSize;
   });
 
+  // setup renaming of topological Stfs
+  auto lTopoStfId = mTopoStfId;
+  if (request->tf_source() == TOPOLOGICAL) {
+    auto &lStfSenderId = request->stf_size_map().begin()->first;
+
+    std::scoped_lock lLock(mTopoTfIdLock);
+
+    assert (mTopoTfIdRenameMap[lStfSenderId].count(lTfId) == 0);
+
+    mTopoTfIdRenameMap[lStfSenderId][lTfId] = lTopoStfId;
+
+    // notify Input stage about new Stf (renamed)
+    mReceivedDataQueue->push(ReceivedStfMeta(ReceivedStfMeta::MetaType::ADD, lTopoStfId));
+
+    mTopoStfId += 1;
+  } else {
+    lTopoStfId = lTfId; // set to the actual tf id if not topo
+    // notify Input stage about new Stf (regular)
+    mReceivedDataQueue->push(ReceivedStfMeta(ReceivedStfMeta::MetaType::ADD, lTfId));
+  }
+
   // add the vector to the stf request map
-  mStfRequestDeque.push(lTfId, std::move(lStfRequestVector));
+  mStfRequestQueue.push(lTfId, (request->tf_source() == TOPOLOGICAL), lTopoStfId, std::move(lStfRequestVector));
 
   response->set_status(BuildTfResponse::OK);
   return ::grpc::Status::OK;
@@ -335,14 +358,22 @@ void TfBuilderRpcImpl::StfRequestThread()
   while (mRunning) {
     StfRequests lStfRequest;
     {
-      std::optional<std::pair<std::uint64_t, std::vector<StfRequests>> > lReqOpt;
-      if ((lReqOpt = mStfRequestDeque.pop_wait_for(100ms)) == std::nullopt) {
+      std::optional<std::tuple<std::uint64_t, bool, std::uint64_t, std::vector<StfRequests>> > lReqOpt;
+      if ((lReqOpt = mStfRequestQueue.pop_wait_for(100ms)) == std::nullopt) {
         continue;
       }
 
       assert (lReqOpt);
-      const auto lTfId = lReqOpt.value().first;
-      auto &lReqVector = lReqOpt.value().second;
+      const auto lTfId = std::get<0>(lReqOpt.value());
+      const auto lIsTopo = std::get<1>(lReqOpt.value());
+      const auto lTfRenamedId = std::get<2>(lReqOpt.value());
+      auto &lReqVector = std::get<3>(lReqOpt.value());
+
+      std::string lStfSenderIdTopo;
+      if (lIsTopo) {
+        assert (lReqVector.size() == 1);
+        lStfSenderIdTopo = lReqVector.front().mStfSenderId;
+      }
 
       mMaxNumReqInFlight = std::clamp(mDiscoveryConfig->getUInt64Param(MaxNumStfTransfersKey, MaxNumStfTransferDefault),
         std::uint64_t(10), std::uint64_t(200));
@@ -416,7 +447,29 @@ void TfBuilderRpcImpl::StfRequestThread()
       }
 
       // set the number of STFs for merging thread
-      setNumberOfStfs(lTfId, lNumExpectedStfs);
+      if (!lIsTopo) {
+        setNumberOfStfs(lTfId, lNumExpectedStfs);
+      } else {
+        setNumberOfStfs(lTfRenamedId, lNumExpectedStfs);
+      }
+
+      // cleanup if we reached no StfSenders
+      if (lNumExpectedStfs == 0) {
+        if (lIsTopo) {
+          // Topological: indicate that we're deleting topological (renamed) Id
+          std::scoped_lock lLock(mTopoTfIdLock);
+          assert (mTopoTfIdRenameMap[lStfSenderIdTopo].count(lTfId) == 1);
+          assert (lTfRenamedId == mTopoTfIdRenameMap[lStfSenderIdTopo][lTfId]);
+
+          mTopoTfIdRenameMap[lStfSenderIdTopo].erase(lTfId);
+
+          // notify Input stage about new Stf (renamed)
+          mReceivedDataQueue->push(ReceivedStfMeta(ReceivedStfMeta::MetaType::DELETE, lTfRenamedId));
+        } else {
+          // notify Input stage not to wait for STFs if we reached none of StfSender
+          mReceivedDataQueue->push(ReceivedStfMeta(ReceivedStfMeta::MetaType::DELETE, lTfId));
+        }
+      }
     }
   }
   // send disconnect update

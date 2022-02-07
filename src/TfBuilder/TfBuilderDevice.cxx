@@ -171,7 +171,7 @@ void TfBuilderDevice::InitTask()
 
 bool TfBuilderDevice::start()
 {
-  while (!mRpc->start(mTfDataRegionSize)) {
+  while (!mRpc->start(mTfDataRegionSize, mFlpInputHandler->getDataQueue())) {
     // check if should stop looking for TfScheduler
     if (mRpc->isTerminateRequested()) {
       mShouldExit = true;
