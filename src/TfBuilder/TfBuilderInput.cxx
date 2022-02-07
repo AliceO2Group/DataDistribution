@@ -37,7 +37,8 @@ TfBuilderInput::TfBuilderInput(TfBuilderDevice& pStfBuilderDev, std::shared_ptr<
       mRpc(pRpc),
       mOutStage(pOutStage)
   {
-    mInputFairMQ = std::make_unique<TfBuilderInputFairMQ>(pRpc, pStfBuilderDev.TfBuilderI(), mReceivedDataQueue);
+    mReceivedDataQueue = std::make_shared<ConcurrentQueue<ReceivedStfMeta>>();
+    mInputFairMQ = std::make_unique<TfBuilderInputFairMQ>(pRpc, pStfBuilderDev.TfBuilderI(), *mReceivedDataQueue);
   }
 
 bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
@@ -53,7 +54,7 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
   mState = RUNNING;
 
   // Start the pacer thread
-  mReceivedDataQueue.start();
+  mReceivedDataQueue->start();
   mStfPacingThread = create_thread_member("tfb_pace", &TfBuilderInput::StfPacingThread, this);
 
   // Start the deserialize thread
@@ -84,7 +85,7 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
   mInputFairMQ->stop(pConfig);
 
   //Wait for pacer thread
-  mReceivedDataQueue.stop();
+  mReceivedDataQueue->stop();
   if (mStfPacingThread.joinable()) {
     mStfPacingThread.join();
   }
@@ -119,18 +120,37 @@ void TfBuilderInput::StfPacingThread()
 {
   // Deserialization object (stf ID)
   IovDeserializer lStfReceiver(mDevice.TfBuilderI());
-  std::uint64_t lTopoStfId = 0;
 
   while (mState == RUNNING) {
 
-    auto lData = mReceivedDataQueue.pop();
+    auto lData = mReceivedDataQueue->pop();
     if (lData == std::nullopt) {
       continue;
     }
     auto &lStfInfo = lData.value();
 
-    assert (lStfInfo.mRecvStfdata);
     std::uint64_t lTfId = lStfInfo.mStfId;
+
+    if (lStfInfo.mType == ReceivedStfMeta::MetaType::ADD) {
+      // only record the intent to build a TF
+      std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
+      assert (mStfMergeMap.count(lTfId) == 0);
+      assert (mStfMergeMap.empty() || (mStfMergeMap.rbegin()->first < lTfId));
+
+      mStfMergeMap[lTfId].reserve(mNumStfSenders);
+      continue;
+    } else if (lStfInfo.mType == ReceivedStfMeta::MetaType::DELETE) {
+      // remove tf merge intent if no StfSenders were contacted
+      std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
+      assert (mStfMergeMap.count(lTfId) == 1);
+      assert (mStfMergeMap[lTfId].empty());
+
+      mStfMergeMap.erase(lTfId);
+      continue;
+    }
+
+    assert (lStfInfo.mType == ReceivedStfMeta::MetaType::INFO);
+    assert (lStfInfo.mRecvStfdata);
 
     // Rename STF id if this is a Topological TF
     if (lStfInfo.mStfOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
@@ -138,11 +158,12 @@ void TfBuilderInput::StfPacingThread()
       lStfInfo.mStf = std::move(lStfReceiver.deserialize(lStfInfo.mRecvStfHeaderMeta, *lStfInfo.mRecvStfdata));
       lStfInfo.mRecvStfdata = nullptr;
 
-      const std::uint64_t lNewTfId = ++lTopoStfId;
+      const std::uint64_t lNewTfId = mRpc->getIdForTopoTf(lStfInfo.mStfSenderId, lStfInfo.mStfId);
+
       DDDLOG_RL(5000, "Deserialized STF. stf_id={} new_id={}", lStfInfo.mStf->id(), lNewTfId);
       lStfInfo.mStf->updateId(lNewTfId);
       lTfId = lNewTfId;
-      lStfInfo.mStfId = lTfId;
+      lStfInfo.mStfId = lNewTfId;
     }
 
     /// TODO: STF receive pacing
@@ -183,29 +204,6 @@ void TfBuilderInput::deserialize_headers(std::vector<ReceivedStfMeta> &pStfs)
     lStfInfo.mStf = std::move(lStfReceiver.deserialize(lStfInfo.mRecvStfHeaderMeta, *lStfInfo.mRecvStfdata));
     lStfInfo.mRecvStfdata = nullptr;
   }
-}
-
-// check if topological (S)TF
-bool TfBuilderInput::is_topo_stf(const std::vector<ReceivedStfMeta> &pStfs) const
-{
-  if (pStfs.empty()) {
-    return false;
-  }
-
-  if (pStfs.size() == 1 && pStfs.begin()->mStf) {
-    if (pStfs.begin()->mStf->header().mOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
-      return true;
-    }
-  }
-
-  if (pStfs.size() > 1 && pStfs.begin()->mStf) {
-    if (pStfs.begin()->mStf->header().mOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
-      EDDLOG_RL(1000, "TfBuilderInput::is_topo_stf: multiple topological STFs with a same ID. stf_id={}",
-        pStfs.begin()->mStf->id());
-    }
-  }
-
-  return false;
 }
 
 /// FMQ->STF thread

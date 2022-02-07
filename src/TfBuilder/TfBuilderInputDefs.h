@@ -14,7 +14,6 @@
 #ifndef TF_BUILDER_INPUT_DEFS_H_
 #define TF_BUILDER_INPUT_DEFS_H_
 
-
 #include <SubTimeFrameDataModel.h>
 #include <ConcurrentQueue.h>
 
@@ -22,13 +21,13 @@
 #include <vector>
 #include <memory>
 
-
 namespace o2::DataDistribution
 {
 
 enum InputRunState { CONFIGURING, RUNNING, TERMINATED };
 
 struct ReceivedStfMeta {
+    enum MetaType { ADD, DELETE, INFO } mType;
     TimeFrameIdType mStfId;
     SubTimeFrame::Header::Origin mStfOrigin;
     std::chrono::time_point<std::chrono::steady_clock> mTimeReceived;
@@ -38,9 +37,18 @@ struct ReceivedStfMeta {
     std::unique_ptr<SubTimeFrame> mStf;
     std::string mStfSenderId;
 
-    ReceivedStfMeta(const TimeFrameIdType pStfId, const SubTimeFrame::Header::Origin pStfOrigin,
-      const std::string &pStfSenderId, FairMQMessagePtr &&pRcvHdrMsg, std::unique_ptr<std::vector<FairMQMessagePtr>> &&pRecvStfdata)
-    : mStfId(pStfId),
+    ReceivedStfMeta(MetaType pType, const TimeFrameIdType pStfId)
+    : mType(pType),
+      mStfId(pStfId)
+    { }
+
+    ReceivedStfMeta(const TimeFrameIdType pStfId,
+                    const SubTimeFrame::Header::Origin pStfOrigin,
+                    const std::string &pStfSenderId,
+                    FairMQMessagePtr &&pRcvHdrMsg,
+                    std::unique_ptr<std::vector<FairMQMessagePtr>> &&pRecvStfdata)
+    : mType(INFO),
+      mStfId(pStfId),
       mStfOrigin(pStfOrigin),
       mTimeReceived(std::chrono::steady_clock::now()),
       mRecvStfHeaderMeta(std::move(pRcvHdrMsg)),
