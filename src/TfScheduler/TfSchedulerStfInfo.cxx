@@ -437,7 +437,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
       reset();
       mRunNumber = lRunNumber;
     } else if (mRunNumber > lRunNumber) {
-      EDDLOG("New RunNumber is smaller than the previous. run_number={} prev_run_number={}", lRunNumber, mRunNumber);
+      EDDLOG_GRL(500, "New RunNumber is smaller than the previous. run_number={} prev_run_number={}", lRunNumber, mRunNumber);
       pResponse.set_status((!mRunning) ? SchedulerStfInfoResponse::DROP_NOT_RUNNING :
         SchedulerStfInfoResponse::DROP_SCHED_DISCARDED);
       return;

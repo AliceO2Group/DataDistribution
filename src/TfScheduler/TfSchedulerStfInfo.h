@@ -185,7 +185,6 @@ private:
 
     void reset() {
       // NOTE: only call when holding mGlobalStfInfoLock
-
       mLastStfId = 0;
       mMaxCompletedTfId = 0;
       mNotScheduledTfsCount = 0;
@@ -196,6 +195,7 @@ private:
       if (!mStfInfoMap.empty()) {
         WDDLOG("TfSchedulerStfInfo::reset(): StfInfoMap not empty. size={}", mStfInfoMap.size());
       }
+      mStfInfoMap.clear();
     }
 
     inline void requestDropAllLocked(const std::uint64_t lStfId) {
