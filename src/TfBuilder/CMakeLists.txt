@@ -4,6 +4,7 @@
 set(EXE_TFB_SOURCES
   TfBuilderDevice
   TfBuilderInput
+  TfBuilderInputFairMQ
   TfBuilderRpc
   runTfBuilderDevice
 )

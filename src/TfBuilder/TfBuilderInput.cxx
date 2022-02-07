@@ -10,7 +10,6 @@
 
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#include <DataDistMonitoring.h>
 
 #include "TfBuilderInput.h"
 #include "TfBuilderRpc.h"
@@ -20,6 +19,8 @@
 
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameVisitors.h>
+
+#include <DataDistMonitoring.h>
 
 #include <condition_variable>
 #include <mutex>
@@ -31,141 +32,28 @@ namespace o2::DataDistribution
 
 using namespace std::chrono_literals;
 
+TfBuilderInput::TfBuilderInput(TfBuilderDevice& pStfBuilderDev, std::shared_ptr<TfBuilderRpcImpl> pRpc, unsigned pOutStage)
+    : mDevice(pStfBuilderDev),
+      mRpc(pRpc),
+      mOutStage(pOutStage)
+  {
+    mInputFairMQ = std::make_unique<TfBuilderInputFairMQ>(pRpc, pStfBuilderDev.TfBuilderI(), mReceivedDataQueue);
+  }
+
 bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
 {
   // make max number of listening channels for the partition
   mDevice.GetConfig()->SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 32u));
   auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
 
-  auto &lStatus = pConfig->status();
-
-  std::uint32_t lNumStfSenders;
-  if (!mRpc->TfSchedRpcCli().NumStfSendersInPartitionRequest(lNumStfSenders)) {
-    WDDLOG_RL(5000, "gRPC error: cannot reach scheduler. scheduler_ep={}", mRpc->TfSchedRpcCli().getEndpoint());
-    return false;
-  }
-
-  if (lNumStfSenders == 0 || lNumStfSenders == std::uint32_t(-1)) {
-    EDDLOG("gRPC error: number of StfSenders in partition: {}." , lNumStfSenders);
-    return false;
-  }
-
-  mNumStfSenders = lNumStfSenders;
-
-  IDDLOG("Creating input channels. num_channels={} partition={}", mNumStfSenders, lStatus.partition().partition_id());
-
-  const auto &lAaddress = lStatus.info().ip_address();
-
-  auto &lSocketMap = *(lStatus.mutable_sockets()->mutable_map());
-
-  // ZEROMQ high watermark on receive
-  int lRcvBufSize = 50;
-  {
-    const auto lTfBZmqHwmVar = getenv("DATADIST_TF_ZMQ_RCVHWM");
-    if (lTfBZmqHwmVar) {
-      try {
-        const int lTfBZmqHwm = std::stoi(lTfBZmqHwmVar);
-        lRcvBufSize = std::max(lTfBZmqHwm, 4);
-        IDDLOG("TfBuilderInput: RcvBufSize is set to {}. DATADIST_TF_ZMQ_RCVHWM={}", lRcvBufSize, lRcvBufSize);
-      } catch (...) {
-        EDDLOG("(Sub)TimeFrame source: DATADIST_TF_ZMQ_RCVHWM must be greater than 3. DATADIST_TF_ZMQ_RCVHWM={}",
-          lTfBZmqHwmVar);
-      }
-    }
-  }
-
-  for (std::uint32_t lSocketIdx = 0; lSocketIdx < mNumStfSenders; lSocketIdx++) {
-
-    std::string lAddress = "tcp://" + lAaddress + ":" + std::to_string(10000 + lSocketIdx);
-
-    auto lNewChannel = std::make_unique<FairMQChannel>(
-      "stf_sender_chan_" + std::to_string(lSocketIdx) ,  // name
-      "pull",               // type
-      "bind",               // method
-      lAddress,             // address (TODO: this should only ever be ib interface)
-      lTransportFactory
-    );
-
-    lNewChannel->UpdateRateLogging(1); // log each second
-    lNewChannel->UpdateAutoBind(true); // make sure bind succeeds
-    lNewChannel->UpdateRcvBufSize(lRcvBufSize); // make sure one sender does not advance too much
-    lNewChannel->UpdateRcvKernelSize(2 << 20);
-    lNewChannel->Init();
-
-    if (!lNewChannel->BindEndpoint(lAddress)) {
-      EDDLOG("Cannot bind channel to a free port! Check permissions. bind_address={}", lAddress);
-      return false;
-    }
-
-    if (!lNewChannel->Validate()) {
-      EDDLOG("Channel validation failed! Exiting!");
-      return false;
-    }
-
-    // save channel addresses to configuration
-    auto &lSocket = lSocketMap[lSocketIdx];
-    lSocket.set_idx(lSocketIdx);
-    lSocket.set_endpoint(lAddress);
-
-    mStfSenderChannels.push_back(std::move(lNewChannel));
-  }
-
-  if (pConfig->write()) {
-    IDDLOG("New channels created. Discovery configuration written.");
-  } else {
-    IDDLOG("New channels created. Discovery configuration writing failed!");
-    return false;
-  }
-
-
-  // Connect all StfSenders
-  TfBuilderConnectionResponse lConnResult;
-  do {
-    IDDLOG("Requesting StfSender connections from the TfSchedulerInstance.");
-
-    lConnResult.Clear();
-    if (!mRpc->TfSchedRpcCli().TfBuilderConnectionRequest(lStatus, lConnResult)) {
-      EDDLOG("RPC error: Request for StfSender connection failed.");
-      return false;
-    }
-
-    if (lConnResult.status() == ERROR_STF_SENDERS_NOT_READY) {
-      WDDLOG("StfSenders are not ready. Retrying...");
-      std::this_thread::sleep_for(1s);
-      continue;
-    }
-
-    if (lConnResult.status() == ERROR_PARTITION_TERMINATING) {
-      WDDLOG("Partition is terminating. Stopping.");
-      return false;
-    }
-
-    if (lConnResult.status() != OK) {
-      EDDLOG("Request for StfSender connection failed. scheduler_error={}",
-        TfBuilderConnectionStatus_Name(lConnResult.status()));
-      return false;
-    }
-
-    // connection successful
-    break;
-
-   } while(true);
-
-  // Update socket map with peer information
-  for (auto &[lSocketIdx, lStfSenderId] : lConnResult.connection_map()) {
-    IDDLOG("Connected StfSender id={} socket_idx={}", lStfSenderId, lSocketIdx);
-
-    // save socket peers to configuration
-    lSocketMap[lSocketIdx].set_peer_id(lStfSenderId);
-  }
-  pConfig->write();
-
+  // start the input stage
+  mInputFairMQ->start(pConfig, lTransportFactory);
 
   // Start all the threads
   mState = RUNNING;
 
   // Start the pacer thread
-  mReceivedData.start();
+  mReceivedDataQueue.start();
   mStfPacingThread = create_thread_member("tfb_pace", &TfBuilderInput::StfPacingThread, this);
 
   // Start the deserialize thread
@@ -180,21 +68,6 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
   mStfsForMerging.start();
   mStfMergerThread = create_thread_member("tfb_merge", &TfBuilderInput::StfMergerThread, this);
 
-
-  // start all input threads
-  assert(mInputThreads.size() == 0);
-
-  for (auto &[lSocketIdx, lStfSenderId] : lConnResult.connection_map()) {
-    char lThreadName[128];
-    std::snprintf(lThreadName, 127, "tfb_in_%03u", (unsigned)lSocketIdx);
-    lThreadName[15] = '\0';
-
-    mInputThreads.try_emplace(
-      lStfSenderId,
-      create_thread_member(lThreadName, &TfBuilderInput::DataHandlerThread, this, lSocketIdx, lStfSenderId)
-    );
-  }
-
   // finally start accepting TimeFrames
   mRpc->startAcceptingTfs();
 
@@ -205,45 +78,13 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
 {
   // first stop accepting TimeFrames
   mRpc->stopAcceptingTfs();
-
   mState = TERMINATED;
 
-  // Disconnect all input channels
-  // RPC: Send disconnect request to scheduler
-  {
-    StatusResponse lResult;
-    auto &lStatus = pConfig->status();
-
-    if (mRpc->TfSchedRpcCli().TfBuilderDisconnectionRequest(lStatus, lResult)) {
-      IDDLOG("RPC Request for StfSender disconnect successful.");
-    } else {
-      EDDLOG("RPC error: Request for StfSender disconnect failed!");
-    }
-  }
-
-  // Wait for input threads to stop
-  DDDLOG("TfBuilderInput::stop: Waiting for input threads to terminate.");
-  for (auto& lIdThread : mInputThreads) {
-    if (lIdThread.second.joinable())
-      lIdThread.second.join();
-  }
-  mInputThreads.clear();
-  DDDLOG("TfBuilderInput::stop: All input threads terminated.");
-
-  // disconnect and close the sockets
-  for (auto &lFmqChannelPtr : mStfSenderChannels) {
-    if (!lFmqChannelPtr->IsValid()) {
-      WDDLOG("TfBuilderInput::stop: Socket not found for channel. socket_ep={}",
-        lFmqChannelPtr->GetAddress());
-      continue;
-    }
-    lFmqChannelPtr->GetSocket().SetLinger(0);
-  }
-  mStfSenderChannels.clear();
-  IDDLOG("TfBuilderInput::stop: All input channels are closed.");
+  // TODO stop
+  mInputFairMQ->stop(pConfig);
 
   //Wait for pacer thread
-  mReceivedData.stop();
+  mReceivedDataQueue.stop();
   if (mStfPacingThread.joinable()) {
     mStfPacingThread.join();
   }
@@ -270,68 +111,7 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
   }
 
   DDDLOG("TfBuilderInput::stop: Merger thread stopped.");
-  IDDLOG("TfBuilderInput: Teardown complete.");
-}
-
-/// Receiving thread
-void TfBuilderInput::DataHandlerThread(const std::uint32_t pFlpIndex, const std::string pStfSenderId)
-{
-  std::uint64_t lNumStfs = 0;
-
-  DataDistLogger::SetThreadName(fmt::format("Receiver[{}]", pStfSenderId));
-  DDDLOG("Starting receiver thread for StfSender[{}]", pStfSenderId);
-
-  // Reference to the input channel
-  auto& lInputChan = *mStfSenderChannels[pFlpIndex];
-
-  // Deserialization object (stf ID)
-  IovDeserializer lStfReceiver(mDevice.TfBuilderI());
-
-  while (mState == RUNNING) {
-
-    std::unique_ptr<std::vector<FairMQMessagePtr>> lStfData;
-
-
-    lStfData = std::make_unique<std::vector<FairMQMessagePtr>>();
-
-    const std::int64_t lRet = lInputChan.Receive(*lStfData, 1000 /* ms */);
-    if (static_cast<std::int64_t>(fair::mq::TransferCode::timeout) == lRet) {
-      continue;
-    } else if (static_cast<std::int64_t>(fair::mq::TransferCode::interrupted) == lRet) {
-      if (mState == RUNNING) {
-        WDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::interrupted pStfSenderId={}", pStfSenderId);
-      }
-      continue;
-    } else if (static_cast<std::int64_t>(fair::mq::TransferCode::error) == lRet) {
-      EDDLOG_RL(1000, "STF receive failed. what=fair::mq::TransferCode::error err={} errno={} error={}",
-        int(lRet), errno, std::string(strerror(errno)));
-      continue;
-    }
-
-    if (lRet <= 0) {
-      WDDLOG_RL(1000, "STF receive failed. size={}", lRet);
-      continue;
-    }
-
-    // move data to the dedicated region if required
-    lStfReceiver.copy_to_region(*lStfData);
-
-    // get Stf ID
-    FairMQMessagePtr lHdrMessage = std::move(lStfData->back()); lStfData->pop_back();
-    const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(lHdrMessage);
-    const std::uint64_t lTfId = lStfHeader.mId;
-
-    // WDDLOG("STF received. hdr_size={} num_data={}", lHdrMessage->GetSize(), lStfData->size());
-
-    // signal in flight STF is finished (or error)
-    mRpc->recordStfReceived(pStfSenderId, lTfId);
-
-    // send to deserializer thread so that we can keep receiving
-    mReceivedData.push(lTfId, lStfHeader.mOrigin, pStfSenderId, std::move(lHdrMessage), std::move(lStfData));
-    lNumStfs++;
-  }
-
-  DDDLOG("Exiting input thread [{}]", pFlpIndex);
+  DDDLOG("TfBuilderInput: Teardown complete.");
 }
 
 /// TF building pacing thread
@@ -343,7 +123,7 @@ void TfBuilderInput::StfPacingThread()
 
   while (mState == RUNNING) {
 
-    auto lData = mReceivedData.pop();
+    auto lData = mReceivedDataQueue.pop();
     if (lData == std::nullopt) {
       continue;
     }
