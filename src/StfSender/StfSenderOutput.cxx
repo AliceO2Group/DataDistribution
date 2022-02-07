@@ -54,7 +54,7 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
   mZMQTransportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
 
   // create output
-  mOutputFairmq = std::make_unique<StfSenderOutputFairmq>(pDiscoveryConfig, mCounters);
+  mOutputFairmq = std::make_unique<StfSenderOutputFairMQ>(pDiscoveryConfig, mCounters);
   mOutputFairmq->start(mZMQTransportFactory);
 
   // create stf drop thread

@@ -15,7 +15,7 @@
 #define ALICEO2_STF_SENDER_OUTPUT_H_
 
 #include "StfSenderOutputDefs.h"
-#include "StfSenderOutputFairmq.h"
+#include "StfSenderOutputFairMQ.h"
 
 #include <ConfigConsul.h>
 
@@ -102,9 +102,8 @@ public:
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mDropQueue;
   std::thread mStfDropThread;
 
-
   /// Fairmq output
-  std::unique_ptr<StfSenderOutputFairmq> mOutputFairmq;
+  std::unique_ptr<StfSenderOutputFairMQ> mOutputFairmq;
 };
 
 } /* namespace o2::DataDistribution */
