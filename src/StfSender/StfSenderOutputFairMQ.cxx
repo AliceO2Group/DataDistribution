@@ -11,7 +11,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include "StfSenderOutputFairmq.h"
+#include "StfSenderOutputFairMQ.h"
 
 #include <DataDistLogger.h>
 #include <DataDistMonitoring.h>
@@ -21,7 +21,7 @@ namespace o2::DataDistribution
 
 using namespace std::chrono_literals;
 
-void StfSenderOutputFairmq::start(std::shared_ptr<FairMQTransportFactory> pZMQTransportFactory)
+void StfSenderOutputFairMQ::start(std::shared_ptr<FairMQTransportFactory> pZMQTransportFactory)
 {
   mZMQTransportFactory = pZMQTransportFactory;
 
@@ -29,7 +29,7 @@ void StfSenderOutputFairmq::start(std::shared_ptr<FairMQTransportFactory> pZMQTr
 }
 
 
-void StfSenderOutputFairmq::stop()
+void StfSenderOutputFairMQ::stop()
 {
   mRunning = false;
   {
@@ -50,7 +50,7 @@ void StfSenderOutputFairmq::stop()
   }
 }
 
-ConnectStatus StfSenderOutputFairmq::connectTfBuilder(const std::string &pTfBuilderId, const std::string &pEndpoint)
+ConnectStatus StfSenderOutputFairMQ::connectTfBuilder(const std::string &pTfBuilderId, const std::string &pEndpoint)
 {
   // Check if connection already exists
   {
@@ -104,7 +104,7 @@ ConnectStatus StfSenderOutputFairmq::connectTfBuilder(const std::string &pTfBuil
         std::move(lSer),
         std::make_unique<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>>(),
         // Note: this thread will try to access this same map. The MapLock will prevent races
-        create_thread_member(lThreadName, &StfSenderOutputFairmq::DataHandlerThread, this, pTfBuilderId)
+        create_thread_member(lThreadName, &StfSenderOutputFairMQ::DataHandlerThread, this, pTfBuilderId)
       }
     );
   }
@@ -119,7 +119,7 @@ ConnectStatus StfSenderOutputFairmq::connectTfBuilder(const std::string &pTfBuil
   return eOK;
 }
 
-bool StfSenderOutputFairmq::disconnectTfBuilder(const std::string &pTfBuilderId, const std::string &lEndpoint)
+bool StfSenderOutputFairMQ::disconnectTfBuilder(const std::string &pTfBuilderId, const std::string &lEndpoint)
 {
   // find and remove from map
   OutputChannelObjects lOutputObj;
@@ -163,7 +163,7 @@ bool StfSenderOutputFairmq::disconnectTfBuilder(const std::string &pTfBuilderId,
   return true;
 }
 
-bool StfSenderOutputFairmq::sendStfToTfBuilder(const std::string &pTfBuilderId, std::unique_ptr<SubTimeFrame> &&pStf) {
+bool StfSenderOutputFairMQ::sendStfToTfBuilder(const std::string &pTfBuilderId, std::unique_ptr<SubTimeFrame> &&pStf) {
   std::scoped_lock lLock(mOutputMapLock);
 
   auto lTfBuilderIter = mOutputMap.find(pTfBuilderId);
@@ -184,7 +184,7 @@ bool StfSenderOutputFairmq::sendStfToTfBuilder(const std::string &pTfBuilderId, 
 
 
 /// Sending thread
-void StfSenderOutputFairmq::DataHandlerThread(const std::string pTfBuilderId)
+void StfSenderOutputFairMQ::DataHandlerThread(const std::string pTfBuilderId)
 {
   DDDLOG("StfSenderOutput[{}]: Starting the thread", pTfBuilderId);
   // decrease the priority
