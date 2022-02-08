@@ -61,11 +61,13 @@ void IovSerializer::visit(SubTimeFrame& pStf)
 
         // add the data
         for (auto &lDataMsg : lStfDataIter.mDataParts) {
+          (void) lDataIovIdx;
+#if 0 // Not needed for FairMQ channels
           auto lDataMeta = mIovHeader.add_stf_data_iov();
           lDataMeta->set_iov_idx(lDataIovIdx++);
           lDataMeta->set_iov_start(0);
           lDataMeta->set_iov_size(lDataMsg->GetSize());
-
+#endif
           mData.push_back(std::move(lDataMsg));
         }
       }
