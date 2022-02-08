@@ -42,7 +42,7 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
     }
 
     if (getenv("DATADIST_NEW_DPL_CHAN")) {
-      IDDLOG("Inspection of DPL messages is enabled");
+      IDDLOG("StfToDplAdapter: sending reduced-header split-payload messages.");
       mReducedHdr = true;
     }
   }
