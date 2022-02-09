@@ -46,7 +46,7 @@ class TfSchedulerConnManager
 {
  public:
   TfSchedulerConnManager() = delete;
-  TfSchedulerConnManager(std::shared_ptr<ConsulTfSchedulerInstance> pDiscoveryConfig, const PartitionRequest &pPartitionRequest)
+  TfSchedulerConnManager(std::shared_ptr<ConsulTfScheduler> pDiscoveryConfig, const PartitionRequest &pPartitionRequest)
   : mPartitionInfo(pPartitionRequest),
     mDiscoveryConfig(pDiscoveryConfig),
     mStfSenderRpcClients(pDiscoveryConfig),
@@ -80,6 +80,11 @@ class TfSchedulerConnManager
   /// External requests by TfBuilders
   void connectTfBuilder(const TfBuilderConfigStatus &pTfBuilderStatus, TfBuilderConnectionResponse &pResponse /*out*/);
   void disconnectTfBuilder(const TfBuilderConfigStatus &pTfBuilderStatus, StatusResponse &pResponse /*out*/);
+
+  /// External requests by TfBuilders UCX frontend
+  void connectTfBuilderUCX(const TfBuilderConfigStatus &pTfBuilderStatus, TfBuilderUCXConnectionResponse &pResponse /*out*/);
+  void disconnectTfBuilderUCX(const TfBuilderConfigStatus &pTfBuilderStatus, StatusResponse &pResponse /*out*/);
+
   /// Internal request, disconnect on error
   void removeTfBuilder(const std::string &pTfBuilderId);
 
@@ -88,15 +93,8 @@ class TfSchedulerConnManager
   /// Drop a single SubTimeFrames (in case they can't be scheduled)
   void dropSingleStfsAsync(const std::uint64_t pStfId, const std::string &pStfSenderId);
 
-  bool newTfBuilderRpcClient(const std::string &pId)
-  {
-    return mTfBuilderRpcClients.add(pId);
-  }
-
-  void deleteTfBuilderRpcClient(const std::string &pId)
-  {
-    mTfBuilderRpcClients.remove(pId);
-  }
+  bool newTfBuilderRpcClient(const std::string &pId) { return mTfBuilderRpcClients.add_if_new(pId); }
+  void deleteTfBuilderRpcClient(const std::string &pId) { mTfBuilderRpcClients.remove(pId); }
 
   TfBuilderRpcClient getTfBuilderRpcClient(const std::string &pId)
   {
@@ -127,7 +125,7 @@ private:
   std::atomic<StfSenderState> mStfSenderState = STF_SENDER_STATE_INITIALIZING;
 
   /// Discovery configuration
-  std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;
+  std::shared_ptr<ConsulTfScheduler> mDiscoveryConfig;
 
   /// Scheduler threads
   bool mRunning = false;
@@ -136,9 +134,9 @@ private:
 
   /// StfSender RPC-client channels
   std::recursive_mutex mStfSenderClientsLock;
-    StfSenderRpcClientCollection<ConsulTfSchedulerInstance> mStfSenderRpcClients;
+    StfSenderRpcClientCollection<ConsulTfScheduler> mStfSenderRpcClients;
   /// TfBuilder RPC-client channels
-  TfBuilderRpcClientCollection<ConsulTfSchedulerInstance> mTfBuilderRpcClients;
+  TfBuilderRpcClientCollection<ConsulTfScheduler> mTfBuilderRpcClients;
 
   /// futures for async operation
   std::mutex mStfDropFuturesLock;

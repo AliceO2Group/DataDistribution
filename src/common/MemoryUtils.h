@@ -15,7 +15,7 @@
 #ifndef DATADIST_MEMORY_UTILS_H_
 #define DATADIST_MEMORY_UTILS_H_
 
-#include <boost/container/pmr/memory_resource.hpp>
+#include <boost/container/small_vector.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/icl/interval_map.hpp>
 #include <boost/icl/right_open_interval.hpp>
@@ -60,7 +60,15 @@ enum RegionAllocStrategy {
   eFindFirst
 };
 
-template<size_t ALIGN = 64>
+enum RegionATrackingStrategy {
+  eExactRegion,
+  eRefCount
+};
+
+template<size_t ALIGN = 64,
+         RegionAllocStrategy ALLOC_STRATEGY = eFindLongest,
+         RegionATrackingStrategy FREE_STRATEGY = eExactRegion
+         >
 class RegionAllocatorResource
 {
 
@@ -69,10 +77,9 @@ public:
 
   RegionAllocatorResource(const std::string &pSegmentName, const std::optional<uint16_t> pSegmentId, std::size_t pSize,
                           FairMQTransportFactory& pShmTrans,
-                          const RegionAllocStrategy pStrategy, std::uint64_t pRegionFlags = 0,
+                          std::uint64_t pRegionFlags = 0,
                           bool pCanFail = false)
   : mSegmentName(pSegmentName),
-    mStrategy(pStrategy),
     mCanFail(pCanFail),
     mTransport(pShmTrans)
   {
@@ -161,70 +168,121 @@ public:
     }
 
     auto lReclaimFn = [this, lZeroShmMemory, lZeroCheckShmMemory](const std::vector<FairMQRegionBlock>& pBlkVect) {
-      icl::interval_map<std::size_t, std::size_t> lIntMap;
-      static thread_local double sMergeRatio = 0.5;
+      if constexpr (FREE_STRATEGY == eExactRegion) {
+        icl::interval_map<std::size_t, std::size_t> lIntMap;
+        static thread_local double sMergeRatio = 0.5;
 
-      std::uint64_t lReclaimed = 0;
+        std::uint64_t lReclaimed = 0;
 
-      for (const auto &lInt : pBlkVect) {
-        if (lInt.size == 0) {
-          continue;
-        }
-
-        // align up the message size for correct interval merging
-        const auto lASize = align_size_up(lInt.size);
-
-        // check for buffer sentinel value
-        if (lZeroCheckShmMemory && lASize > lInt.size) {
-          const auto lTrailer = reinterpret_cast<const char*>(lInt.ptr)[lInt.size];
-          if (lTrailer != char(0xAA)) {
-            EDDLOG_RL(10000, "Memory corruption in returned message. Overwritten trailer. region={} value={}",
-            mSegmentName, lTrailer);
+        for (const auto &lInt : pBlkVect) {
+          if (lInt.size == 0) {
+            continue;
           }
+
+          // align up the message size for correct interval merging
+          const auto lASize = align_size_up(lInt.size);
+
+          // check for buffer sentinel value
+          if (lZeroCheckShmMemory && (lASize > lInt.size)) {
+            const auto lTrailer = reinterpret_cast<const char*>(lInt.ptr)[lInt.size];
+            if (lTrailer != char(0xAA)) {
+              EDDLOG_RL(10000, "Memory corruption in returned message. Overwritten trailer. region={} value={}",
+              mSegmentName, lTrailer);
+            }
+          }
+
+          lIntMap += std::make_pair(
+            icl::discrete_interval<std::size_t>::right_open(
+              std::size_t(lInt.ptr), std::size_t(lInt.ptr) + lASize), std::size_t(1));
         }
 
-        lIntMap += std::make_pair(
-          icl::discrete_interval<std::size_t>::right_open(
-            std::size_t(lInt.ptr), std::size_t(lInt.ptr) + lASize), std::size_t(1));
-      }
+        {
+          // callback to be called when message buffers no longer needed by transports
+          std::scoped_lock lock(mReclaimLock);
 
-      {
-        // callback to be called when message buffers no longer needed by transports
-        std::scoped_lock lock(mReclaimLock);
+          for (const auto &lIntMerged : lIntMap) {
+            if (lIntMerged.second > 1) {
+              EDDLOG_GRL(1000, "UnmanagedRegion reclaim BUG! Multiple overlapping intervals:");
+              EDDLOG_GRL(1000, "Intervals - [{},{}) : count={}", lIntMerged.first.lower(), lIntMerged.first.upper(), lIntMerged.second);
 
-        for (const auto &lIntMerged : lIntMap) {
-          if (lIntMerged.second > 1) {
-            EDDLOG("CreateUnmanagedRegion reclaim BUG! Multiple overlapping intervals:");
-            for (const auto &i : lIntMap) {
-              EDDLOG("- [{},{}) : count={}", i.first.lower(), i.first.upper(), i.second);
+              // continue; // skip the overlapping thing
             }
 
-            continue; // skip the overlapping thing
+            const std::size_t lLen = lIntMerged.first.upper() - lIntMerged.first.lower();
+            lReclaimed += lLen;
+
+            // zero and reclaim
+            void *lStart = (void *) lIntMerged.first.lower();
+
+            // clear the memory
+            if (lZeroShmMemory) {
+              memset(lStart, 0x00, lLen);
+            }
+
+            // recover the merged region
+            reclaimSHMMessage(lStart, lLen);
           }
 
-          const std::size_t lLen = lIntMerged.first.upper() - lIntMerged.first.lower();
-          lReclaimed += lLen;
-
-          // zero and reclaim
-          void *lStart = (void *) lIntMerged.first.lower();
-
-          // clear the memory
-          if (lZeroShmMemory) {
-            memset(lStart, 0x00, lLen);
-          }
-
-          // recover the merged region
-          reclaimSHMMessage(lStart, lLen);
+          mFree += lReclaimed;
+          mGeneration += 1;
         }
 
-        mFree += lReclaimed;
-        mGeneration += 1;
+        // weighted average merge ratio
+        sMergeRatio = sMergeRatio * 0.75 + double(pBlkVect.size() - lIntMap.iterative_size()) /
+          double(pBlkVect.size()) * 0.25;
+        DDDLOG_RL(5000, "Memory segment '{}'::block merging ratio average={:.4}", mSegmentName, sMergeRatio);
       }
+      else if constexpr (FREE_STRATEGY == eRefCount) {
+        static thread_local boost::container::small_vector<FairMQRegionBlock, 512> sBlkVect;
+        sBlkVect.clear();
 
-      // weighted average merge ratio
-      sMergeRatio = sMergeRatio * 0.75 + double(pBlkVect.size() - lIntMap.iterative_size()) /
-        double(pBlkVect.size()) * 0.25;
-      DDDLOG_RL(5000, "Memory segment '{}'::block merging ratio average={:.4}", mSegmentName, sMergeRatio);
+        std::copy(pBlkVect.begin(), pBlkVect.end(), std::back_inserter(sBlkVect));
+        std::sort(sBlkVect.begin(), sBlkVect.end(), [](auto &a, auto &b) { return a.ptr < b.ptr; } );
+
+        {
+          std::scoped_lock lRefCntLock(mAllocBlocksLock);
+
+          const auto lAllocDeref = [&](auto pBlockIter) {
+            assert ((pBlockIter != mAllocBlocksMap.end())  && (pBlockIter->second.mRefCnt > 0));
+
+            if (--pBlockIter->second.mRefCnt == 0) {
+              void* lStart = reinterpret_cast<void*>(pBlockIter->second.mStart);
+              const std::size_t lLength = pBlockIter->second.mLength;
+
+              // clear the memory
+              if (lZeroShmMemory) {
+                memset(lStart, 0x00, lLength);
+              }
+
+              {
+                std::scoped_lock lock(mReclaimLock);
+                reclaimSHMMessage(lStart, lLength);
+                mFree += lLength;
+                mGeneration += 1;
+
+              }
+              mAllocBlocksMap.erase(pBlockIter);
+            }
+          };
+
+
+          auto lLastValIter = mAllocBlocksMap.end();
+
+          for (const auto lBlock : sBlkVect) {
+            if ((lLastValIter != mAllocBlocksMap.end()) && lLastValIter->second.in_range(lBlock.hint, lBlock.size)) {
+              lAllocDeref(lLastValIter);
+              continue;
+            }
+
+            lLastValIter = mAllocBlocksMap.lower_bound(reinterpret_cast<std::size_t>(lBlock.ptr));
+            assert (!mAllocBlocksMap.empty());
+            assert (lLastValIter != mAllocBlocksMap.end());
+            assert (lLastValIter->second.in_range(lBlock.ptr, lBlock.size));
+
+            lAllocDeref(lLastValIter);
+          }
+        }
+      }
     };
 
     mRegion = pShmTrans.CreateUnmanagedRegion(
@@ -243,6 +301,8 @@ public:
     }
 
     mStart = static_cast<char*>(mRegion->GetData());
+    mSegmentAddr = static_cast<char*>(mRegion->GetData());
+    mUCXSegmentAddr = static_cast<char*>(mRegion->GetData()); // set when region is mapped
     mSegmentSize = mRegion->GetSize();
     mLength = mRegion->GetSize();
     mFree = mSegmentSize;
@@ -272,10 +332,22 @@ public:
     mRegion.reset();
   }
 
+  auto address() const { return mRegion->GetData(); }
+  void set_ucx_address(void *ucx_address) { mUCXSegmentAddr = reinterpret_cast<char*>(ucx_address); }
+  void* get_ucx_ptr(void *ptr) const  { return (reinterpret_cast<char*>(ptr) - mSegmentAddr + mUCXSegmentAddr); }
+
   inline
-  std::unique_ptr<FairMQMessage> NewFairMQMessage(std::size_t pSize) {
+  std::unique_ptr<FairMQMessage> NewFairMQMessage(const std::size_t pSize) {
     auto* lMem = do_allocate(pSize);
     if (lMem) {
+      if constexpr (FREE_STRATEGY == eRefCount) {
+        std::scoped_lock lLock(mAllocBlocksLock);
+        auto lBlkIter = mAllocBlocksMap.lower_bound(reinterpret_cast<std::size_t>(lMem));
+        assert (lBlkIter != mAllocBlocksMap.end());
+        assert (lBlkIter->second.in_range(lMem, pSize));
+
+        lBlkIter->second.mRefCnt += 1;
+      }
       return mTransport.CreateMessage(mRegion, lMem, pSize);
     } else {
       return nullptr;
@@ -286,13 +358,12 @@ public:
   inline
   std::unique_ptr<FairMQMessage> NewFairMQMessage(const T pData, const std::size_t pSize) {
     static_assert(std::is_pointer_v<T>, "Require pointer");
-    auto* lMem = do_allocate(pSize);
-    if (lMem) {
-      std::memcpy(lMem, pData, pSize);
-      return mTransport.CreateMessage(mRegion, lMem, pSize);
-    } else {
-      return nullptr;
+
+    auto lMessage = NewFairMQMessage(pSize);
+    if (lMessage) {
+      std::memcpy(lMessage->GetData(), pData, pSize);
     }
+    return lMessage;
   }
 
   inline
@@ -300,7 +371,70 @@ public:
     assert(pPtr >= static_cast<char*>(mRegion->GetData()));
     assert(static_cast<char*>(pPtr)+pSize <= static_cast<char*>(mRegion->GetData()) + mRegion->GetSize());
 
+    if constexpr (FREE_STRATEGY == eRefCount) {
+      std::scoped_lock lLock(mAllocBlocksLock);
+      auto lBlkIter = mAllocBlocksMap.lower_bound(reinterpret_cast<std::size_t>(pPtr));
+      assert (lBlkIter != mAllocBlocksMap.end());
+      assert (lBlkIter->second.in_range(pPtr, pSize));
+
+      lBlkIter->second.mRefCnt += 1;
+    }
+
+    if constexpr (FREE_STRATEGY == eExactRegion) {
+      assert (! (reinterpret_cast<std::size_t>(pPtr) & (ALIGN-1)));
+    }
+
+#ifndef NDEBUG
+    {
+      std::scoped_lock lock(mReclaimLock);
+
+      auto interval = icl::discrete_interval<std::size_t>::right_open(
+        reinterpret_cast<std::size_t>(pPtr),
+        reinterpret_cast<std::size_t>(pPtr)+pSize
+      );
+
+      if (icl::intersects(mFreeRanges, interval)) {
+        assert (false);
+      }
+
+      if constexpr (FREE_STRATEGY == eExactRegion) {
+        auto intervalA = icl::discrete_interval<std::size_t>::right_open(
+          reinterpret_cast<std::size_t>(pPtr),
+          reinterpret_cast<std::size_t>(pPtr)+align_size_up(pSize)
+        );
+
+        if (icl::intersects(mFreeRanges, intervalA)) {
+          assert (false);
+        }
+      }
+    }
+#endif
     return mTransport.CreateMessage(mRegion, pPtr, pSize);
+  }
+
+  template <typename OutIter>
+  inline void NewFairMQMessageFromPtr(const std::vector<std::pair<void*, std::size_t>> &pAllocs, OutIter pInsertIt) {
+
+    if constexpr (FREE_STRATEGY == eRefCount) {
+      // increase refcounts
+      std::scoped_lock lLock(mAllocBlocksLock);
+
+      auto lBlkIter = mAllocBlocksMap.end();
+
+      for (const auto &lPtrSize : pAllocs) {
+        // check if we need a new lookup
+        if (!(lBlkIter != mAllocBlocksMap.end() && lBlkIter->second.in_range(lPtrSize.first, lPtrSize.second))) {
+          lBlkIter = mAllocBlocksMap.lower_bound(reinterpret_cast<std::size_t>(lPtrSize.first));
+          assert (lBlkIter != mAllocBlocksMap.end());
+          assert (lBlkIter->second.in_range(lPtrSize.first, lPtrSize.second));
+        }
+        lBlkIter->second.mRefCnt += 1;
+      }
+    }
+
+    for (const auto &lPtrSize : pAllocs) {
+      *pInsertIt++ = std::move(mTransport.CreateMessage(mRegion, lPtrSize.first, lPtrSize.second));
+    }
   }
 
   void stop() {
@@ -313,7 +447,6 @@ public:
 
   bool running() const { return mRunning; }
 
-protected:
   // NOTE: we align sizes of returned messages, but keep the exact size for allocation
   //       otherwise the shm messages would be larger than requested
   static constexpr inline
@@ -364,7 +497,7 @@ protected:
         if (lGen != mGeneration.load()) {
           break; // retry alloc
         } else {
-          std::this_thread::sleep_for(20ms);
+          std::this_thread::sleep_for(10ms);
         }
       }
     }
@@ -376,17 +509,19 @@ protected:
     }
 
     mFree -= pSizeUp;
-    assert (mFree > 0);
+    assert (mFree >= 0);
 
-    static thread_local std::size_t sLogRateLimit = 0;
-    if (sLogRateLimit++ % 1024 == 0) {
-      const std::int64_t lFree = mFree;
-      DDDLOG_GRL(2000, "DataRegionResource {} memory free={} allocated={}", mSegmentName, lFree, (mSegmentSize - lFree));
-    }
+    DDDLOG_GRL(5000, "DataRegionResource {} memory free={} allocated={}", mSegmentName, mFree, (mSegmentSize - mFree));
 
     // If the allocated message was aligned up, set a first byte after the buffer to 0
     if (pSizeUp > pSize) {
       reinterpret_cast<char*>(lRet)[pSize] = char(0xAA);
+    }
+
+    if constexpr (FREE_STRATEGY == eRefCount) {
+      std::scoped_lock lLock(mAllocBlocksLock);
+      const auto lStartI = reinterpret_cast<std::size_t>(lRet);
+      mAllocBlocksMap.insert({ (lStartI + pSizeUp - 1), AllocBlock{ lStartI, pSizeUp, 0 } });
     }
 
     return lRet;
@@ -432,7 +567,7 @@ private:
 
     auto lMaxIter = mFreeRanges.end();
 
-    if (mStrategy == eFindFirst) {
+    if constexpr (ALLOC_STRATEGY == eFindFirst) {
       for (auto lInt = mFreeRanges.begin(); lInt != mFreeRanges.end(); ++lInt) {
         if (lInt->first.upper() - lInt->first.lower() >= pSize) {
           lMaxIter = lInt;
@@ -504,8 +639,8 @@ private:
 #if !defined(NDEBUG)
     for (const auto &lInt : mFreeRanges) {
       if (lInt.second > 1) {
-        EDDLOG_RL(1000, "RegionAllocator BUG: Overlapping interval found on reclaim: ptr={:p} length={} overlaps={}",
-          reinterpret_cast<char*>(lInt.first.lower()), lInt.first.upper() - lInt.first.lower(), lInt.second);
+        EDDLOG_RL(1000, "RegionAllocator BUG: Overlapping interval found on reclaim: region={} ptr={:p} length={} overlaps={}",
+          mSegmentName, reinterpret_cast<char*>(lInt.first.lower()), lInt.first.upper() - lInt.first.lower(), lInt.second);
       }
     }
 #endif
@@ -513,9 +648,10 @@ private:
 
   /// fields
   std::string mSegmentName;
+  char *mSegmentAddr;        // Actual segment VM address
+  char *mUCXSegmentAddr;     // UCX VM address mapping of the same segment
   std::size_t mSegmentSize;
   std::atomic_bool mRunning = false;
-  RegionAllocStrategy mStrategy;
   bool mCanFail = false;
 
   FairMQTransportFactory &mTransport;
@@ -530,8 +666,33 @@ private:
 
   // two step reclaim to avoid lock contention in the allocation path
   std::mutex mReclaimLock;
-  icl::interval_map<std::size_t, std::size_t> mFreeRanges;
+    icl::interval_map<std::size_t, std::size_t> mFreeRanges;
+
+
+  // track allocated blocks refcnt
+  std::mutex mAllocBlocksLock;
+    struct AllocBlock {
+      std::size_t mStart;
+      std::size_t mLength;
+      std::uint64_t mRefCnt = 0;
+
+      template<typename StartT, typename LenT>
+      constexpr bool in_range(const StartT start, const LenT len) const {
+        static_assert (sizeof(start) >= sizeof(std::size_t));
+        static_assert (sizeof(len) >= sizeof(std::size_t));
+        const std::size_t s = reinterpret_cast<std::size_t>(start);
+        const std::size_t l = reinterpret_cast<std::size_t>(len);
+
+        return ((s >= mStart) && ((s+l) <= (mStart+mLength)) );
+      }
+    };
+    std::map<std::size_t, AllocBlock> mAllocBlocksMap; // key is (mStart + AlignSize)
+
 };
+
+
+using DataRegionAllocatorResource = RegionAllocatorResource<64, RegionAllocStrategy::eFindLongest, RegionATrackingStrategy::eRefCount>;
+using HeaderRegionAllocatorResource = RegionAllocatorResource<alignof(o2::header::DataHeader), RegionAllocStrategy::eFindFirst>;
 
 
 class MemoryResources {
@@ -548,19 +709,6 @@ public:
     mShmTransport.reset();
   }
 
-  template<typename T>
-  inline
-  FairMQMessagePtr newHeaderMessage(const T pData, const std::size_t pSize) {
-    static_assert(std::is_pointer_v<T>, "Require pointer");
-    assert(mHeaderMemRes);
-    return mHeaderMemRes->NewFairMQMessage(reinterpret_cast<const char*>(pData), pSize);
-  }
-
-  inline
-  FairMQMessagePtr newDataMessage(const std::size_t pSize) {
-    assert(mDataMemRes);
-    return mDataMemRes->NewFairMQMessage(pSize);
-  }
 
   inline
   bool running() const { return mRunning; }
@@ -590,8 +738,8 @@ public:
   inline std::size_t sizeHeader() const { return (running() && mHeaderMemRes) ? mHeaderMemRes->size() : std::size_t(0); }
   inline std::size_t sizeData() const { return (running() && mDataMemRes) ? mDataMemRes->size() : std::size_t(0);  }
 
-  std::unique_ptr<RegionAllocatorResource<alignof(o2::header::DataHeader)>> mHeaderMemRes;
-  std::unique_ptr<RegionAllocatorResource<64>> mDataMemRes;
+  std::unique_ptr<HeaderRegionAllocatorResource> mHeaderMemRes;
+  std::unique_ptr<DataRegionAllocatorResource> mDataMemRes;
 
   // shm transport
   std::shared_ptr<FairMQTransportFactory> mShmTransport;
@@ -664,6 +812,31 @@ public:
 
     pDstMsgs = std::move(lNewMsgs);
   }
+
+  template <typename OutIter>
+  inline void allocDataBuffers(const std::vector<uint64_t> &pTxgSizes, OutIter pInsertIt) {
+    std::scoped_lock lDataLock(mDataLock);
+
+    for (const auto lSize : pTxgSizes) {
+      *pInsertIt++ = std::move(mDataMemRes->do_allocate(lSize));
+    }
+  }
+
+  template <typename OutIter>
+  inline void allocHdrBuffers(const std::vector<uint64_t> &pHdrSizes, OutIter pInsertIt) {
+    std::scoped_lock lDataLock(mHdrLock);
+
+    for (const auto lSize : pHdrSizes) {
+      *pInsertIt++ = std::move(mHeaderMemRes->NewFairMQMessage(lSize));
+    }
+  }
+
+  template <typename OutIter>
+  inline void fmqFromDataBuffers(const std::vector<std::pair<void*, std::size_t>> &pAllocs, OutIter pInsertIt) {
+    // no locks needed for top level resource
+    mDataMemRes->NewFairMQMessageFromPtr(pAllocs, pInsertIt);
+  }
+
 
 private:
   std::mutex mHdrLock;

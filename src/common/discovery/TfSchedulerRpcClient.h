@@ -74,7 +74,7 @@ public:
     mStub = TfSchedulerInstanceRpc::NewStub(mChannel);
     mChannel->GetState(true);
 
-    IDDLOG("Connected to TfSchedulerInstance RPC endpoint={}", lEndpoint);
+    IDDLOG("Connected to TfScheduler RPC endpoint={}", lEndpoint);
 
     return true;
   }
@@ -93,11 +93,20 @@ public:
   // rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
   bool NumStfSendersInPartitionRequest(std::uint32_t &pNumStfSenders);
 
+  // TfBuilder FairMQ connect/disconnect
   // rpc TfBuilderConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderConnectionResponse) { }
   bool TfBuilderConnectionRequest(TfBuilderConfigStatus &pParam, TfBuilderConnectionResponse &pRet /*out*/);
 
   // rpc TfBuilderDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
   bool TfBuilderDisconnectionRequest(TfBuilderConfigStatus &pParam, StatusResponse &pRet /*out*/);
+
+  // TfBuilder UCX connect/disconnect
+  // rpc TfBuilderUCXConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderUCXConnectionResponse) { }
+  bool TfBuilderUCXConnectionRequest(TfBuilderConfigStatus &pParam, TfBuilderUCXConnectionResponse &pRet /*out*/);
+
+  // rpc TfBuilderUCXDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
+  bool TfBuilderUCXDisconnectionRequest(TfBuilderConfigStatus &pParam,  StatusResponse &pRet /*out*/);
+
 
   // rpc TfBuilderUpdate(TfBuilderUpdateMessage) returns (google.protobuf.Empty) { }
   bool TfBuilderUpdate(TfBuilderUpdateMessage &pMsg);
@@ -118,7 +127,7 @@ public:
   bool should_retry_start() const { return mShouldRetryStart; }
 
 private:
-  TfSchedulerInstanceConfigStatus mTfSchedulerConf;
+  TfSchedulerConfigStatus mTfSchedulerConf;
 
   std::unique_ptr<TfSchedulerInstanceRpc::Stub> mStub;
   std::shared_ptr<grpc::Channel> mChannel;

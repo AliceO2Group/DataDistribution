@@ -20,6 +20,7 @@
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameVisitors.h>
 
+#include <DataDistributionOptions.h>
 #include <DataDistMonitoring.h>
 
 #include <condition_variable>
@@ -32,23 +33,37 @@ namespace o2::DataDistribution
 
 using namespace std::chrono_literals;
 
-TfBuilderInput::TfBuilderInput(TfBuilderDevice& pStfBuilderDev, std::shared_ptr<TfBuilderRpcImpl> pRpc, unsigned pOutStage)
+TfBuilderInput::TfBuilderInput(TfBuilderDevice& pStfBuilderDev, std::shared_ptr<ConsulTfBuilder> pConfig, std::shared_ptr<TfBuilderRpcImpl> pRpc, unsigned pOutStage)
     : mDevice(pStfBuilderDev),
+      mConfig(pConfig),
       mRpc(pRpc),
       mOutStage(pOutStage)
   {
+    // Select which backend is used
+    mStfRequestQueue = std::make_shared<ConcurrentQueue<std::string>>();
     mReceivedDataQueue = std::make_shared<ConcurrentQueue<ReceivedStfMeta>>();
-    mInputFairMQ = std::make_unique<TfBuilderInputFairMQ>(pRpc, pStfBuilderDev.TfBuilderI(), *mReceivedDataQueue);
+
+    auto lTransportOpt = mConfig->getStringParam(DataDistNetworkTransportKey, DataDistNetworkTransportDefault);
+    if (lTransportOpt == "fmq" || lTransportOpt == "FMQ" || lTransportOpt == "fairmq" || lTransportOpt == "FAIRMQ") {
+      mInputFairMQ = std::make_unique<TfBuilderInputFairMQ>(pRpc, pStfBuilderDev.TfBuilderI(), *mStfRequestQueue, *mReceivedDataQueue);
+    } else {
+      mInputUCX = std::make_unique<TfBuilderInputUCX>(mConfig, pRpc, pStfBuilderDev.TfBuilderI(), *mStfRequestQueue, *mReceivedDataQueue);
+    }
   }
 
-bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
+bool TfBuilderInput::start()
 {
   // make max number of listening channels for the partition
   mDevice.GetConfig()->SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 32u));
   auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
 
   // start the input stage
-  mInputFairMQ->start(pConfig, lTransportFactory);
+  if (mInputFairMQ) {
+    mInputFairMQ->start(mConfig, lTransportFactory);
+  }
+  if (mInputUCX) {
+    mInputUCX->start();
+  }
 
   // Start all the threads
   mState = RUNNING;
@@ -75,14 +90,21 @@ bool TfBuilderInput::start(std::shared_ptr<ConsulTfBuilder> pConfig)
   return true;
 }
 
-void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
+void TfBuilderInput::stop()
 {
   // first stop accepting TimeFrames
   mRpc->stopAcceptingTfs();
   mState = TERMINATED;
 
-  // TODO stop
-  mInputFairMQ->stop(pConfig);
+  // stop FaiMQ input
+  if (mInputFairMQ) {
+    mInputFairMQ->stop(mConfig);
+  }
+
+  // stop UCX input
+  if (mInputUCX) {
+    mInputUCX->stop();
+  }
 
   //Wait for pacer thread
   mReceivedDataQueue->stop();
@@ -115,7 +137,7 @@ void TfBuilderInput::stop(std::shared_ptr<ConsulTfBuilder> pConfig)
   DDDLOG("TfBuilderInput: Teardown complete.");
 }
 
-/// TF building pacing thread
+/// TF building pacing thread: rename topo TF ids, and queue physics TFs for merging
 void TfBuilderInput::StfPacingThread()
 {
   // Deserialization object (stf ID)
@@ -155,7 +177,7 @@ void TfBuilderInput::StfPacingThread()
     // Rename STF id if this is a Topological TF
     if (lStfInfo.mStfOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
       // deserialize here to be able to rename the stf
-      lStfInfo.mStf = std::move(lStfReceiver.deserialize(lStfInfo.mRecvStfHeaderMeta, *lStfInfo.mRecvStfdata));
+      lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfHeaderMeta.get(), *lStfInfo.mRecvStfdata));
       lStfInfo.mRecvStfdata = nullptr;
 
       const std::uint64_t lNewTfId = mRpc->getIdForTopoTf(lStfInfo.mStfSenderId, lStfInfo.mStfId);
@@ -166,9 +188,8 @@ void TfBuilderInput::StfPacingThread()
       lStfInfo.mStfId = lNewTfId;
     }
 
-    /// TODO: STF receive pacing
-    // TfScheduler should manage memory of the region and not overcommit the TfBuilders
 
+    // TfScheduler should manage memory of the region and not overcommit the TfBuilders
     { // Push the STF into the merger queue
       std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
 
@@ -201,7 +222,7 @@ void TfBuilderInput::deserialize_headers(std::vector<ReceivedStfMeta> &pStfs)
     }
 
     // deserialize the data
-    lStfInfo.mStf = std::move(lStfReceiver.deserialize(lStfInfo.mRecvStfHeaderMeta, *lStfInfo.mRecvStfdata));
+    lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfHeaderMeta.get(), *lStfInfo.mRecvStfdata));
     lStfInfo.mRecvStfdata = nullptr;
   }
 }

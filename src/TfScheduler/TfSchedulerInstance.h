@@ -38,6 +38,7 @@ class TfSchedulerInstanceHandler
  public:
   TfSchedulerInstanceHandler() = delete;
   TfSchedulerInstanceHandler(DataDistDevice& pDev,
+    std::shared_ptr<ConsulTfScheduler> pConfig,
     const std::string &pProcessId,
     const PartitionRequest &pPartitionRequest);
 
@@ -56,7 +57,7 @@ class TfSchedulerInstanceHandler
   PartitionRequest mPartitionInfo;
 
   /// Discovery configuration
-  std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;
+  std::shared_ptr<ConsulTfScheduler> mDiscoveryConfig;
 
   /// Scheduler threads
   bool mRunning = false;

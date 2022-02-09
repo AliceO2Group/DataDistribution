@@ -28,13 +28,13 @@ using namespace o2::header;
 /// StfDplAdapter
 ////////////////////////////////////////////////////////////////////////////////
 
-void StfToDplAdapter::visit(SubTimeFrame& pStf)
+void StfToDplAdapter::visit(SubTimeFrame& pStf, void*)
 {
   // Pack the Stf header
   o2::header::DataHeader lStfDistDataHeader(
     gDataDescSubTimeFrame,
     o2::header::gDataOriginFLP,
-    0, // TODO: subspecification? FLP ID? EPN ID?
+    0, // Subspecification: not used by consumers
     sizeof(SubTimeFrame::Header)
   );
 
@@ -289,10 +289,10 @@ void StfToDplAdapter::sendEosToDpl()
 static const o2::header::DataHeader gStfDistDataHeader(
   gDataDescSubTimeFrame,
   o2::header::gDataOriginFLP,
-  0, // TODO: subspecification? FLP ID? EPN ID?
+  0, // subspecification: not used
   sizeof(SubTimeFrame::Header));
 
-void DplToStfAdapter::visit(SubTimeFrame& pStf)
+void DplToStfAdapter::visit(SubTimeFrame& pStf, void*)
 {
   bool lStfHeaderFound = false;
 

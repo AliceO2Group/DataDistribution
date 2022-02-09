@@ -65,7 +65,7 @@ class SubTimeFrameFileWriter : public ISubTimeFrameConstVisitor
  private:
 
 
-  void visit(const SubTimeFrame& pStf) override;
+  void visit(const SubTimeFrame& pStf, void*) override;
 
   /// Writes a (Sub)TimeFrame
   std::uint64_t _write(const SubTimeFrame& pStf);

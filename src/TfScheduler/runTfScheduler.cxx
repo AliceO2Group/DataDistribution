@@ -39,17 +39,10 @@ int main(int argc, char* argv[])
       r.fConfig.AddToCmdLineOptions(DataDistMonitor::getProgramOptions());
 
       // Add options for Data Distribution discovery
-      r.fConfig.AddToCmdLineOptions(
-        o2::DataDistribution::Config::getProgramOptions(o2::DataDistribution::ProcessType::TfSchedulerService)
-      );
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::Config::getProgramOptions());
     });
 
-
     runner.AddHook<InstantiateDevice>([](DeviceRunner& r){
-      // r.fPluginManager.ForEachPlugin([](Plugin& p) {
-      //   IDDLOG("Controlling pluggin: {}", p.GetName());
-      // });
-
       // Install listener for Logging options
       fmqtools::HandleFMQOptions(r);
       // reset unsupported options

@@ -59,7 +59,8 @@ public:
   TfSchedulerRpcClient& TfSchedRpcCli() { return mTfSchedulerRpcClient; }
 
   void initDiscovery(const std::string pRpcSrvBindIp, int &lRealPort /*[out]*/);
-  bool start(const std::uint64_t pBufferSize, std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > pRecvQueue);
+  bool start(const std::uint64_t pBufferSize, std::shared_ptr<ConcurrentQueue<std::string> > pReqQueue,
+    std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > pRecvQueue);
   void stop();
 
   void startAcceptingTfs();
@@ -146,6 +147,7 @@ private:
 
   // Stf request thread
   std::thread mStfRequestThread;
+  std::shared_ptr<ConcurrentQueue<std::string> > mStfInputQueue;
   std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > mReceivedDataQueue;
 
     struct StfRequests {

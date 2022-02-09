@@ -57,9 +57,8 @@ SubTimeFrameFileReader::~SubTimeFrameFileReader()
   }
 }
 
-void SubTimeFrameFileReader::visit(SubTimeFrame& pStf)
+void SubTimeFrameFileReader::visit(SubTimeFrame& pStf, void*)
 {
-
   DataIdentifier lDataId;
   DataHeader::SubSpecificationType lSubSpec;
   std::vector<FairMQMessagePtr> *lVec = nullptr;
@@ -155,7 +154,6 @@ Stack SubTimeFrameFileReader::getHeaderStack(std::size_t &pOrigsize)
     std::memcpy(&lNewDh, (void*)lBaseOfDH->data(), lBaseOfDH->size());
 
     // make sure to bump the version in the BaseHeader.
-    // TODO: Is there a better way?
     lNewDh.headerSize = sizeof(DataHeader);
     lNewDh.headerVersion = DataHeader::sVersion;
 
@@ -182,7 +180,7 @@ Stack SubTimeFrameFileReader::getHeaderStack(std::size_t &pOrigsize)
   return Stack(lStackMem);
 }
 
-std::uint64_t SubTimeFrameFileReader::sStfId = 0; // TODO: add id to files metadata
+std::uint64_t SubTimeFrameFileReader::sStfId = 0;
 
 std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuilder &pFileBuilder)
 {
@@ -248,7 +246,6 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
   }
 
   // Index
-  // TODO: skip the index for now, check in future all data is there
   std::size_t lStfIndexHdrStackSize = 0;
   const DataHeader *lStfIndexHdr = nullptr;
 

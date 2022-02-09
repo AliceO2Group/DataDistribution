@@ -37,18 +37,19 @@ class TfBuilderInputFairMQ
 {
  public:
   TfBuilderInputFairMQ() = delete;
-  TfBuilderInputFairMQ(std::shared_ptr<TfBuilderRpcImpl> pRpc, TimeFrameBuilder &pTfBldr, ConcurrentQueue<ReceivedStfMeta> &pStfMetaQueue)
+  TfBuilderInputFairMQ(std::shared_ptr<TfBuilderRpcImpl> pRpc, TimeFrameBuilder &pTfBldr,
+                        ConcurrentQueue<std::string> &pStfReqQueue, ConcurrentQueue<ReceivedStfMeta> &pStfMetaQueue)
     : mRpc(pRpc),
       mTimeFrameBuilder(pTfBldr),
+      mStfReqQueue(pStfReqQueue),
       mReceivedDataQueue(pStfMetaQueue)
   {
+    mStfReqQueue.stop(); // not used in FMQ transport
   }
 
   bool start(std::shared_ptr<ConsulTfBuilder> pConfig, std::shared_ptr<FairMQTransportFactory> pZMQTransportFactory);
   void stop(std::shared_ptr<ConsulTfBuilder> pConfig);
-  void reset() {
-
-  }
+  void reset() { }
 
   void DataHandlerThread(const std::uint32_t pFlpIndex, const std::string pStfSenderId);
 
@@ -71,6 +72,7 @@ class TfBuilderInputFairMQ
   std::map<std::string, std::thread> mInputThreads;
 
   /// Queue for received STFs
+  ConcurrentQueue<std::string> &mStfReqQueue;
   ConcurrentQueue<ReceivedStfMeta> &mReceivedDataQueue;
 };
 

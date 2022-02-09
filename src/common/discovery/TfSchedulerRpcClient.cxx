@@ -94,7 +94,6 @@ bool TfSchedulerRpcClient::NumStfSendersInPartitionRequest(std::uint32_t &pNumSt
   return false;
 }
 
-
 // rpc TfBuilderConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderConnectionResponse) { }
 bool TfSchedulerRpcClient::TfBuilderConnectionRequest(TfBuilderConfigStatus &pParam, TfBuilderConnectionResponse &pRet /*out*/) {
   if (!mStub || !is_alive()) {
@@ -164,8 +163,87 @@ bool TfSchedulerRpcClient::TfBuilderDisconnectionRequest(TfBuilderConfigStatus &
   updateTimeInformation(*pParam.mutable_info());
 
   auto lStatus = mStub->TfBuilderDisconnectionRequest(&lContext, pParam, &pRet);
+  if (!lStatus.ok()) {
+    WDDLOG_GRL(2000, "TfBuilderDisconnectionRequest: gRPC call failed err={} details={}", lStatus.error_message(), lStatus.error_details());
+    return false;
+  }
+  return true;
+}
 
-  return (lStatus.ok() ? true : false);
+// rpc TfBuilderUCXConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderUCXConnectionResponse) { }
+bool TfSchedulerRpcClient::TfBuilderUCXConnectionRequest(TfBuilderConfigStatus &pParam, TfBuilderUCXConnectionResponse &pRet /*out*/) {
+  if (!mStub || !is_alive()) {
+    WDDLOG_GRL(2000, "TfBuilderUCXConnectionRequest: no gRPC connection to scheduler");
+    return false;
+  }
+
+  using namespace std::chrono_literals;
+  while (is_alive()) {
+    ClientContext lContext;
+
+    // update timestamp
+    updateTimeInformation(*pParam.mutable_info());
+
+    auto lStatus = mStub->TfBuilderUCXConnectionRequest(&lContext, pParam, &pRet);
+
+    if (lStatus.ok()) {
+
+      switch (pRet.status()) {
+        case TfBuilderConnectionStatus::OK:
+          break;
+        case TfBuilderConnectionStatus::ERROR_DISCOVERY:
+          break;
+        case TfBuilderConnectionStatus::ERROR_SOCKET_COUNT:
+          EDDLOG("TfBuilderUCXConnectionRequest: TfBuilder socket count is not equal to number of StfSenders.");
+          break;
+        case TfBuilderConnectionStatus::ERROR_STF_SENDERS_NOT_READY:
+          break;
+        case TfBuilderConnectionStatus::ERROR_GRPC_STF_SENDER:
+          break;
+        case TfBuilderConnectionStatus::ERROR_GRPC_TF_BUILDER:
+          break;
+        case TfBuilderConnectionStatus::ERROR_STF_SENDER_CONNECTING:
+          break;
+        case TfBuilderConnectionStatus::ERROR_STF_SENDER_EXISTS:
+          EDDLOG("TfBuilderUCXConnectionRequest: TfBuilder with the same id already registered with StfSenders.");
+          break;
+        case TfBuilderConnectionStatus::ERROR_PARTITION_TERMINATING:
+          EDDLOG("TfBuilderUCXConnectionRequest: Partition is terminating.");
+          break;
+        default:
+          EDDLOG("TfBuilderUCXConnectionRequest: Unknown error!");
+          break;
+      }
+
+      return true;
+    }
+
+    pRet.Clear();
+    std::this_thread::sleep_for(500ms);
+  }
+
+  return false;
+}
+
+// rpc TfBuilderUCXDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
+bool TfSchedulerRpcClient::TfBuilderUCXDisconnectionRequest(TfBuilderConfigStatus &pParam, StatusResponse &pRet /*out*/) {
+  if (!mStub || !is_alive()) {
+    WDDLOG_GRL(2000, "TfBuilderUCXDisconnectionRequest: no gRPC connection to scheduler");
+    return false;
+  }
+
+  using namespace std::chrono_literals;
+  ClientContext lContext;
+
+  // update timestamp
+  updateTimeInformation(*pParam.mutable_info());
+
+  auto lStatus = mStub->TfBuilderUCXDisconnectionRequest(&lContext, pParam, &pRet);
+  if (!lStatus.ok()) {
+    WDDLOG_GRL(2000, "TfBuilderUCXDisconnectionRequest: gRPC call failed err={} details={}", lStatus.error_message(), lStatus.error_details());
+    return false;
+  }
+  return true;
 }
 
 // rpc TfBuilderUpdate(TfBuilderUpdateMessage) returns (google.protobuf.Empty) { }

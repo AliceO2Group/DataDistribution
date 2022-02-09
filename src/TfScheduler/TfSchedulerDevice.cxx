@@ -46,10 +46,7 @@ void TfSchedulerDevice::InitTask()
 
 void TfSchedulerDevice::PreRun()
 {
-  mDiscoveryConfig = std::make_unique<ConsulTfSchedulerService>(
-    ProcessType::TfSchedulerService,
-    Config::getEndpointOption(*GetConfig())
-  );
+  mDiscoveryConfig = std::make_shared<ConsulTfScheduler>(ProcessType::TfScheduler, Config::getEndpointOption(*GetConfig()));
 }
 
 void TfSchedulerDevice::PostRun()
@@ -86,7 +83,8 @@ bool TfSchedulerDevice::ConditionalRun()
       // Create a new instance for the partition
       mPartitionId = lNewPartitionRequest.mPartitionId;
       mSchedInstance = std::make_unique<TfSchedulerInstanceHandler>(*this,
-        std::string("0"), // TODO: add multiple schedulers
+        mDiscoveryConfig,
+        std::string("0"), // multiple schedulers?
         lNewPartitionRequest
       );
       if (mSchedInstance->start()) {

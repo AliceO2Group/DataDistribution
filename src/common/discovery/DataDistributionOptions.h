@@ -18,36 +18,24 @@
 
 namespace o2::DataDistribution
 {
+
 ////////////////////////////////////////////////////////////////////////////////
-/// TfScheduler
+/// Global DataDistribution
+/// NOTE: the global key must start with "DataDist"
 ////////////////////////////////////////////////////////////////////////////////
 
-// Define maximum number of concurent TFs in building per TfBuilder
-static constexpr const std::string_view MaxNumTfsInBuildingKey = "MaxNumTfsInBuilding";
-static constexpr std::uint64_t MaxNumTfsInBuildingDevault = 25;
-
-// Decision wether to build or drop incomplete (stale) TFs
-static const constexpr std::string_view BuildStaleTfsKey = "BuildStaleTfs";
-static const constexpr bool BuildStaleTfsValue = true;
-
-// An incomplete TF is considered stale when the following timeout expires after the last
-// STF is reported.
-static const constexpr std::string_view StaleStfTimeoutMsKey = "StaleTfTimeoutMs";
-static const constexpr std::uint64_t StaleStfTimeoutMsValue = 1500;
-
-// Max number of incomplete TFs to keep before considering them stale
-static const constexpr std::string_view IncompleteTfsMaxCntKey = "IncompleteTfsMaxCnt";
-static const constexpr std::uint64_t IncompleteTfsMaxCntValue = 100;
-
+// Select transport to use: "ucx" or "fmq"
+static constexpr std::string_view DataDistNetworkTransportKey = "DataDistNetworkTransport";
+static constexpr std::string_view DataDistNetworkTransportDefault = "ucx";
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// TfBuilder
+/// StfBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-// Define maximum number of concurent STF transfers
-static constexpr const std::string_view MaxNumStfTransfersKey = "MaxNumStfTransfers";
-static constexpr std::uint64_t MaxNumStfTransferDefault = 100;
+// Page aggregation for topological runs. Larger number of pages decreases FLP-EPN interaction rate (better performance)
+static constexpr std::string_view NumPagesInTopologicalStfKey = "NumPagesInTopologicalStf";
+static constexpr std::uint64_t NumPagesInTopologicalStfDefault = 128;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,8 +43,57 @@ static constexpr std::uint64_t MaxNumStfTransferDefault = 100;
 ////////////////////////////////////////////////////////////////////////////////
 
 // Define size of DataDist buffer
-static constexpr const std::string_view StfBufferSizeMBKey = "StfBufferSizeMB";
+static constexpr std::string_view StfBufferSizeMBKey = "StfBufferSizeMB";
 static constexpr std::uint64_t StfBufferSizeMBValue = (32ULL << 10);
+
+/// UCX transport
+// Allowed gap between two messages of the same region when creating RMA txgs
+static constexpr std::string_view UcxRdmaGapBKey = "UcxRdmaGapB";
+static constexpr std::uint64_t UcxRdmaGapBDefault = 8192;
+
+// Size of sender treadpool. Default 0 (number of cpu cores)
+static constexpr std::string_view UcxSenderThreadPoolSizeKey = "UcxStfSenderThreadPoolSize";
+static constexpr std::uint64_t UcxStfSenderThreadPoolSizeDefault = 0;
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// TfBuilder
+////////////////////////////////////////////////////////////////////////////////
+
+// Define maximum number of concurrent STF transfers
+static constexpr std::string_view MaxNumStfTransfersKey = "MaxNumStfTransfers";
+static constexpr std::uint64_t MaxNumStfTransferDefault = 100;
+
+
+/// UCX transport
+// Size of receiver treadpool. Default 0 (number of cpu cores)
+static constexpr std::string_view UcxTfBuilderThreadPoolSizeKey = "UcxTfBuilderThreadPoolSize";
+static constexpr std::uint64_t UcxTfBuilderThreadPoolSizeDefault = 0;
+
+// Number of rma_get operation in flight, per ucx thread
+static constexpr std::string_view UcxNumConcurrentRmaGetOpsKey = "UcxNumConcurrentRmaGetOps";
+static constexpr std::uint64_t UcxNumConcurrentRmaGetOpsDefault = 8;
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// TfScheduler
+////////////////////////////////////////////////////////////////////////////////
+
+// Define maximum number of concurrent TFs in building per TfBuilder
+static constexpr std::string_view MaxNumTfsInBuildingKey = "MaxNumTfsInBuilding";
+static constexpr std::uint64_t MaxNumTfsInBuildingDevault = 25;
+
+// Decision wether to build or drop incomplete (stale) TFs
+static constexpr std::string_view BuildIncompleteTfsKey = "BuildIncompleteTfs";
+static constexpr bool BuildIncompleteTfsValue = true;
+
+// An incomplete TF is considered stale when the following timeout expires after the last STF is reported.
+static constexpr std::string_view StaleStfTimeoutMsKey = "StaleTfTimeoutMs";
+static constexpr std::uint64_t StaleStfTimeoutMsValue = 1000;
+
+// Max number of incomplete TFs to keep before considering them stale
+static constexpr std::string_view IncompleteTfsMaxCntKey = "IncompleteTfsMaxCnt";
+static constexpr std::uint64_t IncompleteTfsMaxCntValue = 100;
 
 
 } /* o2::DataDistribution */

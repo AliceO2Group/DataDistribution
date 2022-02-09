@@ -11,8 +11,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef STF_SENDER_OUTPUT_UCX_H_
-#define STF_SENDER_OUTPUT_UCX_H_
+#ifndef STF_SENDER_OUTPUT_FMQ_H_
+#define STF_SENDER_OUTPUT_FMQ_H_
 
 #include "StfSenderOutputDefs.h"
 
@@ -76,4 +76,4 @@ private:
 
 } /* namespace o2::DataDistribution */
 
-#endif /* STF_SENDER_OUTPUT_UCX_H_ */
+#endif /* STF_SENDER_OUTPUT_FMQ_H_ */

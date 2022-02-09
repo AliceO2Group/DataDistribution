@@ -37,8 +37,7 @@ ProcessTypePB to_ProcessTypePB(const ProcessType pType) {
     { ProcessType::StfBuilder, StfBuilder },
     { ProcessType::StfSender, StfSender },
     { ProcessType::TfBuilder, TfBuilder },
-    { ProcessType::TfSchedulerService, TfSchedulerService },
-    { ProcessType::TfSchedulerInstance, TfSchedulerInstance }
+    { ProcessType::TfScheduler, TfScheduler }
   };
 
   return cProcessTypeMap.at(pType);
@@ -52,8 +51,7 @@ std::string to_string(const ProcessTypePB pType) {
     case StfBuilder: return "StfBuilder";
     case StfSender: return "StfSender";
     case TfBuilder: return "TfBuilder";
-    case TfSchedulerService: return "TfSchedulerService";
-    case TfSchedulerInstance: return "TfSchedulerInstance";
+    case TfScheduler: return "TfScheduler";
     default: break;
   }
   assert(0 && "Should not reach");
@@ -75,12 +73,6 @@ std::tuple<std::string, std::uint64_t> getCurrentTimeString() {
   const auto lMillis = std::chrono::duration_cast<std::chrono::milliseconds>(lSinceEpoch).count();
 
   return { ss.str(), lMillis };
-}
-
-template <>
-bool ConsulConfig<TfSchedulerServiceConfigStatus>::createKeyPrefix() {
-  mConsulKey = "epn/data-dist/TfSchedulerService";
-  return true;
 }
 
 

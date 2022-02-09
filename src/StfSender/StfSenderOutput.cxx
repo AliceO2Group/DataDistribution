@@ -49,13 +49,31 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
     WDDLOG("StfSender buffer size override. size={}", lOptBufferSize);
   }
 
-  // create a socket and connect
-  mDevice.GetConfig()->SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 20u));
-  mZMQTransportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
+  auto lTransportOpt = pDiscoveryConfig->getStringParam(DataDistNetworkTransportKey, DataDistNetworkTransportDefault);
 
-  // create output
-  mOutputFairmq = std::make_unique<StfSenderOutputFairMQ>(pDiscoveryConfig, mCounters);
-  mOutputFairmq->start(mZMQTransportFactory);
+  if (lTransportOpt == "fmq" || lTransportOpt == "FMQ" || lTransportOpt == "fairmq" || lTransportOpt == "FAIRMQ") {
+    // create a socket and connect
+    mDevice.GetConfig()->SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 20u));
+    mZMQTransportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
+
+    // create FairMQ output
+    mOutputFairMQ = std::make_unique<StfSenderOutputFairMQ>(pDiscoveryConfig, mCounters);
+    mOutputFairMQ->start(mZMQTransportFactory);
+  } else {
+    // create UCX output
+    mOutputUCX = std::make_unique<StfSenderOutputUCX>(pDiscoveryConfig, mCounters);
+    mOutputUCX->start();
+    // register for region updates
+    mDevice.Transport()->SubscribeToRegionEvents([this](fair::mq::RegionInfo info) {
+      if (mOutputUCX) {
+        if (fair::mq::RegionEvent::created == info.event) {
+          mOutputUCX->registerSHMRegion(info.ptr, info.size, info.managed, info.flags);
+        } else if (fair::mq::RegionEvent::destroyed == info.event) {
+          EDDLOG("Region destroyed while running? size={} managed={}", info.size, info.managed);
+        }
+      }
+    });
+  }
 
   // create stf drop thread
   mStfDropThread = create_thread_member("stfs_drop", &StfSenderOutput::StfDropThread, this);
@@ -70,6 +88,7 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
 void StfSenderOutput::stop()
 {
   mRunning = false;
+
   // stop the scheduler: on pipeline interrupt
   if (mSchedulerThread.joinable()) {
     mSchedulerThread.join();
@@ -85,8 +104,17 @@ void StfSenderOutput::stop()
     return;
   }
 
-  // signal backends to stop
-  mOutputFairmq->stop();
+  // stop FaiMQ input
+  if (mOutputFairMQ) {
+    mOutputFairMQ->stop();
+  }
+
+  // stop UCX input
+  if (mOutputUCX) {
+    // Unsubscribe from region updates
+    mDevice.Transport()->UnsubscribeFromRegionEvents();
+    mOutputUCX->stop();
+  }
 
   // wait for monitoring thread
   if (mMonitoringThread.joinable()) {
@@ -101,12 +129,33 @@ bool StfSenderOutput::running() const
 
 ConnectStatus StfSenderOutput::connectTfBuilder(const std::string &pTfBuilderId, const std::string &pEndpoint)
 {
-  return mOutputFairmq->connectTfBuilder(pTfBuilderId, pEndpoint);
+  if (!mOutputFairMQ) {
+    return ConnectStatus::eCONNERR;
+  }
+  return mOutputFairMQ->connectTfBuilder(pTfBuilderId, pEndpoint);
 }
 
 bool StfSenderOutput::disconnectTfBuilder(const std::string &pTfBuilderId, const std::string &lEndpoint)
 {
-  return mOutputFairmq->disconnectTfBuilder(pTfBuilderId, lEndpoint);
+  if (!mOutputFairMQ) {
+    return false;
+  }
+  return mOutputFairMQ->disconnectTfBuilder(pTfBuilderId, lEndpoint);
+}
+
+ConnectStatus StfSenderOutput::connectTfBuilderUCX(const std::string &pTfBuilderId, const std::string &pIp, unsigned pPort)
+{
+  if (!mOutputUCX) {
+    return ConnectStatus::eCONNERR;
+  }
+  return mOutputUCX->connectTfBuilder(pTfBuilderId, pIp, pPort);
+}
+bool StfSenderOutput::disconnectTfBuilderUCX(const std::string &pTfBuilderId)
+{
+  if (!mOutputUCX) {
+    return false;
+  }
+  return mOutputUCX->disconnectTfBuilder(pTfBuilderId);
 }
 
 void StfSenderOutput::StfSchedulerThread()
@@ -265,7 +314,12 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     mScheduledStfMap.erase(lStfIter);
 
     // send to output backend
-    const bool lOk = mOutputFairmq->sendStfToTfBuilder(pTfBuilderId, std::move(lStf));
+    bool lOk = false;
+    if (mOutputUCX) {
+      lOk = mOutputUCX->sendStfToTfBuilder(pTfBuilderId, std::move(lStf));
+    } else if (mOutputFairMQ) {
+      lOk = mOutputFairMQ->sendStfToTfBuilder(pTfBuilderId, std::move(lStf));
+    }
     if (!lOk) {
       pRes.set_status(StfDataResponse::TF_BUILDER_UNKNOWN);
       mDropQueue.push(std::move(lStf));

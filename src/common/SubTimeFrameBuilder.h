@@ -194,7 +194,18 @@ class TimeFrameBuilder
 
   inline auto freeData() const { return mMemRes.freeData(); }
 
- private:
+  // support for ucx txg allocations
+  inline void allocDataBuffers(const std::vector<uint64_t> &pTxgSizes, std::vector<void*> &pTxgPtrs) {
+    mMemRes.allocDataBuffers(pTxgSizes, std::back_inserter(pTxgPtrs));
+  }
+
+  inline void allocHeaderMsgs(const std::vector<uint64_t> &pTxgSizes, std::vector<FairMQMessagePtr> &pHdrVec) {
+    mMemRes.allocHdrBuffers(pTxgSizes, std::back_inserter(pHdrVec));
+  }
+
+  inline void newDataFmqMessagesFromPtr(const std::vector<std::pair<void*, std::size_t>> &pPtrSizes, std::vector<FairMQMessagePtr> &pDataVec) {
+    mMemRes.fmqFromDataBuffers(pPtrSizes, std::back_inserter(pDataVec));
+  }
 
   SyncMemoryResources &mMemRes;
 };

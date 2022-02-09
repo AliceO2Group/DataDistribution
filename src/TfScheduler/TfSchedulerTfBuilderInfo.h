@@ -84,7 +84,7 @@ class TfSchedulerTfBuilderInfo
  public:
 
   TfSchedulerTfBuilderInfo() = delete;
-  TfSchedulerTfBuilderInfo(std::shared_ptr<ConsulTfSchedulerInstance> pDiscoveryConfig)
+  TfSchedulerTfBuilderInfo(std::shared_ptr<ConsulTfScheduler> pDiscoveryConfig)
   : mDiscoveryConfig(pDiscoveryConfig)
   {
     mGlobalInfo.reserve(1000); // number of EPNs
@@ -184,7 +184,7 @@ private:
   static constexpr auto sTfBuilderDiscardTimeout = 5s;
 
   /// Discovery configuration
-  std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;
+  std::shared_ptr<ConsulTfScheduler> mDiscoveryConfig;
 
   /// Housekeeping thread
   std::atomic_bool mRunning = false;

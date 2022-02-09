@@ -191,7 +191,8 @@ struct EquipmentIdentifier {
   friend class StfToDplAdapter;                \
   friend class DplToStfAdapter;                \
   friend class IovSerializer;                  \
-  friend class IovDeserializer;
+  friend class IovDeserializer;                \
+  friend class StfSenderOutputUCX;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// SubTimeFrame
@@ -266,7 +267,6 @@ class SubTimeFrame : public IDataModelObject
       if (!mHeader) {
         return;
       }
-      // TODO: get returns const ptr
       // DataHeader must be first in the stack
       o2hdr::DataHeader *lDataHdr = reinterpret_cast<o2hdr::DataHeader*>(mHeader->GetData());
       lDataHdr->firstTForbit = pFirstOrbit;
@@ -333,8 +333,8 @@ class SubTimeFrame : public IDataModelObject
   void updateStf() const;
 
  protected:
-  void accept(ISubTimeFrameVisitor& v) override { updateStf(); v.visit(*this); }
-  void accept(ISubTimeFrameConstVisitor& v) const override { updateStf(); v.visit(*this); }
+  void accept(ISubTimeFrameVisitor& v, void *p = nullptr) override { updateStf(); v.visit(*this, p); }
+  void accept(ISubTimeFrameConstVisitor& v, void *p = nullptr) const override { updateStf(); v.visit(*this, p); }
 
  private:
 

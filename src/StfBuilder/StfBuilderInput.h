@@ -31,8 +31,6 @@ class StfBuilderDevice;
 
 class StfInputInterface
 {
-  // consul options
-  static constexpr std::string_view cNumPagesInTopologicalStfKey = "NumPagesInTopologicalStf"; // default 128
 
 public:
   static constexpr uint8_t sReadoutInterfaceVersion = 2;

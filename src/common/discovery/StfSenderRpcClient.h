@@ -54,6 +54,19 @@ public:
     return mStub->DisconnectTfBuilderRequest(&lContext, pParam, &pRet);
   }
 
+  // Connect UCX channels
+  //rpc ConnectTfBuilderUCXRequest(TfBuilderUCXEndpoint) returns (ConnectTfBuilderResponse) { }
+  grpc::Status ConnectTfBuilderUCXRequest(const TfBuilderUCXEndpoint &pParam, ConnectTfBuilderUCXResponse &pRet) {
+    ClientContext lContext;
+    return mStub->ConnectTfBuilderUCXRequest(&lContext, pParam, &pRet);
+  }
+
+  //rpc DisconnectTfBuilderUCXRequest(TfBuilderUCXEndpoint) returns (StatusResponse) { }
+  grpc::Status DisconnectTfBuilderUCXRequest(const TfBuilderUCXEndpoint &pParam, StatusResponse &pRet) {
+    ClientContext lContext;
+    return mStub->DisconnectTfBuilderUCXRequest(&lContext, pParam, &pRet);
+  }
+
   // rpc StfDataRequest(StfDataRequestMessage) returns (StfDataResponse) { }
   grpc::Status StfDataRequest(const StfDataRequestMessage &pParam, StfDataResponse &pRet /*out*/) {
     ClientContext lContext;
@@ -63,7 +76,7 @@ public:
   // rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
   bool TerminatePartition() {
     ClientContext lContext;
-    PartitionInfo lPartInfo; // TODO: specify and check partition ID
+    PartitionInfo lPartInfo;
     PartitionResponse lRet;
 
     const auto lStatus = mStub->TerminatePartition(&lContext, lPartInfo, &lRet);
@@ -111,7 +124,7 @@ public:
     // try to connect to all StfSenders gRPC endpoints
 
     // get a set of missing StfSenders
-    TfSchedulerInstanceConfigStatus lSchedulerInst;
+    TfSchedulerConfigStatus lSchedulerInst;
     if (! mDiscoveryConfig->getTfSchedulerConfig(lPartId, lSchedulerInst /*out*/)) {
       IDDLOG_RL(2000, "TfScheduler is not running. partition={}", lPartId);
       return false;

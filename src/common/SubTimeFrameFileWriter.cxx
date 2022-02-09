@@ -177,7 +177,7 @@ SubTimeFrameFileWriter::~SubTimeFrameFileWriter()
   remove();
 }
 
-void SubTimeFrameFileWriter::visit(const SubTimeFrame& pStf)
+void SubTimeFrameFileWriter::visit(const SubTimeFrame& pStf, void*)
 {
   mStfData.clear();
   assert(mStfDataIndex.empty());

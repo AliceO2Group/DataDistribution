@@ -41,8 +41,7 @@ struct ProcessType {
   static const ProcessType StfBuilder;
   static const ProcessType StfSender;
   static const ProcessType TfBuilder;
-  static const ProcessType TfSchedulerService;
-  static const ProcessType TfSchedulerInstance;
+  static const ProcessType TfScheduler;
 
   constexpr ProcessType(int pType = 0) : mType(pType) { }
 
@@ -50,8 +49,7 @@ struct ProcessType {
     if (pTypeStr == "StfBuilder")  { *this = ProcessType::StfBuilder; return; }
     if (pTypeStr == "StfSender")   { *this = ProcessType::StfSender; return; }
     if (pTypeStr == "TfBuilder")   { *this = ProcessType::TfBuilder; return; }
-    if (pTypeStr == "TfSchedulerService") { *this = ProcessType::TfSchedulerService; return; }
-    if (pTypeStr == "TfSchedulerInstance") { *this = ProcessType::TfSchedulerInstance; return; }
+    if (pTypeStr == "TfScheduler") { *this = ProcessType::TfScheduler; return; }
 
     assert(0 && "should not reach");
     mType = -1;
@@ -74,11 +72,8 @@ struct ProcessType {
     if (*this == ProcessType::TfBuilder)
       return "TfBuilder";
 
-    if (*this == ProcessType::TfSchedulerService)
-      return "TfSchedulerService";
-
-    if (*this == ProcessType::TfSchedulerInstance)
-      return "TfSchedulerInstance";
+    if (*this == ProcessType::TfScheduler)
+      return "TfScheduler";
 
     assert(0 && "Should not reach");
     return "UnknownType";
@@ -90,8 +85,7 @@ struct ProcessType {
 constexpr const ProcessType ProcessType::StfBuilder{1};
 constexpr const ProcessType ProcessType::StfSender{2};
 constexpr const ProcessType ProcessType::TfBuilder{3};
-constexpr const ProcessType ProcessType::TfSchedulerService{4};
-constexpr const ProcessType ProcessType::TfSchedulerInstance{5};
+constexpr const ProcessType ProcessType::TfScheduler{4};
 
 
 class Config {
@@ -99,13 +93,11 @@ public:
 
   static constexpr const char* OptionKeyDiscoveryNetInterface = "discovery-net-if";
   static constexpr const char* OptionKeyDiscoveryEndpoint = "discovery-endpoint";
-
   static constexpr const char* OptionKeyDiscoveryId = "discovery-id";
-
   static constexpr const char* OptionKeyDiscoveryPartition = "discovery-partition";
 
   static
-  boost::program_options::options_description getProgramOptions(const ProcessType pProcType)
+  boost::program_options::options_description getProgramOptions()
   {
     boost::program_options::options_description lDataDistDiscovery("DataDistribution discovery options", 120);
 
@@ -124,12 +116,10 @@ public:
       boost::program_options::value<std::string>()->default_value(""),
       "Specifies ID of the process for DataDistribution discovery. Unique within (partition, process type).");
 
-    if (pProcType != ProcessType::TfSchedulerService) {
-      lDataDistDiscovery.add_options()(
-        OptionKeyDiscoveryPartition,
-        boost::program_options::value<std::string>()->default_value(""),
-        "Specifies partition ID for the DataDistribution discovery.");
-    }
+    lDataDistDiscovery.add_options()(
+      OptionKeyDiscoveryPartition,
+      boost::program_options::value<std::string>()->default_value(""),
+      "Specifies partition ID for the DataDistribution discovery.");
 
     return lDataDistDiscovery;
   }

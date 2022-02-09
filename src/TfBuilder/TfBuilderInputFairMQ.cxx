@@ -36,6 +36,8 @@ bool TfBuilderInputFairMQ::start(std::shared_ptr<ConsulTfBuilder> pConfig, std::
 {
   auto &lStatus = pConfig->status();
 
+  lStatus.mutable_sockets()->set_enabled(false);
+
   std::uint32_t lNumStfSenders;
   if (!mRpc->TfSchedRpcCli().NumStfSendersInPartitionRequest(lNumStfSenders)) {
     WDDLOG_RL(5000, "gRPC error: cannot reach scheduler. scheduler_ep={}", mRpc->TfSchedRpcCli().getEndpoint());
@@ -79,7 +81,7 @@ bool TfBuilderInputFairMQ::start(std::shared_ptr<ConsulTfBuilder> pConfig, std::
       "stf_sender_chan_" + std::to_string(lSocketIdx) ,  // name
       "pull",               // type
       "bind",               // method
-      lAddress,             // address (TODO: this should only ever be ib interface)
+      lAddress,             // address (this should only ever be ib interface)
       pZMQTransportFactory
     );
 
@@ -104,8 +106,12 @@ bool TfBuilderInputFairMQ::start(std::shared_ptr<ConsulTfBuilder> pConfig, std::
     lSocket.set_idx(lSocketIdx);
     lSocket.set_endpoint(lAddress);
 
+
     mStfSenderChannels.push_back(std::move(lNewChannel));
   }
+
+  // mark the fmq input as active
+  lStatus.mutable_sockets()->set_enabled(true);
 
   if (pConfig->write()) {
     IDDLOG("New channels created. Discovery configuration written.");
@@ -118,7 +124,7 @@ bool TfBuilderInputFairMQ::start(std::shared_ptr<ConsulTfBuilder> pConfig, std::
   // Connect all StfSenders
   TfBuilderConnectionResponse lConnResult;
   do {
-    IDDLOG("Requesting StfSender connections from the TfSchedulerInstance.");
+    IDDLOG("Requesting StfSender connections from the TfScheduler.");
 
     lConnResult.Clear();
     if (!mRpc->TfSchedRpcCli().TfBuilderConnectionRequest(lStatus, lConnResult)) {
@@ -262,21 +268,24 @@ void TfBuilderInputFairMQ::DataHandlerThread(const std::uint32_t pFlpIndex, cons
       continue;
     }
 
-    // move data to the dedicated region if required
-    lStfReceiver.copy_to_region(*lStfData);
-
     // get Stf ID
     FairMQMessagePtr lHdrMessage = std::move(lStfData->back()); lStfData->pop_back();
-    const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(lHdrMessage);
+
+    IovStfHeader lStfHeaderMeta;
+    lStfHeaderMeta.ParseFromArray(lHdrMessage->GetData(), lHdrMessage->GetSize());
+    auto lStfHdr = std::make_unique<IovStfHdrMeta>(lStfHeaderMeta.stf_hdr_meta());
+
+    const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(*lStfHdr.get());
     const std::uint64_t lTfId = lStfHeader.mId;
 
-    // WDDLOG("STF received. hdr_size={} num_data={}", lHdrMessage->GetSize(), lStfData->size());
+    // move data to the dedicated region if required
+    lStfReceiver.copy_to_region(*lStfData);
 
     // signal in flight STF is finished (or error)
     mRpc->recordStfReceived(pStfSenderId, lTfId);
 
     // send to deserializer thread so that we can keep receiving
-    mReceivedDataQueue.push(lTfId, lStfHeader.mOrigin, pStfSenderId, std::move(lHdrMessage), std::move(lStfData));
+    mReceivedDataQueue.push(lTfId, lStfHeader.mOrigin, pStfSenderId, std::move(lStfHdr), std::move(lStfData));
     lNumStfs++;
   }
 

@@ -22,8 +22,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -fno-inline -fno-omit-frame-pointer -fmax-errors=10")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -fno-omit-frame-pointer")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -ffast-math -DNDEBUG -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -ffast-math -DNDEBUG")
 
 if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Werror")
@@ -136,11 +136,17 @@ endif()
 
 include(jemalloc)
 
+
+find_package(UCX)
+# NOTE: Determines if we build StfSender, TfBuilder and TfScheduler
+#       StfBuilder is always built
+
 message(STATUS "Boost version : ${Boost_VERSION}")
 message(STATUS "Boost include path : ${Boost_INCLUDE_DIRS}")
 message(STATUS "jemalloc include : ${jemalloc_INCLUDE_DIRS}")
 message(STATUS "FairMQ version : ${FairMQ_VERSION}")
 message(STATUS "AliceO2 include path : ${AliceO2_INCLUDE_DIR}")
+message(STATUS "UCX include path : ${UCX_INCLUDE_DIR}")
 
 add_subdirectory(src)
 add_subdirectory(script)

@@ -83,6 +83,12 @@ void TfSchedulerConnManager::connectTfBuilder(const TfBuilderConfigStatus &pTfBu
 {
   pResponse.Clear();
 
+  if (!pTfBuilderStatus.sockets().enabled()) {
+    EDDLOG("TfBuilder FairMQ Connection error: TfBuilder does not have UCX listener enabled.");
+    pResponse.set_status(ERROR_TRANSPORT_NOT_ENABLED);
+    return;
+  }
+
   const std::string &lTfBuilderId = pTfBuilderStatus.info().process_id();
 
   if (pTfBuilderStatus.sockets().map().size() != mPartitionInfo.mStfSenderIdList.size()) {
@@ -197,6 +203,107 @@ void TfSchedulerConnManager::disconnectTfBuilder(const TfBuilderConfigStatus &pT
     }
   }
 }
+
+void TfSchedulerConnManager::connectTfBuilderUCX(const TfBuilderConfigStatus &pTfBuilderStatus, TfBuilderUCXConnectionResponse &pResponse /*out*/)
+{
+  pResponse.Clear();
+
+  if (!pTfBuilderStatus.ucx_info().enabled()) {
+    EDDLOG("TfBuilder UCX Connection error: TfBuilder does not have UCX listener enabled.");
+    pResponse.set_status(ERROR_TRANSPORT_NOT_ENABLED);
+    return;
+  }
+
+  const std::string &lTfBuilderId = pTfBuilderStatus.info().process_id();
+  // const auto &lListenAddr = pTfBuilderStatus.ucx_info().listen_ip();
+  // const auto &lListenPort = pTfBuilderStatus.ucx_info().listen_port();
+
+  std::scoped_lock lLock(mStfSenderClientsLock);
+
+  if (!stfSendersReady()) {
+    IDDLOG("TfBuilder UCX Connection: StfSenders gRPC connection not ready.");
+    pResponse.set_status(ERROR_STF_SENDERS_NOT_READY);
+    return;
+  }
+
+  // Open the gRPC connection to the new TfBuilder (will only add if already does not exist)
+  if (!newTfBuilderRpcClient(lTfBuilderId)) {
+    WDDLOG("TfBuilder gRPC connection error: Cannot open the gRPC connection. tfb_id={}", lTfBuilderId);
+    pResponse.set_status(ERROR_GRPC_TF_BUILDER);
+    return;
+  }
+
+  // send message to all StfSenders to connect
+  bool lConnectionsOk = true;
+  pResponse.set_status(OK);
+
+  TfBuilderUCXEndpoint lParam;
+  lParam.set_tf_builder_id(lTfBuilderId);
+  lParam.mutable_endpoint()->CopyFrom(pTfBuilderStatus.ucx_info());
+
+  for (auto &[lStfSenderId, lRpcClient] : mStfSenderRpcClients) {
+    ConnectTfBuilderUCXResponse lResponse;
+    if(!lRpcClient->ConnectTfBuilderUCXRequest(lParam, lResponse).ok()) {
+      EDDLOG_RL(1000, "TfBuilder UCX Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={}",
+        lStfSenderId, lTfBuilderId);
+      pResponse.set_status(ERROR_GRPC_STF_SENDER);
+      lConnectionsOk = false;
+      break;
+    }
+
+    // check StfSender status
+    if (lResponse.status() != OK) {
+      EDDLOG_RL(1000, "TfBuilder UCX Connection error: cannot connect. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
+      pResponse.set_status(lResponse.status());
+      lConnectionsOk = false;
+      break;
+    }
+
+    // save connection for response
+    auto lConnMap = pResponse.mutable_connection_map();
+    lConnMap->insert({ lStfSenderId, lResponse.stf_sender_ep()});
+  }
+
+  if (! lConnectionsOk) {
+    StatusResponse lResponse;
+    // remove all existing connection
+    disconnectTfBuilderUCX(pTfBuilderStatus, lResponse);
+    assert (pResponse.status() != OK);
+  }
+}
+
+void TfSchedulerConnManager::disconnectTfBuilderUCX(const TfBuilderConfigStatus &pTfBuilderStatus, StatusResponse &pResponse /*out*/)
+{
+  pResponse.set_status(0);
+  const std::string &lTfBuilderId = pTfBuilderStatus.info().process_id();
+
+  std::scoped_lock lLock(mStfSenderClientsLock);
+  // Remove TfBuilder RPC client (it might be removed already)
+  deleteTfBuilderRpcClient(lTfBuilderId);
+
+  // Send disconnect to all StfSender peers
+  TfBuilderUCXEndpoint lParam;
+  lParam.set_tf_builder_id(lTfBuilderId);
+  lParam.mutable_endpoint()->CopyFrom(pTfBuilderStatus.ucx_info());
+
+  for (auto &[lStfSenderId, lRpcClient] : mStfSenderRpcClients) {
+    StatusResponse lResponse;
+    if(!lRpcClient->DisconnectTfBuilderUCXRequest(lParam, lResponse).ok()) {
+      EDDLOG_RL(1000, "TfBuilder UCX Disconnection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={}",
+        lStfSenderId, lTfBuilderId);
+      pResponse.set_status(ERROR_GRPC_STF_SENDER);
+      continue;
+    }
+
+    // check StfSender status
+    if (lResponse.status() != 0) {
+      IDDLOG_RL(1000, "TfBuilder disconnection error. stfs_id={} tfb_id={} response={}", lStfSenderId, lTfBuilderId, lResponse.status());
+      pResponse.set_status(ERROR_STF_SENDER_CONNECTING);
+      continue;
+    }
+  }
+}
+
 
 // Partition RPC: keep sending until all TfBuilders are gone
 bool TfSchedulerConnManager::requestTfBuildersTerminate() {

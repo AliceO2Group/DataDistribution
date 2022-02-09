@@ -25,56 +25,44 @@ To use `o2-readout-exe` as the CRU emulator:
 FMQDevice channel configuration is in the file `script/datadist_standalone_chain.json`.
 If using the CRU emulation mode of the `o2-readout-exe` process, configuration of the emulator equipment is read from `readout_cfg/readout_emu.cfg`.
 
-`StfBuilder` component is used to read and inject previously recorded SubTimeFrames or TimeFrames (same file and data structure).
 
+## Consul parameter for online runs
 
-### Example: running the chain with emulated data
-
-```
-# adapt the configuration file path!
-
-o2-readout-exe file:///$HOME/alice/sw/slc7_x86-64/DataDistribution/latest/config/readout_emu.cfg
-```
-
-```
-StfBuilder --id stf_builder-0 --transport shmem --detector TPC --dpl-channel-name=dpl-chan --channel-config "name=dpl-chan,type=push,method=bind,address=ipc:///tmp/stf-builder-dpl-pipe-0,transport=shmem,rateLogging=1" --channel-config "name=readout,type=pull,method=connect,address=ipc:///tmp/readout-pipe-0,transport=shmem,rateLogging=1"
-```
-
-```
-o2-dpl-raw-proxy -b --dataspec "B:TPC/RAWDATA" --channel-config "name=readout-proxy,type=pull,method=connect,address=ipc:///tmp/stf-builder-dpl-pipe-0,transport=shmem,rateLogging=1" | o2-dpl-raw-parser -b --input-spec "B:TPC/RAWDATA"
-```
-
-Make sure that only a single instance of the proxy is started.
-
-
-
-## Environment variables (advanced or temporary options)
-
-  - `DATADIST_FEE_MASK=0xffff`  Apply the mask if StfBuilder is configured to use the FeeID field as a O2::Subspecification (O2::Subspec = (RDH::FeeID & DATADIST_FEE_MASK))
-
-  - `DATADIST_FILE_READ_COUNT=N`     Terminate after injecting set number of TF files. Data set will be repeated if necessary. Number of TimeFrames will be `DATADIST_FILE_READ_COUNT x Number of TFs per file`.
-
-  - `DATADIST_DEBUG_DPL_CHAN` When defined, data sent to DPL will be checked for consistency with the O2 data model. Note: will be slow with larger TimeFrames.
-
-### Shared memory:
-
-  - `DATADIST_NO_MLOCK` Disable locking of the shared memory segments. Only use in testing and development!
-
-  - `DATADIST_SHM_ZERO` When defined, shared memory segment will be zeroed before use. Because of large performance impact, only use to check for memory corruption, not in production.
-
-  - `ENV_SHM_ZERO_CHECK` Define to enable checking for memory corruption in unmanaged region. Each de-allocated message will be checked for write-past-end corruption.
-
-
-## Consul parameters (tuning option)
+### DataDistribution Global
+ - `DataDistNetworkTransport` (fmq|ucx) Use select transport for FLP-EPN data transport
 
 ### StfBuilder
-  **NumPagesInTopologicalStf** (`epn/data-dist/parameters/StfBuilder/NumPagesInTopologicalStf`)
-  Set how many pages are to be aggregated for each link in the topological data distribution mode. Default is 128.
+
+ - `NumPagesInTopologicalStf` (128) Page aggregation for topological runs. Larger number of pages decreases FLP-EPN interaction rate (better performance)
+
+
+
+### StfSender
+
+ - `StfBufferSizeMB` (MegaBytes) Define size of DataDist buffer on FLP. Default is 32768 (MiB)
+
+ - `UcxRdmaGapB` (8192 Bytes) Allowed gap between two messages of the same region when creating RMA txgs.
+                              Larger gap creates fewer transactions, but can increase the amount of transferred data.
+
+ - `UcxStfSenderThreadPoolSize` (0) Size of StfSender tread pool. Default 0 (number of cpu cores). Threads are not CPU intensive,
+                                    they enable simultaneous transfers.
+
+
+### TfBuilder
+
+ - `MaxNumStfTransfers` (100) Define maximum number of concurrent STF transfers. Helps with long tails of TCP transfers.
+
+ - `UcxTfBuilderThreadPoolSize` (0) Size of receiver tread pool. Default 0 (number of cpu cores)
+
+ - `UcxNumConcurrentRmaGetOps` (8) Number of concurrent RMA Get operations per ucx thread.
 
 
 ### TfScheduler
-  **MaxNumTfInBuilding** (`epn/data-dist/parameters/TfScheduler/MaxNumTfInBuilding`)
-  Override the number of TFs each TfBuilder is allowed to build concurrently. This variable can be increased if a small number of EPNs is used.
 
-  **StaleStfTimeoutMs** (`epn/data-dist/parameters/TfScheduler/StaleStfTimeoutMs`)
-  Timeout (milliseconds) at which point the non-complete TFs will be scheduled for building or deletion. Default is 5000 (5s)
+ - `MaxNumTfsInBuilding` (25) Define maximum number of concurrent TFs in building per TfBuilder
+
+ - `BuildIncompleteTfs` (true) Decision wether to build or drop incomplete TFs
+
+ - `StaleTfTimeoutMs` (1000 ms) An incomplete TF is considered stale when the following timeout expires after the last STF is reported.
+
+ - `IncompleteTfsMaxCnt` (100) Max number of incomplete TFs to keep before considering them stale
