@@ -24,10 +24,8 @@ using namespace std::chrono_literals;
 void StfSenderOutputFairMQ::start(std::shared_ptr<FairMQTransportFactory> pZMQTransportFactory)
 {
   mZMQTransportFactory = pZMQTransportFactory;
-
   mRunning = true;
 }
-
 
 void StfSenderOutputFairMQ::stop()
 {
@@ -69,7 +67,7 @@ ConnectStatus StfSenderOutputFairMQ::connectTfBuilder(const std::string &pTfBuil
     lChanName ,              // name
     "push",                  // type
     "connect",               // method
-    pEndpoint,               // address (TODO: this should only ever be the IB interface)
+    pEndpoint,               // address (this should only ever be the IB interface)
     mZMQTransportFactory
   );
 
@@ -128,14 +126,14 @@ bool StfSenderOutputFairMQ::disconnectTfBuilder(const std::string &pTfBuilderId,
     auto lIt = mOutputMap.find(pTfBuilderId);
 
     if (lIt == mOutputMap.end()) {
-      WDDLOG("StfSenderOutput::disconnectTfBuilder: TfBuilder was not connected. tfb_id={}", pTfBuilderId);
-      return false; // TODO: ERRORCODE
+      WDDLOG("StfSenderOutputFairMQ::disconnectTfBuilder: TfBuilder was not connected. tfb_id={}", pTfBuilderId);
+      return false;
     }
 
     if (!lEndpoint.empty()) {
       // Check if the endpoint matches if provided
       if (lEndpoint != lIt->second.mTfBuilderEndpoint) {
-        WDDLOG("StfSenderOutput::disconnectTfBuilder: TfBuilder connected with a different endpoint"
+        WDDLOG("StfSenderOutputFairMQ::disconnectTfBuilder: TfBuilder connected with a different endpoint"
           "current_ep={} requested_ep={}", lOutputObj.mTfBuilderEndpoint, lEndpoint);
         return false;
       }
@@ -146,20 +144,20 @@ bool StfSenderOutputFairMQ::disconnectTfBuilder(const std::string &pTfBuilderId,
   }
 
   // stop and teardown everything
-  DDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending thread. tfb_id={}", pTfBuilderId);
+  DDDLOG("StfSenderOutputFairMQ::disconnectTfBuilder: Stopping sending thread. tfb_id={}", pTfBuilderId);
   lOutputObj.mStfQueue->stop();
   lOutputObj.mStfSerializer->stop();
   if (lOutputObj.mThread.joinable()) {
     lOutputObj.mThread.join();
   }
-  DDDLOG("StfSenderOutput::disconnectTfBuilder: Stopping sending channel. tfb_id={}", pTfBuilderId);
+  DDDLOG("StfSenderOutputFairMQ::disconnectTfBuilder: Stopping sending channel. tfb_id={}", pTfBuilderId);
 
   // update our connection status
   auto &lSocketMap = *(mDiscoveryConfig->status().mutable_sockets()->mutable_map());
   lSocketMap.erase(pTfBuilderId);
   mDiscoveryConfig->write();
 
-  DDDLOG("StfSenderOutput::disconnectTfBuilder tfb_id={}", pTfBuilderId);
+  DDDLOG("StfSenderOutputFairMQ::disconnectTfBuilder tfb_id={}", pTfBuilderId);
   return true;
 }
 
@@ -186,7 +184,7 @@ bool StfSenderOutputFairMQ::sendStfToTfBuilder(const std::string &pTfBuilderId, 
 /// Sending thread
 void StfSenderOutputFairMQ::DataHandlerThread(const std::string pTfBuilderId)
 {
-  DDDLOG("StfSenderOutput[{}]: Starting the thread", pTfBuilderId);
+  DDDLOG("StfSenderOutputFairMQ[{}]: Starting the thread", pTfBuilderId);
   // decrease the priority
 #if defined(__linux__)
   if (nice(2)) {}
@@ -222,9 +220,9 @@ void StfSenderOutputFairMQ::DataHandlerThread(const std::string pTfBuilderId)
       lStfSerializer->serialize(std::move(lStf));
     } catch (std::exception &e) {
       if (mRunning.load()){
-        EDDLOG("StfSenderOutput[{}]: exception on send, what={}", pTfBuilderId, e.what());
+        EDDLOG("StfSenderOutputFairMQ[{}]: exception on send, what={}", pTfBuilderId, e.what());
       } else {
-        IDDLOG("StfSenderOutput[{}](NOT RUNNING): exception on send. what={}", pTfBuilderId, e.what());
+        IDDLOG("StfSenderOutputFairMQ[{}](NOT RUNNING): exception on send. what={}", pTfBuilderId, e.what());
       }
       break;
     }
@@ -253,7 +251,7 @@ void StfSenderOutputFairMQ::DataHandlerThread(const std::string pTfBuilderId)
     DDMON("stfsender", "stf_output.stf_id", lStfId);
   }
 
-  DDDLOG("Exiting StfSenderOutput[{}]", pTfBuilderId);
+  DDDLOG("Exiting StfSenderOutputFairMQ[{}]", pTfBuilderId);
 }
 
 

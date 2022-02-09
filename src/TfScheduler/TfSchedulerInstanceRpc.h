@@ -41,7 +41,7 @@ class TfSchedulerInstanceRpcImpl final : public TfSchedulerInstanceRpc::Service
 {
  public:
   TfSchedulerInstanceRpcImpl() = delete;
-  TfSchedulerInstanceRpcImpl(std::shared_ptr<ConsulTfSchedulerInstance> pDiscoveryConfig, const PartitionRequest &pPartitionRequest)
+  TfSchedulerInstanceRpcImpl(std::shared_ptr<ConsulTfScheduler> pDiscoveryConfig, const PartitionRequest &pPartitionRequest)
   :
   mDiscoveryConfig(pDiscoveryConfig),
   mPartitionInfo(pPartitionRequest),
@@ -52,17 +52,23 @@ class TfSchedulerInstanceRpcImpl final : public TfSchedulerInstanceRpc::Service
 
   virtual ~TfSchedulerInstanceRpcImpl() { }
 
-  ::grpc::Status HeartBeat(::grpc::ServerContext* context, const ::o2::DataDistribution::BasicInfo* request, ::google::protobuf::Empty* response) override;
+  ::grpc::Status HeartBeat(::grpc::ServerContext* context, const BasicInfo* request, ::google::protobuf::Empty* response) override;
 
-  ::grpc::Status GetPartitionState(::grpc::ServerContext* context, const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response) override;
-  ::grpc::Status TerminatePartition(::grpc::ServerContext* context, const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response) override;
+  ::grpc::Status GetPartitionState(::grpc::ServerContext* context, const PartitionInfo* request, PartitionResponse* response) override;
+  ::grpc::Status TerminatePartition(::grpc::ServerContext* context, const PartitionInfo* request, PartitionResponse* response) override;
 
-  ::grpc::Status NumStfSendersInPartitionRequest(::grpc::ServerContext* context, const ::google::protobuf::Empty* request, ::o2::DataDistribution::NumStfSendersInPartitionResponse* response) override;
-  ::grpc::Status TfBuilderConnectionRequest(::grpc::ServerContext* context, const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::TfBuilderConnectionResponse* response) override;
-  ::grpc::Status TfBuilderDisconnectionRequest(::grpc::ServerContext* context, const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::StatusResponse* response) override;
+  ::grpc::Status NumStfSendersInPartitionRequest(::grpc::ServerContext* context, const ::google::protobuf::Empty* request, NumStfSendersInPartitionResponse* response) override;
 
-  ::grpc::Status TfBuilderUpdate(::grpc::ServerContext* context, const ::o2::DataDistribution::TfBuilderUpdateMessage* request, ::google::protobuf::Empty* response) override;
-  ::grpc::Status StfSenderStfUpdate(::grpc::ServerContext* context, const ::o2::DataDistribution::StfSenderStfInfo* request, ::o2::DataDistribution::SchedulerStfInfoResponse* response) override;
+  // TfBuilder FairMQ connect/disconnect
+  ::grpc::Status TfBuilderConnectionRequest(::grpc::ServerContext* context, const TfBuilderConfigStatus* request, TfBuilderConnectionResponse* response) override;
+  ::grpc::Status TfBuilderDisconnectionRequest(::grpc::ServerContext* context, const TfBuilderConfigStatus* request, StatusResponse* response) override;
+
+  // TfBuilder UCX connect/disconnect
+  ::grpc::Status TfBuilderUCXConnectionRequest(::grpc::ServerContext* context, const TfBuilderConfigStatus* request, TfBuilderUCXConnectionResponse* response) override;
+  ::grpc::Status TfBuilderUCXDisconnectionRequest(::grpc::ServerContext* context, const TfBuilderConfigStatus* request, StatusResponse* response) override;
+
+  ::grpc::Status TfBuilderUpdate(::grpc::ServerContext* context, const TfBuilderUpdateMessage* request, ::google::protobuf::Empty* response) override;
+  ::grpc::Status StfSenderStfUpdate(::grpc::ServerContext* context, const StfSenderStfInfo* request, SchedulerStfInfoResponse* response) override;
 
 
   void initDiscovery(const std::string pRpcSrvBindIp, int &lRealPort /*[out]*/);
@@ -87,7 +93,7 @@ class TfSchedulerInstanceRpcImpl final : public TfSchedulerInstanceRpc::Service
   std::thread mMonitorThread;
 
   /// Discovery
-  std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;
+  std::shared_ptr<ConsulTfScheduler> mDiscoveryConfig;
   /// Partition information
   PartitionRequest mPartitionInfo;
 

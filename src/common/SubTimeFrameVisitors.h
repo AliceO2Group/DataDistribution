@@ -56,7 +56,7 @@ class IovSerializer : public ISubTimeFrameVisitor
   void stop() { mRunning = false; }
 
  protected:
-  void visit(SubTimeFrame& pStf) override;
+  void visit(SubTimeFrame& pStf, void*) override;
 
  private:
   std::atomic_bool mRunning = true;
@@ -81,19 +81,20 @@ class IovDeserializer : public ISubTimeFrameVisitor
   : mTfBld(pTfBld) { }
   virtual ~IovDeserializer() = default;
 
-  std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan, bool pLogError = false);
-  std::unique_ptr<SubTimeFrame> deserialize(FairMQMessagePtr &pHdrMetaMsg, std::vector<FairMQMessagePtr>& pDataMsgs);
+  std::unique_ptr<SubTimeFrame> deserialize(const IovStfHdrMeta &pHdrMeta, std::vector<FairMQMessagePtr>& pDataMsgs);
 
-  SubTimeFrame::Header peek_tf_header(FairMQMessagePtr& pHeaderMsg) const;
+  SubTimeFrame::Header peek_tf_header(const IovStfHdrMeta &pHdrMeta) const;
 
   bool copy_to_region(std::vector<FairMQMessagePtr>& pMsgs /* in/out */);
 
  protected:
   std::unique_ptr<SubTimeFrame> deserialize_impl();
-  void visit(SubTimeFrame& pStf) override;
+  void visit(SubTimeFrame& pStf, void*) override;
 
  private:
-  IovStfHeader mIovHeader;
+  // IovStfHeader mIovHeader;
+  IovStfHdrMeta mIovStfHeader;
+
   std::vector<FairMQMessagePtr> mHdrs;
   std::vector<FairMQMessagePtr> mData;
 

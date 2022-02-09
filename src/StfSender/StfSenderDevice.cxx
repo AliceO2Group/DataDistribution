@@ -63,6 +63,12 @@ void StfSenderDevice::InitTask()
 {
   DataDistLogger::SetThreadName("stfs-main");
 
+  // Not available in Init()
+  if (fair::mq::Transport::SHM != Transport()->GetType()) {
+    EDDLOG("Default transport parameter must be set to shm.");
+    throw std::runtime_error("Default transport parameter must be set to shm");
+  }
+
   I().mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
 
   // start monitoring

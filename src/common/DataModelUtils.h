@@ -28,20 +28,20 @@ class SubTimeFrame;
 class ISubTimeFrameVisitor
 {
  public:
-  virtual void visit(SubTimeFrame&) = 0;
+  virtual void visit(SubTimeFrame&, void *p = nullptr) = 0;
 };
 
 class ISubTimeFrameConstVisitor
 {
  public:
-  virtual void visit(const SubTimeFrame&) = 0;
+  virtual void visit(const SubTimeFrame&, void *p = nullptr) = 0;
 };
 
 class IDataModelObject
 {
  public:
-  virtual void accept(ISubTimeFrameVisitor& v) = 0;
-  virtual void accept(ISubTimeFrameConstVisitor& v) const = 0;
+  virtual void accept(ISubTimeFrameVisitor& v, void *p = nullptr) = 0;
+  virtual void accept(ISubTimeFrameConstVisitor& v, void *p = nullptr) const = 0;
 };
 }
 } /* o2::DataDistribution */

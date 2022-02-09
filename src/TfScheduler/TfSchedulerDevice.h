@@ -52,7 +52,7 @@ class TfSchedulerDevice : public DataDistDevice
   std::string mPartitionId;
   std::unique_ptr<TfSchedulerInstanceHandler> mSchedInstance;
 
-  std::unique_ptr<ConsulTfSchedulerService> mDiscoveryConfig;
+  std::shared_ptr<ConsulTfScheduler> mDiscoveryConfig;
 };
 }
 } /* namespace o2::DataDistribution */

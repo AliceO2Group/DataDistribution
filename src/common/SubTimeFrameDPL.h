@@ -56,7 +56,7 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
   inline void stop() { mRunning = false; }
 
  protected:
-  void visit(SubTimeFrame& pStf) override;
+  void visit(SubTimeFrame& pStf, void*) override;
 
   void inspect() const;
 
@@ -87,7 +87,7 @@ class DplToStfAdapter : public ISubTimeFrameVisitor
 
  protected:
   std::unique_ptr<SubTimeFrame> deserialize_impl();
-  void visit(SubTimeFrame& pStf) override;
+  void visit(SubTimeFrame& pStf, void*) override;
 
  private:
   std::vector<FairMQMessagePtr> mMessages;

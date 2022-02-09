@@ -19,6 +19,7 @@
 #include <ConfigConsul.h>
 
 #include <DataDistLogger.h>
+#include <DataDistributionOptions.h>
 
 #include <FairMQDevice.h>
 
@@ -76,7 +77,6 @@ mRunning = false;
     mStfSeqThread.join();
   }
 
-  // mStfBuilders.clear(); // TODO: deal with shm region cleanup
   mBuilderInputQueue.reset();
   mStfBuilder.reset();
 
@@ -437,8 +437,8 @@ void StfInputInterface::TopologicalStfBuilderThread()
   SubTimeFrameReadoutBuilder &lStfBuilder = *mStfBuilder;
 
   // get number of pages for per link aggregation
-  uint64_t lNumPagesInThresholdScanStf = std::clamp(
-    mDiscoveryConfig->getUInt64Param(cNumPagesInTopologicalStfKey, 128),
+  const uint64_t lNumPagesInThresholdScanStf = std::clamp(
+    mDiscoveryConfig->getUInt64Param(NumPagesInTopologicalStfKey, NumPagesInTopologicalStfDefault),
     std::uint64_t(1),
     std::uint64_t(50000)
   );
@@ -508,12 +508,6 @@ void StfInputInterface::TopologicalStfBuilderThread()
         // finish on a timeout
         finishBuildingCurrentStfs();
       }
-      // update config
-      lNumPagesInThresholdScanStf = std::clamp(
-        mDiscoveryConfig->getUInt64Param(cNumPagesInTopologicalStfKey, 128),
-        std::uint64_t(1),
-        std::uint64_t(50000)
-      );
 
       continue;
     } else if (!lRet && !mRunning) {
@@ -636,8 +630,6 @@ void StfInputInterface::StfSequencerThread()
 
       continue;
     }
-
-    // TODO: handle timeouts
   }
 
   DDDLOG("Exiting StfSequencerThread thread.");

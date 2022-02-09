@@ -40,7 +40,7 @@ struct SubTimeFrameFileMeta {
     auto lHdr = o2::header::DataHeader(
       SubTimeFrameFileMeta::sDataDescFileSubTimeFrame,
       o2::header::gDataOriginFLP,
-      0, // TODO: subspecification? FLP ID? EPN ID?
+      0, // subspecification: not used
       sizeof(SubTimeFrameFileMeta));
 
     lHdr.payloadSerializationMethod = o2::header::gSerializationMethodNone;
@@ -165,7 +165,7 @@ struct SubTimeFrameFileDataIndex {
     auto lHdr = o2::header::DataHeader(
       sDataDescFileStfDataIndex,
       o2::header::gDataOriginAny,
-      0, // TODO: subspecification? FLP ID? EPN ID?
+      0, // subspecification: not used
       mDataIndex.size() * sizeof(DataIndexElem));
 
     lHdr.payloadSerializationMethod = o2::header::gSerializationMethodNone;

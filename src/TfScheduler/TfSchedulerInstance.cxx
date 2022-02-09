@@ -29,15 +29,16 @@ namespace DataDistribution
 using namespace std::chrono_literals;
 
 TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
+  std::shared_ptr<ConsulTfScheduler> pConfig,
   const std::string &pProcessId,
   const PartitionRequest &pPartitionRequest)
 : mPartitionInfo(pPartitionRequest),
-  mDiscoveryConfig(std::make_shared<ConsulTfSchedulerInstance>(ProcessType::TfSchedulerInstance, Config::getEndpointOption(*pDev.GetConfig()))),
+  mDiscoveryConfig(pConfig),
   mRpcServer(mDiscoveryConfig, pPartitionRequest)
 {
   auto &lStatus = mDiscoveryConfig->status();
 
-  lStatus.mutable_info()->set_type(TfSchedulerInstance);
+  lStatus.mutable_info()->set_type(TfScheduler);
   lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
   lStatus.mutable_info()->set_process_id(pProcessId);
   lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*pDev.GetConfig()));
@@ -64,7 +65,7 @@ TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
   // enable monitoring
   DataDistMonitor::enable_datadist(1, mPartitionInfo.mPartitionId);
 
-  DDDLOG("Initialized new TfSchedulerInstance. partition={}", mPartitionInfo.mPartitionId);
+  DDDLOG("Initialized new TfScheduler. partition={}", mPartitionInfo.mPartitionId);
 }
 
 TfSchedulerInstanceHandler::~TfSchedulerInstanceHandler()
@@ -85,7 +86,7 @@ bool TfSchedulerInstanceHandler::start()
     return false;
   }
 
-  DDDLOG("Started new TfSchedulerInstance. partition={}", mPartitionInfo.mPartitionId);
+  DDDLOG("Started new TfScheduler. partition={}", mPartitionInfo.mPartitionId);
   return true;
 }
 
@@ -102,7 +103,7 @@ void TfSchedulerInstanceHandler::stop()
   if (mSchedulerInstanceThread.joinable()) {
     mSchedulerInstanceThread.join();
   }
-  DDDLOG("Stopped: TfSchedulerInstance");
+  DDDLOG("Stopped: TfScheduler");
 }
 
 void TfSchedulerInstanceHandler::TfSchedulerInstanceThread()

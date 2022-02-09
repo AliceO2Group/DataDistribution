@@ -136,7 +136,7 @@ void TfBuilderDevice::InitTask()
   }
 
   mRpc = std::make_shared<TfBuilderRpcImpl>(mDiscoveryConfig, *mMemI);
-  mFlpInputHandler = std::make_unique<TfBuilderInput>(*this, mRpc, eTfBuilderOut);
+  mFlpInputHandler = std::make_unique<TfBuilderInput>(*this, mDiscoveryConfig, mRpc, eTfBuilderOut);
 
   {
     // finish discovery information: gRPC server
@@ -171,7 +171,7 @@ void TfBuilderDevice::InitTask()
 
 bool TfBuilderDevice::start()
 {
-  while (!mRpc->start(mTfDataRegionSize, mFlpInputHandler->getDataQueue())) {
+  while (!mRpc->start(mTfDataRegionSize, mFlpInputHandler->getStfRequestQueue(), mFlpInputHandler->getDataQueue())) {
     // check if should stop looking for TfScheduler
     if (mRpc->isTerminateRequested()) {
       mShouldExit = true;
@@ -201,7 +201,7 @@ bool TfBuilderDevice::start()
   mFileSink.start();
 
   // Start input handlers
-  if (!mFlpInputHandler->start(mDiscoveryConfig)) {
+  if (!mFlpInputHandler->start()) {
     mShouldExit = true;
     EDDLOG("Could not initialize input connections. Exiting.");
     return false;
@@ -228,7 +228,7 @@ void TfBuilderDevice::stop()
 
   // stop output handlers
   if (mFlpInputHandler) {
-    mFlpInputHandler->stop(mDiscoveryConfig);
+    mFlpInputHandler->stop();
     mFlpInputHandler.reset();
   }
   DDDLOG("TfBuilderDevice::stop(): Input handler stopped.");

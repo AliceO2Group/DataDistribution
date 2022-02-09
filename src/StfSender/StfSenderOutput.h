@@ -16,6 +16,7 @@
 
 #include "StfSenderOutputDefs.h"
 #include "StfSenderOutputFairMQ.h"
+#include "StfSenderOutputUCX.h"
 
 #include <ConfigConsul.h>
 
@@ -55,16 +56,20 @@ public:
   void StfMonitoringThread();
 
   /// RPC requests
+  // FairMQ
   ConnectStatus connectTfBuilder(const std::string &pTfBuilderId, const std::string &lEndpoint);
   bool disconnectTfBuilder(const std::string &pTfBuilderId, const std::string &lEndpoint);
-
+  // UCX
+  ConnectStatus connectTfBuilderUCX(const std::string &pTfBuilderId, const std::string &pIp, unsigned pPort);
+  bool disconnectTfBuilderUCX(const std::string &pTfBuilderId);
+  // Data
   void sendStfToTfBuilder(const std::uint64_t pStfId, const std::string &pTfBuilderId, StfDataResponse &pRes);
 
+  /// Counters
   StdSenderOutputCounters::Values getCounters() {
     std::scoped_lock lLock(mCounters.mCountersLock);
     return mCounters.mValues;
   }
-
   StdSenderOutputCounters::Values resetCounters() {
     std::scoped_lock lLock(mCounters.mCountersLock);
     auto lRet = mCounters.mValues;
@@ -86,7 +91,7 @@ public:
 
   /// Discovery configuration
   std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
-  std::shared_ptr<FairMQTransportFactory>  mZMQTransportFactory;
+  std::shared_ptr<FairMQTransportFactory> mZMQTransportFactory;
 
   /// Scheduler threads
   std::thread mSchedulerThread;
@@ -97,13 +102,15 @@ public:
   /// Buffer utilization counters
   StdSenderOutputCounters mCounters;
 
-  // Buffer maintenance
+  /// Buffer maintenance
   std::uint64_t mBufferSize = std::uint64_t(32) << 30;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mDropQueue;
   std::thread mStfDropThread;
 
-  /// Fairmq output
-  std::unique_ptr<StfSenderOutputFairMQ> mOutputFairmq;
+  /// FairMQ output
+  std::unique_ptr<StfSenderOutputFairMQ> mOutputFairMQ;
+  /// UCX
+  std::unique_ptr<StfSenderOutputUCX> mOutputUCX;
 };
 
 } /* namespace o2::DataDistribution */

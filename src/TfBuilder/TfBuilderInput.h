@@ -16,6 +16,7 @@
 
 #include "TfBuilderInputDefs.h"
 #include "TfBuilderInputFairMQ.h"
+#include "TfBuilderInputUCX.h"
 
 #include <ConfigConsul.h>
 #include <discovery.pb.h>
@@ -40,10 +41,10 @@ class TfBuilderInput
 {
  public:
   TfBuilderInput() = delete;
-  TfBuilderInput(TfBuilderDevice& pStfBuilderDev, std::shared_ptr<TfBuilderRpcImpl> pRpc, unsigned pOutStage);
+  TfBuilderInput(TfBuilderDevice& pStfBuilderDev, std::shared_ptr<ConsulTfBuilder> pConfig, std::shared_ptr<TfBuilderRpcImpl> pRpc, unsigned pOutStage);
 
-  bool start(std::shared_ptr<ConsulTfBuilder> pConfig);
-  void stop(std::shared_ptr<ConsulTfBuilder> pConfig);
+  bool start();
+  void stop();
   void reset() {
     mReceivedDataQueue->flush();
     mStfsForMerging.flush();
@@ -52,6 +53,7 @@ class TfBuilderInput
     mMaxMergedTfId = 0;
   }
 
+  auto getStfRequestQueue() const { return mStfRequestQueue; }
   auto getDataQueue() const { return mReceivedDataQueue; }
 
   void StfPacingThread();
@@ -64,6 +66,9 @@ class TfBuilderInput
   /// Main TimeFrameBuilder O2 device
   TfBuilderDevice& mDevice;
 
+  /// Consul discovery config
+  std::shared_ptr<ConsulTfBuilder> mConfig;
+
   /// RPC service
   std::shared_ptr<TfBuilderRpcImpl> mRpc;
 
@@ -72,6 +77,12 @@ class TfBuilderInput
 
   /// FairMQ input
   std::unique_ptr<TfBuilderInputFairMQ> mInputFairMQ;
+
+  /// UCX input
+  std::unique_ptr<TfBuilderInputUCX> mInputUCX;
+
+  /// Stf Request ID (StfSenderId)
+  std::shared_ptr<ConcurrentQueue<std::string> > mStfRequestQueue;
 
   /// Received Stfs from input stage
   std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > mReceivedDataQueue;

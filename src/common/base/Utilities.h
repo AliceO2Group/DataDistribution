@@ -21,6 +21,7 @@
 
 #include <array>
 #include <numeric>
+#include <chrono>
 
 #include <boost/dynamic_bitset.hpp>
 
@@ -42,6 +43,20 @@ std::thread create_thread_member(const char* name, F&& f, Args&&... args) {
     free((void*)lName);
 #endif
   });
+}
+
+// return duration in desired units
+template <
+    class unit       = std::chrono::seconds,
+    class clock_t    = std::chrono::steady_clock,
+    class duration_t = std::chrono::microseconds >
+double since(std::chrono::time_point<clock_t, duration_t> const& start)
+{
+  if constexpr (std::is_same_v<unit, std::chrono::seconds>) {
+    return std::chrono::duration<double>(clock_t::now() - start).count();
+  } else {
+    return std::chrono::duration<double>(clock_t::now() - start) / unit(1);
+  }
 }
 
 template <

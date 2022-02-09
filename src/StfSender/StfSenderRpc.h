@@ -24,11 +24,8 @@
 #include <map>
 #include <thread>
 
-namespace o2
+namespace o2::DataDistribution
 {
-namespace DataDistribution
-{
-
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
@@ -40,13 +37,12 @@ class StfSenderRpcImpl final : public StfSenderRpc::Service
 {
  public:
   StfSenderRpcImpl()
-  :
-  mServer(nullptr)
+  : mServer(nullptr)
   { }
-
 
   virtual ~StfSenderRpcImpl() { }
 
+  // FairMQ channels
   // rpc ConnectTfBuilderRequest(TfBuilderEndpoint) returns (ConnectTfBuilderResponse) { }
   ::grpc::Status ConnectTfBuilderRequest(::grpc::ServerContext* context,
                                           const TfBuilderEndpoint* request,
@@ -54,8 +50,19 @@ class StfSenderRpcImpl final : public StfSenderRpc::Service
 
   // rpc DisconnectTfBuilderRequest(TfBuilderEndpoint) returns (StatusResponse) { }
   ::grpc::Status DisconnectTfBuilderRequest(::grpc::ServerContext* context,
-                                          const TfBuilderEndpoint* request,
-                                          StatusResponse* response) override;
+                                            const TfBuilderEndpoint* request,
+                                            StatusResponse* response) override;
+
+  // UCX channels
+  // rpc ConnectTfBuilderUCXRequest(TfBuilderUCXEndpoint) returns (ConnectTfBuilderUCXResponse) { }
+  ::grpc::Status ConnectTfBuilderUCXRequest(::grpc::ServerContext* context,
+                                            const TfBuilderUCXEndpoint* request,
+                                            ConnectTfBuilderUCXResponse* response) override;
+
+  // rpc DisconnectTfBuilderUCXRequest(TfBuilderUCXEndpoint) returns (StatusResponse) { }
+  ::grpc::Status DisconnectTfBuilderUCXRequest(::grpc::ServerContext* context,
+                                                const TfBuilderUCXEndpoint* request,
+                                                StatusResponse* response) override;
 
   // rpc StfDataRequest(StfDataRequestMessage) returns (StfDataResponse) { }
   ::grpc::Status StfDataRequest(::grpc::ServerContext* context,
@@ -64,8 +71,8 @@ class StfSenderRpcImpl final : public StfSenderRpc::Service
 
   // rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
   ::grpc::Status TerminatePartition(::grpc::ServerContext* context,
-                                const PartitionInfo* request,
-                                PartitionResponse* response) override;
+                                    const PartitionInfo* request,
+                                    PartitionResponse* response) override;
 
   void start(StfSenderOutput *pOutput, const std::string pRpcSrvBindIp, int& lRealPort /*[out]*/);
   void stop();
@@ -78,7 +85,7 @@ class StfSenderRpcImpl final : public StfSenderRpc::Service
   StfSenderOutput *mOutput = nullptr;
 
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_STF_SENDER_RPC_H_ */

@@ -228,7 +228,7 @@ bool TfSchedulerTfBuilderInfo::findTfBuilderForTopoStf(const std::string_view pD
     }
 
     pTfBuilderId = lMinTfBuilder->id();
-    lMinTfBuilder->mTotalUtilization += 1.0; // TODO: Fix weights and link groups
+    lMinTfBuilder->mTotalUtilization += 1.0; // TODO: Fix weights and network groups?
 
     // add utilization and cache the TfBuilder
     mTopoTfBuilders.emplace(std::piecewise_construct,

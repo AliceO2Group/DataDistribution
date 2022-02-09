@@ -91,9 +91,10 @@ class ConcurrentContainerImpl
       mImpl->mContainer.emplace_back(std::forward<Args>(args)...);
     } else if constexpr (type == eLIFO) {
       mImpl->mContainer.emplace_front(std::forward<Args>(args)...);
-    } else {
-      static_assert("Unknown queuing strategy.");
     }
+
+    static_assert(type == eFIFO || type == eLIFO, "Unknown queuing strategy.");
+
 
     lLock.unlock(); // reduce contention
     mImpl->mCond.notify_one();
@@ -124,9 +125,8 @@ class ConcurrentContainerImpl
       mImpl->mContainer.emplace_back(std::forward<Args>(args)...);
     } else if constexpr (type == eLIFO) {
       mImpl->mContainer.emplace_front(std::forward<Args>(args)...);
-    } else {
-      static_assert("Unknown queuing strategy.");
     }
+    static_assert(type == eFIFO || type == eLIFO, "Unknown queuing strategy.");
 
     lLock.unlock(); // reduce contention
     mImpl->mCond.notify_one();

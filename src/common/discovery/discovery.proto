@@ -27,8 +27,7 @@ enum ProcessTypePB {
 
   TfBuilder = 3;
 
-  TfSchedulerService = 4;
-  TfSchedulerInstance = 5;
+  TfScheduler = 4;
 }
 
 message BasicInfo {
@@ -52,12 +51,7 @@ message PartitionInfo {
   uint64 run_number     = 3;
 }
 
-message TfSchedulerServiceConfigStatus {
-  BasicInfo   info             = 1;
-  uint32      number_instances = 2;
-}
-
-message TfSchedulerInstanceConfigStatus {
+message TfSchedulerConfigStatus {
             BasicInfo       info                = 1;
             PartitionInfo   partition           = 2;
 
@@ -91,7 +85,6 @@ message StfSenderConfigStatus {
   StfSenderSocketMap  sockets       = 4;
 }
 
-
 message TfBuilderSocketMap {
   message TfBuilderSocket {
     uint32 idx      = 1;
@@ -100,17 +93,24 @@ message TfBuilderSocketMap {
   }
 
   map<uint32, TfBuilderSocket> map  = 1;
+  bool enabled                      = 2;
+}
+
+message TfBuilderUcxInfo {
+  bool   enabled     = 1;
+  IpPort listen_ep   = 2;
 }
 
 message TfBuilderConfigStatus {
-  BasicInfo           info          = 1;
-  PartitionInfo       partition     = 2;
+  BasicInfo            info          = 1;
+  PartitionInfo        partition     = 2;
 
-  string              rpc_endpoint  = 3;
+  string               rpc_endpoint  = 3;
 
-  TfBuilderSocketMap  sockets       = 4;
+  TfBuilderSocketMap   sockets       = 4;
+
+  TfBuilderUcxInfo     ucx_info      = 5;
 }
-
 
 message StatusResponse {
   uint32  status = 1;
@@ -121,23 +121,39 @@ message TfBuilderEndpoint {
   string endpoint       = 2;
 }
 
+message TfBuilderUCXEndpoint {
+  string tf_builder_id      = 1;
+  TfBuilderUcxInfo endpoint = 2;
+}
 
 enum TfBuilderConnectionStatus {
-  OK                          = 0;
-  ERROR_DISCOVERY             = 1;
-  ERROR_SOCKET_COUNT          = 2;
-  ERROR_STF_SENDERS_NOT_READY = 3;
-  ERROR_GRPC_STF_SENDER       = 4;
-  ERROR_GRPC_TF_BUILDER       = 5;
-  ERROR_STF_SENDER_CONNECTING = 6;
-  ERROR_STF_SENDER_EXISTS     = 7;
-  ERROR_PARTITION_TERMINATING = 8;
+  IGNORE__2                   = 0;
+  OK                          = 1;
+  ERROR_DISCOVERY             = 2;
+  ERROR_SOCKET_COUNT          = 3;
+  ERROR_STF_SENDERS_NOT_READY = 4;
+  ERROR_GRPC_STF_SENDER       = 5;
+  ERROR_GRPC_TF_BUILDER       = 6;
+  ERROR_STF_SENDER_CONNECTING = 7;
+  ERROR_STF_SENDER_EXISTS     = 8;
+  ERROR_PARTITION_TERMINATING = 9;
+  ERROR_TRANSPORT_NOT_ENABLED = 10;
 }
 
 message ConnectTfBuilderResponse {
   TfBuilderConnectionStatus  status = 1;
 }
 
+message IpPort {
+  string     ip   = 1;
+  uint32     port = 2;
+}
+
+message ConnectTfBuilderUCXResponse {
+  TfBuilderConnectionStatus  status          = 1;
+
+  IpPort                     stf_sender_ep   = 2;
+}
 
 message StfDataRequestMessage {
   uint64 stf_id         = 1;
@@ -157,9 +173,13 @@ message StfDataResponse {
 }
 
 service StfSenderRpc {
-
+  // Connect FMQ channels
   rpc ConnectTfBuilderRequest(TfBuilderEndpoint) returns (ConnectTfBuilderResponse) { }
   rpc DisconnectTfBuilderRequest(TfBuilderEndpoint) returns (StatusResponse) { }
+
+  // Connect UCX channels
+  rpc ConnectTfBuilderUCXRequest(TfBuilderUCXEndpoint) returns (ConnectTfBuilderUCXResponse) { }
+  rpc DisconnectTfBuilderUCXRequest(TfBuilderUCXEndpoint) returns (StatusResponse) { }
 
   rpc StfDataRequest(StfDataRequestMessage) returns (StfDataResponse) { }
 
@@ -167,12 +187,18 @@ service StfSenderRpc {
   rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
 }
 
-
 message TfBuilderConnectionResponse {
   TfBuilderConnectionStatus status    = 1;
 
   // tf-endpoint-idx -> stf-sender-id
   map<uint32, string> connection_map  = 2;
+}
+
+message TfBuilderUCXConnectionResponse {
+  TfBuilderConnectionStatus status    = 1;
+
+  // stf-sender-id -> { stf-sender : ip, port }
+  map<string, IpPort> connection_map  = 2;
 }
 
 message NumStfSendersInPartitionResponse {
@@ -264,10 +290,13 @@ service TfSchedulerInstanceRpc {
   rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
   rpc NumStfSendersInPartitionRequest(google.protobuf.Empty) returns (NumStfSendersInPartitionResponse) { }
 
-  // TfBuilder connect/disconnect
+  // TfBuilder FairMQ connect/disconnect
   rpc TfBuilderConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderConnectionResponse) { }
   rpc TfBuilderDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
 
+  // TfBuilder UCX connect/disconnect
+  rpc TfBuilderUCXConnectionRequest(TfBuilderConfigStatus) returns (TfBuilderUCXConnectionResponse) { }
+  rpc TfBuilderUCXDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
 
   // TfBuilder updates
   rpc TfBuilderUpdate(TfBuilderUpdateMessage) returns (google.protobuf.Empty) { }
@@ -324,25 +353,54 @@ message PartitionResponse {
 }
 
 
+ // o2 headers
+message IovO2HdrMeta {
+  bytes   hdr_data              = 1;
+  uint32  num_data_parts        = 2;
+}
+
+message IovStfHdrMeta {
+  uint64    stf_id                  = 1;
+  uint64    stf_size                = 2;
+  bytes     stf_dd_header           = 3;
+
+  repeated IovO2HdrMeta stf_hdr_iov = 10;
+}
+
 // IovSerializer
 message IovStfHeader {
-  uint64    stf_id                      = 1;
-  uint64    stf_size                    = 2;
-  bytes     stf_dd_header               = 3;
+  IovStfHdrMeta stf_hdr_meta             = 1;
+}
 
-  // o2 headers
-  message IovO2HdrMeta {
-    bytes   hdr_data            = 1;
-    uint32  num_data_parts      = 2;
+
+/// UCX STF-IOV structures
+message UCXIovStfHeader {
+  IovStfHdrMeta stf_hdr_meta                 = 1;
+
+  // data txgs (message grouping)
+  message UCXIovTxg {
+    uint32   txg        = 1;
+    uint32   region     = 2;
+    uint64   start      = 3;
+    uint64   len        = 4;
+    uint32   data_parts = 5;
   }
-  repeated IovO2HdrMeta stf_hdr_iov     = 10;
+  repeated UCXIovTxg stf_txg_iov            = 10;
 
-
-  // o2 data messages
-  message IovO2DataMeta {
-    uint64      iov_idx         = 1;
-    uint64      iov_start       = 2;
-    uint64      iov_size        = 3;
+  // individual data messages
+  message UCXData {
+    uint32   idx      = 1;
+    uint32   txg      = 2;
+    uint64   start    = 3;
+    uint64   len      = 4;
   }
-  repeated IovO2DataMeta stf_data_iov   = 20;
+  repeated UCXData stf_data_iov             = 20;
+
+  // provide rkeys for the regions
+  message UCXRegion {
+    uint32 region      = 1;
+    uint64 size        = 2;
+    bytes  region_rkey = 3;
+  }
+  repeated UCXRegion  data_regions          = 30;
 }

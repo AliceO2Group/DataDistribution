@@ -74,7 +74,7 @@ int main(int argc, char* argv[])
       // Add options for TF file sink
       r.fConfig.AddToCmdLineOptions(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());
       // Add options for Data Distribution discovery
-      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::Config::getProgramOptions(o2::DataDistribution::ProcessType::TfBuilder));
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::Config::getProgramOptions());
 
     });
 

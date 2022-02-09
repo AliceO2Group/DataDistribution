@@ -38,11 +38,10 @@ SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(SyncMemoryResources &pMem
   : mStf(nullptr),
     mMemRes(pMemRes)
 {
-  mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
+  mMemRes.mHeaderMemRes = std::make_unique<HeaderRegionAllocatorResource>(
     "O2HeadersRegion",
-    std::nullopt, std::size_t(512) << 20, /* good for 5s 3CRU @ 50Gbps, TODO: make configurable */
+    std::nullopt, std::size_t(512) << 20,
     *mMemRes.mShmTransport,
-    RegionAllocStrategy::eFindFirst,
     0, /* region flags ? */
     true /* Header alloc can fail with large FLP-DPL backpreassure  */
   );
@@ -328,19 +327,18 @@ SubTimeFrameFileBuilder::SubTimeFrameFileBuilder(SyncMemoryResources &pMemRes,
   const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId)
   : mMemRes(pMemRes)
 {
-  mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
+  mMemRes.mDataMemRes = std::make_unique<DataRegionAllocatorResource>(
     "O2DataRegion_FileSource",
     pDataSegId, pDataSegSize,
     *mMemRes.mShmTransport,
-    RegionAllocStrategy::eFindLongest,
-    0 // TODO: GPU flags
+    0 // Region flags
   );
 
-  mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
+  mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource< alignof(o2::header::DataHeader),
+                                                                    RegionAllocStrategy::eFindFirst>> (
     "O2HeadersRegion_FileSource",
     pHdrSegId, pHdrSegSize,
     *mMemRes.mShmTransport,
-    RegionAllocStrategy::eFindFirst,
     0, /* GPU flags */
     false /* cannot fail */
   );
@@ -411,20 +409,18 @@ TimeFrameBuilder::TimeFrameBuilder(SyncMemoryResources &pMemRes)
 void TimeFrameBuilder::allocate_memory(const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId,
                                        const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId)
 {
-  mMemRes.mDataMemRes = std::make_unique<RegionAllocatorResource<>>(
+  mMemRes.mDataMemRes = std::make_unique<DataRegionAllocatorResource>(
     "O2DataRegion_TimeFrame",
     pDataSegId, pDataSegSize,
     *mMemRes.mShmTransport,
-    RegionAllocStrategy::eFindLongest,
-    0, /* TODO: GPU flags */
+    0, // Region flags
     false /* cannot fail */
   );
 
-  mMemRes.mHeaderMemRes = std::make_unique<RegionAllocatorResource<alignof(o2::header::DataHeader)>>(
+  mMemRes.mHeaderMemRes = std::make_unique<HeaderRegionAllocatorResource>(
     "O2HeadersRegion",
     pHdrSegId, pHdrSegSize,
     *mMemRes.mShmTransport,
-    RegionAllocStrategy::eFindFirst,
     0, /* GPU flags */
     false /* cannot fail */
   );

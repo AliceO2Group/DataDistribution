@@ -23,6 +23,7 @@
 
 namespace o2::DataDistribution
 {
+class IovStfHdrMeta;
 
 enum InputRunState { CONFIGURING, RUNNING, TERMINATED };
 
@@ -32,7 +33,7 @@ struct ReceivedStfMeta {
     SubTimeFrame::Header::Origin mStfOrigin;
     std::chrono::time_point<std::chrono::steady_clock> mTimeReceived;
 
-    FairMQMessagePtr mRecvStfHeaderMeta;
+    std::unique_ptr<IovStfHdrMeta> mRecvStfHeaderMeta;
     std::unique_ptr<std::vector<FairMQMessagePtr>> mRecvStfdata;
     std::unique_ptr<SubTimeFrame> mStf;
     std::string mStfSenderId;
@@ -45,13 +46,13 @@ struct ReceivedStfMeta {
     ReceivedStfMeta(const TimeFrameIdType pStfId,
                     const SubTimeFrame::Header::Origin pStfOrigin,
                     const std::string &pStfSenderId,
-                    FairMQMessagePtr &&pRcvHdrMsg,
+                    std::unique_ptr<IovStfHdrMeta> &&pRcvHdrMeta,
                     std::unique_ptr<std::vector<FairMQMessagePtr>> &&pRecvStfdata)
     : mType(INFO),
       mStfId(pStfId),
       mStfOrigin(pStfOrigin),
       mTimeReceived(std::chrono::steady_clock::now()),
-      mRecvStfHeaderMeta(std::move(pRcvHdrMsg)),
+      mRecvStfHeaderMeta(std::move(pRcvHdrMeta)),
       mRecvStfdata(std::move(pRecvStfdata)),
       mStf(nullptr),
       mStfSenderId(pStfSenderId)

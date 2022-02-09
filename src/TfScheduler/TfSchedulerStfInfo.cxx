@@ -49,7 +49,7 @@ void TfSchedulerStfInfo::SchedulingThread()
   std::size_t lScheduledTfs = 0;
 
   // Build or discard
-  bool lBuildIncomplete = mDiscoveryConfig->getBoolParam(BuildStaleTfsKey, BuildStaleTfsValue);
+  bool lBuildIncomplete = mDiscoveryConfig->getBoolParam(BuildIncompleteTfsKey, BuildIncompleteTfsValue);
   IDDLOG("TfScheduler: Building of incomplete TimeFrames is {}.", lBuildIncomplete ? "enabled" : "disabled");
 
   while ((lStfInfosOpt = mCompleteStfsInfoQueue.pop()) != std::nullopt) {
@@ -65,7 +65,6 @@ void TfSchedulerStfInfo::SchedulingThread()
 
     const auto lTfId = lStfInfos[0].stf_id();
 
-    // TODO: alow incomplete TFs
     if (lStfInfos.size() != lNumStfSenders) {
       assert(lStfInfos.size() < lNumStfSenders);
 
@@ -475,7 +474,6 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
     }
 
     // check for high watermarks
-    // TODO: fix watermarks
     const auto lUsedBuffer = pStfInfo.stfs_info().buffer_used();
     const auto lTotalBuffer = pStfInfo.stfs_info().buffer_size();
     if (lUsedBuffer > (lTotalBuffer * 95 / 100) ) {
@@ -533,7 +531,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
     // check if complete
     if (lStfIdVector.size() == lNumStfSenders) {
       // NOTE: if we have a completed TF, we have to check if there are other incomplete TFs before the current
-      //       All incomplete can be treated as stale and build or discard based on BuildStaleTfsKey config
+      //       All incomplete can be treated as stale and build or discard based on BuildIncompleteTfsKey config
 
       // queue all incomplete STFs before the complete one
       while (mStfInfoMap.begin()->first < lStfId) {

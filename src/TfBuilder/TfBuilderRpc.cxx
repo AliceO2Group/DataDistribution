@@ -40,10 +40,12 @@ void TfBuilderRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, int &lReal
   IDDLOG("gRPC server is started. server_ep={}:{}", pRpcSrvBindIp, lRealPort);
 }
 
-bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize, std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > pRecvQueue)
+bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize, std::shared_ptr<ConcurrentQueue<std::string> > pReqQueue,
+  std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > pRecvQueue)
 {
   mBufferSize = pBufferSize;
   mCurrentTfBufferSize = pBufferSize;
+  mStfInputQueue = pReqQueue;
   mReceivedDataQueue = pRecvQueue;
 
   // Interact with the scheduler
@@ -439,6 +441,9 @@ void TfBuilderRpcImpl::StfRequestThread()
             lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
           continue;
         }
+
+        // Notify input about incoming STF
+        mStfInputQueue->push(lStfRequest.mStfSenderId);
 
         lNumExpectedStfs += 1;
 

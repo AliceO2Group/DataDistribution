@@ -75,7 +75,7 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
   std::uint64_t size() const { return mFileSize; }
 
  private:
-  void visit(SubTimeFrame& pStf) override;
+  void visit(SubTimeFrame& pStf, void*) override;
 
   std::string mFileName;
   boost::iostreams::mapped_file_source mFileMap;
@@ -137,7 +137,7 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
   std::vector<SubTimeFrame::StfData> mStfData;
 
   // flags for upgrading DataHeader versions
-  static std::uint64_t sStfId; // TODO: add id to files metadata
+  static std::uint64_t sStfId;
 
 };
 

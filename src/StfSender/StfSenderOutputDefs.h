@@ -28,18 +28,18 @@ struct StdSenderOutputCounters {
 
   struct Values {
     // buffer state
-    struct alignas(128) {
+    struct {
       std::uint64_t mSize = 0;
       std::uint32_t mCnt = 0;
     } mBuffered;
     // buffered in sending
-    struct alignas(128) {
+    struct {
       std::uint64_t mSize = 0;
       std::uint32_t mCnt = 0;
     } mInSending;
 
     // total sent
-    struct alignas(128) {
+    struct {
       std::uint64_t mSize = 0;
       std::uint32_t mCnt = 0;
       std::uint32_t mMissing = 0;

@@ -154,7 +154,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 }
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::HeartBeat(::grpc::ServerContext* /*context*/,
-  const ::o2::DataDistribution::BasicInfo* request, ::google::protobuf::Empty* /*response*/)
+  const BasicInfo* request, ::google::protobuf::Empty* /*response*/)
 {
   static std::uint64_t sStfSendersHb = 0;
   static std::uint64_t sTfBuildersHb = 0;
@@ -173,7 +173,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 }
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::GetPartitionState(::grpc::ServerContext* /*context*/,
-  const ::o2::DataDistribution::PartitionInfo* /*request*/, ::o2::DataDistribution::PartitionResponse* response)
+  const PartitionInfo* /*request*/, PartitionResponse* response)
 {
   // Terminating?
   if (!accepting_updates()) {
@@ -216,7 +216,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::TerminatePartition(::grpc::ServerContext* /*context*/,
-  const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response)
+  const PartitionInfo* request, PartitionResponse* response)
 {
   IDDLOG("TerminatePartition: request to teardown partition {}", request->partition_id());
 
@@ -236,7 +236,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::NumStfSendersInPartitionRequest(::grpc::ServerContext* /*context*/,
-  const ::google::protobuf::Empty* /*request*/, ::o2::DataDistribution::NumStfSendersInPartitionResponse* response)
+  const ::google::protobuf::Empty* /*request*/, NumStfSendersInPartitionResponse* response)
 {
   DDDLOG("gRPC server: NumStfSendersInPartitionRequest");
 
@@ -251,8 +251,8 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderConnectionRequest(::grpc::ServerContext* /*context*/,
-  const ::o2::DataDistribution::TfBuilderConfigStatus* request,
-  ::o2::DataDistribution::TfBuilderConnectionResponse* response)
+  const TfBuilderConfigStatus* request,
+  TfBuilderConnectionResponse* response)
 {
   DDDLOG("gRPC server: TfBuilderConnectionRequest");
 
@@ -267,7 +267,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderDisconnectionRequest(::grpc::ServerContext* /*context*/,
-  const ::o2::DataDistribution::TfBuilderConfigStatus* request, ::o2::DataDistribution::StatusResponse* response)
+  const TfBuilderConfigStatus* request, StatusResponse* response)
 {
   DDDLOG("gRPC server: TfBuilderDisconnectionRequest");
 
@@ -276,8 +276,32 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
   return Status::OK;
 }
 
+// TfBuilder UCX connect/disconnect
+::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderUCXConnectionRequest(::grpc::ServerContext* /*context*/,
+  const TfBuilderConfigStatus* request,
+  TfBuilderUCXConnectionResponse* response)
+{
+  DDDLOG("gRPC server: TfBuilderUCXConnectionRequest");
+
+  if (!accepting_updates()) {
+    response->set_status(TfBuilderConnectionStatus::ERROR_PARTITION_TERMINATING);
+    return Status::OK;
+  }
+
+  mConnManager.connectTfBuilderUCX(*request, *response /*out*/);
+  return Status::OK;
+}
+
+::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderUCXDisconnectionRequest(::grpc::ServerContext* /*context*/,
+  const TfBuilderConfigStatus* request, StatusResponse* response)
+{
+  DDDLOG("gRPC server: TfBuilderUCXDisconnectionRequest");
+  mConnManager.disconnectTfBuilderUCX(*request, *response /*out*/);
+  return Status::OK;
+}
+
 ::grpc::Status TfSchedulerInstanceRpcImpl::TfBuilderUpdate(::grpc::ServerContext* /*context*/,
-  const ::o2::DataDistribution::TfBuilderUpdateMessage* request, ::google::protobuf::Empty* /*response*/)
+  const TfBuilderUpdateMessage* request, ::google::protobuf::Empty* /*response*/)
 {
   static std::atomic_uint64_t sTfBuilderUpdates = 0;
 
@@ -295,7 +319,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 }
 
 ::grpc::Status TfSchedulerInstanceRpcImpl::StfSenderStfUpdate(::grpc::ServerContext* /*context*/,
-  const ::o2::DataDistribution::StfSenderStfInfo* request, ::o2::DataDistribution::SchedulerStfInfoResponse* response)
+  const StfSenderStfInfo* request, SchedulerStfInfoResponse* response)
 {
   static std::atomic_uint64_t sStfUpdates = 0;
 

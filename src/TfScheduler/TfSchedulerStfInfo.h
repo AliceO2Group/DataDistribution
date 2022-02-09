@@ -78,7 +78,7 @@ class TfSchedulerStfInfo
 {
 public:
   TfSchedulerStfInfo() = delete;
-  TfSchedulerStfInfo(std::shared_ptr<ConsulTfSchedulerInstance> pDiscoveryConfig,
+  TfSchedulerStfInfo(std::shared_ptr<ConsulTfScheduler> pDiscoveryConfig,
                      TfSchedulerConnManager &pConnManager,
                      TfSchedulerTfBuilderInfo &pTfBuilderInfo)
   : mDiscoveryConfig(pDiscoveryConfig),
@@ -158,7 +158,7 @@ private:
   std::atomic_bool mRunning = false;
 
   /// Discovery configuration
-  std::shared_ptr<ConsulTfSchedulerInstance> mDiscoveryConfig;
+  std::shared_ptr<ConsulTfScheduler> mDiscoveryConfig;
 
   /// RPC clients to StfSenders and TfBuilders
   TfSchedulerConnManager &mConnManager;
@@ -213,7 +213,7 @@ private:
     }
     mDroppedStfs.SetEvent(lStfId);
     mStfInfoMap.erase(lStfId);
-    mDropQueue.push(std::make_tuple(lStfId, "")); // TODO: add REASON
+    mDropQueue.push(std::make_tuple(lStfId, ""));
     mNotScheduledTfsCount++;
   }
 

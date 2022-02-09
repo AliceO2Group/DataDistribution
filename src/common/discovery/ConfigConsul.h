@@ -75,14 +75,13 @@ public:
       throw std::invalid_argument("discovery-endpoint parameter is not provided");
     }
 
-    //
     if (lNoOp) {  // Support for CI setups without consul
       WDDLOG("Consul endpoint is configured as 'no-op'. Use only for testing!");
 
       if (pRequired &&
         ( pProcessType == ProcessType::StfSender ||
           pProcessType == ProcessType::TfBuilder ||
-          pProcessType == ProcessType::TfSchedulerInstance) ) {
+          pProcessType == ProcessType::TfScheduler) ) {
         throw std::invalid_argument("Error: A valid discovery-endpoint (consul) parameter must be provided.");
       }
 
@@ -97,6 +96,9 @@ public:
 
       // thread for fetching the tunables
       mPollThread = create_thread_member("consul_params", &ConsulConfig::ConsulPollingThread, this);
+      // wait for tunables to be available
+      using namespace std::chrono_literals;
+      while (!mTunablesRead.load()) { std::this_thread::sleep_for(10ms); }
     } catch (std::exception &err) {
       mConsul = nullptr;
       EDDLOG("Error while connecting to Consul. endpoint={} what={}", mEndpoint, err.what());
@@ -123,7 +125,7 @@ public:
     mStatus.SerializeToString(&lData);
 
     // persist global partition info
-    if constexpr (std::is_same_v<T, TfSchedulerInstanceConfigStatus>) {
+    if constexpr (std::is_same_v<T, TfSchedulerConfigStatus>) {
       using namespace std::string_literals;
       static const std::string sPartStateKey = getInfoPrefix(mStatus.partition().partition_id());
       try {
@@ -215,10 +217,12 @@ private:
 
   // tunable polling thread
   std::atomic_bool mRunning = true;
+  std::atomic_bool mTunablesRead = false;
   std::thread mPollThread;
   mutable std::mutex mTunablesLock;
     std::condition_variable mTunableCV;
     std::map<std::string, std::string> mTunables;
+    std::map<std::string, std::string> mTunablesToAdd; // Add missing default values
 
 
   T mStatus;
@@ -230,13 +234,17 @@ private:
     using namespace std::string_literals;
     return "epn/data-dist/partition/"s + pPartId + "/info"s;
   }
+  static
+  constexpr std::string getGlobalTunablePrefix() {
+    using namespace std::string_literals;
+    return "epn/data-dist/parameters/Global/"s;
+  }
 
   static
   constexpr std::string getTunablePrefix() {
     using namespace std::string_literals;
 
-
-    if constexpr (std::is_same_v<T, TfSchedulerInstanceConfigStatus>) {
+    if constexpr (std::is_same_v<T, TfSchedulerConfigStatus>) {
       return "epn/data-dist/parameters/TfScheduler/"s;
     }
 
@@ -252,6 +260,11 @@ private:
       return "epn/data-dist/parameters/TfBuilder/"s;
     }
 
+    static_assert (
+      !std::is_same_v<T, TfSchedulerConfigStatus> ||
+      !std::is_same_v<T, StfBuilderConfigStatus>  ||
+      !std::is_same_v<T, StfSenderConfigStatus>   ||
+      !std::is_same_v<T, TfBuilderConfigStatus> , "wrong Config Type");
     return ""s;
   }
 
@@ -260,61 +273,78 @@ private:
     using namespace std::chrono_literals;
     using namespace std::string_literals;
 
-    const std::string cTunablesPrefix = getTunablePrefix();
-    if (cTunablesPrefix.empty()) {
-      return;
-    }
+    const std::vector<std::string> keyVec = { getGlobalTunablePrefix(), getTunablePrefix() };
 
     while (mRunning) {
       std::unique_lock lLock(mTunablesLock);
+      const auto lPrevValues = std::move(mTunables);
+      mTunables.clear();
 
       try {
         std::scoped_lock lKVLock(mConsulLock);
-        Kv kv(*mConsul);
 
-        std::vector<KeyValue> lReqItems = kv.items(cTunablesPrefix);
+        for (const auto &lKey : keyVec) {
+          Kv kv(*mConsul);
+          // Get per Proces keys
+          std::vector<KeyValue> lReqItems = kv.items(lKey);
 
-        if (lReqItems.empty()) {
-          kv.set(cTunablesPrefix, ""s);
-        } else {
+          if (lReqItems.empty()) {
+            kv.set(lKey, ""s);
+          } else {
 
-          const auto lPrevValues = std::move(mTunables);
-          mTunables.clear();
+            for (const auto &lKeyVal : lReqItems) {
+              if (lKeyVal.valid() && !lKeyVal.value.empty()) {
+                DDDLOG("Parameters: prefix={} key={} val={}", lKey, lKeyVal.key, lKeyVal.value);
 
-          for (const auto &lKeyVal : lReqItems) {
-            if (lKeyVal.valid() && !lKeyVal.value.empty()) {
+                // remove full key prefix
+                const auto lParamName = lKeyVal.key.substr(lKey.length());
 
-              // remove full key prefix
-              const auto lParamName = lKeyVal.key.substr(cTunablesPrefix.length());
+                if ((lPrevValues.count(lParamName)) > 0 && (lPrevValues.at(lParamName) != lKeyVal.value)) {
+                  IDDLOG("Consul: Updating parameter {}. old_value={} new_value={}"s,
+                    lParamName, lPrevValues.at(lParamName), lKeyVal.value);
+                } else if (lPrevValues.count(lParamName) == 0) {
+                  IDDLOG("Consul: Reading parameter {}={}", lParamName, lKeyVal.value);
+                }
 
-              if ((lPrevValues.count(lParamName)) > 0 && (lPrevValues.at(lParamName) != lKeyVal.value)) {
-                IDDLOG("Consul: Updating parameter {}. old_value={} new_value={}"s,
-                  lParamName, lPrevValues.at(lParamName), lKeyVal.value);
-              } else if (lPrevValues.count(lParamName) == 0) {
-                IDDLOG("Consul: Setting parameter {}={}", lParamName, lKeyVal.value);
+                mTunables[lParamName] = lKeyVal.value;
               }
-
-              mTunables[lParamName] = lKeyVal.value;
             }
           }
         }
+
+        {
+          Kv kv(*mConsul);
+          // write back missing parameters
+          for (const auto &lKeyVal : mTunablesToAdd) {
+            const auto &lKey = lKeyVal.first;
+            const auto &lVal = lKeyVal.second;
+            const auto lFullKey = (boost::starts_with(lKey, "DataDist") ? getGlobalTunablePrefix() : getTunablePrefix()) + lKey;
+            kv.set(lFullKey, lVal);
+
+            DDDLOG("Missing options written to Consul. key={} val={}", lFullKey, lVal);
+          }
+          mTunablesToAdd.clear();
+        }
+
       } catch (std::exception &e) {
         WDDLOG_ONCE("Consul kv param retrieve error. what={}", e.what());
       }
 
-      mTunableCV.wait_for(lLock, 5s);
+      mTunablesRead = true;
+      mTunableCV.wait_for(lLock, 30s);
     }
 
     DDDLOG("Exiting params ConsulPollingThread.");
   }
 
 public:
-  inline bool getBoolParam(const std::string_view &pKeySv, const bool pDefault) const
+  inline bool getBoolParam(const std::string_view &pKeySv, const bool pDefault)
   {
     const std::string lKey(pKeySv);
 
     std::unique_lock lLock(mTunablesLock);
     if (mTunables.count(lKey) == 0) {
+      mTunablesToAdd.insert_or_assign(lKey, (pDefault ? "true" : "false"));
       return pDefault;
     } else {
       const auto &lVal = mTunables.at(lKey);
@@ -322,42 +352,46 @@ public:
     }
   }
 
-  inline std::string getStringParam(const std::string_view &pKeySv, const std::string pDefault) const
+  inline std::string getStringParam(const std::string_view &pKeySv, const std::string_view &pDefault)
   {
     const std::string lKey(pKeySv);
 
     std::unique_lock lLock(mTunablesLock);
     if (mTunables.count(lKey) == 0) {
-      return pDefault;
+      mTunablesToAdd[lKey] = pDefault;
+      return std::string(pDefault);
     } else {
       return mTunables.at(lKey);
     }
   }
 
-  inline std::int64_t getInt64Param(const std::string_view &pKeySv, const std::int64_t pDefault) const
+  inline std::int64_t getInt64Param(const std::string_view &pKeySv, const std::int64_t pDefault)
   {
     const std::string lKey(pKeySv);
 
     std::unique_lock lLock(mTunablesLock);
     if (mTunables.count(lKey) == 0) {
+      mTunablesToAdd[lKey] = std::to_string(pDefault);
       return pDefault;
     } else {
 
       try {
         return boost::lexical_cast<std::int64_t>(mTunables.at(lKey));
       } catch( boost::bad_lexical_cast const &e) {
+        mTunablesToAdd[lKey] = std::to_string(pDefault);
         EDDLOG("Error parsing consul parameter (int64) {}. str_value={} what={}", pKeySv, mTunables.at(lKey), e.what());
       }
     }
     return pDefault;
   }
 
-  inline std::uint64_t getUInt64Param(const std::string_view &pKeySv, const std::uint64_t pDefault) const
+  inline std::uint64_t getUInt64Param(const std::string_view &pKeySv, const std::uint64_t pDefault)
   {
     const std::string lKey(pKeySv);
 
     std::unique_lock lLock(mTunablesLock);
     if (mTunables.count(lKey) == 0) {
+      mTunablesToAdd[lKey] = std::to_string(pDefault);
       return pDefault;
     } else {
 
@@ -368,6 +402,7 @@ public:
         }
         return boost::lexical_cast<std::uint64_t>(mTunables.at(lKey));
       } catch( boost::bad_lexical_cast const &e) {
+        mTunablesToAdd[lKey] = std::to_string(pDefault);
         EDDLOG("Error parsing consul parameter (uint64) {}. str_value={} what={}", pKeySv, mTunables.at(lKey), e.what());
       }
     }
@@ -390,9 +425,7 @@ public:
     static const std::string sReqPartitionIdKey   = sReqKeyPrefix + sPartitionIdSubKey;
     static const std::string sReqStfSenderListKey = sReqKeyPrefix + sStfSenderListSubKey;
 
-    if constexpr (! std::is_same_v<T, TfSchedulerServiceConfigStatus>) {
-      static_assert("Only TfSchedulerService process can call this method.");
-    }
+    static_assert(std::is_same_v<T, TfSchedulerConfigStatus>, "Only TfScheduler can call this method.");
 
     bool lReqValid = false;
 
@@ -569,11 +602,11 @@ public:
     return false;
   }
 
-  bool getTfSchedulerConfig(const std::string &pPartId, TfSchedulerInstanceConfigStatus &pTfSchedulerStat /*out*/)
+  bool getTfSchedulerConfig(const std::string &pPartId, TfSchedulerConfigStatus &pTfSchedulerStat /*out*/)
   {
     static constexpr const char* sKeyPrefix = "epn/data-dist/partition/";
 
-    const std::string lConsulKey = sKeyPrefix + pPartId + "/TfSchedulerInstance";
+    const std::string lConsulKey = sKeyPrefix + pPartId + "/TfScheduler";
 
     // get the scheduler instance with the "smallest" ID
     try {
@@ -595,7 +628,7 @@ public:
         return false;
       }
 
-      // sort lReqItems by SchedulerInstanceId
+      // sort lReqItems by SchedulerId
       std::sort(lReqItems.begin(), lReqItems.end(),  [](auto const& a, auto const& b){
         return a.key < b.key;
       });
@@ -621,10 +654,10 @@ template <class T>
 bool ConsulConfig<T>::createKeyPrefix() {
   // make sure all fields are available
   if (mStatus.partition().partition_id().empty()) {
-    return false;
+    throw std::runtime_error("createKeyPrefix: partition id must be set");
   }
 
-  auto &lBasic = mStatus.info();
+  const auto &lBasic = mStatus.info();
 
   mConsulKey =  "epn/data-dist/partition/" +
                 mStatus.partition().partition_id() + "/" +
@@ -635,21 +668,14 @@ bool ConsulConfig<T>::createKeyPrefix() {
 }
 
 
-template <>
-bool ConsulConfig<TfSchedulerServiceConfigStatus>::createKeyPrefix();
-
-
 } /* namespace ConsulImpl */
 
 ///
 ///  ConsulConfig specializations for o2::DataDistribution
 ///
 
-// TfSchedulerInstance
-using ConsulTfSchedulerInstance = ConsulImpl::ConsulConfig<TfSchedulerInstanceConfigStatus>;
-
-// TfSchedulerService
-using ConsulTfSchedulerService = ConsulImpl::ConsulConfig<TfSchedulerServiceConfigStatus>;
+// TfScheduler
+using ConsulTfScheduler = ConsulImpl::ConsulConfig<TfSchedulerConfigStatus>;
 
 // StfBuilder
 using ConsulStfBuilder = ConsulImpl::ConsulConfig<StfBuilderConfigStatus>;

@@ -54,9 +54,7 @@ int main(int argc, char* argv[])
       r.fConfig.AddToCmdLineOptions(lStfSenderOptions);
 
       // Add options for Data Distribution discovery
-      r.fConfig.AddToCmdLineOptions(
-          o2::DataDistribution::Config::getProgramOptions(o2::DataDistribution::ProcessType::StfSender)
-      );
+      r.fConfig.AddToCmdLineOptions(o2::DataDistribution::Config::getProgramOptions());
 
       // Add options for STF file sink
       r.fConfig.AddToCmdLineOptions(o2::DataDistribution::SubTimeFrameFileSink::getProgramOptions());

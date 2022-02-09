@@ -19,9 +19,7 @@
 #include <condition_variable>
 #include <stdexcept>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
@@ -108,17 +106,65 @@ void StfSenderRpcImpl::stop()
   return Status::OK;
 }
 
+::grpc::Status StfSenderRpcImpl::ConnectTfBuilderUCXRequest(::grpc::ServerContext* /*context*/,
+                                                            const TfBuilderUCXEndpoint* request,
+                                                            ConnectTfBuilderUCXResponse* response)
+{
+  const std::string &lTfBuilderId = request->tf_builder_id();
+  const auto &lTfBuilderEp = request->endpoint();
+
+  if (mTerminateRequested) {
+    response->set_status(TfBuilderConnectionStatus::ERROR_PARTITION_TERMINATING);
+    return Status::OK;
+  }
+
+  // handle the request
+  DDDLOG("Requested to connect to UCX TfBuilder. tfb_id={} tfb_ip={} tfb_port={}",
+    lTfBuilderId, lTfBuilderEp.listen_ep().ip(), lTfBuilderEp.listen_ep().port());
+  response->set_status(OK);
+
+  const auto lStatus = mOutput->connectTfBuilderUCX(lTfBuilderId, lTfBuilderEp.listen_ep().ip(), lTfBuilderEp.listen_ep().port());
+  switch (lStatus) {
+    case ConnectStatus::eOK:
+      response->set_status(OK);
+      break;
+    case ConnectStatus::eCONNERR:
+      response->set_status(ERROR_STF_SENDER_CONNECTING);
+      break;
+    case ConnectStatus::eEXISTS:
+      response->set_status(ERROR_STF_SENDER_EXISTS);
+      break;
+  }
+
+  return Status::OK;
+}
+
+::grpc::Status StfSenderRpcImpl::DisconnectTfBuilderUCXRequest(::grpc::ServerContext* /*context*/,
+                                                                const TfBuilderUCXEndpoint* request,
+                                                                StatusResponse* response)
+{
+  const std::string &lTfBuilderId = request->tf_builder_id();
+  const auto &lTfBuilderEp = request->endpoint();
+
+  // handle the request
+  DDDLOG("Requested to disconnect from UCX TfBuilder. tfb_id={} tfb_ip={} tfb_port={}",
+    lTfBuilderId, lTfBuilderEp.listen_ep().ip(), lTfBuilderEp.listen_ep().port());
+  response->set_status(0);
+
+  if (!mOutput->disconnectTfBuilderUCX(lTfBuilderId)) {
+    response->set_status(-1);
+  }
+  return Status::OK;
+}
+
 // rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
 ::grpc::Status StfSenderRpcImpl::TerminatePartition(::grpc::ServerContext* /*context*/,
   const PartitionInfo* /*request*/, PartitionResponse* response)
 {
   DDDLOG("TerminatePartition request received.");
-  // TODO: verify partition id
   response->set_partition_state(PartitionState::PARTITION_TERMINATING);
   mTerminateRequested = true;
   return Status::OK;
 }
 
-
-}
 } /* o2::DataDistribution */
