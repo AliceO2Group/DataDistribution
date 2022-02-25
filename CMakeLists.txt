@@ -149,5 +149,4 @@ message(STATUS "AliceO2 include path : ${AliceO2_INCLUDE_DIR}")
 message(STATUS "UCX include path : ${UCX_INCLUDE_DIR}")
 
 add_subdirectory(src)
-add_subdirectory(script)
 add_subdirectory(doc)
