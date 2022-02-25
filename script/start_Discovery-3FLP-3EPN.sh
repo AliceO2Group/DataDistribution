@@ -2,8 +2,11 @@
 
 set -u
 
-chainConfig="@CMAKE_INSTALL_PREFIX@/config/discovery-flp-epn-chain.json"
-readoutConfig="@CMAKE_INSTALL_PREFIX@/config/readout_emu.cfg"
+SCRIPT="$(realpath $0)"
+SCRIPTPATH="$(dirname $SCRIPT)"
+
+chainConfig="${SCRIPTPATH}/discovery-flp-epn-chain.json"
+readoutConfig="${SCRIPTPATH}/readout_cfg/readout_emu.cfg"
 
 function parse_parameters() {
 read -d '' PARSER <<"EOF"
@@ -120,6 +123,7 @@ fi
 
 STF_BUILDER="StfBuilder"
 STF_BUILDER+=" --transport shmem"
+STF_BUILDER+=" --shm-monitor true"
 STF_BUILDER+=" --mq-config $chainConfig"
 STF_BUILDER+=" $CHECKRDH"
 STF_BUILDER+=" --io-threads $IO_THREADS"
@@ -128,7 +132,8 @@ STF_BUILDER+=" --detector-rdh 4"
 STF_BUILDER+=" --monitoring-interval=1.0"
 STF_BUILDER+=" --monitoring-log"
 STF_BUILDER+=" --discovery-partition=$PARTITION"
-STF_BUILDER+=" --discovery-endpoint=http://localhost:8500"
+# STF_BUILDER+=" --discovery-endpoint=http://localhost:8500"
+STF_BUILDER+=" --discovery-endpoint=no-op://localhost:8500"
 # STF_BUILDER+=" --run-type=topology"
 
 # use DPL serialization on FLPs
@@ -154,6 +159,7 @@ STF_SENDER+=" --discovery-endpoint=http://localhost:8500"
 STF_SENDER+=" --mq-config $chainConfig"
 STF_SENDER+=" --monitoring-interval=2.0"
 STF_SENDER+=" --monitoring-log"
+STF_SENDER+=" --shm-monitor=false"
 
 TF_BUILDER="TfBuilder"
 TF_BUILDER+=" --discovery-net-if=$EPN_NETIF"
@@ -164,8 +170,11 @@ TF_BUILDER+=" --monitoring-interval=5.0"
 TF_BUILDER+=" --monitoring-log"
 TF_BUILDER+=" --stand-alone"
 
-TF_BUILDER+=" --shm-monitor=false"
-TF_BUILDER+=" --tf-data-region-size 2048"
+TF_BUILDER+=" --shm-monitor true"
+TF_BUILDER+=" --tf-data-region-size $(( 32 << 10 ))"
+# TF_BUILDER+=" --tf-data-region-id 2"
+
+
 if [[ ! -z $TF_BUILDER_DPL_CHAN ]]; then
   TF_BUILDER+=" --dpl-channel-name=$TF_BUILDER_DPL_CHAN"
 fi
@@ -178,7 +187,9 @@ if [[ ! -z $TF_BUILDER_SINK_DIR ]]; then
 
   TF_BUILDER+=" --data-sink-enable"
   TF_BUILDER+=" --data-sink-dir $TF_BUILDER_SINK_DIR"
-  TF_BUILDER+=" --data-sink-max-stfs-per-file 44"
+  # TF_BUILDER+=" --data-sink-max-stfs-per-file 44"
+  TF_BUILDER+=" --data-sink-max-stfs-per-file=500" # 500 files -> there are small RawTFs (500B)
+  TF_BUILDER+=" --data-sink-max-file-size=500"     # 500 MiB file
   TF_BUILDER+=" --data-sink-sidecar"
 fi
 
@@ -193,7 +204,10 @@ echo "$STF_SENDER"
 echo "$TF_SCHEDULER"
 echo "$TF_BUILDER"
 
-export DATADIST_DEBUG_DPL_CHAN=1
+# export DATADIST_DEBUG_DPL_CHAN=1
+export DATADIST_NEW_DPL_CHAN=1
+# export UCX_LOG_LEVEL=req
+export UCX_TLS=all
 
 if [[ -z $USE_TMUX ]]; then
 
@@ -272,7 +286,7 @@ else
   if [[ $EPN_CNT -gt 1 ]]; then
     tmux -CC \
       split-window \
-      "source $ENV_VAR_FILE; numactl --interleave=all $TF_BUILDER --id tf_builder-1 --discovery-id=epn1 --session epn-s1; read" \; \
+      "source $ENV_VAR_FILE; DATADIST_SHM_ZERO_CHECK=1 numactl --interleave=all $TF_BUILDER --id tf_builder-1 --discovery-id=epn1 --session epn-s1; read" \; \
       select-layout even-horizontal
 
       # "source $ENV_VAR_FILE; numactl --interleave=all gdb --args $TF_BUILDER --id tf_builder-1 --discovery-id=epn1 --session epn-s1; read" \; \
