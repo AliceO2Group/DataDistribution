@@ -518,7 +518,7 @@ bpo::options_description StfBuilderDevice::getDetectorProgramOptions() {
     OptionKeyStfDetector,
     bpo::value<std::string>()->default_value(""),
     "Specifies the detector string for SubTimeFrame building. Allowed are: "
-    "ACO, CPV, CTP, EMC, FT0, FV0, FDD, HMP, ITS, MCH, MFT, MID, PHS, TOF, TPC, TRD, ZDC."
+    "TST, CPV, CTP, EMC, FT0, FV0, FDD, HMP, ITS, MCH, MFT, MID, PHS, TOF, TPC, TRD, ZDC."
   )(
     OptionKeyRhdVer,
     bpo::value<ReadoutDataUtils::RdhVersion>()->default_value(ReadoutDataUtils::RdhVersion::eRdhInvalid, ""),
@@ -551,10 +551,7 @@ o2::header::DataOrigin StfBuilderDevice::getDataOriginFromOption(const std::stri
 {
   const auto lDetStr = boost::to_upper_copy<std::string>(pArg);
 
-  if (lDetStr == "ACO") {
-    return o2::header::gDataOriginACO;
-  }
-  else if (lDetStr == "CPV") {
+  if (lDetStr == "CPV") {
     return o2::header::gDataOriginCPV;
   }
   else if (lDetStr == "CTP") {
