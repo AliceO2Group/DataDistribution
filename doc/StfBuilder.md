@@ -89,7 +89,7 @@ to files, before they are sent out.
 ## SubTimeFrameBuilder data source
 
 **--detector** name
-:   Specifies the detector string for SubTimeFrame building. Allowed are: ACO, CPV,
+:   Specifies the detector string for SubTimeFrame building. Allowed are: TST, CPV,
     CTP, EMC, FT0, FV0, FDD, HMP, ITS, MCH, MFT, MID, PHS, TOF, TPC, TRD, ZDC.
 
 **--detector-rdh** ver
