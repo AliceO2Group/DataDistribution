@@ -362,7 +362,7 @@ void TfBuilderDevice::TfForwardThread()
       }
 
       // send EOS if exiting the running state
-      if (mShouldSendEos) {
+      if (!mStandalone && mTfDplAdapter && mShouldSendEos) {
         mTfDplAdapter->sendEosToDpl();
         mShouldSendEos = false;
       }

@@ -345,7 +345,7 @@ void StfBuilderDevice::StfOutputThread()
         WDDLOG_RL(1000, "Dropping a raw SubTimeFrame because stop of the run is requested.");
       }
 
-      if (lShouldSendEos) {
+      if (lStfDplAdapter && lShouldSendEos) {
         lShouldSendEos = false;
         lStfDplAdapter->sendEosToDpl();
       }
