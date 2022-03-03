@@ -69,7 +69,7 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
         if (fair::mq::RegionEvent::created == info.event) {
           mOutputUCX->registerSHMRegion(info.ptr, info.size, info.managed, info.flags);
         } else if (fair::mq::RegionEvent::destroyed == info.event) {
-          EDDLOG("Region destroyed while running? size={} managed={}", info.size, info.managed);
+          DDDLOG("Region destroyed while running. size={} managed={}", info.size, info.managed);
         }
       }
     });
