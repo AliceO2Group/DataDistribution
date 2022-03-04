@@ -176,6 +176,12 @@ class TfSchedulerTfBuilderInfo
     }
   }
 
+  void resetCounters() {
+    mNoTfBuilderAvailable = 0;
+    mNoMemoryAvailable = 0;
+    mTfNumExceeeded = 0;
+  }
+
 private:
   /// Overestimation of actual size for TF building
   static constexpr std::uint64_t sTfSizeOverestimatePercent = std::uint64_t(10);
@@ -204,6 +210,12 @@ private:
   /// List of TfBuilders for Topological distribution
   mutable std::recursive_mutex mTopoInfoLock;
     std::unordered_map<TfBuilderTopoInfo, std::shared_ptr<TfBuilderInfo>, TfBuilderTopoInfo> mTopoTfBuilders;
+
+
+  /// Counters
+  std::atomic_uint64_t mNoTfBuilderAvailable = 0;
+  std::atomic_uint64_t mNoMemoryAvailable = 0;
+  std::atomic_uint64_t mTfNumExceeeded = 0;
 };
 
 

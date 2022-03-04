@@ -129,10 +129,6 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
 
 bool TfSchedulerTfBuilderInfo::findTfBuilderForTf(const std::uint64_t pSize, std::string& pTfBuilderId /*out*/)
 {
-  static std::atomic_uint64_t sNoTfBuilderAvailable = 0;
-  static std::atomic_uint64_t sNoMemoryAvailable = 0;
-  static std::atomic_uint64_t sTfNumExceeeded = 0;
-
   // NOTE: we will overestimate memory requirement by a factor, until TfBuilder updates
   //       us with the actual size.
   const std::uint64_t lTfEstSize = pSize * (sTfSizeOverestimatePercent + 100) / 100;
@@ -159,22 +155,22 @@ bool TfSchedulerTfBuilderInfo::findTfBuilderForTf(const std::uint64_t pSize, std
   // TfBuilder not found?
   if ( lIt == mReadyTfBuilders.end() ) {
     if (mReadyTfBuilders.empty()) {
-      ++sNoTfBuilderAvailable;
-      DDMON("tfscheduler", "tf.rejected.no_tfb_inst", sNoTfBuilderAvailable);
+      ++mNoTfBuilderAvailable;
+      DDMON("tfscheduler", "tf.rejected.no_tfb_inst", mNoTfBuilderAvailable);
 
-      WDDLOG_RL(1000, "FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={}",
-        sNoTfBuilderAvailable);
+      WDDLOG_RL(10000, "FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={}",
+        mNoTfBuilderAvailable);
 
     } else if (lMaxTfExceeded) {
-      ++sTfNumExceeeded;
-      WDDLOG_RL(1000, "FindTfBuilder: TF cannot be scheduled. reason=NUM_TF_EXCEEEDED total={} tf_size={} ready_tfb={}",
-        sTfNumExceeeded, lTfEstSize, mReadyTfBuilders.size());
-      DDMON("tfscheduler", "tf.rejected.max_tf_exceeded", sTfNumExceeeded);
+      ++mTfNumExceeeded;
+      WDDLOG_RL(10000, "FindTfBuilder: TF cannot be scheduled. reason=NUM_TF_EXCEEEDED total={} tf_size={} ready_tfb={}",
+        mTfNumExceeeded, lTfEstSize, mReadyTfBuilders.size());
+      DDMON("tfscheduler", "tf.rejected.max_tf_exceeded", mTfNumExceeeded);
     } else {
-      ++sNoMemoryAvailable;
-      DDMON("tfscheduler", "tf.rejected.no_tfb_buf", sNoMemoryAvailable);
-      WDDLOG_RL(1000, "FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={} tf_size={} ready_tfb={}",
-        sNoMemoryAvailable, lTfEstSize, mReadyTfBuilders.size());
+      ++mNoMemoryAvailable;
+      DDMON("tfscheduler", "tf.rejected.no_tfb_buf", mNoMemoryAvailable);
+      WDDLOG_RL(10000, "FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={} tf_size={} ready_tfb={}",
+        mNoMemoryAvailable, lTfEstSize, mReadyTfBuilders.size());
     }
     return false;
   }

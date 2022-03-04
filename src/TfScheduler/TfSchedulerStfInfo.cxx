@@ -45,9 +45,6 @@ void TfSchedulerStfInfo::SchedulingThread()
   std::map<std::string, std::uint64_t> lStfSenderMissingCnt;
   std::optional<std::vector<StfInfo>> lStfInfosOpt;
 
-  // total number of scheduled Tfs
-  std::size_t lScheduledTfs = 0;
-
   // Build or discard
   bool lBuildIncomplete = mDiscoveryConfig->getBoolParam(BuildIncompleteTfsKey, BuildIncompleteTfsValue);
   IDDLOG("TfScheduler: Building of incomplete TimeFrames is {}.", lBuildIncomplete ? "enabled" : "disabled");
@@ -55,7 +52,7 @@ void TfSchedulerStfInfo::SchedulingThread()
   while ((lStfInfosOpt = mCompleteStfsInfoQueue.pop()) != std::nullopt) {
 
     DDMON("tfscheduler", "tf.rejected.total", mNotScheduledTfsCount);
-    DDMON("tfscheduler", "tf.scheduled.total", lScheduledTfs);
+    DDMON("tfscheduler", "tf.scheduled.total", mScheduledTfs);
 
     const std::vector<StfInfo> &lStfInfos = lStfInfosOpt.value();
     TfBuildingInformation lRequest;
@@ -105,7 +102,7 @@ void TfSchedulerStfInfo::SchedulingThread()
           switch (lResponse.status()) {
             case BuildTfResponse::OK:
               // marked TfBuilder as scheduled
-              lScheduledTfs++;
+              mScheduledTfs++;
               mTfBuilderInfo.markTfBuilderWithTfId(lTfBuilderId, lRequest.tf_id());
               break;
             case BuildTfResponse::ERROR_NOMEM:
@@ -434,6 +431,7 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
       DDDLOG("New RunNumber received. run_number={}", lRunNumber);
       // reset internal counters
       reset();
+      mTfBuilderInfo.resetCounters();
       mRunNumber = lRunNumber;
     } else if (mRunNumber > lRunNumber) {
       EDDLOG_GRL(500, "New RunNumber is smaller than the previous. run_number={} prev_run_number={}", lRunNumber, mRunNumber);
