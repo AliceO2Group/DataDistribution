@@ -180,6 +180,7 @@ private:
     std::uint64_t mMaxCompletedTfId = 0;
     std::uint64_t mNotScheduledTfsCount = 0;
     std::uint64_t mStaleTfCount = 0;
+    std::uint64_t mScheduledTfs = 0;
     EventRecorder mDroppedStfs;
     EventRecorder mBuiltTfs;
 
@@ -189,6 +190,7 @@ private:
       mMaxCompletedTfId = 0;
       mNotScheduledTfsCount = 0;
       mStaleTfCount = 0;
+      mScheduledTfs = 0;
       mDroppedStfs.reset();
       mBuiltTfs.reset();
 
