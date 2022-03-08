@@ -32,6 +32,7 @@
 #include <thread>
 #include <list>
 #include <future>
+#include <shared_mutex>
 
 namespace o2::DataDistribution
 {
@@ -40,6 +41,26 @@ enum StfSenderState {
   STF_SENDER_STATE_OK = 1,
   STF_SENDER_STATE_INITIALIZING,
   STF_SENDER_STATE_INCOMPLETE
+};
+
+
+struct StfSenderUCXConnectReq {
+  TfBuilderUCXEndpoint mRpcReq;
+  ConcurrentQueue<std::tuple<bool, std::string, ConnectTfBuilderUCXResponse>> *mConnRepQueue;
+
+  StfSenderUCXConnectReq(const TfBuilderUCXEndpoint &pReq, ConcurrentQueue<std::tuple<bool, std::string, ConnectTfBuilderUCXResponse>> *pQueue)
+  : mConnRepQueue(pQueue)
+  {
+    mRpcReq.CopyFrom(pReq);
+  }
+};
+
+struct StfSenderUCXThreadInfo {
+  std::unique_ptr<ConcurrentQueue<std::unique_ptr<StfSenderUCXConnectReq>>> mConnReqQueue;
+
+  StfSenderUCXThreadInfo() {
+    mConnReqQueue = std::make_unique<ConcurrentQueue<std::unique_ptr<StfSenderUCXConnectReq>>>();
+  }
 };
 
 class TfSchedulerConnManager
@@ -84,6 +105,7 @@ class TfSchedulerConnManager
   /// External requests by TfBuilders UCX frontend
   void connectTfBuilderUCX(const TfBuilderConfigStatus &pTfBuilderStatus, TfBuilderUCXConnectionResponse &pResponse /*out*/);
   void disconnectTfBuilderUCX(const TfBuilderConfigStatus &pTfBuilderStatus, StatusResponse &pResponse /*out*/);
+  void ConnectTfBuilderUCXThread(const std::string lStfSenderId);
 
   /// Internal request, disconnect on error
   void removeTfBuilder(const std::string &pTfBuilderId);
@@ -127,13 +149,18 @@ private:
   /// Discovery configuration
   std::shared_ptr<ConsulTfScheduler> mDiscoveryConfig;
 
+  /// Connection threads
+  std::shared_mutex mConnectInfoLock;
+    std::map<std::string, StfSenderUCXThreadInfo> mConnectThreadInfos;
+    std::vector<std::thread> mConnectionThreads;
+
   /// Scheduler threads
   bool mRunning = false;
   std::thread mStfSenderMonitoringThread;
   std::thread mDropFutureWaitThread;
 
   /// StfSender RPC-client channels
-  std::recursive_mutex mStfSenderClientsLock;
+  std::shared_mutex mStfSenderClientsLock;
     StfSenderRpcClientCollection<ConsulTfScheduler> mStfSenderRpcClients;
   /// TfBuilder RPC-client channels
   TfBuilderRpcClientCollection<ConsulTfScheduler> mTfBuilderRpcClients;

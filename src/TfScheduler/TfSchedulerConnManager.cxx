@@ -20,6 +20,7 @@
 #include <tuple>
 #include <algorithm>
 #include <future>
+#include <shared_mutex>
 
 namespace o2::DataDistribution
 {
@@ -32,6 +33,21 @@ bool TfSchedulerConnManager::start()
 
   while (!mStfSenderRpcClients.start()) {
     return false; // we'll be called back
+  }
+
+  // start all Connection threads
+  {
+    std::unique_lock lRpcLock(mStfSenderClientsLock);
+    std::unique_lock lConnInfoLock(mConnectInfoLock);
+
+    for (auto &[lStfSenderId, lRpcClient] : mStfSenderRpcClients) {
+
+      mConnectThreadInfos.emplace(std::make_pair(lStfSenderId, StfSenderUCXThreadInfo()));
+
+      std::string lThreadName = "ucx_conn_" + lStfSenderId;
+      mConnectionThreads.push_back(create_thread_member(lThreadName.c_str(),
+        &TfSchedulerConnManager::ConnectTfBuilderUCXThread, this, lStfSenderId));
+    }
   }
 
   mRunning = true;
@@ -60,6 +76,20 @@ void TfSchedulerConnManager::stop()
 
     if (mDropFutureWaitThread.joinable()) {
       mDropFutureWaitThread.join();
+    }
+
+    // start all Connection threads
+    {
+      std::unique_lock lConnInfoLock(mConnectInfoLock);
+      for (auto &[lStfSenderId, lThreadInfo] : mConnectThreadInfos) {
+        lThreadInfo.mConnReqQueue->stop();
+      }
+
+      for (auto &lConnThread : mConnectionThreads) {
+        if (lConnThread.joinable()) {
+          lConnThread.join();
+        }
+      }
     }
 
     // delete all rpc clients
@@ -215,21 +245,12 @@ void TfSchedulerConnManager::connectTfBuilderUCX(const TfBuilderConfigStatus &pT
   }
 
   const std::string &lTfBuilderId = pTfBuilderStatus.info().process_id();
-  // const auto &lListenAddr = pTfBuilderStatus.ucx_info().listen_ip();
-  // const auto &lListenPort = pTfBuilderStatus.ucx_info().listen_port();
 
-  std::scoped_lock lLock(mStfSenderClientsLock);
+  std::shared_lock lLock(mStfSenderClientsLock);
 
   if (!stfSendersReady()) {
     IDDLOG("TfBuilder UCX Connection: StfSenders gRPC connection not ready.");
     pResponse.set_status(ERROR_STF_SENDERS_NOT_READY);
-    return;
-  }
-
-  // Open the gRPC connection to the new TfBuilder (will only add if already does not exist)
-  if (!newTfBuilderRpcClient(lTfBuilderId)) {
-    WDDLOG("TfBuilder gRPC connection error: Cannot open the gRPC connection. tfb_id={}", lTfBuilderId);
-    pResponse.set_status(ERROR_GRPC_TF_BUILDER);
     return;
   }
 
@@ -241,19 +262,47 @@ void TfSchedulerConnManager::connectTfBuilderUCX(const TfBuilderConfigStatus &pT
   lParam.set_tf_builder_id(lTfBuilderId);
   lParam.mutable_endpoint()->CopyFrom(pTfBuilderStatus.ucx_info());
 
-  for (auto &[lStfSenderId, lRpcClient] : mStfSenderRpcClients) {
-    ConnectTfBuilderUCXResponse lResponse;
-    if(!lRpcClient->ConnectTfBuilderUCXRequest(lParam, lResponse).ok()) {
-      EDDLOG_RL(1000, "TfBuilder UCX Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={}",
-        lStfSenderId, lTfBuilderId);
+  DDDLOG("connectTfBuilderUCX: starting connections for tf_builder_id={}", lTfBuilderId);
+
+  ConcurrentQueue<std::tuple<bool, std::string, ConnectTfBuilderUCXResponse>> lConnRepQueue;
+  std::size_t lStfSenderCnt = 0;
+  // queue all connection requests
+  {
+    std::shared_lock lStfSenderInfoLock(mConnectInfoLock);
+    lStfSenderCnt = mConnectThreadInfos.size();
+    for (auto &[lStfSenderId, lThreadInfo] : mConnectThreadInfos) {
+      (void)lStfSenderId;
+      auto &lReqQueue = lThreadInfo.mConnReqQueue;
+      lReqQueue->push(std::make_unique<StfSenderUCXConnectReq>(lParam, &lConnRepQueue));
+    }
+  }
+
+  DDDLOG("connectTfBuilderUCX: starting gRPC client for tf_builder_id={}", lTfBuilderId);
+
+  // Open the gRPC connection to the new TfBuilder (will only add if already does not exist)
+  if (!newTfBuilderRpcClient(lTfBuilderId)) {
+    WDDLOG("TfBuilder gRPC connection error: Cannot open the gRPC connection. tfb_id={}", lTfBuilderId);
+    pResponse.set_status(ERROR_GRPC_TF_BUILDER);
+    return;
+  }
+
+  // wait for all connection replies
+  for (std::size_t i = 0; i < lStfSenderCnt; i++) {
+
+    std::tuple<bool, std::string, ConnectTfBuilderUCXResponse> lRep;
+    bool lRepOk = lConnRepQueue.pop(lRep);
+
+    if (!lRepOk && !std::get<0>(lRep)) {
       pResponse.set_status(ERROR_GRPC_STF_SENDER);
       lConnectionsOk = false;
       break;
     }
 
+    const auto &lStfSenderId = std::get<1>(lRep);
+    auto &lResponse = std::get<2>(lRep);
+
     // check StfSender status
     if (lResponse.status() != OK) {
-      EDDLOG_RL(1000, "TfBuilder UCX Connection error: cannot connect. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
       pResponse.set_status(lResponse.status());
       lConnectionsOk = false;
       break;
@@ -269,6 +318,55 @@ void TfSchedulerConnManager::connectTfBuilderUCX(const TfBuilderConfigStatus &pT
     // remove all existing connection
     disconnectTfBuilderUCX(pTfBuilderStatus, lResponse);
     assert (pResponse.status() != OK);
+  }
+
+  DDDLOG("connectTfBuilderUCX: finished for tf_builder_id={} success={}", lTfBuilderId, lConnectionsOk);
+}
+
+// per FLP thread to connect TfBuilders
+void TfSchedulerConnManager::ConnectTfBuilderUCXThread(const std::string lStfSenderId)
+{
+  // Initialize the thread queue
+  std::unique_lock lThreadLock(mConnectInfoLock);
+  auto &lConnReqQueue = mConnectThreadInfos[lStfSenderId].mConnReqQueue;
+
+  lThreadLock.unlock();
+
+  std::optional<std::unique_ptr<StfSenderUCXConnectReq>> lStfSenderIdOpt;
+
+  DDDLOG("ConnectTfBuilderUCXThread started for stf_sender_id={}", lStfSenderId);
+
+  while ((lStfSenderIdOpt = lConnReqQueue->pop()) != std::nullopt) {
+
+    bool lConnectionsOk = true;
+
+    auto &lRpcClient = mStfSenderRpcClients[lStfSenderId];
+    const auto &lParam = lStfSenderIdOpt.value()->mRpcReq;
+    const auto &lTfBuilderId = lParam.tf_builder_id();
+
+    ConnectTfBuilderUCXResponse lResponse;
+    if(!lRpcClient->ConnectTfBuilderUCXRequest(lParam, lResponse).ok()) {
+      EDDLOG_RL(1000, "TfBuilder UCX Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={}",
+        lStfSenderId, lTfBuilderId);
+      // pResponse.set_status(ERROR_GRPC_STF_SENDER);
+      lConnectionsOk = false;
+      break;
+    }
+
+    // check StfSender status
+    if (lResponse.status() != OK) {
+      EDDLOG_RL(1000, "TfBuilder UCX Connection error: cannot connect. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
+      // pResponse.set_status(lResponse.status());
+      lConnectionsOk = false;
+      break;
+    }
+
+    // send reply
+    auto mConnRepQueue = lStfSenderIdOpt.value()->mConnRepQueue;
+
+    if (mConnRepQueue) {
+      mConnRepQueue->push(std::make_tuple(lConnectionsOk, lStfSenderId, std::move(lResponse)));
+    }
   }
 }
 
