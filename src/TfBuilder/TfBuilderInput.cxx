@@ -39,10 +39,11 @@ TfBuilderInput::TfBuilderInput(TfBuilderDevice& pStfBuilderDev, std::shared_ptr<
       mRpc(pRpc),
       mOutStage(pOutStage)
   {
-    // Select which backend is used
+    // initialize request and data queues
     mStfRequestQueue = std::make_shared<ConcurrentQueue<std::string>>();
     mReceivedDataQueue = std::make_shared<ConcurrentQueue<ReceivedStfMeta>>();
 
+    // Select which backend is used
     auto lTransportOpt = mConfig->getStringParam(DataDistNetworkTransportKey, DataDistNetworkTransportDefault);
     if (lTransportOpt == "fmq" || lTransportOpt == "FMQ" || lTransportOpt == "fairmq" || lTransportOpt == "FAIRMQ") {
       mInputFairMQ = std::make_unique<TfBuilderInputFairMQ>(pRpc, pStfBuilderDev.TfBuilderI(), *mStfRequestQueue, *mReceivedDataQueue);

@@ -41,7 +41,7 @@ public:
   template <typename ConsulCli>
   bool start(std::shared_ptr<ConsulCli> pConfig) {
 
-    if (!mShouldRetryStart) {
+    if (!should_retry_start()) {
       return false;
     }
 

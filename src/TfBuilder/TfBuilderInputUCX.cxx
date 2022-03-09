@@ -81,7 +81,7 @@ void TfBuilderInputUCX::ListenerThread()
     // progress the listener worker
     const auto lProgress = ucp_worker_progress(listener_worker.ucp_worker);
 
-    const auto lSleep = lProgress > 0 ? 0us : 50000us;
+    const auto lSleep = lProgress > 0 ? 1us : 5000us;
 
     auto lConnInfoOpt = mConnRequestQueue.pop_wait_for(lSleep);
     if (!lConnInfoOpt.has_value()) {
@@ -123,7 +123,7 @@ void TfBuilderInputUCX::ListenerThread()
     mConnMap[lStfSenderId] = std::move(lConnStruct);
   }
 
-  IDDLOG("TfBuilderInputUCX:stop: Listener thread stopped.");
+  DDDLOG("TfBuilderInputUCX: Listener thread stopped.");
 }
 
 bool TfBuilderInputUCX::start()
@@ -257,11 +257,28 @@ bool TfBuilderInputUCX::start()
     // connection successful
     break;
 
-   } while(true);
+  } while(true);
 
-  // Start all the threads
+  // Wait until we have all endpoints for StfSenders
+  do {
+    std::size_t lNumConnected = 0;
+    {
+      std::scoped_lock lLock(mConnectionMapLock);
+      lNumConnected = mConnMap.size();
+    }
+
+    if (lNumConnected == lNumStfSenders) {
+      break;
+    }
+
+    std::this_thread::sleep_for(100ms);
+    DDDLOG_RL(5000, "TfBuilderInputUCX::start: Waiting for all StfSender ucx endpoints. connected={} total={}", lNumConnected, lNumStfSenders);
+  } while (true);
+
+  // This will stop the Listener thread
   mState = RUNNING;
 
+  DDDLOG("TfBuilderInputUCX::start: Finished");
   return true;
 }
 
