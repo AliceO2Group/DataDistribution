@@ -16,9 +16,7 @@
 #include <string>
 #include <chrono>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 StfSenderRpcClient::StfSenderRpcClient(const std::string &pEndpoint) {
@@ -56,5 +54,4 @@ std::string StfSenderRpcClient::grpc_status() {
 }
 
 
-}
 }

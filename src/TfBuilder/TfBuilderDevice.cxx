@@ -152,39 +152,18 @@ void TfBuilderDevice::InitTask()
     }
   }
 
-  // start the task
-  if (!start()) {
-    mShouldExit = true;
-    throw std::runtime_error("Aborting InitTask(). Cannot configure.");
-  }
-
-  // wait for the memory allocation and registration to finish
-  lBuffersAllocatedFuture.wait();
-  if (!lBuffersAllocatedFuture.get()) {
-    EDDLOG("InitTask::MemorySegment allocation failed. Exiting...");
-    throw "InitTask::MemorySegment allocation failed. Exiting...";
-    return;
-  }
-
-  DDDLOG("InitTask completed.");
-}
-
-bool TfBuilderDevice::start()
-{
+  // Connect all StfSender gRPCs
   while (!mRpc->start(mTfDataRegionSize, mFlpInputHandler->getStfRequestQueue(), mFlpInputHandler->getDataQueue())) {
     // check if should stop looking for TfScheduler
     if (mRpc->isTerminateRequested()) {
-      mShouldExit = true;
-      return false;
+      return;
     }
 
     // try to reach the scheduler unless we should exit
     if (IsRunningState() && NewStatePending()) {
-      mShouldExit = true;
-      return false;
+      return;
     }
-
-    std::this_thread::sleep_for(1s);
+    std::this_thread::sleep_for(250ms);
   }
 
   // we reached the scheduler instance, initialize everything else
@@ -200,13 +179,23 @@ bool TfBuilderDevice::start()
   // start file sink
   mFileSink.start();
 
-  // Start input handlers
-  if (!mFlpInputHandler->start()) {
-    mShouldExit = true;
-    EDDLOG("Could not initialize input connections. Exiting.");
-    return false;
+  // wait for the memory allocation and registration to finish
+  lBuffersAllocatedFuture.wait();
+  if (!lBuffersAllocatedFuture.get()) {
+    EDDLOG("InitTask::MemorySegment allocation failed. Exiting...");
+    throw std::runtime_error("InitTask::MemorySegment allocation failed. Exiting...");
   }
 
+  // Start input handlers after the memory is finished allocating
+  if (!mFlpInputHandler->start()) {
+    throw std::runtime_error("Could not initialize input connections. Exiting.");
+  }
+
+  DDDLOG("InitTask completed.");
+}
+
+bool TfBuilderDevice::start()
+{
   return true;
 }
 

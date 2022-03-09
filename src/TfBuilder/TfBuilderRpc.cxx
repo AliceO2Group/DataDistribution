@@ -295,7 +295,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
   }
 
   sNumTfRequests++;
-  DDDLOG_RL(5000, "Requesting SubTimeFrames. tf_id={} tf_size={} total_requests={}", lTfId, lTfSize, sNumTfRequests);
+  DDDLOG_GRL(5000, "Requesting SubTimeFrames. tf_id={} tf_size={} total_requests={}", lTfId, lTfSize, sNumTfRequests);
 
   StfDataRequestMessage lStfRequest;
   const auto &lTfBuilderId = mDiscoveryConfig->status().info().process_id();
@@ -384,7 +384,7 @@ void TfBuilderRpcImpl::StfRequestThread()
       while (mRunning && !lReqVector.empty()) {
         // wait for the stf slots to become free
         if (mNumReqInFlight.load() >= mMaxNumReqInFlight) {
-          std::this_thread::sleep_for(5ms);
+          std::this_thread::sleep_for(500us);
           continue; // reevaluate the max TF conditions
         }
 

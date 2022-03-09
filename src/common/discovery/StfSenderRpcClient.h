@@ -150,7 +150,7 @@ public:
       }
 
       if (lStfSenderStatus.rpc_endpoint().empty()) {
-        EDDLOG("StfSender rpc_endpoint field empty. stfs_id={}", lStfSenderId);
+        DDDLOG("StfSender rpc_endpoint field empty. stfs_id={}", lStfSenderId);
         continue;
       }
 
@@ -169,14 +169,14 @@ public:
 
       if (mClients.size() < lNumStfSenders) {
         lWaitForStfSenders = true;
-        IDDLOG_RL(1000, "gRPC: Connected to {} out of {} StfSenders", mClients.size(), lNumStfSenders);
+        IDDLOG_RL(10000, "gRPC: Connected to {} out of {} StfSenders", mClients.size(), lNumStfSenders);
       }
 
       // check the connection on existing clients
       for (auto &[ mCliId, lClient] : mClients) {
         if (!lClient->is_ready()) {
           lAllConnReady = false;
-          IDDLOG_RL(1000, "StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
+          IDDLOG_RL(10000, "StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
         }
       }
     }
