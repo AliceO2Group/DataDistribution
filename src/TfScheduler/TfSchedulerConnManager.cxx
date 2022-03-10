@@ -56,45 +56,47 @@ bool TfSchedulerConnManager::start()
   mStfSenderMonitoringThread = create_thread_member("sched_stfs_mon",
     &TfSchedulerConnManager::StfSenderMonitoringThread, this);
 
-  // start async future wit thread
+  // start async future with thread
   mDropFutureWaitThread = create_thread_member("sched_await",
     &TfSchedulerConnManager::DropWaitThread, this);
 
+  IDDLOG("TfSchedulerConnManager::start() done");
   return true;
 }
 
 void TfSchedulerConnManager::stop()
 {
-    DDDLOG("TfSchedulerConnManager::stop()");
+  DDDLOG("TfSchedulerConnManager::stop()");
 
-    mRunning = false;
-    mStfDropFuturesCV.notify_one();
+  mRunning = false;
+  mStfDropFuturesCV.notify_one();
 
-    if (mStfSenderMonitoringThread.joinable()) {
-      mStfSenderMonitoringThread.join();
-    }
-
-    if (mDropFutureWaitThread.joinable()) {
-      mDropFutureWaitThread.join();
-    }
-
-    // start all Connection threads
-    {
-      std::unique_lock lConnInfoLock(mConnectInfoLock);
-      for (auto &[lStfSenderId, lThreadInfo] : mConnectThreadInfos) {
-        lThreadInfo.mConnReqQueue->stop();
-      }
-
-      for (auto &lConnThread : mConnectionThreads) {
-        if (lConnThread.joinable()) {
-          lConnThread.join();
-        }
-      }
-    }
-
-    // delete all rpc clients
-    mStfSenderRpcClients.stop();
+  if (mStfSenderMonitoringThread.joinable()) {
+    mStfSenderMonitoringThread.join();
   }
+
+  if (mDropFutureWaitThread.joinable()) {
+    mDropFutureWaitThread.join();
+  }
+
+  // start all Connection threads
+  {
+    std::unique_lock lConnInfoLock(mConnectInfoLock);
+    for (auto &[lStfSenderId, lThreadInfo] : mConnectThreadInfos) {
+      lThreadInfo.mConnReqQueue->stop();
+    }
+
+    for (auto &lConnThread : mConnectionThreads) {
+      if (lConnThread.joinable()) {
+        lConnThread.join();
+      }
+    }
+  }
+  // delete all rpc clients
+  mStfSenderRpcClients.stop();
+
+  IDDLOG("TfSchedulerConnManager::top() done");
+}
 
 std::size_t TfSchedulerConnManager::checkStfSenders()
 {
@@ -130,7 +132,7 @@ void TfSchedulerConnManager::connectTfBuilder(const TfBuilderConfigStatus &pTfBu
 
   std::scoped_lock lLock(mStfSenderClientsLock);
 
-  if (!stfSendersReady()) {
+  if (!mRunning || !stfSendersReady()) {
     IDDLOG("TfBuilder Connection error: StfSenders not ready.");
     pResponse.set_status(ERROR_STF_SENDERS_NOT_READY);
     return;
@@ -248,7 +250,7 @@ void TfSchedulerConnManager::connectTfBuilderUCX(const TfBuilderConfigStatus &pT
 
   std::shared_lock lLock(mStfSenderClientsLock);
 
-  if (!stfSendersReady()) {
+  if (!mRunning || !stfSendersReady()) {
     IDDLOG("TfBuilder UCX Connection: StfSenders gRPC connection not ready.");
     pResponse.set_status(ERROR_STF_SENDERS_NOT_READY);
     return;
@@ -348,7 +350,6 @@ void TfSchedulerConnManager::ConnectTfBuilderUCXThread(const std::string lStfSen
     if(!lRpcClient->ConnectTfBuilderUCXRequest(lParam, lResponse).ok()) {
       EDDLOG_RL(1000, "TfBuilder UCX Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={}",
         lStfSenderId, lTfBuilderId);
-      // pResponse.set_status(ERROR_GRPC_STF_SENDER);
       lConnectionsOk = false;
       break;
     }
@@ -356,7 +357,6 @@ void TfSchedulerConnManager::ConnectTfBuilderUCXThread(const std::string lStfSen
     // check StfSender status
     if (lResponse.status() != OK) {
       EDDLOG_RL(1000, "TfBuilder UCX Connection error: cannot connect. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
-      // pResponse.set_status(lResponse.status());
       lConnectionsOk = false;
       break;
     }

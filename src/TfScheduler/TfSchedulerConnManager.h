@@ -81,7 +81,7 @@ class TfSchedulerConnManager
   void stop();
   std::size_t checkStfSenders();
 
-  bool stfSendersReady() { return mStfSenderRpcClients.size() == mPartitionInfo.mStfSenderIdList.size(); }
+  bool stfSendersReady() { return mStfSenderRpcClients.started() && (mStfSenderRpcClients.size() == mPartitionInfo.mStfSenderIdList.size()); }
 
   std::set<std::string> getStfSenderSet() const
   {

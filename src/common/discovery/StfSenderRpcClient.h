@@ -230,6 +230,8 @@ public:
   auto begin() const { return mClients.begin(); }
   auto end() const { return mClients.end(); }
 
+  bool started() const { return (mRunning && mClientsCreated); }
+
 private:
 
   std::atomic_bool mRunning = false;
