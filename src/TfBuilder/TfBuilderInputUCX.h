@@ -82,6 +82,8 @@ public:
   }
 
   bool start();
+  bool map_data_region();
+
   void stop();
   void reset() { }
 
@@ -126,6 +128,7 @@ private:
 private:
   /// UCX context
   ucp_context_h ucp_context;
+  bool ucp_data_region_set = false;
   ucp_mem_h ucp_data_region;
 
   /// listener

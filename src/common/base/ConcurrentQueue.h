@@ -319,6 +319,7 @@ class IFifoPipeline
   void stopPipeline()
   {
     for (auto& lQueue : mPipelineQueues) {
+      lQueue.flush();
       lQueue.stop();
     }
   }

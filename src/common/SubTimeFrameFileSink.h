@@ -79,6 +79,7 @@ class SubTimeFrameFileSink
 
   void start();
   void stop();
+  void flush() { mCloseWriter = true; };
 
   void DataHandlerThread(const unsigned pIdx);
 
@@ -88,6 +89,7 @@ class SubTimeFrameFileSink
   const DataDistDevice& mDeviceI;
   stf_pipeline& mPipelineI;
 
+  bool mCloseWriter;
   std::unique_ptr<SubTimeFrameFileWriter> mStfWriter = nullptr;
 
   /// Configuration

@@ -228,7 +228,7 @@ bool TfSchedulerRpcClient::TfBuilderUCXConnectionRequest(TfBuilderConfigStatus &
 // rpc TfBuilderUCXDisconnectionRequest(TfBuilderConfigStatus) returns (StatusResponse) { }
 bool TfSchedulerRpcClient::TfBuilderUCXDisconnectionRequest(TfBuilderConfigStatus &pParam, StatusResponse &pRet /*out*/) {
   if (!mStub || !is_alive()) {
-    WDDLOG_GRL(2000, "TfBuilderUCXDisconnectionRequest: no gRPC connection to scheduler");
+    DDDLOG_GRL(2000, "TfBuilderUCXDisconnectionRequest: no gRPC connection to scheduler");
     return false;
   }
 

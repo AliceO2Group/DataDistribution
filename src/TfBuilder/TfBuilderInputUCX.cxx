@@ -145,21 +145,6 @@ bool TfBuilderInputUCX::start()
     return false;
   }
 
-  // map the receive buffer for ucx rma
-  {
-    const auto lOrigAddress = mTimeFrameBuilder.mMemRes.mDataMemRes->address();
-    const auto lOrigSize = mTimeFrameBuilder.mMemRes.mDataMemRes->size();
-    ucx::util::create_rkey_for_region(ucp_context, lOrigAddress, lOrigSize, /*rw*/ false,  &ucp_data_region, nullptr, nullptr);
-
-    auto lUcxMemPtr = ucx::util::get_mem_address(ucp_data_region);
-    if (!lUcxMemPtr) {
-      EDDLOG("TfBuilderInputUCX::start: Failed to map TF region with UCX.");
-      return false;
-    }
-    // set the UCX pointer for the region
-    mTimeFrameBuilder.mMemRes.mDataMemRes->set_ucx_address(lUcxMemPtr);
-  }
-
   // Create listener worker for accepting connections from StfSender
   if (!ucx::util::create_ucp_worker(ucp_context, &listener_worker, "Listener")) {
     return false;
@@ -282,6 +267,26 @@ bool TfBuilderInputUCX::start()
   return true;
 }
 
+bool TfBuilderInputUCX::map_data_region()
+{
+  // map the receive buffer for ucx rma
+  ucp_data_region_set = false;
+  const auto lOrigAddress = mTimeFrameBuilder.mMemRes.mDataMemRes->address();
+  const auto lOrigSize = mTimeFrameBuilder.mMemRes.mDataMemRes->size();
+  ucx::util::create_rkey_for_region(ucp_context, lOrigAddress, lOrigSize, /*rw*/ false,  &ucp_data_region, nullptr, nullptr);
+
+  auto lUcxMemPtr = ucx::util::get_mem_address(ucp_data_region);
+  if (!lUcxMemPtr) {
+    EDDLOG("TfBuilderInputUCX::start: Failed to map TF region with UCX.");
+    return false;
+  }
+  // set the UCX pointer for the region
+  mTimeFrameBuilder.mMemRes.mDataMemRes->set_ucx_address(lUcxMemPtr);
+  ucp_data_region_set = true;
+  DDDLOG("TfBuilderInputUCX::map_data_region(): mapped the data region size={}", lOrigSize);
+  return true;
+}
+
 void TfBuilderInputUCX::stop()
 {
   // first stop accepting TimeFrames
@@ -292,7 +297,7 @@ void TfBuilderInputUCX::stop()
   if (mListenerThread.joinable()) {
     mListenerThread.join();
   }
-  IDDLOG("TfBuilderInputUCX::stop: Listener thread stopped.");
+  DDDLOG("TfBuilderInputUCX::stop: Listener thread stopped.");
 
   // Wait for input threads to stop
   DDDLOG("TfBuilderInputUCX::stop: Waiting for input threads to terminate.");
@@ -312,18 +317,17 @@ void TfBuilderInputUCX::stop()
     if (mRpc->TfSchedRpcCli().TfBuilderUCXDisconnectionRequest(lStatus, lResult)) {
       DDDLOG("TfBuilderInputUCX::stop: RPC Request for StfSender disconnect successful.");
     } else {
-      EDDLOG("TfBuilderInputUCX::stop: RPC error: Request for StfSender disconnect failed!");
+      DDDLOG("TfBuilderInputUCX::stop: RPC error: Request for StfSender disconnect failed!");
     }
   }
 
   // unmap the receive buffers
-  {
+  if (ucp_data_region_set) {
     // remove the ucx mapping from the region
     void* lOrigAddress = mTimeFrameBuilder.mMemRes.mDataMemRes->address();
     mTimeFrameBuilder.mMemRes.mDataMemRes->set_ucx_address(lOrigAddress);
     // unmap
     ucp_mem_unmap(ucp_context, ucp_data_region);
-    DDDLOG("TfBuilderInputUCX::stop: RPC error: Request for StfSender disconnect failed!");
   }
 
   // close ucx: destroy remote rma keys and disconnect

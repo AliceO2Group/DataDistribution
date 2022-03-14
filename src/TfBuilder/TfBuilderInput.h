@@ -44,6 +44,8 @@ class TfBuilderInput
   TfBuilderInput(TfBuilderDevice& pStfBuilderDev, std::shared_ptr<ConsulTfBuilder> pConfig, std::shared_ptr<TfBuilderRpcImpl> pRpc, unsigned pOutStage);
 
   bool start();
+  bool map_data_region() { return mInputUCX ? mInputUCX->map_data_region() : true; }
+
   void stop();
   void reset() {
     mReceivedDataQueue->flush();

@@ -161,6 +161,8 @@ ConnectStatus StfSenderOutputUCX::connectTfBuilder(const std::string &pTfBuilder
 
 bool StfSenderOutputUCX::disconnectTfBuilder(const std::string &pTfBuilderId)
 {
+  DDDLOG("StfSenderOutputUCX::disconnectTfBuilder: received for tf_builder={}", pTfBuilderId);
+
   // find and remove from the connection map
   std::unique_ptr<StfSenderUCXConnInfo> lConnInfo;
   {

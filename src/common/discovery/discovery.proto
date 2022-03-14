@@ -35,6 +35,7 @@ message BasicInfo {
     IGNORE__          = 0;
     RUNNING           = 1;
     NOT_RUNNING       = 2;
+    ABORTED           = 3;
   }
 
   ProcessTypePB     type              = 1;
