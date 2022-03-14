@@ -146,6 +146,9 @@ void StfSenderDevice::InitTask()
         EDDLOG("InitTask: Failed to connect to TfScheduler. Exiting.");
         throw std::runtime_error("Cannot connect to TfScheduler.");
       }
+    } else {
+      // Start output handler for standalone
+      I().mOutputHandler->start_standalone(I().mDiscoveryConfig);
     }
 
     // start file sink

@@ -125,11 +125,6 @@ class StfSenderDevice : public DataDistDevice
             break;
           }
 
-          if (mStandalone) {
-            lNextStage = eNullIn;
-            break;
-          }
-
           lNextStage = eSenderIn;
           break;
         }

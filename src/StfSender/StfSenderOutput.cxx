@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <stdexcept>
+#include <random>
 
 #if defined(__linux__)
 #include <unistd.h>
@@ -41,7 +42,7 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
   mRunning = true;
 
   // Get DD buffer size option
-  auto lBufferSizeMB = mDiscoveryConfig->getUInt64Param(StfBufferSizeMBKey, StfBufferSizeMBValue);
+  auto lBufferSizeMB = mDiscoveryConfig->getUInt64Param(StfBufferSizeMBKey, StfBufferSizeMBDefault);
   auto lOptBufferSize = lBufferSizeMB << 20;
   if (lOptBufferSize != mBufferSize) {
     lOptBufferSize = std::clamp(lOptBufferSize, std::uint64_t(8ULL << 30), std::uint64_t(64ULL << 30));
@@ -85,6 +86,32 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
   mMonitoringThread = create_thread_member("stfs_mon", &StfSenderOutput::StfMonitoringThread, this);
 }
 
+void StfSenderOutput::start_standalone(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
+{
+  assert(pDiscoveryConfig);
+  mDiscoveryConfig = pDiscoveryConfig;
+  mRunning = true;
+
+  // Get DD buffer size option
+  auto lBufferSizeMB = mDiscoveryConfig->getUInt64Param(StfBufferSizeMBKey, StfBufferSizeMBDefault);
+  auto lOptBufferSize = lBufferSizeMB << 20;
+  if (lOptBufferSize != mBufferSize) {
+    lOptBufferSize = std::clamp(lOptBufferSize, std::uint64_t(8ULL << 30), std::uint64_t(64ULL << 30));
+    mBufferSize = lOptBufferSize;
+    WDDLOG("StfSender buffer size override. size={}", lOptBufferSize);
+  }
+  // Get the keep target
+  mKeepTarget = mDiscoveryConfig->getUInt64Param(StandaloneStfDataBufferSizeMBKey, StandaloneStfDataBufferSizeMBDefault) << 20;
+  mKeepTarget = std::clamp(mKeepTarget.load(), std::uint64_t(128ULL << 20), mBufferSize);
+
+  // create stf keep thread
+  mStfKeepThread = create_thread_member("stfs_keep", &StfSenderOutput::StfKeepThread, this);
+  // create stf drop thread
+  mStfDropThread = create_thread_member("stfs_drop", &StfSenderOutput::StfDropThread, this);
+  // create monitoring thread
+  mMonitoringThread = create_thread_member("stfs_mon", &StfSenderOutput::StfMonitoringThread, this);
+}
+
 void StfSenderOutput::stop()
 {
   mRunning = false;
@@ -94,14 +121,15 @@ void StfSenderOutput::stop()
     mSchedulerThread.join();
   }
 
+  // Stop standalone KeepThread
+  if (mStfKeepThread.joinable()) {
+    mStfKeepThread.join();
+  }
+
   // stop the drop queue
   mDropQueue.stop();
   if (mStfDropThread.joinable()) {
     mStfDropThread.join();
-  }
-
-  if (mDevice.standalone()) {
-    return;
   }
 
   // stop FaiMQ input
@@ -156,6 +184,70 @@ bool StfSenderOutput::disconnectTfBuilderUCX(const std::string &pTfBuilderId)
     return false;
   }
   return mOutputUCX->disconnectTfBuilder(pTfBuilderId);
+}
+
+// Keep configurable of STFs until the set goal is reached
+void StfSenderOutput::StfKeepThread()
+{
+  std::default_random_engine lGen;
+  std::uniform_int_distribution<unsigned> lUniformDist(0, 99);
+
+  std::unique_ptr<SubTimeFrame> lStf;
+
+  mDeletePercentage = mDiscoveryConfig->getUInt64Param(StandaloneStfDeleteChanceKey, StandaloneStfDeleteChanceDefault);
+  mDeletePercentage = std::clamp(mDeletePercentage.load(), std::uint64_t(0), std::uint64_t(100));
+
+  while ((lStf = mPipelineI.dequeue(eSenderIn)) != nullptr) {
+    std::scoped_lock lMapLock(mStfKeepMapLock);
+
+    const auto lStfId = lStf->id();
+    const auto lStfSize = lStf->getDataSize();
+
+    if (mStfKeepMap.count(lStfId) == 0) {
+      mStfKeepMap[lStfId] = std::move(lStf);
+    }
+
+    // update buffer sizes
+    StdSenderOutputCounters::Values lCounters;
+    {
+      std::scoped_lock lLock(mCounters.mCountersLock);
+      mCounters.mValues.mBuffered.mSize += lStfSize;
+      mCounters.mValues.mBuffered.mCnt += 1;
+      lCounters = mCounters.mValues;
+    }
+
+    // Maintain the setpoint
+    while (!mStfKeepMap.empty() && (lCounters.mBuffered.mSize > (mKeepTarget * 95 / 100))) {
+      // over the limit, delete:
+      auto lStfIdToRemove = mStfKeepMap.rbegin()->first;
+      lCounters.mBuffered.mSize -= mStfKeepMap[lStfIdToRemove]->getDataSize();
+      mDropQueue.push(std::move(mStfKeepMap[lStfIdToRemove]));
+      mStfKeepMap.erase(lStfIdToRemove);
+    }
+
+    // Random chance to delete the oldest stf
+    if (!mStfKeepMap.empty() && (lUniformDist(lGen) <= mDeletePercentage)) {
+      auto lStfIdToRemove = mStfKeepMap.rbegin()->first;
+      mDropQueue.push(std::move(mStfKeepMap[lStfIdToRemove]));
+      mStfKeepMap.erase(lStfIdToRemove);
+    }
+
+    // Delete out of order
+    if (!mStfKeepMap.empty() && (lUniformDist(lGen) <= (mDeletePercentage / 4))) {
+      const auto lSize = mStfKeepMap.size();
+      const auto lIdx = lSize * lUniformDist(lGen) / 200; // prioritize small index
+
+      auto lIter = mStfKeepMap.begin();
+      std::advance(lIter, lIdx);
+
+      mDropQueue.push(std::move(lIter->second));
+      mStfKeepMap.erase(lIter->first);
+    }
+  }
+
+  std::scoped_lock lMapLock(mStfKeepMapLock);
+  mStfKeepMap.clear();
+  DDDLOG("StfKeepThread: Exiting.");
 }
 
 void StfSenderOutput::StfSchedulerThread()
@@ -426,6 +518,15 @@ void StfSenderOutput::StfMonitoringThread()
 
     lPrevCounters = lCurrCounters;
     lLastSent = lNow;
+
+    // Update consul params for standalone run
+    if (mStfKeepThread.joinable()) {
+      mDeletePercentage = mDiscoveryConfig->getUInt64Param(StandaloneStfDeleteChanceKey, StandaloneStfDeleteChanceDefault);
+      mDeletePercentage = std::clamp(mDeletePercentage.load(), std::uint64_t(0), std::uint64_t(100));
+      // Update the keep target
+      mKeepTarget = mDiscoveryConfig->getUInt64Param(StandaloneStfDataBufferSizeMBKey, StandaloneStfDataBufferSizeMBDefault) << 20;
+      mKeepTarget = std::clamp(mKeepTarget.load(), std::uint64_t(128ULL << 20), mBufferSize);
+    }
   }
 
   DDDLOG("Exiting StfMonitoring thread");
