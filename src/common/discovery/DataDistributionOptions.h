@@ -44,7 +44,15 @@ static constexpr std::uint64_t NumPagesInTopologicalStfDefault = 128;
 
 // Define size of DataDist buffer
 static constexpr std::string_view StfBufferSizeMBKey = "StfBufferSizeMB";
-static constexpr std::uint64_t StfBufferSizeMBValue = (32ULL << 10);
+static constexpr std::uint64_t StfBufferSizeMBDefault = (32ULL << 10);
+
+// Standalone: Chance the stf will be deleted on arrival
+static constexpr std::string_view StandaloneStfDeleteChanceKey = "StandaloneStfDeleteChance";
+static constexpr std::uint64_t StandaloneStfDeleteChanceDefault = 50;
+
+// Standalone: Amount of data to keep while running
+static constexpr std::string_view StandaloneStfDataBufferSizeMBKey = "StandaloneStfDataBufferSizeMB";
+static constexpr std::uint64_t StandaloneStfDataBufferSizeMBDefault = StfBufferSizeMBDefault;
 
 /// UCX transport
 // Allowed gap between two messages of the same region when creating RMA txgs

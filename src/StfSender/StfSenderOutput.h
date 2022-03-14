@@ -47,11 +47,13 @@ public:
   }
 
   void start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig);
+  void start_standalone(std::shared_ptr<ConsulStfSender> pDiscoveryConfig);
   void stop();
 
   bool running() const;
 
   void StfSchedulerThread();
+  void StfKeepThread();
   void StfDropThread();
   void StfMonitoringThread();
 
@@ -75,6 +77,11 @@ public:
     auto lRet = mCounters.mValues;
     mCounters.mValues = StdSenderOutputCounters::Values();
     mLastStfId = 0;
+    {
+      std::scoped_lock lMapLock(mStfKeepMapLock);
+      mStfKeepMap.clear();
+    }
+
     return lRet;
   }
 
@@ -88,6 +95,13 @@ public:
 
   /// Monitoring thread
   std::thread mMonitoringThread;
+
+  /// Stf keeper thread for standalone runs
+  std::atomic_uint64_t mKeepTarget = 512ULL << 20;
+  std::atomic_uint64_t mDeletePercentage = 50;
+  std::mutex mStfKeepMapLock;
+    std::map<std::uint64_t, std::unique_ptr<SubTimeFrame>> mStfKeepMap;
+  std::thread mStfKeepThread;
 
   /// Discovery configuration
   std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
