@@ -41,11 +41,13 @@ TfBuilderDevice::~TfBuilderDevice()
 
 void TfBuilderDevice::Init()
 {
+  DDDLOG("TfBuilderDevice::Init()");
   mMemI = std::make_unique<SyncMemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
 }
 
 void TfBuilderDevice::Reset()
 {
+  DDDLOG("TfBuilderDevice::Reset()");
   mMemI->stop();
   mMemI.reset();
 }
@@ -106,13 +108,19 @@ void TfBuilderDevice::InitTask()
     }
 
     const auto lElapsed = std::chrono::duration<double>(hres_clock::now() - lBufferStart).count();
-    IDDLOG("InitTask::MemorySegment allocated. success={} duration={:.3}", MemI().running(), lElapsed);
+    IDDLOG("InitTask::MemorySegment allocated. success={} duration={}", MemI().running(), lElapsed);
 
     // pass the result
     lBuffersAllocated.set_value_at_thread_exit(MemI().running());
   }).detach();
 
-  mDiscoveryConfig = std::make_shared<ConsulTfBuilder>(ProcessType::TfBuilder, Config::getEndpointOption(*GetConfig()));
+  try {
+    mDiscoveryConfig = std::make_shared<ConsulTfBuilder>(ProcessType::TfBuilder, Config::getEndpointOption(*GetConfig()));
+  } catch (...) {
+    lBuffersAllocatedFuture.wait();
+    throw "Consul Initialization failed. Exiting...";
+    return;
+  }
 
   auto &lStatus =  mDiscoveryConfig->status();
   lStatus.mutable_info()->set_type(TfBuilder);
@@ -122,15 +130,21 @@ void TfBuilderDevice::InitTask()
 
   // wait for "partition-id"
   while (!Config::getPartitionOption(*GetConfig())) {
-    WDDLOG("TfBuilder waiting on 'discovery-partition' config parameter.");
-    std::this_thread::sleep_for(1s);
+    if (NewStatePending()) {
+      lBuffersAllocatedFuture.wait();
+      AbortInitTask();
+      return;
+    }
+    WDDLOG_RL(10000, "TfBuilder waiting on 'discovery-partition' config parameter.");
+    std::this_thread::sleep_for(500ms);
   }
   mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("INVALID_PARTITION");
   lStatus.mutable_partition()->set_partition_id(mPartitionId);
 
   // File sink
   if (!mFileSink.loadVerifyConfig(*(this->GetConfig()))) {
-
+    lBuffersAllocatedFuture.wait();
+    AbortInitTask();
     throw "File Sink options";
     return;
   }
@@ -145,6 +159,8 @@ void TfBuilderDevice::InitTask()
     lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
 
     if (! mDiscoveryConfig->write(true)) {
+      lBuffersAllocatedFuture.wait();
+      AbortInitTask();
       EDDLOG("Can not start TfBuilder. id={}", lStatus.info().process_id());
       EDDLOG("Process with the same id already running? If not, clear the key manually.");
       throw "Discovery database error: this TfBuilder was/is already present.";
@@ -156,11 +172,14 @@ void TfBuilderDevice::InitTask()
   while (!mRpc->start(mTfDataRegionSize, mFlpInputHandler->getStfRequestQueue(), mFlpInputHandler->getDataQueue())) {
     // check if should stop looking for TfScheduler
     if (mRpc->isTerminateRequested()) {
+      lBuffersAllocatedFuture.wait();
       return;
     }
 
     // try to reach the scheduler unless we should exit
-    if (IsRunningState() && NewStatePending()) {
+    if (NewStatePending()) {
+      lBuffersAllocatedFuture.wait();
+      AbortInitTask();
       return;
     }
     std::this_thread::sleep_for(250ms);
@@ -179,18 +198,27 @@ void TfBuilderDevice::InitTask()
   // start file sink
   mFileSink.start();
 
+  // Start input handlers after the memory is finished allocating
+  if (!mFlpInputHandler->start()) {
+    AbortInitTask();
+    throw std::runtime_error("Could not initialize input connections. Exiting.");
+  }
+
   // wait for the memory allocation and registration to finish
   lBuffersAllocatedFuture.wait();
   if (!lBuffersAllocatedFuture.get()) {
+    AbortInitTask();
     EDDLOG("InitTask::MemorySegment allocation failed. Exiting...");
     throw std::runtime_error("InitTask::MemorySegment allocation failed. Exiting...");
   }
 
   // Start input handlers after the memory is finished allocating
-  if (!mFlpInputHandler->start()) {
+  if (!mFlpInputHandler->map_data_region()) {
+    AbortInitTask();
     throw std::runtime_error("Could not initialize input connections. Exiting.");
   }
 
+  mInitTaskFinished = true;
   DDDLOG("InitTask completed.");
 }
 
@@ -201,8 +229,10 @@ bool TfBuilderDevice::start()
 
 void TfBuilderDevice::stop()
 {
+  // stop accepting TFs
+  // Note: the object is needed to disconnect the InputHandler
   if (mRpc) {
-    mRpc->stopAcceptingTfs();
+    mRpc->startAcceptingTfs();
   }
 
   if (mTfDplAdapter) {
@@ -221,8 +251,17 @@ void TfBuilderDevice::stop()
     mFlpInputHandler.reset();
   }
   DDDLOG("TfBuilderDevice::stop(): Input handler stopped.");
-  // signal and wait for the output thread
+
+  if (mRpc) {
+    mRpc->stop();
+    mRpc.reset();
+    DDDLOG("TfBuilderDevice::stop(): RPC clients stopped.");
+  }
+
+  // flush the file writter and signal and wait for the output thread
+  mFileSink.flush();
   mFileSink.stop();
+
   // join on fwd thread
   if (mTfFwdThread.joinable()) {
     mTfFwdThread.join();
@@ -230,12 +269,6 @@ void TfBuilderDevice::stop()
   DDDLOG("TfBuilderDevice::stop(): Forward thread stopped.");
 
   // stop the RPCs
-  if (mRpc) {
-    mRpc->stop();
-    mRpc.reset();
-    DDDLOG("TfBuilderDevice::stop(): RPC clients stopped.");
-  }
-
   if (mDiscoveryConfig) {
     mDiscoveryConfig.reset();
   }
@@ -248,8 +281,6 @@ void TfBuilderDevice::stop()
 
   // stop monitoring
   DataDistMonitor::stop_datadist();
-
-  DDDLOG("TfBuilderDevice() stopped... ");
 }
 
 void TfBuilderDevice::ResetTask()
@@ -260,6 +291,10 @@ void TfBuilderDevice::ResetTask()
 
 void TfBuilderDevice::PreRun()
 {
+  if (!mInitTaskFinished) {
+    throw std::runtime_error("Error in PreRun(): InitTask() was not completed. Exiting...");
+  }
+
   // update running state
   auto& lStatus = mDiscoveryConfig->status();
   lStatus.mutable_info()->set_process_state(BasicInfo::RUNNING);
@@ -305,6 +340,9 @@ void TfBuilderDevice::PostRun()
   auto& lStatus = mDiscoveryConfig->status();
   lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
   mDiscoveryConfig->write();
+
+  // flush the file writter
+  mFileSink.flush();
 
   // disable monitoring
   DataDistMonitor::disable_datadist();

@@ -174,7 +174,7 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
   DDDLOG_RL(5000, "Sending TfBuilder update. accepting={} total={}", mAcceptingTfs, sUpdateCnt);
 
   auto lRet = mTfSchedulerRpcClient.TfBuilderUpdate(lUpdate);
-  if (!lRet) {
+  if (!lRet && mRunning) {
     EDDLOG_RL(1000, "Sending TfBuilder status update failed.");
   }
 
@@ -380,7 +380,9 @@ void TfBuilderRpcImpl::StfRequestThread()
       mMaxNumReqInFlight = std::clamp(mDiscoveryConfig->getUInt64Param(MaxNumStfTransfersKey, MaxNumStfTransferDefault),
         std::uint64_t(10), std::uint64_t(200));
 
-      std::uint64_t lNumExpectedStfs = 0;
+      std::uint64_t lNumExpectedStfs = lReqVector.size();
+      setNumberOfStfs(lTfId, lNumExpectedStfs);
+
       while (mRunning && !lReqVector.empty()) {
         // wait for the stf slots to become free
         if (mNumReqInFlight.load() >= mMaxNumReqInFlight) {
@@ -430,6 +432,7 @@ void TfBuilderRpcImpl::StfRequestThread()
         StfDataResponse lStfResponse;
         grpc::Status lStatus = StfSenderRpcClients()[lStfRequest.mStfSenderId]->StfDataRequest(lStfRequest.mRequest, lStfResponse);
         if (!lStatus.ok()) {
+          lNumExpectedStfs -= 1;
           // gRPC problem... continue asking for other STFs
           EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={}",
             lStfRequest.mStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize);
@@ -437,6 +440,7 @@ void TfBuilderRpcImpl::StfRequestThread()
         }
 
         if (lStfResponse.status() != StfDataResponse::OK) {
+          lNumExpectedStfs -= 1;
           EDDLOG("StfSender did not sent data. stfs_id={} reason={}",
             lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
           continue;
@@ -444,8 +448,6 @@ void TfBuilderRpcImpl::StfRequestThread()
 
         // Notify input about incoming STF
         mStfInputQueue->push(lStfRequest.mStfSenderId);
-
-        lNumExpectedStfs += 1;
 
         mNumReqInFlight += 1;
         DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);

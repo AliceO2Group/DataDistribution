@@ -77,8 +77,18 @@ class TfBuilderDevice : public DataDistDevice,
   void Reset() override final;
 
   void InitTask() final;
-  void ResetTask() final;
+  bool mInitTaskFinished = false;
 
+  void AbortInitTask() {
+    DDDLOG("Aborting InitTask...");
+    if (mDiscoveryConfig) {
+      auto& lStatus = mDiscoveryConfig->status();
+      lStatus.mutable_info()->set_process_state(BasicInfo::ABORTED);
+      mDiscoveryConfig->write();
+    }
+    ResetTask();
+  }
+  void ResetTask() final;
 
   SyncMemoryResources& MemI() { return *mMemI; }
   TimeFrameBuilder& TfBuilderI() const { return *mTfBuilder; }

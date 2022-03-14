@@ -99,7 +99,10 @@ public:
     mLastBuiltTfId = 0;
     mNumBufferedTfs = 0;
     mNumTfsInBuilding = 0;
-    mTfBuildRequests->flush();
+    if (mTfBuildRequests) {
+      mTfBuildRequests->flush();
+    }
+
     // Reset Topo Tf Id renaming
     mTopoStfId = 1;
     mTopoTfIdRenameMap.clear();
@@ -207,7 +210,7 @@ private:
     std::int32_t mNumTfsInBuilding = 0;
 
   /// Queue of TF building requests
-  std::unique_ptr<ConcurrentFifo<TfBuildingInformation>> mTfBuildRequests;
+  std::unique_ptr<ConcurrentFifo<TfBuildingInformation>> mTfBuildRequests = nullptr;
 };
 
 } /* namespace o2::DataDistribution */

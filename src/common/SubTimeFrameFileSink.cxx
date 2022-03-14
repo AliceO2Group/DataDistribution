@@ -211,6 +211,7 @@ std::string SubTimeFrameFileSink::newStfFileName(const std::uint64_t pStfId) con
 /// File writing thread
 void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 {
+  using namespace std::chrono_literals;
   std::default_random_engine lGen;
   std::uniform_int_distribution<unsigned> lUniformDist(0, 99);
   std::uint64_t lAcceptedStfs = 0;
@@ -223,11 +224,21 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 
   while (mRunning) {
     // Get the next STF
-    std::unique_ptr<SubTimeFrame> lStf = mPipelineI.dequeue(mPipelineStageIn);
-    if (!lStf) {
-      // input queue is stopped, bail out
-      break;
+    auto lStfOpt = mPipelineI.dequeue_for(mPipelineStageIn, 500000us);
+    if (!lStfOpt) {
+
+      // check if should flush the file
+      if (mCloseWriter) {
+        mCloseWriter = false;
+        lCurrentFileStfs = 0;
+        lCurrentFileSize = 0;
+        mStfWriter.reset();
+      }
+      continue;
     }
+
+    std::unique_ptr<SubTimeFrame> lStf = std::move(lStfOpt.value());
+
     lTotalStfs += 1;
 
     if (mEnabled && !mReady) {
@@ -289,6 +300,12 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
       break;
     }
   }
+
+  // flush the file if still open
+  if (mStfWriter) {
+    mStfWriter.reset();
+  }
+
   IDDLOG("(Sub)TimeFrame file sink: saved={} total={}", lAcceptedStfs, lTotalStfs);
   DDDLOG("Exiting file sink thread [{}]", pIdx);
 }

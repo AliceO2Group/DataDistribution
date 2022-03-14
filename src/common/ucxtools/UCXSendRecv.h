@@ -49,11 +49,10 @@ struct dd_ucp_multi_req {
   const std::uint64_t mSlotsCount = 1;
   std::atomic_uint64_t mSlotsUsed = 0;
   std::atomic_uint64_t mTotalDone = 0;
+  std::atomic_bool mFinished = false;
 
   std::mutex mRequestLock;
     boost::container::small_flat_set<void*, 128> mRequests;
-
-  bool mFinished = false;
 
   dd_ucp_multi_req() = delete;
   explicit dd_ucp_multi_req(const std::uint64_t pSlotsCount) : mSlotsCount(pSlotsCount)  { }
@@ -232,6 +231,7 @@ bool receive_tag_blocking(dd_ucp_worker &worker, void *data, const std::size_t s
   dd_request.mark_finished();
 
   if (UCS_PTR_IS_ERR(ucp_request)) {
+    EDDLOG("Failed receive_tag_blocking. tag={} err={}", tag, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
     return false;
   } else {
     ucp_wait(worker, dd_request);
