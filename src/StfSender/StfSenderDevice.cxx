@@ -199,7 +199,7 @@ void StfSenderDevice::PostRun()
   I().mAcceptingData = false;
 
   // disable monitoring
-  DataDistMonitor::disable_datadist();
+  DataDistMonitor::enable_datadist(0, I().mPartitionId);
 
   // update running state
   if (!standalone() && I().mDiscoveryConfig) {
@@ -320,11 +320,10 @@ void StfSenderDevice::InfoThread()
     if (!standalone()) {
       const auto lCounters = I().mOutputHandler->getCounters();
 
-      DDDLOG("StfSender: SubTimeFrame queued_stf_num={} queued_stf_size={} sending_stf_num={} sending_stf_size={} ",
-          lCounters.mBuffered.mCnt, lCounters.mBuffered.mSize,
-          lCounters.mInSending.mCnt, lCounters.mInSending.mSize);
+      DDDLOG_RL(5000, "StfSender: SubTimeFrame queued_stf_num={} queued_stf_size={} sending_stf_num={} sending_stf_size={} ",
+        lCounters.mBuffered.mCnt, lCounters.mBuffered.mSize, lCounters.mInSending.mCnt, lCounters.mInSending.mSize);
     }
-    std::this_thread::sleep_for(2s);
+    std::this_thread::sleep_for(1s);
   }
   DDDLOG("Exiting Info thread.");
 }

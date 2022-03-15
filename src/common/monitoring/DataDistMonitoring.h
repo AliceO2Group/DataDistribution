@@ -114,13 +114,6 @@ public:
     }
   }
 
-  static void disable_datadist() {
-    if (mDataDistMon) {
-      mDataDistMon->set_run_number(1);
-      mDataDistMon->set_active(false);
-    }
-  }
-
   static void set_interval(const float pInterval) {
     if (mDataDistMon) {
       if (pInterval <= std::numeric_limits<float>::epsilon()) {

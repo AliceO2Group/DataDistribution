@@ -348,7 +348,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
 void TfBuilderRpcImpl::StfRequestThread()
 {
   using namespace std::chrono_literals;
-  using hres_clock = std::chrono::steady_clock;
+  using clock = std::chrono::steady_clock;
 
   std::random_device lRd;
   std::mt19937_64 lGen(lRd());
@@ -378,7 +378,7 @@ void TfBuilderRpcImpl::StfRequestThread()
       }
 
       mMaxNumReqInFlight = std::clamp(mDiscoveryConfig->getUInt64Param(MaxNumStfTransfersKey, MaxNumStfTransferDefault),
-        std::uint64_t(10), std::uint64_t(200));
+        std::uint64_t(8), std::uint64_t(500));
 
       std::uint64_t lNumExpectedStfs = lReqVector.size();
       setNumberOfStfs(lTfId, lNumExpectedStfs);
@@ -426,8 +426,10 @@ void TfBuilderRpcImpl::StfRequestThread()
 
         { // record the current TP
           std::unique_lock lLock(mStfDurationMapLock);
-          mStfReqDuration[lTfId][lStfRequest.mStfSenderId] = hres_clock::now();
+          mStfReqDuration[lTfId][lStfRequest.mStfSenderId] = clock::now();
         }
+
+        auto lStartStfReqTime = clock::now();
 
         StfDataResponse lStfResponse;
         grpc::Status lStatus = StfSenderRpcClients()[lStfRequest.mStfSenderId]->StfDataRequest(lStfRequest.mRequest, lStfResponse);
@@ -445,6 +447,8 @@ void TfBuilderRpcImpl::StfRequestThread()
             lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
           continue;
         }
+
+        DDMON("tfbuilder", "merge.stf_data_req_ms", since<std::chrono::milliseconds>(lStartStfReqTime));
 
         // Notify input about incoming STF
         mStfInputQueue->push(lStfRequest.mStfSenderId);

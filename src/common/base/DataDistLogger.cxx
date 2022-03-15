@@ -44,7 +44,7 @@ DataDistSeverity DataDistLogger::sConfigSeverity = DataDistSeverity::debug;
 bool DataDistLogger::sInfologgerEnabled = false;
 DataDistSeverity DataDistLogger::sInfologgerSeverity = DataDistSeverity::nolog;
 std::uint64_t DataDistLogger::sRunNumber = 0;
-std::string DataDistLogger::sRunNumberStr = "";
+std::string DataDistLogger::sRunNumberStr = "0";
 std::string DataDistLogger::sPartitionIdStr = "";
 
 

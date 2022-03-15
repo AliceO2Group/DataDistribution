@@ -435,6 +435,12 @@ static inline void InitInfoLogger() {
   lInfoLoggerCtx.setField(AliceO2::InfoLogger::InfoLoggerContext::FieldName::Partition,
     DataDistLogger::sPartitionIdStr);
 
+  auto lDetector = getenv("O2_DETECTOR");
+  if (lDetector != nullptr) {
+    lInfoLoggerCtx.setField(AliceO2::InfoLogger::InfoLoggerContext::FieldName::Detector,
+      std::string(lDetector));
+  }
+
   lIlogger.setContext(lInfoLoggerCtx);
 
   DDDLOG("DataDistLogger: infoLoggerD settings are updated.");
@@ -443,7 +449,6 @@ static inline void InitInfoLogger() {
 };
 
 }
-
 } /* o2::DataDistribution */
 
 #endif /* DATADIST_LOGGER_H_ */
