@@ -138,7 +138,7 @@ void TfBuilderDevice::InitTask()
     WDDLOG_RL(10000, "TfBuilder waiting on 'discovery-partition' config parameter.");
     std::this_thread::sleep_for(500ms);
   }
-  mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("INVALID_PARTITION");
+  mPartitionId = Config::getPartitionOption(*GetConfig()).value_or(DataDistLogger::sPartitionIdStr);
   lStatus.mutable_partition()->set_partition_id(mPartitionId);
 
   // File sink
@@ -344,8 +344,8 @@ void TfBuilderDevice::PostRun()
   // flush the file writter
   mFileSink.flush();
 
-  // disable monitoring
-  DataDistMonitor::disable_datadist();
+  // reemove run number from monitoring
+  DataDistMonitor::enable_datadist(0, mPartitionId);
 
   // start accepting tfs for the next run
   mRpc->startAcceptingTfs();

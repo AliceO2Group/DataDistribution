@@ -98,7 +98,11 @@ void StfBuilderDevice::InitTask()
   I().mMaxBuiltStfs = GetConfig()->GetValue<std::uint64_t>(OptionKeyMaxBuiltStfs);
 
   // partition id
-  I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("-");
+  I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or(DataDistLogger::sPartitionIdStr);
+  if (DataDistLogger::sPartitionIdStr.empty() && !I().mPartitionId.empty()) {
+    DataDistLogger::sPartitionIdStr = I().mPartitionId;
+    impl::DataDistLoggerCtx::InitInfoLogger();
+  }
 
   // start monitoring
   DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend", ""));
@@ -188,7 +192,7 @@ void StfBuilderDevice::InitTask()
         std::this_thread::sleep_for(250ms);
       }
       if (I().mPartitionId.empty()) {
-        WDDLOG("StfBuilder 'discovery-partition' parameter not set.");
+        EDDLOG("StfBuilder 'discovery-partition' parameter not set.");
         std::this_thread::sleep_for(1s); exit(-1);
       }
       I().mPartitionId = Config::getPartitionOption(*GetConfig()).value();
@@ -488,8 +492,8 @@ void StfBuilderDevice::PostRun()
     I().mDiscoveryConfig->write();
   }
 
-  // disable monitoring
-  DataDistMonitor::disable_datadist();
+  // remove run number from monitoring
+  DataDistMonitor::enable_datadist(0, DataDistLogger::sPartitionIdStr);
 
   IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }

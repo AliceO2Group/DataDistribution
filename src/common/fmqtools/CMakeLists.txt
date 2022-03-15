@@ -18,5 +18,7 @@ target_link_libraries(fmqtools
   PUBLIC
     FairLogger::FairLogger
     FairMQ::FairMQ
+    discovery
+    monitoring
     base
 )

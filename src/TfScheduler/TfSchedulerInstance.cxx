@@ -63,7 +63,7 @@ TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
   DataDistMonitor::set_log(pDev.GetConfig()->GetValue<bool>("monitoring-log"));
 
   // enable monitoring
-  DataDistMonitor::enable_datadist(1, mPartitionInfo.mPartitionId);
+  DataDistMonitor::enable_datadist(0, mPartitionInfo.mPartitionId);
 
   DDDLOG("Initialized new TfScheduler. partition={}", mPartitionInfo.mPartitionId);
 }

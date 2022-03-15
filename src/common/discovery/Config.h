@@ -215,7 +215,7 @@ public:
     // check cmdline first
     const std::string lPartId = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryPartition);
     if (!lPartId.empty()) {
-      IDDLOG("Parameter '{}' provided on command line. value={}", OptionKeyDiscoveryPartition, lPartId);
+      DDDLOG("Parameter '{}' provided on command line. value={}", OptionKeyDiscoveryPartition, lPartId);
       return lPartId;
     }
     return std::nullopt;

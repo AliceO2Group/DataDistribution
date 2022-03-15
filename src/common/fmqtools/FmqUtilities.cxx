@@ -12,7 +12,11 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "FmqUtilities.h"
+
+#include <Config.h>
 #include <DataDistLogger.h>
+#include <DataDistMonitoring.h>
+
 #include <fairmq/FairMQDevice.h>
 #include <fairmq/DeviceRunner.h>
 
@@ -94,10 +98,22 @@ static void handleSeverity(const std::string &pOptKey, const std::string &pOptVa
   }
 }
 
+static auto handlePartitionId(const std::string &pOptKey, const std::string &pOptVal)
+{
+  if (pOptKey == "partition_id" || pOptKey == "partition-id" || pOptKey == "environment-id" || pOptKey == "environment_id") {
+
+    DDDLOG("Config::PartitionIdSubscribe received key-value pair. {}=<{}>", pOptKey, pOptVal);
+    DataDistLogger::sPartitionIdStr = pOptVal;
+
+    impl::DataDistLoggerCtx::InitInfoLogger();
+    DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, DataDistLogger::sPartitionIdStr);
+  }
+}
+
 static auto handleRunNumber(const std::string &pOptKey, const std::string &pOptVal)
 {
   if (pOptKey == "runNumber") {
-    IDDLOG("NEW RUN NUMBER. run_number={}", pOptVal);
+    DDDLOG("NEW RUN NUMBER. run_number={}", pOptVal);
 
     DataDistLogger::sRunNumberStr = pOptVal;
     boost::algorithm::trim(DataDistLogger::sRunNumberStr);
@@ -113,6 +129,7 @@ static auto handleRunNumber(const std::string &pOptKey, const std::string &pOptV
     }
 
     impl::DataDistLoggerCtx::InitInfoLogger();
+    DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, DataDistLogger::sPartitionIdStr);
   }
 }
 
@@ -133,6 +150,7 @@ void HandleFMQOptions(fair::mq::DeviceRunner &pFMQRunner)
 
   // subscribe to notifications
   lFMQConfig.Subscribe<std::string>("dd-log-config", handleSeverity);
+  lFMQConfig.Subscribe<std::string>("partition-id-config", handlePartitionId);
   lFMQConfig.Subscribe<std::string>("run-number-config", handleRunNumber);
 
   // read and apply the current value
@@ -141,8 +159,8 @@ void HandleFMQOptions(fair::mq::DeviceRunner &pFMQRunner)
   // read and apply the current value
   handleSeverity("severity-infologger", lFMQConfig.GetProperty<std::string>("severity-infologger"));
 
-  // set a degfault run number
-  handleRunNumber("runNumber", "1");
+  // set the default run number
+  handleRunNumber("runNumber", "0");
 }
 
 }
