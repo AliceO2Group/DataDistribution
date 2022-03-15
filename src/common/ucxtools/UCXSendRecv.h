@@ -35,11 +35,6 @@ static constexpr ucp_tag_t STF_DONE_TAG           = 1'000'000'000ULL;
 
 #define make_ucp_req() (reinterpret_cast<char*>(alloca(UCX_REQUEST_SIZE)) + UCX_REQUEST_SIZE)
 
-struct sync_tag_call_cookie {
-  volatile bool mCompleted = false;
-};
-
-
 } /* ucx::impl */
 
 
@@ -271,7 +266,75 @@ bool ucx_send_string(dd_ucp_worker &worker, ucp_ep_h ep, const std::string &lStr
 }
 
 static inline
+bool ucx_send_data(dd_ucp_worker &worker, ucp_ep_h ep, const void *pData, const std::uint64_t *pSize)
+{
+  const std::uint64_t pSizeOrig = *pSize;
+
+  if (!send_tag_blocking(worker, ep, pSize, sizeof(std::uint64_t), impl::STRING_SIZE_TAG) ) {
+    return false;
+  }
+  // send actual string data
+  return send_tag_blocking(worker, ep, pData, pSizeOrig, impl::STRING_TAG);
+}
+
+static inline
 std::optional<std::string> ucx_receive_string(dd_ucp_worker &worker)
+{
+  // receive the size
+  std::uint64_t size_rcv = 0;
+
+  if (!receive_tag_blocking(worker, &size_rcv, sizeof(std::uint64_t), impl::STRING_SIZE_TAG) ) {
+    return std::nullopt;
+  }
+
+  std::string lRetStr(size_rcv, 0);
+  if (!receive_tag_blocking(worker, lRetStr.data(), lRetStr.size(), impl::STRING_TAG) ) {
+    return std::nullopt;
+  }
+
+  return lRetStr;
+}
+
+static inline
+std::int64_t ucx_receive_tag(dd_ucp_worker &worker, void *pData, const std::size_t pSize, std::uint64_t *pReqSize)
+{
+  assert (pSize >= sizeof(std::uint64_t));
+  assert (pReqSize != nullptr);
+
+  // receive the size
+  std::uint64_t size_rcv = 0;
+
+  if (!receive_tag_blocking(worker, pData, sizeof(std::uint64_t), impl::STRING_SIZE_TAG) ) {
+    return -1;
+  }
+
+  std::memcpy(&size_rcv, pData, sizeof(std::uint64_t));
+  if (size_rcv > pSize) {
+    // we need a larger buffer
+    *pReqSize = size_rcv;
+    return 0;
+  }
+
+  if (!receive_tag_blocking(worker, pData, size_rcv, impl::STRING_TAG) ) {
+    return -1;
+  }
+  *pReqSize = pSize;
+  return size_rcv;
+}
+
+static inline
+std::int64_t ucx_receive_tag_data(dd_ucp_worker &worker, void *pData, const std::uint64_t pReqSize)
+{
+  if (!receive_tag_blocking(worker, pData, pReqSize, impl::STRING_TAG) ) {
+    return -1;
+  }
+
+  return pReqSize;
+}
+
+
+static inline
+std::optional<std::string> ucx_receive_string_data(dd_ucp_worker &worker)
 {
   // receive the size
   std::uint64_t size_rcv = 0;

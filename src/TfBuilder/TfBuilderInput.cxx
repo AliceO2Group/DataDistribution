@@ -238,7 +238,7 @@ void TfBuilderInput::StfDeserializingThread()
   while (mState == RUNNING) {
 
     std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
-    mStfMergerCondition.wait_for(lQueueLock, 10ms, [this]{ return mStfMergerRun.load(); });
+    mStfMergerCondition.wait_for(lQueueLock, 5ms, [this]{ return mStfMergerRun.load(); });
     mStfMergerRun = false;
 
     if (mStfMergeMap.empty()) {
