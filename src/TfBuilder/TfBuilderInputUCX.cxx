@@ -150,14 +150,6 @@ bool TfBuilderInputUCX::start()
     return false;
   }
 
-  // start receiving thread pool
-  for (unsigned i = 0; i < mThreadPoolSize; i++) {
-    std::string lThreadName = "tfb_ucx_";
-    lThreadName += std::to_string(i);
-
-    mThreadPool.emplace_back(std::move(create_thread_member(lThreadName.c_str(),
-                                                            &TfBuilderInputUCX::DataHandlerThread, this, i)));
-  }
 
   // Create the listener
   // Run the connection callback with pointer to us
@@ -284,6 +276,18 @@ bool TfBuilderInputUCX::map_data_region()
   mTimeFrameBuilder.mMemRes.mDataMemRes->set_ucx_address(lUcxMemPtr);
   ucp_data_region_set = true;
   DDDLOG("TfBuilderInputUCX::map_data_region(): mapped the data region size={}", lOrigSize);
+
+  // start receiving thread pool
+  // NOTE: This must come after the region mapping. Threads are using mapped addresses
+  for (unsigned i = 0; i < mThreadPoolSize; i++) {
+    std::string lThreadName = "tfb_ucx_";
+    lThreadName += std::to_string(i);
+
+    mThreadPool.emplace_back(std::move(
+      create_thread_member(lThreadName.c_str(), &TfBuilderInputUCX::DataHandlerThread, this, i))
+    );
+  }
+
   return true;
 }
 
@@ -354,9 +358,17 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
   // Deserialization object (stf ID)
   IovDeserializer lStfReceiver(mTimeFrameBuilder);
 
-  { // warm up FMQ region caches for this thread
-    mTimeFrameBuilder.newDataMessage(1);
-  }
+  // memory for meta-tag receive; increased later if needed
+  std::uint64_t lMetaMemSize = std::uint64_t(2) << 20;
+  FairMQMessagePtr lMetaMemMsg = nullptr;
+  void *lMetaMemPtr = nullptr;
+
+  auto fAllocateMetaMessage = [&](std::uint64_t pSize) {
+    lMetaMemSize = pSize;
+    lMetaMemMsg = mTimeFrameBuilder.newDataMessage(pSize);
+    lMetaMemPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lMetaMemMsg->GetData());
+  };
+  fAllocateMetaMessage(lMetaMemSize);
 
   std::optional<std::string> lStfSenderIdOpt;
   std::vector<void*> lTxgPtrs;
@@ -392,19 +404,32 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
       auto lStartLoop = clock::now();
 
       // Receive STF iov and metadata
-      const auto lStfMetaDataOtp = ucx::io::ucx_receive_string(lConn->worker);
-
-      if (!lStfMetaDataOtp.has_value()) {
-        EDDLOG("DataHandlerThread {}: Failed to receive stf meta structure.", lStfSenderId);
+      std::uint64_t lReqSize = 0;
+      auto lRecvMetaSize = ucx::io::ucx_receive_tag(lConn->worker, lMetaMemPtr, lMetaMemSize, &lReqSize);
+      if (lRecvMetaSize < 0) {
+        EDDLOG("UCXDataHandlerThread: Failed to receive stf meta structure. from={}", lStfSenderId);
         continue;
+      } if ((lRecvMetaSize == 0) && (lReqSize > lMetaMemSize)) {
+        // memory too small
+        while (lMetaMemSize < lReqSize) {
+          lMetaMemSize *= 2;
+        }
+        // allocate larger buffer and continue
+        fAllocateMetaMessage(lMetaMemSize);
+        lRecvMetaSize = ucx::io::ucx_receive_tag_data(lConn->worker, lMetaMemPtr, lReqSize);
+        if (lRecvMetaSize < 0) {
+          EDDLOG("UCXDataHandlerThread: Failed to receive stf meta message. from={}", lStfSenderId);
+          continue;
+        }
+        assert (lRecvMetaSize > 0 && std::uint64_t(lRecvMetaSize) == lReqSize);
       }
 
       DDMON("tfbuilder", "recv.receive_meta_ms", since<std::chrono::milliseconds>(lStartLoop));
       lMetaDecodeStart = clock::now();
 
-      const auto &lStfMetaData = lStfMetaDataOtp.value();
-
-      lMeta.ParseFromString(lStfMetaData);
+      if (!lMeta.ParseFromArray(lMetaMemPtr, lRecvMetaSize)) {
+        EDDLOG("UCXDataHandlerThread: Failed to parse stf meta message. from={} size={}" ,lStfSenderId, lRecvMetaSize);
+      }
 
       lTfId = lMeta.stf_hdr_meta().stf_id();
 
@@ -459,8 +484,14 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
       }
 
       // notify StfSender we completed
-      std::string lOkStr = "OK";
-      if (!ucx::io::ucx_send_string(lConn->worker, lConn->ucp_ep, lOkStr) ) {
+      struct StringData {
+        std::uint64_t mSize;
+        char mMsg[4];
+      } *lOk = reinterpret_cast<struct StringData*>(lMetaMemPtr);
+      lOk->mSize = 2;
+      std::memcpy(lOk->mMsg, "OK", 2);
+
+      if (!ucx::io::ucx_send_data(lConn->worker, lConn->ucp_ep, lOk->mMsg, &lOk->mSize) ) {
         EDDLOG_GRL(10000, "StfSender was NOT notified about transfer finish stf_sender={} tf_id={}", lStfSenderId, lTfId);
       }
 
