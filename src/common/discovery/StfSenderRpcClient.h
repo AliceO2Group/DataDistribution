@@ -70,6 +70,8 @@ public:
   // rpc StfDataRequest(StfDataRequestMessage) returns (StfDataResponse) { }
   grpc::Status StfDataRequest(const StfDataRequestMessage &pParam, StfDataResponse &pRet /*out*/) {
     ClientContext lContext;
+    const auto lDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(1000);
+    lContext.set_deadline(lDeadline);
     return mStub->StfDataRequest(&lContext, pParam, &pRet);
   }
 

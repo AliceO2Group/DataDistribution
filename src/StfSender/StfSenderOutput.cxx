@@ -429,7 +429,6 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
   }
 }
 
-
 /// Drop thread
 void StfSenderOutput::StfDropThread()
 {
@@ -470,11 +469,6 @@ void StfSenderOutput::StfMonitoringThread()
 {
   DDDLOG("Starting StfMonitoring thread.");
 
-  // decrease the priority
-#if defined(__linux__)
-  if (nice(10)) {}
-#endif
-
   StdSenderOutputCounters::Values lPrevCounters;
   {
     std::scoped_lock lLock(mCounters.mCountersLock);
@@ -507,13 +501,7 @@ void StfSenderOutput::StfMonitoringThread()
     if (lSentStfs > 0) {
       const auto lStfRate = lSentStfs / std::max(0.000001, lDuration.count());
       const auto lStfSize = (lCurrCounters.mTotalSent.mSize - lPrevCounters.mTotalSent.mSize) / lSentStfs;
-      DDMON("stfsender", "stf_output.rate", lStfRate);
-      DDMON("stfsender", "stf_output.size", lStfSize);
       DDMON("stfsender", "data_output.rate", (lStfRate * lStfSize));
-    } else {
-      DDMON("stfsender", "stf_output.rate", 0);
-      DDMON("stfsender", "stf_output.size", 0);
-      DDMON("stfsender", "data_output.rate", 0);
     }
 
     lPrevCounters = lCurrCounters;

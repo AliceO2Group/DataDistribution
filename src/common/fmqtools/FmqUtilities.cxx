@@ -102,6 +102,10 @@ static auto handlePartitionId(const std::string &pOptKey, const std::string &pOp
 {
   if (pOptKey == "partition_id" || pOptKey == "partition-id" || pOptKey == "environment-id" || pOptKey == "environment_id") {
 
+    if (!DataDistLogger::sPartitionIdStr.empty() && (DataDistLogger::sPartitionIdStr != pOptVal)) {
+      WDDLOG_RL(1000, "Partition if is already set. current_value={} new_val={}", DataDistLogger::sPartitionIdStr, pOptVal);
+      return;
+    }
     DDDLOG("Config::PartitionIdSubscribe received key-value pair. {}=<{}>", pOptKey, pOptVal);
     DataDistLogger::sPartitionIdStr = pOptVal;
 
@@ -132,7 +136,6 @@ static auto handleRunNumber(const std::string &pOptKey, const std::string &pOptV
     DataDistMonitor::enable_datadist(DataDistLogger::sRunNumber, DataDistLogger::sPartitionIdStr);
   }
 }
-
 
 void HandleFMQOptions(fair::mq::DeviceRunner &pFMQRunner)
 {

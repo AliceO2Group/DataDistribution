@@ -24,7 +24,6 @@
 #include <string>
 #include <map>
 #include <cassert>
-#include <future>
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -212,12 +211,22 @@ public:
   static
   std::optional<std::string> getPartitionOption(const FairMQProgOptions& pFMQProgOpt)
   {
-    // check cmdline first
+    // check ecs value first
+    if (!DataDistLogger::sPartitionIdStr.empty()) {
+      DDDLOG("Parameter '{}' provided from ECS. value={}", OptionKeyDiscoveryPartition, DataDistLogger::sPartitionIdStr);
+      return DataDistLogger::sPartitionIdStr;
+    }
+
+    // check the command line
     const std::string lPartId = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryPartition);
     if (!lPartId.empty()) {
-      DDDLOG("Parameter '{}' provided on command line. value={}", OptionKeyDiscoveryPartition, lPartId);
+      DDDLOG("Parameter '{}' provided on the command line. value={}", OptionKeyDiscoveryPartition, lPartId);
+      DataDistLogger::sPartitionIdStr = lPartId;
+      impl::DataDistLoggerCtx::InitInfoLogger();
       return lPartId;
     }
+
+    DDDLOG("Parameter '{}' is not provided", OptionKeyDiscoveryPartition);
     return std::nullopt;
   }
 

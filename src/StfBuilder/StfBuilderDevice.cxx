@@ -98,10 +98,11 @@ void StfBuilderDevice::InitTask()
   I().mMaxBuiltStfs = GetConfig()->GetValue<std::uint64_t>(OptionKeyMaxBuiltStfs);
 
   // partition id
-  I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or(DataDistLogger::sPartitionIdStr);
-  if (DataDistLogger::sPartitionIdStr.empty() && !I().mPartitionId.empty()) {
-    DataDistLogger::sPartitionIdStr = I().mPartitionId;
-    impl::DataDistLoggerCtx::InitInfoLogger();
+  I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
+  if (I().mPartitionId.empty()) {
+    EDDLOG("Partition id is not provided during InitTask(). Check command line or ECS parameters. Exiting.");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
 
   // start monitoring
@@ -130,17 +131,18 @@ void StfBuilderDevice::InitTask()
   // check run type
   if (ReadoutDataUtils::sRunType == ReadoutDataUtils::RunType::eInvalid) {
     EDDLOG("Run type paramter must be correctly set.");
-    throw std::logic_error("Run type paramter must be correctly set.");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
 
   // check run type
   if (ReadoutDataUtils::sRunType == ReadoutDataUtils::RunType::eTopology) {
     if (! ((ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginITS) ||
       (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginMFT))) {
-
       EDDLOG("Run type paramter 'topology' is supported only for ITS and MFT. Please specify the detector option. detector={}",
         ReadoutDataUtils::sSpecifiedDataOrigin.as<std::string>());
-      throw std::logic_error("Run type paramter 'topology' is supported only for ITS and MFT. Please specify the detector option.");
+      ChangeState(fair::mq::Transition::ErrorFound);
+      return;
     }
   }
 
@@ -166,12 +168,14 @@ void StfBuilderDevice::InitTask()
 
   // File sink
   if (!I().mFileSink->loadVerifyConfig(*(this->GetConfig()))) {
-    std::this_thread::sleep_for(1s); exit(-1);
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
 
   // File source
   if (!I().mFileSource->loadVerifyConfig(*(this->GetConfig()))) {
-    std::this_thread::sleep_for(1s); exit(-1);
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
 
   // Discovery. Verify other parameters when running online and !standalone
@@ -185,17 +189,6 @@ void StfBuilderDevice::InitTask()
       lStatus.mutable_info()->set_type(StfBuilder);
       lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
       lStatus.mutable_info()->set_process_id(Config::getIdOption(StfBuilder, *GetConfig(), lConsulRequired));
-
-      // wait for "partition-id"
-      while (!Config::getPartitionOption(*GetConfig())) {
-        WDDLOG_RL(1000, "StfBuilder waiting on 'discovery-partition' config parameter.");
-        std::this_thread::sleep_for(250ms);
-      }
-      if (I().mPartitionId.empty()) {
-        EDDLOG("StfBuilder 'discovery-partition' parameter not set.");
-        std::this_thread::sleep_for(1s); exit(-1);
-      }
-      I().mPartitionId = Config::getPartitionOption(*GetConfig()).value();
       lStatus.mutable_partition()->set_partition_id(I().mPartitionId);
       I().mDiscoveryConfig->write();
     }
@@ -209,14 +202,16 @@ void StfBuilderDevice::InitTask()
       (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginAny)) {
       EDDLOG("Detector string parameter must be specified when receiving the data from the "
         "readout and not using RDHv6 or greater.");
-      std::this_thread::sleep_for(1s); exit(-1);
+      ChangeState(fair::mq::Transition::ErrorFound);
+      return;
     } else {
       IDDLOG("READOUT INTERFACE: Configured detector: {}", ReadoutDataUtils::sSpecifiedDataOrigin.as<std::string>());
     }
 
     if (ReadoutDataUtils::sRdhVersion == ReadoutDataUtils::RdhVersion::eRdhInvalid) {
       EDDLOG("The RDH version must be specified when receiving data from readout.");
-      std::this_thread::sleep_for(1s); exit(-1);
+      ChangeState(fair::mq::Transition::ErrorFound);
+      return;
     } else {
       IDDLOG("READOUT INTERFACE: Configured RDHv{}", ReadoutDataUtils::sRdhVersion);
       RDHReader::Initialize(unsigned(ReadoutDataUtils::sRdhVersion));
@@ -254,7 +249,8 @@ void StfBuilderDevice::InitTask()
         GetChannel(I().mInputChannelName);
       } catch(std::exception &) {
         EDDLOG("Input channel not configured (from o2-readout-exe) and not running with file source enabled.");
-        std::this_thread::sleep_for(1s); exit(-1);
+        ChangeState(fair::mq::Transition::ErrorFound);
+        return;
       }
     }
 
@@ -264,7 +260,8 @@ void StfBuilderDevice::InitTask()
       }
     } catch(std::exception &e) {
       EDDLOG("Output channel (to DPL or StfSender) must be configured if not running in stand-alone mode.");
-      std::this_thread::sleep_for(1s); exit(-1);
+      ChangeState(fair::mq::Transition::ErrorFound);
+      return;
     }
   }
 
@@ -337,6 +334,8 @@ void StfBuilderDevice::StfOutputThread()
 
   decltype(hres_clock::now()) lStfStartTime = hres_clock::now();
 
+  DDMON_RATE("stfbuilder", "stf_output", 0.0);
+
   while (I().mState.mRunning) {
     // Get a STF ready for sending, or nullopt
     auto lStfOpt = I().dequeue_for(eStfSendIn, 100ms);
@@ -358,13 +357,12 @@ void StfBuilderDevice::StfOutputThread()
 
     lShouldSendEos = true;
     if (lStfOpt == std::nullopt) {
-      DDMON("stfbuilder", "stf_output.rate", 0);
-      DDMON("stfbuilder", "stf_output.size", 0);
       DDMON("stfbuilder", "data_output.rate", 0);
       continue;
     }
 
     auto &lStf = lStfOpt.value();
+    DDMON_RATE("stfbuilder", "stf_output", lStf->getDataSize());
 
     // decrement the stf counter
     I().mCounters.mNumStfs--;
@@ -379,8 +377,6 @@ void StfBuilderDevice::StfOutputThread()
       lStfStartTime = lNow;
 
       const auto lRate = 1.0 / std::max(lStfDur.count(), 0.00001);
-      DDMON("stfbuilder", "stf_output.rate", lRate);
-      DDMON("stfbuilder", "stf_output.size", lStf->getDataSize());
       DDMON("stfbuilder", "stf_output.id", lStf->id());
       DDMON("stfbuilder", "data_output.rate", (lRate * lStf->getDataSize()));
     }

@@ -175,7 +175,7 @@ bool create_ucp_ep(ucp_worker_h worker, ucp_conn_request_h conn_req, ucp_ep_h *e
 }
 
 static inline
-bool create_ucp_client_ep(ucp_worker_h worker, const std::string &pIpv4, const unsigned pPort, ucp_ep_h *ep,
+bool create_ucp_client_ep(dd_ucp_worker &worker, const std::string &pIpv4, const unsigned pPort, ucp_ep_h *ep,
   ucp_err_handler_cb_t pErrCb, void* pErrCbArg, const std::string_view &pMsg)
 {
   ucp_ep_params_t ep_params;
@@ -198,7 +198,7 @@ bool create_ucp_client_ep(ucp_worker_h worker, const std::string &pIpv4, const u
   ep_params.sockaddr.addrlen = sizeof(connect_addr);
 
 
-  const auto lStatus = ucp_ep_create(worker, &ep_params, ep);
+  const auto lStatus = ucp_ep_create(worker.ucp_worker, &ep_params, ep);
   if (lStatus != UCS_OK) {
     EDDLOG("Failed to create new client endpoint. ep={} err={}", pMsg, ucs_status_string(lStatus));
     return false;

@@ -43,6 +43,7 @@ DataDistMonitoring::DataDistMonitoring(const o2::monitoring::tags::Value pProc, 
 
   mRunning = true;
   mCollectionThread = create_thread_member("metric_c", &DataDistMonitoring::MetricCollectionThread, this);
+  mRateCollectionThread = create_thread_member("rate_metric_c", &DataDistMonitoring::RateMetricCollectionThread, this);
   mMonitorThread = create_thread_member("metric_s", &DataDistMonitoring::MonitorThread, this);
 }
 
@@ -50,6 +51,7 @@ DataDistMonitoring::~DataDistMonitoring()
 {
   mRunning = false;
   mMetricsQueue.stop();
+  mRateMetricsQueue.stop();
 
   if (mMonitorThread.joinable()) {
     mMonitorThread.join();
@@ -57,6 +59,10 @@ DataDistMonitoring::~DataDistMonitoring()
 
   if (mCollectionThread.joinable()) {
     mCollectionThread.join();
+  }
+
+  if (mRateCollectionThread.joinable()) {
+    mRateCollectionThread.join();
   }
 
   if (mO2Monitoring) {
@@ -92,9 +98,38 @@ void DataDistMonitoring::MetricCollectionThread()
     auto &lMetricObj = mMetricMap[lMetricName];
     lMetricObj.mMetricName = lMetricName;
     // make sure not to overflow if the backend is not working
-    if (lMetricObj.mKeyValueVectors[lKey].size() < (size_t(1) << 20)) {
-      lMetricObj.mKeyValueVectors[lKey].push_back(lValue);
+    lMetricObj.mKeyValueVectors[lKey].push_back(lValue);
+  }
+
+  DDDLOG("Exiting monitoring thread...");
+}
+
+void DataDistMonitoring::RateMetricCollectionThread()
+{
+  using namespace o2::monitoring;
+
+  DDDLOG("Starting rate monitoring collection thread for {}...", mUriList);
+
+  while (mRunning) {
+    auto lMetric = mRateMetricsQueue.pop_wait_for(std::chrono::milliseconds(250));
+    if (!mActive || !lMetric) {
+      std::scoped_lock lLock(mMetricLock);
+      mMetricMap.clear();
+      continue;
     }
+
+    const std::string &lMetricName = std::get<0>(lMetric.value());
+    const std::string &lKey = std::get<1>(lMetric.value());
+    const double lValue = std::get<2>(lMetric.value());
+
+    std::scoped_lock lLock(mMetricLock);
+
+    auto &lMetricObj = mRateMetricMap[lMetricName];
+    auto &lVals = lMetricObj.mKeyValues[lKey];
+    lVals.mCount += 1.0;
+    lVals.mMeanAcc += lValue;
+    lVals.mMax = std::max(lVals.mMax, lValue);
+    lVals.mMin = std::min(lVals.mMin, lValue);
   }
 
   DDDLOG("Exiting monitoring thread...");
@@ -114,74 +149,121 @@ void DataDistMonitoring::MonitorThread()
       continue;
     }
 
+    // keep the timestamp when last rate was published
+    double lRateIntervalS = std::numeric_limits<double>::max();
+
+    // local copy of rate and value maps
+    std::map<std::string, DataDistRateMetric> lRateMetricMap;
+    std::map<std::string, DataDistMetric> lMetricMap;
+
     {
       std::scoped_lock lLock(mMetricLock);
-
-      if (mMetricMap.empty()) {
-        continue;
-      }
-
-      for (auto &lMetricIter : mMetricMap) {
-        DataDistMetric &lMetricObj = lMetricIter.second;
-
-        const std::string &lMetricName = lMetricObj.mMetricName;
-        auto &lKeyValMaps = lMetricObj.mKeyValueVectors;
-        const auto &lTimeStamp = lMetricObj.mTimestamp;
-
-        o2::monitoring::Metric lMetric(lMetricName, Metric::DefaultVerbosity, lTimeStamp);
-
-        for (auto &lKeyValsIter : lKeyValMaps) {
-
-          const auto &lKey = lKeyValsIter.first;
-          auto &lValues = lKeyValsIter.second;
-
-          if (lValues.empty()) {
-            continue;
-          }
-
-          // create mean, median, min, max
-          std::sort(lValues.begin(), lValues.end());
-
-          // report average of middle 80% samples
-          auto lMid80 = 0.0;
-          if (lValues.size() >= 3) {
-            const auto lMedBegin = std::max(std::size_t(1), (lValues.size() + 9) / 10);
-            const auto lMedEnd = std::min(lValues.size() - 1, (lValues.size() * 9) / 10);
-
-            lMid80 = std::accumulate(lValues.begin() + lMedBegin, lValues.begin() + lMedEnd, 0.0) / (lMedEnd - lMedBegin);
-          } else {
-            lMid80 = std::accumulate( begin(lValues), end(lValues), 0.0) / lValues.size();
-          }
-
-          lMetric.addValue(lMid80, lKey);
-          lMetric.addValue(*lValues.begin(), lKey + "_min");
-          lMetric.addValue(*lValues.rbegin(), lKey + "_max");
-        }
-
-        // log
-        if (mLogMetric) {
-          fmt::memory_buffer lLine;
-          fmt::format_to(fmt::appender(lLine), "Metric={}", lMetric.getName());
-
-          for (const auto &lIter : lMetric.getValues()) {
-            const std::string &lName = lIter.first;
-            const auto lVal = std::get<double>(lIter.second);
-            fmt::format_to(fmt::appender(lLine), " {}={:.3}", lName, lVal);
-          }
-
-          IDDLOG("{}", std::string(lLine.begin(), lLine.end()));
-        }
-
-        try {
-          if (mO2Monitoring) {
-            mO2Monitoring->send(std::move(lMetric));
-          }
-        } catch (...) {
-          EDDLOG("mO2Monitoring exception.");
+      // copy and invalidate original
+      lRateMetricMap = mRateMetricMap;
+      for (auto &lRateMetricIter : mRateMetricMap) {
+        for (auto &lKeyRateAccIter : lRateMetricIter.second.mKeyValues) {
+          lKeyRateAccIter.second = DataDistRateMetric::RateVals();
         }
       }
 
+      lRateIntervalS = since(mRateTimestamp);
+      mRateTimestamp = std::chrono::steady_clock::now();
+
+      // other metric
+      lMetricMap = std::move(mMetricMap);
       mMetricMap.clear();
+    }
+
+    for (auto &lRateMetricIter : lRateMetricMap) {
+      DataDistRateMetric &lRateMetricObj = lRateMetricIter.second;
+
+      const std::string &lMetricName = lRateMetricIter.first;
+      const auto &lKeyAccMap = lRateMetricObj.mKeyValues;
+
+      o2::monitoring::Metric lMetric(lMetricName, Metric::DefaultVerbosity, std::chrono::system_clock::now());
+      for (auto &lKeyRateAccIter : lKeyAccMap) {
+        const auto &lKey = lKeyRateAccIter.first;
+        const auto &lAccValues = lKeyRateAccIter.second;
+
+        lMetric.addValue(lAccValues.mMeanAcc / lAccValues.mCount, lKey + ".size");     // mean
+        lMetric.addValue(lAccValues.mMin, lKey + ".size.min");                         // min
+        lMetric.addValue(lAccValues.mMax, lKey + ".size.max");                         // max
+        lMetric.addValue(lAccValues.mCount / lRateIntervalS, lKey + ".rate");          // rate
+        lMetric.addValue(lAccValues.mMeanAcc / lRateIntervalS, lKey + ".throughput");  // thr
+      }
+
+      // log
+      if (mLogMetric) {
+        fmt::memory_buffer lLine;
+        fmt::format_to(fmt::appender(lLine), "RateMetric={}", lMetric.getName());
+
+        for (const auto &lIter : lMetric.getValues()) {
+          const std::string &lName = lIter.first;
+          const auto lVal = std::get<double>(lIter.second);
+          fmt::format_to(fmt::appender(lLine), " {}={:.3}", lName, lVal);
+        }
+
+        IDDLOG("{}", std::string(lLine.begin(), lLine.end()));
+      }
+
+      try {
+        if (mO2Monitoring) {
+          mO2Monitoring->send(std::move(lMetric));
+        }
+      } catch (...) {
+        EDDLOG_ONCE("mO2Monitoring rate exception.");
+      }
+    }
+
+    // value metric
+    for (auto &lMetricIter : lMetricMap) {
+      DataDistMetric &lMetricObj = lMetricIter.second;
+
+      const std::string &lMetricName = lMetricObj.mMetricName;
+      auto &lKeyValMaps = lMetricObj.mKeyValueVectors;
+      const auto &lTimeStamp = lMetricObj.mTimestamp;
+
+      o2::monitoring::Metric lMetric(lMetricName, Metric::DefaultVerbosity, lTimeStamp);
+
+      for (auto &lKeyValsIter : lKeyValMaps) {
+
+        const auto &lKey = lKeyValsIter.first;
+        auto &lValues = lKeyValsIter.second;
+
+        if (lValues.empty()) {
+          continue;
+        }
+
+        // create mean, median, min, max
+        const auto [lMin, lMax] = std::minmax_element(lValues.begin(), lValues.end());
+        const auto lMean = std::accumulate(lValues.begin(), lValues.end(), 0.0) / double(lValues.size());
+
+        lMetric.addValue(lMean, lKey);
+        lMetric.addValue(*lMin, lKey + "_min");
+        lMetric.addValue(*lMax, lKey + "_max");
+      }
+
+      // log
+      if (mLogMetric) {
+        fmt::memory_buffer lLine;
+        fmt::format_to(fmt::appender(lLine), "Metric={}", lMetric.getName());
+
+        for (const auto &lIter : lMetric.getValues()) {
+          const std::string &lName = lIter.first;
+          const auto lVal = std::get<double>(lIter.second);
+          fmt::format_to(fmt::appender(lLine), " {}={:.3}", lName, lVal);
+        }
+
+        IDDLOG("{}", std::string(lLine.begin(), lLine.end()));
+      }
+
+      try {
+        if (mO2Monitoring) {
+          mO2Monitoring->send(std::move(lMetric));
+        }
+      } catch (...) {
+        EDDLOG_ONCE("mO2Monitoring exception.");
+      }
     }
 
     try {
@@ -189,7 +271,7 @@ void DataDistMonitoring::MonitorThread()
         mO2Monitoring->flushBuffer();
       }
     } catch (...) {
-      EDDLOG("mO2Monitoring flush exception.");
+      EDDLOG_ONCE("mO2Monitoring flush exception.");
     }
   }
 

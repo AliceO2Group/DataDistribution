@@ -110,6 +110,7 @@ void StfSenderOutputUCX::stop()
 
 ConnectStatus StfSenderOutputUCX::connectTfBuilder(const std::string &pTfBuilderId, const std::string &lTfBuilderIp, const unsigned lTfBuilderPort)
 {
+  DDDLOG("StfSenderOutputUCX::connectTfBuilder: transport starting for tfbuilder_id={}", pTfBuilderId);
   if (!mRunning.load()) {
     EDDLOG_ONCE("StfSenderOutputUCX::connectTfBuilder: backend is not started.");
     return eCONNERR;
@@ -128,17 +129,20 @@ ConnectStatus StfSenderOutputUCX::connectTfBuilder(const std::string &pTfBuilder
   auto lConnInfo = std::make_unique<StfSenderUCXConnInfo>(this, pTfBuilderId);
 
   // create worker the TfBuilder connection
+  DDDLOG("StfSenderOutputUCX::connectTfBuilder: ucx::util::create_ucp_worker ip={} port={}", lTfBuilderIp, lTfBuilderPort);
   if (!ucx::util::create_ucp_worker(ucp_context, &lConnInfo->worker, pTfBuilderId)) {
     return eCONNERR;
   }
 
   // create endpoint for TfBuilder connection
   DDDLOG("Connect to TfBuilder ip={} port={}", lTfBuilderIp, lTfBuilderPort);
-  if (!ucx::util::create_ucp_client_ep(lConnInfo->worker.ucp_worker, lTfBuilderIp, lTfBuilderPort,
+  DDDLOG("StfSenderOutputUCX::connectTfBuilder: ucx::util::create_ucp_client_ep ip={} port={}", lTfBuilderIp, lTfBuilderPort);
+  if (!ucx::util::create_ucp_client_ep(lConnInfo->worker, lTfBuilderIp, lTfBuilderPort,
     &lConnInfo->ucp_ep, client_ep_err_cb, lConnInfo.get(), pTfBuilderId)) {
 
     return eCONNERR;
   }
+  DDDLOG("StfSenderOutputUCX::connectTfBuilder: ucx::io::ucx_send_string ip={} port={}", lTfBuilderIp, lTfBuilderPort);
   const std::string lStfSenderId = mDiscoveryConfig->status().info().process_id();
   auto lOk = ucx::io::ucx_send_string(lConnInfo->worker, lConnInfo->ucp_ep, lStfSenderId);
   if (!lOk) {
@@ -320,15 +324,16 @@ void StfSenderOutputUCX::visit(const SubTimeFrame &pStf, void *pData)
       *lNewDataPtr = lDataPart;
     }
 
-    DDMON("stfsender", "ucx.rma_gap_total", lTotalGap);
-    if (lStfSize > 0) {
-      DDMON("stfsender", "ucx.rma_gap_overhead", (double(lTotalGap) / double(lStfSize) * 100.));
-    }
-
     DDDLOG_GRL(10000, "UCX pack total data_size={} data_cnt={} txg_size={} txg_cnt={} gap_size={}",
       pStf.getDataSize(), lStfUCXMeta->stf_data_iov_size(), pStf.getDataSize()+lTotalGap, lStfUCXMeta->stf_txg_iov_size(), lTotalGap);
-  }
 
+    DDMON("stfsender", "ucx_txg.count", lStfUCXMeta->stf_txg_iov_size());
+    DDMON("stfsender", "ucx_buffer.count", lStfUCXMeta->stf_data_iov_size());
+    DDMON("stfsender", "ucx_rma_gap_total.size", lTotalGap);
+    if (lStfSize > 0) {
+      DDMON("stfsender", "ucx_rma_gap_overhead", (double(lTotalGap) / double(lStfSize) * 100.));
+    }
+  }
 }
 
 void StfSenderOutputUCX::prepareStfMetaHeader(const SubTimeFrame &pStf, UCXIovStfHeader *pStfUCXMeta)
@@ -344,6 +349,8 @@ void StfSenderOutputUCX::DataHandlerThread(unsigned pThreadIdx)
   const std::string lStfSenderId = mDiscoveryConfig->status().info().process_id();
 
   assert(mSendRequestQueue.is_running());
+
+  DDMON_RATE("stfsender", "stf_output", 0.0);
 
   std::uint64_t lNumSentStfs = 0;
 
@@ -383,6 +390,8 @@ void StfSenderOutputUCX::DataHandlerThread(unsigned pThreadIdx)
     DDDLOG_GRL(5000, "Sending an STF to TfBuilder. stf_id={} tfb_id={} stf_size={} total_sent_stf={} meta_size={}",
       lStfId, lTfBuilderId, lStfSize, lNumSentStfs, lStfMetaData.size());
 
+    DDMON("stfsender", "ucx_meta.size", lStfMetaData.size());
+
     // Send meta and wait for ack (locked)
     { // lock the TfBuilder for sending
       std::scoped_lock lTfBuilderLock(lConnInfo->mTfBuilderLock);
@@ -400,6 +409,7 @@ void StfSenderOutputUCX::DataHandlerThread(unsigned pThreadIdx)
     } // Unlock TfBuilder to avoid serializing on STF destruction
 
     // send Stf to dealloc thread
+    DDMON_RATE("stfsender", "stf_output", lStf->getDataSize());
     mStfDeleteQueue.push(std::move(lStf));
 
     // update buffer status
