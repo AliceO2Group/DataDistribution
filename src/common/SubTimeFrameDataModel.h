@@ -390,6 +390,20 @@ private:
   /// helper methods
   ///
 
+  inline bool stfDataExists(const o2hdr::DataIdentifier &pDataId, const o2::header::DataHeader::SubSpecificationType pSubSpec)
+  {
+    const auto lDataIt = mData.find(pDataId);
+    if (lDataIt == mData.end()) {
+      return false;
+    }
+
+    if (lDataIt->second.count(pSubSpec) > 0) {
+      return true;
+    }
+
+    return false;
+  }
+
   // This is only to be used with the data building from readout
   // in this case, only a single split-payload will be present in the data vector
   // If any other header is provided, it can be discarded

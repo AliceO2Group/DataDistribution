@@ -62,6 +62,7 @@ public:
   virtual std::uint32_t getMemorySize(const char* data)  const = 0;
   virtual std::uint32_t getOffsetToNext(const char* data)  const = 0;
   virtual bool getStopBit(const char* data)  const = 0;
+  virtual std::uint16_t getPageCounter(const char* data) const = 0;
   // trigger
   virtual std::uint32_t getOrbit(const char* data) const = 0;
   virtual std::uint16_t getBC(const char* data) const = 0;
@@ -143,6 +144,12 @@ public:
   bool getStopBit(const char* data) const override final {
     const RDH &lRdh = getHdrRef(data);
     return lRdh.stop;
+  }
+
+  virtual inline
+  std::uint16_t getPageCounter(const char* data) const override final {
+    const RDH &lRdh = getHdrRef(data);
+    return lRdh.pageCnt;
   }
 
   // RDH trigger information
@@ -317,6 +324,9 @@ public:
 
   inline
   bool getStopBit() const { return I().getStopBit(mData); }
+
+  inline
+  std::uint16_t getPageCounter() const { return I().getPageCounter(mData); }
 
   // RDH trigger information
   inline

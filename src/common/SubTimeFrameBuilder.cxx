@@ -83,7 +83,7 @@ bool SubTimeFrameReadoutBuilder::addHbFrames(
       const auto R = RDHReader(pHbFramesBegin[0]);
       mStf->updateFirstOrbit(R.getOrbit());
     } catch (...) {
-      EDDLOG("Error getting RDHReader instace. Not using {} HBFs", pHBFrameLen);
+      EDDLOG("Error getting RDHReader instance. Not using {} HBFs", pHBFrameLen);
       return false;
     }
   }
@@ -230,17 +230,32 @@ std::optional<std::unique_ptr<SubTimeFrame>> SubTimeFrameReadoutBuilder::addTopo
   const o2::header::DataOrigin &pDataOrig,
   const o2::header::DataHeader::SubSpecificationType pSubSpecification,
   const ReadoutSubTimeframeHeader& pHdr,
-  std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen,
-  const std::uint64_t pMaxNumMessages)
+  std::vector<FairMQMessagePtr>::iterator &pHbFramesBegin, std::size_t &pHBFrameLen,
+  const std::uint64_t pMaxNumMessages, bool pCutTfOnNewOrbit)
 {
   static uint32_t sTfId = 1;
+
+  auto isFirstPacketOfOrbit = [&](const FairMQMessagePtr &pMsg) -> bool {
+    if (!pMsg) {
+      return false;
+    }
+    try {
+      const auto R = RDHReader(pMsg);
+      if (R.getPageCounter() == 0) {
+        return true;
+      }
+    } catch (...) {
+      EDDLOG_RL(5000, "Error getting RDHReader instance. page_size={}", pMsg->GetSize());
+    }
+    return false;
+  };
 
   if (!mRunning) {
     WDDLOG("Adding HBFrames while STFBuilder is not running!");
     return std::nullopt;
   }
 
-  if (!mAcceptStfData) {
+  if (!mAcceptStfData || (pHBFrameLen == 0)) {
     return std::nullopt;
   }
 
@@ -259,60 +274,80 @@ std::optional<std::unique_ptr<SubTimeFrame>> SubTimeFrameReadoutBuilder::addTopo
     }
   }
 
-  DataHeader lDataHdr(
-    o2::header::gDataDescriptionRawData,
-    pDataOrig,
-    pSubSpecification,
-    0 /* Update later */
-  );
-  lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
+  auto lReturnStfIfFinished = [&](const auto &pHbFrame) -> std::optional<std::unique_ptr<o2::DataDistribution::SubTimeFrame> > {
+    if (!lStf || (lStfNumMessages == 0)) {
+      return std::nullopt;
+    }
+    // before starting, check if the existing STF is large enough and cut conditions are met
+    if ((!pCutTfOnNewOrbit && (lStfNumMessages >= pMaxNumMessages)) || // orbit cut not used
+          (pCutTfOnNewOrbit && (lStfNumMessages >= pMaxNumMessages) && isFirstPacketOfOrbit(pHbFrame))) { // orbit cut used
 
-  const o2hdr::DataIdentifier lDataId(o2::header::gDataDescriptionRawData.str,  pDataOrig.str);
+      lStf->setOrigin(SubTimeFrame::Header::Origin::eReadoutTopology);
 
-  bool lIncludeO2Hdr = true;
-  for (size_t i = 0; i < pHBFrameLen; i++) {
-    // we need at least one header per equipment
-    if (lIncludeO2Hdr) {
-      lIncludeO2Hdr = false; // only provide one header message
+      DDDLOG_RL(1000, "addTopoStfData: leaving and returning STF: numMessages={}", lStfNumMessages);
+      lStfNumMessages = 0;
 
-      lDataHdr.payloadSize = pHbFramesBegin[i]->GetSize();
+      mAcceptStfData = true;
+      return std::optional<std::unique_ptr<SubTimeFrame>>(std::move(lStf));
+    }
 
-      auto lDplHdr = o2::framework::DataProcessingHeader{lStf->header().mId};
-      lDplHdr.creation = lStf->header().mCreationTimeMs;
-      auto lStack = Stack(
-        lDataHdr,
-        lDplHdr
-      );
+    return std::nullopt;
+  };
 
-      auto lHdrMsg = mMemRes.newHeaderMessage(lStack.data(), lStack.size());
-      if (!lHdrMsg) {
-        WDDLOG_RL(1000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
-        // clear data of the partial STF
-        mAcceptStfData = false;
-        lStf->clear();
-
-        return std::nullopt;
-      }
-
-      lStf->addStfDataReadout(lDataId, pSubSpecification, SubTimeFrame::StfData{std::move(lHdrMsg), std::move(pHbFramesBegin[i])});
-    } else {
-      lStf->addStfDataReadout(lDataId, pSubSpecification, SubTimeFrame::StfData{nullptr, std::move(pHbFramesBegin[i])});
+  // check if we should cut at the first block
+  {
+    auto lDoneStfOpt = lReturnStfIfFinished(*pHbFramesBegin);
+    if (lDoneStfOpt.has_value()) {
+      return lDoneStfOpt;
     }
   }
 
-  // update number of messages per topo stf
-  lStfNumMessages += pHBFrameLen;
+  const o2hdr::DataIdentifier lDataId(o2::header::gDataDescriptionRawData.str,  pDataOrig.str);
 
-  if (lStfNumMessages >= pMaxNumMessages) {
-    lStf->setOrigin(SubTimeFrame::Header::Origin::eReadoutTopology);
-    std::optional<std::unique_ptr<SubTimeFrame>> lRetStf = std::move(lStf);
+  if (!lStf->stfDataExists(lDataId, pSubSpecification)) {
+    DataHeader lDataHdr(
+      o2::header::gDataDescriptionRawData,
+      pDataOrig,
+      pSubSpecification,
+      0 /* Update later */
+    );
+    lDataHdr.payloadSerializationMethod = gSerializationMethodNone;
+    lDataHdr.payloadSize = (*pHbFramesBegin)->GetSize();
 
-    DDDLOG_RL(1000, "addTopoStfData: leaving and returning STF: numMessages={}", lStfNumMessages);
-    lStfNumMessages = 0;
-    return lRetStf;
+    auto lDplHdr = o2::framework::DataProcessingHeader{lStf->header().mId};
+    lDplHdr.creation = lStf->header().mCreationTimeMs;
+
+    auto lStack = Stack(lDataHdr, lDplHdr);
+
+    auto lHdrMsg = mMemRes.newHeaderMessage(lStack.data(), lStack.size());
+    if (!lHdrMsg) {
+      WDDLOG_RL(10000, "Allocation error: dropping data of the current STF stf_id={}", pHdr.mRunNumber);
+      // clear data of the partial STF
+      mAcceptStfData = false;
+      lStf->clear();
+      return std::nullopt;
+    }
+
+    lStf->addStfDataReadout(lDataId, pSubSpecification, SubTimeFrame::StfData{std::move(lHdrMsg), std::move(*pHbFramesBegin)});
+    lStfNumMessages += 1;
+    pHBFrameLen -= 1;
+    pHbFramesBegin += 1;
   }
 
-  DDDLOG_RL(1000, "addTopoStfData: leaving without returning STF: numMessages={}", lStfNumMessages);
+  while (pHBFrameLen > 0) {
+    // check if we should cut at the next
+    auto lDoneStfOpt = lReturnStfIfFinished(*pHbFramesBegin);
+    if (lDoneStfOpt.has_value()) {
+      return lDoneStfOpt;
+    }
+
+    lStf->addStfDataReadout(lDataId, pSubSpecification, SubTimeFrame::StfData{nullptr, std::move(*pHbFramesBegin)});
+    lStfNumMessages += 1;
+    pHBFrameLen -= 1;
+    pHbFramesBegin += 1;
+  }
+
+  DDDLOG_RL(10000, "addTopoStfData: leaving without returning STF: numMessages={}", lStfNumMessages);
 
   return std::nullopt;
 }

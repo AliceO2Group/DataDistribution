@@ -36,6 +36,10 @@ static constexpr std::string_view DataDistNetworkTransportDefault = "ucx";
 // Page aggregation for topological runs. Larger number of pages decreases FLP-EPN interaction rate (better performance)
 static constexpr std::string_view NumPagesInTopologicalStfKey = "NumPagesInTopologicalStf";
 static constexpr std::uint64_t NumPagesInTopologicalStfDefault = 128;
+// Topological STFs: Force starting STFs on new Orbit only
+static constexpr std::string_view StartTopologicalStfOnNewOrbitfKey = "StartTopologicalStfOnNewOrbit";
+static constexpr bool StartTopologicalStfOnNewOrbitDefault = true;
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
