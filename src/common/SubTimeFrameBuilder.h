@@ -48,8 +48,8 @@ class SubTimeFrameReadoutBuilder
   std::optional<std::unique_ptr<SubTimeFrame>> addTopoStfData(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
     const ReadoutSubTimeframeHeader& pHdr,
-    std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen,
-    const std::uint64_t pMaxNumMessages);
+    std::vector<FairMQMessagePtr>::iterator &pHbFramesBegin, std::size_t &pHBFrameLen,
+    const std::uint64_t pMaxNumMessages, bool pCutTfOnNewOrbit);
 
   std::optional<std::uint32_t> getCurrentStfId() const {
     return (mStf) ? std::optional<std::uint32_t>(mStf->header().mId) : std::nullopt;
@@ -71,7 +71,7 @@ class SubTimeFrameReadoutBuilder
     return (lStf) ? std::optional<std::unique_ptr<SubTimeFrame>>(std::move(lStf)) : std::nullopt;
   }
 
-  // fo aggregation of threshold scan data
+  // for aggregation of threshold scan data
   std::optional<std::unique_ptr<SubTimeFrame>> getTopoStf() {
     if (mTopoStfMap.empty()) {
       return std::nullopt;
@@ -79,8 +79,11 @@ class SubTimeFrameReadoutBuilder
 
     const auto lBegin = mTopoStfMap.begin();
     std::unique_ptr<SubTimeFrame> lStf = std::move(lBegin->second.second);
-
     mTopoStfMap.erase(lBegin);
+
+    if (lStf) {
+      lStf->setOrigin(SubTimeFrame::Header::Origin::eReadoutTopology);
+    }
 
     mAcceptStfData = true;
     return (lStf) ? std::optional<std::unique_ptr<SubTimeFrame>>(std::move(lStf)) : std::nullopt;

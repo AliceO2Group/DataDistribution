@@ -28,6 +28,13 @@
 namespace o2::DataDistribution
 {
 
+static inline constexpr
+void assume(const bool pPred) {
+  if (!pPred) {
+    __builtin_unreachable();
+  }
+}
+
 template <class F, class ... Args>
 std::thread create_thread_member(const char* name, F&& f, Args&&... args) {
   char *lName = strdup(name);
