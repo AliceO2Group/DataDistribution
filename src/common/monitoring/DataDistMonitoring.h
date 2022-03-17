@@ -36,6 +36,16 @@ struct DataDistMetric {
   std::chrono::time_point<std::chrono::system_clock> mTimestamp = std::chrono::system_clock::now();
 };
 
+struct DataDistRateMetric {
+  struct RateVals {
+    double mMin = std::numeric_limits<double>::max();
+    double mMax = std::numeric_limits<double>::min();
+    double mMeanAcc = 0.0;
+    double mCount = 0.0;
+  };
+  std::map<std::string, RateVals>  mKeyValues; // cnt, acc
+};
+
 
 class DataDistMonitoring {
 public:
@@ -45,7 +55,13 @@ public:
 
   inline void push(const std::string_view &pName, const std::string_view &pKey, double pVal) {
     if (mLogMetric || mO2Monitoring) {
-      mMetricsQueue.push_capacity(1024, std::make_tuple(pName, pKey, pVal));
+      mMetricsQueue.push_capacity(4096, std::make_tuple(pName, pKey, pVal));
+    }
+  }
+
+  inline void push_rate(const std::string_view &pName, const std::string_view &pKey, double pVal) {
+    if (mLogMetric || mO2Monitoring) {
+      mRateMetricsQueue.push_capacity(4096, std::make_tuple(pName, pKey, pVal));
     }
   }
 
@@ -66,11 +82,19 @@ public:
 private:
 
   std::mutex mMetricLock;
-  std::map<std::string, DataDistMetric> mMetricMap;
+    std::map<std::string, DataDistMetric> mMetricMap;
+    std::map<std::string, DataDistRateMetric> mRateMetricMap;
+    std::chrono::steady_clock::time_point mRateTimestamp = std::chrono::steady_clock::time_point::min();
+
   ConcurrentFifo<std::tuple<std::string, std::string, double>>  mMetricsQueue;
+  ConcurrentFifo<std::tuple<std::string, std::string, double>>  mRateMetricsQueue;
 
   void MetricCollectionThread();
   std::thread mCollectionThread;
+
+  void RateMetricCollectionThread();
+  std::thread mRateCollectionThread;
+
   void MonitorThread();
   std::thread mMonitorThread;
 
@@ -79,14 +103,11 @@ private:
 
   o2::monitoring::tags::Value mSubSystem;
 
-  ConcurrentFifo<std::unique_ptr<std::tuple<o2::monitoring::Metric, o2::monitoring::DerivedMetricMode> >>  mMetricQueue;
-
-
   std::unique_ptr<o2::monitoring::Monitoring> mO2Monitoring;
 
   // options
   std::string mUriList;
-  unsigned mMonitoringIntervalMs = 500;
+  unsigned mMonitoringIntervalMs = 1000;
   bool mLogMetric = false;
 };
 
@@ -97,6 +118,12 @@ private:
   }                                                                   \
 } while (0)
 
+
+#define DDMON_RATE(name, key, val) do {                               \
+  if (DataDistMonitor::mDataDistMon) {                                \
+    DataDistMonitor::mDataDistMon->push_rate(name, key, val);         \
+  }                                                                   \
+} while (0)
 
 class DataDistMonitor {
 public:

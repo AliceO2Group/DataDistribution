@@ -21,6 +21,7 @@
 
 #include <chrono>
 #include <thread>
+#include <future>
 
 namespace o2::DataDistribution
 {
@@ -75,10 +76,18 @@ void TfBuilderDevice::InitTask()
     mTfHdrRegionId = std::nullopt;
   }
 
+  mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
+  if (mPartitionId.empty()) {
+    WDDLOG("TfBuilder 'discovery-partition' parameter not set during InitTask(). Check command line or ECS settings. Exiting.");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
+  }
   // start monitoring
   DataDistMonitor::start_datadist(o2::monitoring::tags::Value::TfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend"));
   DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
   DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
+  // enable monitoring
+  DataDistMonitor::enable_datadist(0, mPartitionId);
 
   // Using DPL?
   if (mDplChannelName != "") {
@@ -118,7 +127,8 @@ void TfBuilderDevice::InitTask()
     mDiscoveryConfig = std::make_shared<ConsulTfBuilder>(ProcessType::TfBuilder, Config::getEndpointOption(*GetConfig()));
   } catch (...) {
     lBuffersAllocatedFuture.wait();
-    throw "Consul Initialization failed. Exiting...";
+    EDDLOG("Consul Initialization failed. Exiting...");
+    ChangeState(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -127,25 +137,13 @@ void TfBuilderDevice::InitTask()
   lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
   lStatus.mutable_info()->set_process_id(Config::getIdOption(TfBuilder, *GetConfig()));
   lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
-
-  // wait for "partition-id"
-  while (!Config::getPartitionOption(*GetConfig())) {
-    if (NewStatePending()) {
-      lBuffersAllocatedFuture.wait();
-      AbortInitTask();
-      return;
-    }
-    WDDLOG_RL(10000, "TfBuilder waiting on 'discovery-partition' config parameter.");
-    std::this_thread::sleep_for(500ms);
-  }
-  mPartitionId = Config::getPartitionOption(*GetConfig()).value_or(DataDistLogger::sPartitionIdStr);
   lStatus.mutable_partition()->set_partition_id(mPartitionId);
 
   // File sink
   if (!mFileSink.loadVerifyConfig(*(this->GetConfig()))) {
     lBuffersAllocatedFuture.wait();
     AbortInitTask();
-    throw "File Sink options";
+    ChangeState(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -163,7 +161,8 @@ void TfBuilderDevice::InitTask()
       AbortInitTask();
       EDDLOG("Can not start TfBuilder. id={}", lStatus.info().process_id());
       EDDLOG("Process with the same id already running? If not, clear the key manually.");
-      throw "Discovery database error: this TfBuilder was/is already present.";
+      EDDLOG("Discovery database error: this TfBuilder was/is already present. Exiting.");
+      ChangeState(fair::mq::Transition::ErrorFound);
       return;
     }
   }
@@ -201,7 +200,9 @@ void TfBuilderDevice::InitTask()
   // Start input handlers after the memory is finished allocating
   if (!mFlpInputHandler->start()) {
     AbortInitTask();
-    throw std::runtime_error("Could not initialize input connections. Exiting.");
+    EDDLOG("Could not initialize input connections. Exiting.");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
 
   // wait for the memory allocation and registration to finish
@@ -209,13 +210,16 @@ void TfBuilderDevice::InitTask()
   if (!lBuffersAllocatedFuture.get()) {
     AbortInitTask();
     EDDLOG("InitTask::MemorySegment allocation failed. Exiting...");
-    throw std::runtime_error("InitTask::MemorySegment allocation failed. Exiting...");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
 
   // Start input handlers after the memory is finished allocating
   if (!mFlpInputHandler->map_data_region()) {
     AbortInitTask();
-    throw std::runtime_error("Could not initialize input connections. Exiting.");
+    EDDLOG("Could not initialize input connections. Exiting.");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
 
   mInitTaskFinished = true;
@@ -375,6 +379,8 @@ void TfBuilderDevice::TfForwardThread()
   using hres_clock = std::chrono::high_resolution_clock;
   auto lRateStartTime = hres_clock::now();
 
+  DDMON_RATE("tfbuilder", "tf_output", 0.0);
+
   while (mRunning) {
     std::optional<std::unique_ptr<SubTimeFrame>> lTfOpt = dequeue_for(eTfFwdIn, 100ms);
     if (!mRunning) {
@@ -410,19 +416,19 @@ void TfBuilderDevice::TfForwardThread()
       lRateStartTime = hres_clock::now();
       const auto lRate = (1.0 / lStfDur.count());
       DDMON("tfbuilder", "tf_output.id", lTfId);
-      DDMON("tfbuilder", "tf_output.size", lTf->getDataSize());
-      DDMON("tfbuilder", "tf_output.rate", lRate);
       DDMON("tfbuilder", "data_output.rate", (lRate * lTf->getDataSize()));
 
       mTfFwdTotalDataSize += lTf->getDataSize();
       mTfFwdTotalTfCount += 1;
       DDMON("tfbuilder", "tf_output.sent_size", mTfFwdTotalDataSize);
       DDMON("tfbuilder", "tf_output.sent_count", mTfFwdTotalTfCount);
+
+      DDMON_RATE("tfbuilder", "tf_output", lTf->getDataSize());
     }
 
     if (!mStandalone) {
       try {
-        IDDLOG_RL(5000, "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={:d} total={:d}",
+        IDDLOG_RL(5000, "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={} total={}",
           lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), mTfFwdTotalTfCount);
 
         // adapt headers to include DPL processing header on the stack
@@ -435,9 +441,9 @@ void TfBuilderDevice::TfForwardThread()
 
       } catch (std::exception& e) {
         if (IsRunningState()) {
-          EDDLOG("StfOutputThread: exception on send. exception_what={:s}", e.what());
+          EDDLOG("StfOutputThread: exception on send. exception_what={}", e.what());
         } else {
-          IDDLOG("StfOutputThread: shutting down. exception_what={:s}", e.what());
+          IDDLOG("StfOutputThread: shutting down. exception_what={}", e.what());
         }
       }
     }

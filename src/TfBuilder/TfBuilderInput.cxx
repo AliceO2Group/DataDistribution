@@ -286,6 +286,8 @@ void TfBuilderInput::StfMergerThread()
 
   std::uint64_t lNumBuiltTfs = 0;
 
+  DDMON_RATE("tfbuilder", "tf_input", 0.0);
+
   while (mState == RUNNING) {
 
     auto lStfVectorOpt = mStfsForMerging.pop();
@@ -330,14 +332,12 @@ void TfBuilderInput::StfMergerThread()
       lRateStartTime = lNow;
       const auto lRate = (1.0 / lTfDur.count());
 
-      DDMON("tfbuilder", "tf_input.size", lTf->getDataSize());
-      DDMON("tfbuilder", "tf_input.rate", lRate);
       DDMON("tfbuilder", "data_input.rate", (lRate * lTf->getDataSize()));
-
       DDMON("tfbuilder", "merge.receive_span_ms", lBuildDurationMs.count());
     }
 
     // Queue out the TF for consumption
+    DDMON_RATE("tfbuilder", "tf_input", lTf->getDataSize());
     mDevice.queue(mOutStage, std::move(lTf));
   }
 

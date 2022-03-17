@@ -95,16 +95,20 @@ void TfBuilderInputUCX::ListenerThread()
     // Create stfsender (data) worker + endpoint
     auto lConnStruct = std::make_unique<dd_ucx_conn_info>(this);
 
+    DDDLOG("ListenerThread: ucx::util::create_ucp_worker() ...");
     if (!ucx::util::create_ucp_worker(ucp_context, &lConnStruct->worker, lStfSenderAddr)) {
       continue;
     }
+
     // Create stfsender endpoint
+    DDDLOG("ListenerThread: ucx::util::create_ucp_ep() ...");
     if (!ucx::util::create_ucp_ep(lConnStruct->worker.ucp_worker, conn_request, &lConnStruct->ucp_ep,
       client_ep_err_cb, lConnStruct.get(), lStfSenderAddr)) {
       continue;
     }
 
     // receive the StfSenderId
+    DDDLOG("ListenerThread: ucx::util::ucx_receive_string() ...");
     auto lStfSenderIdOpt = ucx::io::ucx_receive_string(lConnStruct->worker);
 
     if (!lStfSenderIdOpt) {

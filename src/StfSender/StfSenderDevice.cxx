@@ -66,18 +66,18 @@ void StfSenderDevice::InitTask()
   // Not available in Init()
   if (fair::mq::Transport::SHM != Transport()->GetType()) {
     EDDLOG("Default transport parameter must be set to shm.");
-    throw std::runtime_error("Default transport parameter must be set to shm");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
 
   I().mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
 
-  // start monitoring
-  DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfSender, GetConfig()->GetProperty<std::string>("monitoring-backend"));
-  DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
-  DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
-
-
-  I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("-");
+  I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
+  if (I().mPartitionId.empty()) {
+    WDDLOG("StfSender 'discovery-partition' parameter not set during InitTask(). Exiting.");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
+  }
 
   { // Discovery
     const bool lConsulRequired = !standalone();
@@ -89,32 +89,30 @@ void StfSenderDevice::InitTask()
       lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
       lStatus.mutable_info()->set_process_id(Config::getIdOption(StfSender, *GetConfig(), lConsulRequired));
       lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*GetConfig()));
-      // wait for "partition-id"
-      while (!Config::getPartitionOption(*GetConfig())) {
-        WDDLOG_RL(1000, "StfSender waiting on 'discovery-partition' config parameter.");
-        std::this_thread::sleep_for(250ms);
-      }
-
-      if (I().mPartitionId.empty()) {
-        WDDLOG("StfSender 'discovery-partition' parameter not set.");
-        std::this_thread::sleep_for(1s); exit(-1);
-      }
-
       lStatus.mutable_partition()->set_partition_id(I().mPartitionId);
       I().mDiscoveryConfig->write();
     }
   }
 
+  // start monitoring
+  DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfSender, GetConfig()->GetProperty<std::string>("monitoring-backend"));
+  DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
+  DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
+  // enable monitoring
+  DataDistMonitor::enable_datadist(0, I().mPartitionId);
+
   try {
     GetChannel(I().mInputChannelName, 0);
   } catch (...) {
     EDDLOG("Requested input channel is not configured. input_chan={}", I().mInputChannelName);
-    std::this_thread::sleep_for(1s); exit(-1);
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
 
   // File sink
   if (!I().mFileSink->loadVerifyConfig(*GetConfig())) {
-    std::this_thread::sleep_for(1s); exit(-1);
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
 
   // check if any outputs enabled
@@ -144,7 +142,8 @@ void StfSenderDevice::InitTask()
       // We failed to connect to the TfScheduler
       if (!I().mTfSchedulerRpcClient.should_retry_start()) {
         EDDLOG("InitTask: Failed to connect to TfScheduler. Exiting.");
-        throw std::runtime_error("Cannot connect to TfScheduler.");
+        ChangeState(fair::mq::Transition::ErrorFound);
+        return;
       }
     } else {
       // Start output handler for standalone
@@ -258,16 +257,13 @@ void StfSenderDevice::ResetTask()
 
 void StfSenderDevice::StfReceiverThread()
 {
-  using hres_clock = std::chrono::high_resolution_clock;
-  std::uint64_t lReceivedStfs = 0;
-
   auto& lInputChan = GetChannel(I().mInputChannelName, 0);
 
   // InterleavedHdrDataDeserializer lStfReceiver;
   DplToStfAdapter  lStfReceiver;
   std::unique_ptr<SubTimeFrame> lStf;
 
-  decltype(hres_clock::now()) lStfStartTime = hres_clock::now();
+  DDMON_RATE("stfsender", "stf_input", 0.0);
 
   while (running()) {
     try {
@@ -284,33 +280,17 @@ void StfSenderDevice::StfReceiverThread()
       if (lStf) {
         WDDLOG_RL(1000, "StfSender: received STF but not in the running state.");
       }
-      DDMON("stfsender", "stf_input.rate", 0.0);
-      DDMON("stfsender", "stf_input.size", 0.0);
-      DDMON("stfsender", "data_input.rate", 0.0);
-      lStfStartTime = hres_clock::now();
       continue;
     }
 
-    { // Input STF frequency
-      const auto lNow = hres_clock::now();
-      const std::chrono::duration<double> lStfDur = lNow - lStfStartTime;
-      lStfStartTime = lNow;
+    DDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
+      lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
-      const auto lRate = 1.0 / std::max(0.000001, lStfDur.count());
-      DDMON("stfsender", "stf_input.rate", lRate);
-      DDMON("stfsender", "stf_input.size", lStf->getDataSize());
-      DDMON("stfsender", "stf_input.id", lStf->id());
-      DDMON("stfsender", "data_input.rate", lRate * lStf->getDataSize());
-    }
-
-    lReceivedStfs += 1;
-    DDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={} total={}",
-      lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size(), lReceivedStfs);
-
+    DDMON_RATE("stfsender", "stf_input", lStf->getDataSize());
+    DDMON("stfsender", "stf_input.id", lStf->id());
     I().queue(eReceiverOut, std::move(lStf));
   }
 
-  IDDLOG("StfSender received total of {} STFs.", lReceivedStfs);
   DDDLOG("Exiting StfReceiverThread.");
 }
 
