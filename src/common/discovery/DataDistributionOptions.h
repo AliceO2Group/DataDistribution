@@ -56,7 +56,7 @@ static constexpr std::uint64_t StandaloneStfDeleteChanceDefault = 50;
 
 // Standalone: Amount of data to keep while running
 static constexpr std::string_view StandaloneStfDataBufferSizeMBKey = "StandaloneStfDataBufferSizeMB";
-static constexpr std::uint64_t StandaloneStfDataBufferSizeMBDefault = StfBufferSizeMBDefault;
+static constexpr std::uint64_t StandaloneStfDataBufferSizeMBDefault = 128;
 
 /// UCX transport
 // Allowed gap between two messages of the same region when creating RMA txgs
