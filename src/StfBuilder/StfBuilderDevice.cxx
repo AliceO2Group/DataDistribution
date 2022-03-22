@@ -99,6 +99,9 @@ void StfBuilderDevice::InitTask()
 
   // partition id
   I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
+  if (I().mPartitionId.empty() && I().mStandalone) {
+    I().mPartitionId = "STAND-ALONE";
+  }
   if (I().mPartitionId.empty()) {
     EDDLOG("Partition id is not provided during InitTask(). Check command line or ECS parameters. Exiting.");
     ChangeState(fair::mq::Transition::ErrorFound);
