@@ -90,10 +90,39 @@ public:
       return;
     }
 
-    try {
-      mConsul = std::make_unique<ppconsul::Consul>(mEndpoint);
-      IDDLOG("Connecting to Consul. endpoint={}", mEndpoint);
+    // try to connect to consul
+    int lNumConsulTries = 0;
+    do {
+      try{
+        lNumConsulTries += 1;
+        IDDLOG("Connecting to Consul. endpoint={}", mEndpoint);
+        mConsul = std::make_unique<ppconsul::Consul>(mEndpoint,
+          ppconsul::kw::connect_timeout = std::chrono::milliseconds{10000},
+          ppconsul::kw::request_timeout = std::chrono::milliseconds{30000});
 
+        mConsul->get("/");
+
+      } catch(ppconsul::RequestTimedOut &err) {
+        WDDLOG("Connection to Consul timed out. try={} endpoint={} what={}", lNumConsulTries, mEndpoint, err.what());
+        mConsul = nullptr;
+      } catch (std::exception &err) {
+        if (boost::contains(err.what(), "Moved")) {
+          // this is an usual redirect response
+          break;
+        } else {
+          WDDLOG("Could not connect to Consul. try={} endpoint={} what={}", lNumConsulTries, mEndpoint, err.what());
+          mConsul = nullptr;
+        }
+      }
+    } while (!mConsul && (lNumConsulTries < 10));
+
+    if (!mConsul) {
+      cleanup();
+      EDDLOG("Cannot connect to Consul. enpoint={}", mEndpoint);
+      throw std::runtime_error("Cannot connect to Consul.");
+    }
+
+    try {
       // thread for fetching the tunables
       mPollThread = create_thread_member("consul_params", &ConsulConfig::ConsulPollingThread, this);
       // wait for tunables to be available
@@ -103,6 +132,8 @@ public:
       mConsul = nullptr;
       EDDLOG("Error while connecting to Consul. endpoint={} what={}", mEndpoint, err.what());
     }
+
+    IDDLOG("Connection to Consul initialized. endpoint={}", mEndpoint);
   }
 
   bool enabled() const { return (mConsul != nullptr); }
@@ -190,22 +221,34 @@ private:
       return false;
     }
 
-    try{
-      if (pInitial) {
-        // make sure the key does not exist before
-        if (kv->count(mConsulKey) > 0) {
-          EDDLOG("Consul kv error, the key is already present: {}", mConsulKey);
-          return false;
+    int lRetryCnt = 0;
+    do {
+      lRetryCnt += 1;
+      try{
+        if (pInitial) {
+          // make sure the key does not exist before
+          if (kv->count(mConsulKey) > 0) {
+            EDDLOG("Consul kv error, the key is already present: {}", mConsulKey);
+            return false;
+          }
         }
+
+        kv->set(mConsulKey, lData);
+        return true;
+
+      } catch (ppconsul::RequestTimedOut &e) {
+        WDDLOG("Consul kv set timed out. try={} what={}", lRetryCnt, e.what());
+      } catch (std::exception &e) {
+        EDDLOG("Consul kv set error. what={}", e.what());
+        return false;
       }
+      if (lRetryCnt > 5) {
+        EDDLOG("Consul kv set error after retry. try={}", lRetryCnt);
+        return false;
+      }
+    } while (true);
 
-      kv->set(mConsulKey, lData);
-    } catch (std::exception &e) {
-      EDDLOG("Consul kv set error. what={}", e.what());
-      return false;
-    }
-
-    return true;
+    return false;
   }
 
 
@@ -327,7 +370,7 @@ private:
         }
 
       } catch (std::exception &e) {
-        WDDLOG_ONCE("Consul kv param retrieve error. what={}", e.what());
+        WDDLOG("Consul kv param retrieve error. what={}", e.what());
       }
 
       mTunablesRead = true;
