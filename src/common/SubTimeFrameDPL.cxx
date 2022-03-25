@@ -270,6 +270,8 @@ void StfToDplAdapter::sendEosToDpl()
     lDplExitHdr
   );
 
+  IDDLOG("Sending End of stream (EoS) message to {} receivers.", mChan.GetNumberOfConnectedPeers());
+
   // Send a multiparts
   for (auto lEosCnt = 0U; lEosCnt < mChan.GetNumberOfConnectedPeers(); lEosCnt++) {
     FairMQParts lCompletedMsg;

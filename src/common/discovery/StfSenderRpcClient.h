@@ -133,7 +133,7 @@ public:
     }
 
     lNumStfSenders = lSchedulerInst.stf_sender_id_list().size();
-    DDDLOG("Connecting gRPC clients. stfs_id={}", lNumStfSenders);
+    DDDLOG("Connecting gRPC clients. stfs_num={}", lNumStfSenders);
 
     // Connect to all StfSenders
     for (const std::string &lStfSenderId : lSchedulerInst.stf_sender_id_list()) {
