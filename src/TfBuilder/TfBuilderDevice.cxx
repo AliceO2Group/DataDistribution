@@ -44,11 +44,38 @@ void TfBuilderDevice::Init()
 {
   DDDLOG("TfBuilderDevice::Init()");
   mMemI = std::make_unique<SyncMemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
+
+  // partition id
+  mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
+  if (mPartitionId.empty()) {
+    WDDLOG("TfBuilder 'discovery-partition' parameter not set during Init(). Exiting.");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
+  }
+
+  // start monitoring
+  DataDistMonitor::start_datadist(o2::monitoring::tags::Value::TfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend"));
+  DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
+  DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
+  // enable monitoring
+  DataDistMonitor::enable_datadist(0, mPartitionId);
+
+  // Info thread
+  mInfoThread = create_thread_member("tfb_info", &TfBuilderDevice::InfoThread, this);
 }
 
 void TfBuilderDevice::Reset()
 {
   DDDLOG("TfBuilderDevice::Reset()");
+
+  // wait the Info thread, before closing mTfSchedulerRpcClient
+  mDeviceRunning = false;
+  if (mInfoThread.joinable()) {
+    mInfoThread.join();
+  }
+
+  // stop monitoring
+  DataDistMonitor::stop_datadist();
   mMemI->stop();
   mMemI.reset();
 }
@@ -75,19 +102,6 @@ void TfBuilderDevice::InitTask()
   if (mTfHdrRegionId.value() == std::uint16_t(~0)) {
     mTfHdrRegionId = std::nullopt;
   }
-
-  mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
-  if (mPartitionId.empty()) {
-    WDDLOG("TfBuilder 'discovery-partition' parameter not set during InitTask(). Check command line or ECS settings. Exiting.");
-    ChangeState(fair::mq::Transition::ErrorFound);
-    return;
-  }
-  // start monitoring
-  DataDistMonitor::start_datadist(o2::monitoring::tags::Value::TfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend"));
-  DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
-  DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
-  // enable monitoring
-  DataDistMonitor::enable_datadist(0, mPartitionId);
 
   // Using DPL?
   if (mDplChannelName != "") {
@@ -226,11 +240,6 @@ void TfBuilderDevice::InitTask()
   DDDLOG("InitTask completed.");
 }
 
-bool TfBuilderDevice::start()
-{
-  return true;
-}
-
 void TfBuilderDevice::stop()
 {
   // stop accepting TFs
@@ -282,9 +291,6 @@ void TfBuilderDevice::stop()
     mTfBuilder->stop();
     mTfBuilder.reset();
   }
-
-  // stop monitoring
-  DataDistMonitor::stop_datadist();
 }
 
 void TfBuilderDevice::ResetTask()
@@ -459,6 +465,16 @@ void TfBuilderDevice::TfForwardThread()
   }
 
   DDDLOG("Exiting TF forwarding thread.");
+}
+
+void TfBuilderDevice::InfoThread()
+{
+  while (mDeviceRunning) {
+    DDMON("tfbuilder", "fmq.state", +GetCurrentState());
+
+    std::this_thread::sleep_for(500ms);
+  }
+  DDDLOG("Exiting Info thread.");
 }
 
 } /* namespace o2::DataDistribution */

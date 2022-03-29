@@ -68,7 +68,6 @@ class TfBuilderDevice : public DataDistDevice,
   /// Default destructor
   ~TfBuilderDevice() override;
 
-  bool start();
   void stop();
 
   void PostRun() override final;
@@ -126,6 +125,7 @@ class TfBuilderDevice : public DataDistDevice,
   }
 
   void TfForwardThread();
+  void InfoThread();
 
   const std::string& getDplChannelName() const { return mDplChannelName; }
 
@@ -157,12 +157,16 @@ class TfBuilderDevice : public DataDistDevice,
   /// File sink
   SubTimeFrameFileSink mFileSink;
 
+  /// Info thread
+  std::thread mInfoThread;
+
   /// TF forwarding thread
   std::thread mTfFwdThread;
   std::uint64_t mTfFwdTotalDataSize;
   std::uint64_t mTfFwdTotalTfCount;
 
   std::atomic_bool mRunning = false;         // Task initialized
+  std::atomic_bool mDeviceRunning = true;    // Device running
   std::atomic_bool mInRunningState = false;  // FMQ in running state
   std::atomic_bool mShouldExit = false;
   std::atomic_bool mShouldSendEos = false; // toggle in post run
