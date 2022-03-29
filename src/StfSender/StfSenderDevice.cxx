@@ -46,17 +46,44 @@ void StfSenderDevice::Init()
   I().mFileSink = std::make_unique<SubTimeFrameFileSink>(*this, *mI, eFileSinkIn, eFileSinkOut);
   I().mOutputHandler = std::make_unique<StfSenderOutput>(*this, *mI);
   I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
+
+  I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
+  if (I().mPartitionId.empty()) {
+    WDDLOG("StfSender 'discovery-partition' parameter not set during Init(). Exiting.");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
+  }
+
+  // start monitoring
+  DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfSender, GetConfig()->GetProperty<std::string>("monitoring-backend"));
+  DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
+  DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
+  // enable monitoring
+  DataDistMonitor::enable_datadist(0, I().mPartitionId);
+
+  // Info thread
+  I().mInfoThread = create_thread_member("stfs_info", &StfSenderDevice::InfoThread, this);
 }
 
 void StfSenderDevice::Reset()
 {
   DDDLOG("StfBuilderDevice::Reset()");
+
+  I().mDeviceRunning = false;
+  // wait the Info thread, before closing mTfSchedulerRpcClient
+  if (I().mInfoThread.joinable()) {
+    I().mInfoThread.join();
+  }
+
   // clear all Stfs from the pipeline before the transport is deleted
   if (mI) {
     I().stopPipeline();
     I().clearPipeline();
     mI.reset();
   }
+
+  // stop monitoring
+  DataDistMonitor::stop_datadist();
 }
 
 void StfSenderDevice::InitTask()
@@ -72,13 +99,6 @@ void StfSenderDevice::InitTask()
 
   I().mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
 
-  I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
-  if (I().mPartitionId.empty()) {
-    WDDLOG("StfSender 'discovery-partition' parameter not set during InitTask(). Exiting.");
-    ChangeState(fair::mq::Transition::ErrorFound);
-    return;
-  }
-
   { // Discovery
     const bool lConsulRequired = !standalone();
     I().mDiscoveryConfig = std::make_shared<ConsulStfSender>(ProcessType::StfSender, Config::getEndpointOption(*GetConfig()), lConsulRequired);
@@ -93,13 +113,6 @@ void StfSenderDevice::InitTask()
       I().mDiscoveryConfig->write();
     }
   }
-
-  // start monitoring
-  DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfSender, GetConfig()->GetProperty<std::string>("monitoring-backend"));
-  DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
-  DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
-  // enable monitoring
-  DataDistMonitor::enable_datadist(0, I().mPartitionId);
 
   try {
     GetChannel(I().mInputChannelName, 0);
@@ -155,9 +168,6 @@ void StfSenderDevice::InitTask()
       I().mFileSink->start();
     }
 
-    // Info thread
-    I().mInfoThread = create_thread_member("stfs_info", &StfSenderDevice::InfoThread, this);
-
     // start the receiver thread
     I().mReceiverThread = create_thread_member("stfs_recv", &StfSenderDevice::StfReceiverThread, this);
   }
@@ -197,7 +207,7 @@ void StfSenderDevice::PostRun()
   // stop accepting data
   I().mAcceptingData = false;
 
-  // disable monitoring
+  // disable run number in monitoring
   DataDistMonitor::enable_datadist(0, I().mPartitionId);
 
   // update running state
@@ -233,11 +243,6 @@ void StfSenderDevice::ResetTask()
     I().mFileSink->stop();
   }
 
-  // wait the Info thread, before closing mTfSchedulerRpcClient
-  if (I().mInfoThread.joinable()) {
-    I().mInfoThread.join();
-  }
-
   if (!standalone()) {
     // Stop the RPC server after output
     I().mRpcServer.stop();
@@ -248,9 +253,6 @@ void StfSenderDevice::ResetTask()
     // Stop the Scheduler RPC client
     I().mTfSchedulerRpcClient.stop();
   }
-
-  // stop monitoring
-  DataDistMonitor::stop_datadist();
 
   DDDLOG("ResetTask() done.");
 }
@@ -296,14 +298,10 @@ void StfSenderDevice::StfReceiverThread()
 
 void StfSenderDevice::InfoThread()
 {
-  while (running()) {
-    if (!standalone()) {
-      const auto lCounters = I().mOutputHandler->getCounters();
+  while (deviceRunning()) {
+    DDMON("stfsender", "fmq.state", +GetCurrentState());
 
-      DDDLOG_RL(5000, "StfSender: SubTimeFrame queued_stf_num={} queued_stf_size={} sending_stf_num={} sending_stf_size={} ",
-        lCounters.mBuffered.mCnt, lCounters.mBuffered.mSize, lCounters.mInSending.mCnt, lCounters.mInSending.mSize);
-    }
-    std::this_thread::sleep_for(1s);
+    std::this_thread::sleep_for(500ms);
   }
   DDDLOG("Exiting Info thread.");
 }
