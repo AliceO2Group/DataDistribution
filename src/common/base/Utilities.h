@@ -22,6 +22,7 @@
 #include <array>
 #include <numeric>
 #include <chrono>
+#include <type_traits>
 
 #include <boost/dynamic_bitset.hpp>
 
@@ -33,6 +34,12 @@ void assume(const bool pPred) {
   if (!pPred) {
     __builtin_unreachable();
   }
+}
+
+template <typename T>
+constexpr auto operator+(const T p) noexcept -> std::enable_if_t<std::is_enum<T>::value, std::underlying_type_t<T>>
+{
+  return static_cast<std::underlying_type_t<T>>(p);
 }
 
 template <class F, class ... Args>
