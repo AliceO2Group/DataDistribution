@@ -83,9 +83,13 @@ void DataDistMonitoring::MetricCollectionThread()
 
   while (mRunning) {
     auto lMetric = mMetricsQueue.pop_wait_for(std::chrono::milliseconds(250));
-    if (!mActive || !lMetric) {
+    if (!mActive) {
       std::scoped_lock lLock(mMetricLock);
       mMetricMap.clear();
+      continue;
+    }
+
+    if (!lMetric) {
       continue;
     }
 
@@ -112,9 +116,7 @@ void DataDistMonitoring::RateMetricCollectionThread()
 
   while (mRunning) {
     auto lMetric = mRateMetricsQueue.pop_wait_for(std::chrono::milliseconds(250));
-    if (!mActive || !lMetric) {
-      std::scoped_lock lLock(mMetricLock);
-      mMetricMap.clear();
+    if (!lMetric) {
       continue;
     }
 
@@ -185,11 +187,19 @@ void DataDistMonitoring::MonitorThread()
         const auto &lKey = lKeyRateAccIter.first;
         const auto &lAccValues = lKeyRateAccIter.second;
 
-        lMetric.addValue(lAccValues.mMeanAcc / lAccValues.mCount, lKey + ".size");     // mean
-        lMetric.addValue(lAccValues.mMin, lKey + ".size.min");                         // min
-        lMetric.addValue(lAccValues.mMax, lKey + ".size.max");                         // max
-        lMetric.addValue(lAccValues.mCount / lRateIntervalS, lKey + ".rate");          // rate
-        lMetric.addValue(lAccValues.mMeanAcc / lRateIntervalS, lKey + ".throughput");  // thr
+        if (lAccValues.mCount < std::numeric_limits<double>::epsilon()) {
+          lMetric.addValue(0.0, lKey + ".size");        // mean
+          lMetric.addValue(0.0, lKey + ".size.min");    // min
+          lMetric.addValue(0.0, lKey + ".size.max");    // max
+          lMetric.addValue(0.0, lKey + ".rate");        // rate
+          lMetric.addValue(0.0, lKey + ".throughput");  // thr
+        } else {
+          lMetric.addValue(lAccValues.mMeanAcc / lAccValues.mCount, lKey + ".size");     // mean
+          lMetric.addValue(lAccValues.mMin, lKey + ".size.min");                         // min
+          lMetric.addValue(lAccValues.mMax, lKey + ".size.max");                         // max
+          lMetric.addValue(lAccValues.mCount / lRateIntervalS, lKey + ".rate");          // rate
+          lMetric.addValue(lAccValues.mMeanAcc / lRateIntervalS, lKey + ".throughput");  // thr
+        }
       }
 
       // log
