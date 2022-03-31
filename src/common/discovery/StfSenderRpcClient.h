@@ -133,7 +133,7 @@ public:
     }
 
     lNumStfSenders = lSchedulerInst.stf_sender_id_list().size();
-    DDDLOG("Connecting gRPC clients. stfs_num={}", lNumStfSenders);
+    DDDLOG("Connecting gRPC clients. stfs_num={} config={}", lNumStfSenders, mClients.size());
 
     // Connect to all StfSenders
     for (const std::string &lStfSenderId : lSchedulerInst.stf_sender_id_list()) {
@@ -146,8 +146,7 @@ public:
 
       StfSenderConfigStatus lStfSenderStatus;
       if (! mDiscoveryConfig->getStfSenderConfig(lPartId, lStfSenderId, lStfSenderStatus /*out*/)) {
-        DDDLOG("Missing StfSender configuration. Connection will be retried. stfs_id={}",
-          lStfSenderId);
+        DDDLOG("Missing StfSender configuration. Connection will be retried. stfs_id={}", lStfSenderId);
         continue;
       }
 
@@ -178,7 +177,7 @@ public:
       for (auto &[ mCliId, lClient] : mClients) {
         if (!lClient->is_ready()) {
           lAllConnReady = false;
-          IDDLOG_RL(10000, "StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
+          DDDLOG_RL(2000, "StfSender gRPC client connection is not ready. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
         }
       }
     }
