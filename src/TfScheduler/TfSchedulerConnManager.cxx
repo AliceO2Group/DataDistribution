@@ -19,7 +19,6 @@
 #include <set>
 #include <tuple>
 #include <algorithm>
-#include <future>
 #include <shared_mutex>
 
 namespace o2::DataDistribution
@@ -33,6 +32,13 @@ bool TfSchedulerConnManager::start()
 
   while (!mStfSenderRpcClients.start()) {
     return false; // we'll be called back
+  }
+
+  // start stf drop threads
+  for (int i = 0; i < 8; i++) {
+    std::string lThreadName = "stf_drop_" + std::to_string(i);
+    mStfDropThreads.emplace_back(create_thread_member(lThreadName.c_str(),
+      &TfSchedulerConnManager::DropStfThread, this));
   }
 
   // start all Connection threads
@@ -56,10 +62,6 @@ bool TfSchedulerConnManager::start()
   mStfSenderMonitoringThread = create_thread_member("sched_stfs_mon",
     &TfSchedulerConnManager::StfSenderMonitoringThread, this);
 
-  // start async future with thread
-  mDropFutureWaitThread = create_thread_member("sched_await",
-    &TfSchedulerConnManager::DropWaitThread, this);
-
   IDDLOG("TfSchedulerConnManager::start() done");
   return true;
 }
@@ -69,14 +71,19 @@ void TfSchedulerConnManager::stop()
   DDDLOG("TfSchedulerConnManager::stop()");
 
   mRunning = false;
-  mStfDropFuturesCV.notify_one();
 
   if (mStfSenderMonitoringThread.joinable()) {
     mStfSenderMonitoringThread.join();
   }
 
-  if (mDropFutureWaitThread.joinable()) {
-    mDropFutureWaitThread.join();
+  // stop stf drop threads
+  {
+    mStfDropQueue.stop();
+    for (auto &lThread : mStfDropThreads) {
+      if (lThread.joinable()) {
+        lThread.join();
+      }
+    }
   }
 
   // start all Connection threads
@@ -209,7 +216,7 @@ void TfSchedulerConnManager::disconnectTfBuilder(const TfBuilderConfigStatus &pT
     }
 
     { // lock clients
-      std::scoped_lock lLock(mStfSenderClientsLock);
+      std::shared_lock lLock(mStfSenderClientsLock);
 
       if (mStfSenderRpcClients.count(lStfSenderId) == 0) {
         WDDLOG("disconnectTfBuilder: Unknown StfSender. stfs_id={}", lStfSenderId);
@@ -473,124 +480,59 @@ void TfSchedulerConnManager::removeTfBuilder(const std::string &pTfBuilderId)
   }
 }
 
+void TfSchedulerConnManager::dropSingleStfsAsync(const std::uint64_t pStfId, const std::string &pStfSenderId)
+{
+  mStfDropQueue.push(std::make_pair(pStfSenderId, pStfId));
+}
+
 void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
 {
-  auto lDropLambda = [&](const std::uint64_t pLamStfId) -> std::uint64_t {
-    StfDataRequestMessage lStfRequest;
-    StfDataResponse lStfResponse;
-    lStfRequest.set_tf_builder_id("-1");
-    lStfRequest.set_stf_id(pLamStfId);
-
-    for (auto &lStfSenderIdCli : mStfSenderRpcClients) {
-      const auto &lStfSenderId = lStfSenderIdCli.first;
-      auto &lStfSenderRpcCli = lStfSenderIdCli.second;
-
-      auto lStatus = lStfSenderRpcCli->StfDataDropRequest(lStfRequest, lStfResponse);
-      if (!lStatus.ok()) {
-        // gRPC problem... continue asking for other
-        WDDLOG_GRL(1000, "StfSender gRPC connection error. stfs_id={} code={} error={}",
-          lStfSenderId, lStatus.error_code(), lStatus.error_message());
-      }
-
-      if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_TIMEOUT) {
-        WDDLOG_GRL(1000, "StfSender dropped an STF before notification from the TfScheduler. "
-          "Check the StfSender buffer state. stfs_id={} stf_id={}", lStfSenderId, pLamStfId);
-      } else if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_UNKNOWN) {
-        WDDLOG_GRL(1000, "StfSender dropped an STF for unknown reason. "
-          "Check the StfSender buffer state. stfs_id={} stf_id={}", lStfSenderId, pLamStfId);
-      }
-    }
-
-    return pLamStfId;
-  };
-
-  try {
-    auto lFeature = std::async(std::launch::async, lDropLambda, pStfId);
-    {
-      std::scoped_lock lLock(mStfDropFuturesLock);
-      mStfDropFutures.push_back(std::move(lFeature));
-    }
-    mStfDropFuturesCV.notify_one();
-  } catch (std::exception &) {
-    WDDLOG_GRL(1000, "dropAllStfsAsync: async method failed. Calling synchronously. stf_id={}", pStfId);
-    lDropLambda(pStfId);
+  std::shared_lock lRpcLock(mStfSenderClientsLock);
+  for (auto &lStfSenderIdCli : mStfSenderRpcClients) {
+    const auto &lStfSenderId = lStfSenderIdCli.first;
+    mStfDropQueue.push(std::make_pair(lStfSenderId, pStfId));
   }
 }
 
-void TfSchedulerConnManager::dropSingleStfsAsync(const std::uint64_t pStfId, const std::string &pStfSenderId)
+
+void TfSchedulerConnManager::DropStfThread()
 {
-  auto lDropLambda = [&](const std::uint64_t pLamStfId, const std::string &pLamStfSenderId) -> std::uint64_t {
+  DDDLOG("Starting DropThread thread.");
+  std::optional<std::pair<std::string, std::uint64_t>> lDropReqOpt;
+
+  while((lDropReqOpt = mStfDropQueue.pop()) != std::nullopt) {
     StfDataRequestMessage lStfRequest;
     StfDataResponse lStfResponse;
-    lStfRequest.set_tf_builder_id("-1");
-    lStfRequest.set_stf_id(pLamStfId);
 
-    auto &lStfSenderRpcCli = mStfSenderRpcClients[pLamStfSenderId];
+    const auto &lStfSenderId = lDropReqOpt.value().first;
+    const auto lStfId = lDropReqOpt.value().second;
+
+    lStfRequest.set_tf_builder_id("-1");
+    lStfRequest.set_stf_id(lStfId);
+
+    std::shared_lock lRpcLock(mStfSenderClientsLock);
+    if (mStfSenderRpcClients.count(lStfSenderId) == 0) {
+      EDDLOG_RL(10000, "DropStfThread: Unknown StfSender. stfs_id={}", lStfSenderId);
+      continue;
+    }
+
+    auto &lStfSenderRpcCli = mStfSenderRpcClients[lStfSenderId];
 
     auto lStatus = lStfSenderRpcCli->StfDataDropRequest(lStfRequest, lStfResponse);
     if (!lStatus.ok()) {
-      // gRPC problem... continue asking for other
+      // gRPC problem...
       WDDLOG_GRL(1000, "StfSender gRPC connection error. stfs_id={} code={} error={}",
-        pLamStfSenderId, lStatus.error_code(), lStatus.error_message());
+        lStfSenderId, lStatus.error_code(), lStatus.error_message());
     }
 
     if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_TIMEOUT) {
       WDDLOG_GRL(1000, "StfSender dropped an STF before notification from the TfScheduler. "
-        "Check the StfSender buffer state. stfs_id={} stf_id={}", pLamStfSenderId, pLamStfId);
+        "Check the StfSender buffer state. stfs_id={} stf_id={}", lStfSenderId, lStfId);
     } else if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_UNKNOWN) {
       WDDLOG_GRL(1000, "StfSender dropped an STF for unknown reason. "
-        "Check the StfSender buffer state. stfs_id={} stf_id={}", pLamStfSenderId, pLamStfId);
+        "Check the StfSender buffer state. stfs_id={} stf_id={}", lStfSenderId, lStfId);
     }
-
-    return pLamStfId;
-  };
-
-  try {
-    auto lFeature = std::async(std::launch::async, lDropLambda, pStfId, pStfSenderId);
-    {
-      std::scoped_lock lLock(mStfDropFuturesLock);
-      mStfDropFutures.push_back(std::move(lFeature));
-    }
-    mStfDropFuturesCV.notify_one();
-  } catch (std::exception &) {
-    WDDLOG_GRL(1000, "dropAllStfsAsync: async method failed. Calling synchronously. stf_id={}", pStfId);
-    lDropLambda(pStfId, pStfSenderId);
   }
-}
-
-void TfSchedulerConnManager::DropWaitThread()
-{
-  DDDLOG("Starting DropWaitThread thread.");
-  std::vector<std::uint64_t> lDroppedStfs;
-  std::uint64_t lDroppedTotal = 0;
-
-  while (mRunning) {
-    // wait for drop futures
-    {
-      std::unique_lock lLock(mStfDropFuturesLock);
-      mStfDropFuturesCV.wait_for(lLock, 1s);
-      if (mStfDropFutures.empty()) {
-        continue;
-      }
-
-      for (auto lFutureIt = mStfDropFutures.begin(); lFutureIt != mStfDropFutures.end(); lFutureIt++) {
-        if (std::future_status::ready == lFutureIt->wait_for(0s)) {
-          assert (lFutureIt->valid());
-          lDroppedStfs.push_back(lFutureIt->get());
-          lFutureIt = mStfDropFutures.erase(lFutureIt);
-        }
-      }
-    }
-
-    sort(lDroppedStfs.begin(), lDroppedStfs.end());
-    for (auto &lDroppedId : lDroppedStfs) {
-      lDroppedTotal++;
-      DDDLOG_GRL(2000, "DropWaitThread: Dropped SubTimeFrame (cannot schedule). stf_id={} total={}", lDroppedId, lDroppedTotal);
-    }
-    lDroppedStfs.clear();
-  }
-
-  DDDLOG("Exiting DropWaitThread thread.");
 }
 
 void TfSchedulerConnManager::StfSenderMonitoringThread()

@@ -31,7 +31,6 @@
 #include <set>
 #include <thread>
 #include <list>
-#include <future>
 #include <shared_mutex>
 
 namespace o2::DataDistribution
@@ -92,7 +91,7 @@ class TfSchedulerConnManager
   }
 
   void StfSenderMonitoringThread();
-  void DropWaitThread();
+  void DropStfThread();
 
   /// Partition RPCs
   bool requestTfBuildersTerminate();
@@ -151,20 +150,19 @@ private:
     std::vector<std::thread> mConnectionThreads;
 
   /// Scheduler threads
-  bool mRunning = false;
+  std::atomic_bool mRunning = false;
   std::thread mStfSenderMonitoringThread;
-  std::thread mDropFutureWaitThread;
 
   /// StfSender RPC-client channels
   std::shared_mutex mStfSenderClientsLock;
     StfSenderRpcClientCollection<ConsulTfScheduler> mStfSenderRpcClients;
+
   /// TfBuilder RPC-client channels
   TfBuilderRpcClientCollection<ConsulTfScheduler> mTfBuilderRpcClients;
 
-  /// futures for async operation
-  std::mutex mStfDropFuturesLock;
-    std::condition_variable_any mStfDropFuturesCV;
-    std::list<std::future<std::uint64_t>> mStfDropFutures;
+  /// Stf drop
+  ConcurrentQueue<std::pair<std::string, std::uint64_t>> mStfDropQueue;
+  std::vector<std::thread> mStfDropThreads;
 };
 
 } /* namespace o2::DataDistribution */
