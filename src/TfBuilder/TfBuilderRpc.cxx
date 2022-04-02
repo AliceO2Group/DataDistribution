@@ -73,6 +73,9 @@ bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize, std::shared_ptr<Co
   // start the stf requester thread
   mStfRequestThread = create_thread_member("tfb_sched_req", &TfBuilderRpcImpl::StfRequestThread, this);
 
+  // Periodically poll on new consul parameters
+  UpdateConsulParams();
+
   return true;
 }
 
@@ -345,13 +348,61 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
   return ::grpc::Status::OK;
 }
 
+std::size_t TfBuilderRpcImpl::getFetchIdxStfDataSize(const std::vector<StfRequests> &pReqVector) const
+{
+  static thread_local std::random_device lRd;
+  static thread_local std::mt19937_64 lGen(lRd());
+
+  // select the stfsender to contact first based on the stf size
+  std::size_t lIdx = 0;
+
+  const auto lIdx3_3 = pReqVector.size();
+  const auto lIdx1_3 = lIdx3_3 / 3;
+  const auto lIdx2_3 = 2 * lIdx1_3;
+
+  if (lIdx > 8) {
+    std::array<double, 4> i{
+      double(0.0),
+      double(lIdx1_3),
+      double(lIdx2_3),
+      double(lIdx3_3)        // return index from [ 0, pReqVector.size )
+    };
+
+    std::array<double, 4> w{
+      double(pReqVector[0].mStfDataSize + 1.0),
+      double(pReqVector[lIdx1_3].mStfDataSize + 1.0),
+      double(pReqVector[lIdx2_3].mStfDataSize + 1.0),
+      double(pReqVector[lIdx3_3].mStfDataSize + 1.0)
+    };
+
+    std::piecewise_linear_distribution<> lDist(i.begin(), i.end(), w.begin());
+
+    lIdx = std::min(std::size_t(lDist(lGen)), pReqVector.size() - 1);
+  } else {
+    lIdx = lGen() % pReqVector.size();
+  }
+
+  return lIdx;
+}
+
+std::size_t TfBuilderRpcImpl::getFetchIdxRandom(const std::vector<StfRequests> &pReqVector) const
+{
+  static thread_local std::random_device lRd;
+  static thread_local std::mt19937_64 lGen(lRd());
+
+  assert (pReqVector.size() > 0);
+  if (pReqVector.size() == 0) {
+    return 0;
+  }
+
+  std::uniform_int_distribution<> lDist(0, (pReqVector.size() - 1));
+  return lDist(lGen);
+}
+
 void TfBuilderRpcImpl::StfRequestThread()
 {
   using namespace std::chrono_literals;
   using clock = std::chrono::steady_clock;
-
-  std::random_device lRd;
-  std::mt19937_64 lGen(lRd());
 
   DDDLOG("Starting Stf requesting thread.");
 
@@ -377,9 +428,6 @@ void TfBuilderRpcImpl::StfRequestThread()
         lStfSenderIdTopo = lReqVector.front().mStfSenderId;
       }
 
-      mMaxNumReqInFlight = std::clamp(mDiscoveryConfig->getUInt64Param(MaxNumStfTransfersKey, MaxNumStfTransferDefault),
-        std::uint64_t(8), std::uint64_t(500));
-
       std::uint64_t lNumExpectedStfs = lReqVector.size();
       setNumberOfStfs(lTfId, lNumExpectedStfs);
 
@@ -390,36 +438,10 @@ void TfBuilderRpcImpl::StfRequestThread()
           continue; // reevaluate the max TF conditions
         }
 
-        // select the stfsender to contact first based on the stf size
-        std::size_t lIdx = 0;
+        // select the order in which StfSenders are contacted (consul option)
+        std::size_t lIdx = getFetchIdx(lReqVector);
 
-        const auto lIdx3_3 = lReqVector.size();
-        const auto lIdx1_3 = lIdx3_3 / 3;
-        const auto lIdx2_3 = 2 * lIdx1_3;
-
-        if (lIdx > 8) {
-          std::array<double, 4> i{
-            double(0.0),
-            double(lIdx1_3),
-            double(lIdx2_3),
-            double(lIdx3_3)        // return index from [ 0, lReqVector.size )
-          };
-
-          std::array<double, 4> w{
-            double(lReqVector[0].mStfDataSize + 1.0),
-            double(lReqVector[lIdx1_3].mStfDataSize + 1.0),
-            double(lReqVector[lIdx2_3].mStfDataSize + 1.0),
-            double(lReqVector[lIdx3_3].mStfDataSize + 1.0)
-          };
-
-          std::piecewise_linear_distribution<> lDist(i.begin(), i.end(), w.begin());
-
-          lIdx = std::min(std::size_t(lDist(lGen)), lReqVector.size() - 1);
-        } else {
-          lIdx = lGen() % lReqVector.size();
-        }
-
-        DDMON("tfbuilder", "merge.request_idx", double(lIdx3_3) / double(lIdx + 1));
+        DDMON("tfbuilder", "merge.request_idx", double(lReqVector.size()) / double(lIdx + 1));
 
         lStfRequest = std::move(lReqVector[lIdx]);
         lReqVector.erase(lReqVector.cbegin() + lIdx);
@@ -490,7 +512,6 @@ void TfBuilderRpcImpl::StfRequestThread()
 
 bool TfBuilderRpcImpl::recordStfReceived(const std::string &pStfSenderId, const std::uint64_t pTfId)
 {
-  using hres_clock = std::chrono::steady_clock;
   // unblock the next request
   mNumReqInFlight -= 1;
 
@@ -499,9 +520,7 @@ bool TfBuilderRpcImpl::recordStfReceived(const std::string &pStfSenderId, const 
   {
     std::scoped_lock lLock(mStfDurationMapLock);
     const auto &lStfReqTp = mStfReqDuration[pTfId][pStfSenderId];
-
-    const std::chrono::duration<double, std::milli> lDuration = hres_clock::now() - lStfReqTp;
-    lStfFetchDurationMs = lDuration.count();
+    lStfFetchDurationMs = since<std::chrono::milliseconds>(lStfReqTp);
   }
 
   if (lStfFetchDurationMs > 0.0) {
