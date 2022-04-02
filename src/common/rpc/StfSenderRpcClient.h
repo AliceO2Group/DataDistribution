@@ -16,6 +16,8 @@
 
 #include "ConfigConsul.h"
 
+#include <DataDistMonitoring.h>
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <discovery.pb.h>
@@ -69,10 +71,35 @@ public:
 
   // rpc StfDataRequest(StfDataRequestMessage) returns (StfDataResponse) { }
   grpc::Status StfDataRequest(const StfDataRequestMessage &pParam, StfDataResponse &pRet /*out*/) {
+    auto lStart = std::chrono::steady_clock::now();
+
     ClientContext lContext;
     const auto lDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(1000);
     lContext.set_deadline(lDeadline);
-    return mStub->StfDataRequest(&lContext, pParam, &pRet);
+    lContext.set_wait_for_ready(false);
+    auto lRet = mStub->StfDataRequest(&lContext, pParam, &pRet);
+
+    if (mMonitorDuration) {
+      DDMON("datadist.grpc", "StfDataRequest_ms", since<std::chrono::milliseconds>(lStart));
+    }
+
+    return lRet;
+  }
+
+  grpc::Status StfDataDropRequest(const StfDataRequestMessage &pParam, StfDataResponse &pRet /*out*/) {
+    auto lStart = std::chrono::steady_clock::now();
+
+    ClientContext lContext;
+    const auto lDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(1000);
+    lContext.set_deadline(lDeadline);
+    lContext.set_wait_for_ready(false);
+    auto lRet = mStub->StfDataRequest(&lContext, pParam, &pRet);
+
+    if (mMonitorDuration) {
+      DDMON("datadist.grpc", "StfDataDropRequest_ms", since<std::chrono::milliseconds>(lStart));
+    }
+
+    return lRet;
   }
 
   // rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
@@ -95,9 +122,14 @@ public:
 
   std::string grpc_status();
 
+  void setMonitorDuration(const bool pMonitor) { mMonitorDuration = pMonitor; };
+
 private:
   std::unique_ptr<StfSenderRpc::Stub> mStub;
   std::shared_ptr<grpc::Channel> mChannel;
+
+  // monitoring
+  bool mMonitorDuration = false;
 };
 
 template <class T>
@@ -132,12 +164,15 @@ public:
       return false;
     }
 
-    lNumStfSenders = lSchedulerInst.stf_sender_id_list().size();
-    DDDLOG("Connecting gRPC clients. stfs_num={} config={}", lNumStfSenders, mClients.size());
+    {
+      std::unique_lock lLock(mClientsGlobalLock);
+      lNumStfSenders = lSchedulerInst.stf_sender_id_list().size();
+      DDDLOG("Connecting gRPC clients. stfs_num={} configured_num={}", lNumStfSenders, mClients.size());
+    }
 
     // Connect to all StfSenders
     for (const std::string &lStfSenderId : lSchedulerInst.stf_sender_id_list()) {
-      std::scoped_lock lLock(mClientsGlobalLock);
+      std::unique_lock lLock(mClientsGlobalLock);
 
       // check if already connected
       if (mClients.count(lStfSenderId) == 1) {
@@ -166,7 +201,7 @@ public:
     bool lAllConnReady = true;
     bool lWaitForStfSenders = false;
     {
-      std::scoped_lock lLock(mClientsGlobalLock);
+      std::shared_lock lLock(mClientsGlobalLock);
 
       if (mClients.size() < lNumStfSenders) {
         lWaitForStfSenders = true;
@@ -198,14 +233,14 @@ public:
   void stop()
   {
     mRunning = false;
-    std::scoped_lock lLock(mClientsGlobalLock);
+    std::unique_lock lLock(mClientsGlobalLock);
     mClients.clear();
     mClientsCreated = false;
   }
 
   bool checkStfSenderRpcConn(const std::string &lStfSenderId)
   {
-    std::scoped_lock lLock(mClientsGlobalLock);
+    std::shared_lock lLock(mClientsGlobalLock);
     if (mClientsCreated && mClients.count(lStfSenderId) == 1) {
       auto &lCli = mClients[lStfSenderId];
       return lCli->is_alive();
@@ -215,7 +250,7 @@ public:
 
   bool remove(const std::string pId)
   {
-    std::scoped_lock lLock(mClientsGlobalLock);
+    std::unique_lock lLock(mClientsGlobalLock);
 
     if (mClients.count(pId) > 0) {
       mClients.erase(pId);
@@ -233,13 +268,21 @@ public:
 
   bool started() const { return (mRunning && mClientsCreated); }
 
+  void setMonitorDuration(const bool pMon) {
+    std::shared_lock lLock(mClientsGlobalLock);
+    for (auto &[ mCliId, lClient] : mClients) {
+      (void) mCliId;
+      lClient->setMonitorDuration(pMon);
+    }
+  }
+
 private:
 
   std::atomic_bool mRunning = false;
   std::shared_ptr<T> mDiscoveryConfig;
 
   bool mClientsCreated = false;
-  std::recursive_mutex mClientsGlobalLock;
+  std::shared_mutex mClientsGlobalLock;
   std::map<std::string, std::unique_ptr<StfSenderRpcClient>> mClients;
 };
 

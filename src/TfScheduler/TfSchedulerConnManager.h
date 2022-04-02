@@ -128,10 +128,6 @@ class TfSchedulerConnManager
     return mStfSenderRpcClients.checkStfSenderRpcConn(lStfSenderId);
   }
 
-  void deleteStfSenderRpcClient(const std::string &pId)
-  {
-    mStfSenderRpcClients.remove(pId);
-  }
 
   StfSenderState getStfSenderState() const { return mStfSenderState; }
   std::size_t getStfSenderCount() {

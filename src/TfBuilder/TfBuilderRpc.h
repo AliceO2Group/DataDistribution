@@ -196,50 +196,7 @@ private:
       return 0;
     };
 
-    void UpdateConsulParams() {
-      using namespace std::chrono_literals;
-      std::thread([this]()
-      {
-        while (mRunning) {
-          {
-            auto lNewMethod = eRandom;
-
-            auto lMethodStr = mDiscoveryConfig->getStringParam(StfSenderIdxSelectionMethodKey, StfSenderIdxSelectionMethodDefault);
-            boost::trim(lMethodStr);
-
-            if (boost::iequals(lMethodStr, "random")) {
-              lNewMethod = eRandom;
-            } else if (boost::iequals(lMethodStr, "linear")) {
-              lNewMethod = eLinear;
-            } else if (boost::iequals(lMethodStr, "stfsize")) {
-              lNewMethod = eStfSize;
-            } else {
-              WDDLOG_RL(60000, "StfSenderIdxSelMethod option in consul is invalid. val={} allowed=[linear|random|stfsize]", lMethodStr);
-            }
-
-            if (lNewMethod != mStfSenderIdxSelMethod) {
-              IDDLOG("StfSenderIdxSelMethod changed. new={} old={}", sStfRequestIdxSelNames[lNewMethod], sStfRequestIdxSelNames[mStfSenderIdxSelMethod]);
-              mStfSenderIdxSelMethod = lNewMethod;
-            }
-
-            DDDLOG_ONCE("StfSenderIdxSelMethod method={}", sStfRequestIdxSelNames[mStfSenderIdxSelMethod]);
-          }
-
-          {
-            auto lNewMaxNumReqInFlight = std::clamp(mDiscoveryConfig->getUInt64Param(MaxNumStfTransfersKey, MaxNumStfTransferDefault),
-              std::uint64_t(2), std::uint64_t(5000));
-
-            if (lNewMaxNumReqInFlight != mMaxNumReqInFlight) {
-              IDDLOG("MaxNumStfTransfers changed. new={} old={}", lNewMaxNumReqInFlight, mMaxNumReqInFlight);
-              mMaxNumReqInFlight = lNewMaxNumReqInFlight;
-            }
-            DDDLOG_ONCE("MaxNumStfTransfers value={}", mMaxNumReqInFlight.load());
-          }
-
-          std::this_thread::sleep_for(1s);
-        }
-      }).detach();
-    }
+    void UpdateConsulParams();
 
   std::atomic_uint64_t mMaxNumReqInFlight = MaxNumStfTransferDefault;
   std::atomic_uint64_t mNumReqInFlight = 0;

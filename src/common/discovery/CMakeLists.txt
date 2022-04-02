@@ -6,8 +6,6 @@
 
 set (LIB_DISCOVERY_SOURCES
   ConfigConsul
-  TfSchedulerRpcClient
-  StfSenderRpcClient
 )
 
 set (LIB_DISCOVERY_PROTOS
