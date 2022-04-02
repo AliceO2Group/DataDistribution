@@ -73,14 +73,19 @@ static constexpr std::uint64_t UcxStfSenderThreadPoolSizeDefault = 0;
 ////////////////////////////////////////////////////////////////////////////////
 
 // Define maximum number of concurrent STF transfers
+// The value should not be much grater than UcxTfBuilderThreadPoolSize as the requests will will not be processed immediately.
 static constexpr std::string_view MaxNumStfTransfersKey = "MaxNumStfTransfers";
-static constexpr std::uint64_t MaxNumStfTransferDefault = 100;
+static constexpr std::uint64_t MaxNumStfTransferDefault = 32;
+
+// Stf Request selection method: "random", "linear", "stfsize"
+static constexpr std::string_view StfSenderIdxSelectionMethodKey = "StfSenderIdxSelectionMethod";
+static constexpr std::string_view StfSenderIdxSelectionMethodDefault = "random";
 
 
 /// UCX transport
 // Size of receiver treadpool. Default 0 (number of cpu cores)
 static constexpr std::string_view UcxTfBuilderThreadPoolSizeKey = "UcxTfBuilderThreadPoolSize";
-static constexpr std::uint64_t UcxTfBuilderThreadPoolSizeDefault = 0;
+static constexpr std::uint64_t UcxTfBuilderThreadPoolSizeDefault = MaxNumStfTransferDefault;
 
 // Number of rma_get operation in flight, per ucx thread
 static constexpr std::string_view UcxNumConcurrentRmaGetOpsKey = "UcxNumConcurrentRmaGetOps";
