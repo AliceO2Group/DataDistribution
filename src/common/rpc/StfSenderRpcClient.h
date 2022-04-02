@@ -74,8 +74,8 @@ public:
     auto lStart = std::chrono::steady_clock::now();
 
     ClientContext lContext;
-    const auto lDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(1000);
-    lContext.set_deadline(lDeadline);
+    // const auto lDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(1000);
+    // lContext.set_deadline(lDeadline);
     lContext.set_wait_for_ready(false);
     auto lRet = mStub->StfDataRequest(&lContext, pParam, &pRet);
 
@@ -90,8 +90,8 @@ public:
     auto lStart = std::chrono::steady_clock::now();
 
     ClientContext lContext;
-    const auto lDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(1000);
-    lContext.set_deadline(lDeadline);
+    // const auto lDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(1000);
+    // lContext.set_deadline(lDeadline);
     lContext.set_wait_for_ready(false);
     auto lRet = mStub->StfDataRequest(&lContext, pParam, &pRet);
 
