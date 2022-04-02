@@ -485,7 +485,7 @@ void TfSchedulerConnManager::dropAllStfsAsync(const std::uint64_t pStfId)
       const auto &lStfSenderId = lStfSenderIdCli.first;
       auto &lStfSenderRpcCli = lStfSenderIdCli.second;
 
-      auto lStatus = lStfSenderRpcCli->StfDataRequest(lStfRequest, lStfResponse);
+      auto lStatus = lStfSenderRpcCli->StfDataDropRequest(lStfRequest, lStfResponse);
       if (!lStatus.ok()) {
         // gRPC problem... continue asking for other
         WDDLOG_GRL(1000, "StfSender gRPC connection error. stfs_id={} code={} error={}",
@@ -527,7 +527,7 @@ void TfSchedulerConnManager::dropSingleStfsAsync(const std::uint64_t pStfId, con
 
     auto &lStfSenderRpcCli = mStfSenderRpcClients[pLamStfSenderId];
 
-    auto lStatus = lStfSenderRpcCli->StfDataRequest(lStfRequest, lStfResponse);
+    auto lStatus = lStfSenderRpcCli->StfDataDropRequest(lStfRequest, lStfResponse);
     if (!lStatus.ok()) {
       // gRPC problem... continue asking for other
       WDDLOG_GRL(1000, "StfSender gRPC connection error. stfs_id={} code={} error={}",

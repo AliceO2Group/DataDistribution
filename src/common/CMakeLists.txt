@@ -6,7 +6,7 @@
 add_subdirectory(base)
 add_subdirectory(discovery)
 add_subdirectory(fmqtools)
-
+add_subdirectory(rpc)
 add_subdirectory(monitoring)
 if(UCX_FOUND)
   add_subdirectory(ucxtools)

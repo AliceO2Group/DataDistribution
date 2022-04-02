@@ -28,6 +28,10 @@ namespace o2::DataDistribution
 static constexpr std::string_view DataDistNetworkTransportKey = "DataDistNetworkTransport";
 static constexpr std::string_view DataDistNetworkTransportDefault = "ucx";
 
+// Monitor duration of gRPC calls
+static constexpr std::string_view DataDistMonitorRpcDurationKey = "DataDistMonitorRpcDuration";
+static constexpr bool DataDistMonitorRpcDurationDefault = false;
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// StfBuilder

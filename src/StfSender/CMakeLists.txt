@@ -11,7 +11,7 @@ set(EXE_STFS_SOURCES
 )
 
 add_library(StfSender_lib OBJECT ${EXE_STFS_SOURCES})
-target_link_libraries(StfSender_lib base fmqtools ucxtools common discovery monitoring)
+target_link_libraries(StfSender_lib base fmqtools ucxtools common discovery rpc monitoring)
 
 add_executable(StfSender)
 
@@ -24,7 +24,7 @@ endif()
 target_link_libraries(StfSender
   PRIVATE
     StfSender_lib
-    base fmqtools ucxtools common discovery monitoring
+    base fmqtools ucxtools common discovery rpc monitoring
 )
 
 install(TARGETS StfSender RUNTIME DESTINATION bin)

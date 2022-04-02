@@ -19,8 +19,8 @@
 namespace o2::DataDistribution
 {
 
-StfSenderRpcClient::StfSenderRpcClient(const std::string &pEndpoint) {
-
+StfSenderRpcClient::StfSenderRpcClient(const std::string &pEndpoint)
+{
   mChannel = grpc::CreateChannel(pEndpoint, grpc::InsecureChannelCredentials());
   mStub = StfSenderRpc::NewStub(mChannel);
   mChannel->GetState(true);
