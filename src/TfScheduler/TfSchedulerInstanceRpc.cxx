@@ -26,6 +26,9 @@ using namespace std::chrono_literals;
 void TfSchedulerInstanceRpcImpl::initDiscovery(const std::string pRpcSrvBindIp, int &lRealPort)
 {
   ServerBuilder lSrvBuilder;
+  lSrvBuilder.SetSyncServerOption(ServerBuilder::SyncServerOption::NUM_CQS, 8);
+  // lSrvBuilder.SetSyncServerOption(ServerBuilder::SyncServerOption::MIN_POLLERS, 32);
+  lSrvBuilder.SetSyncServerOption(ServerBuilder::SyncServerOption::MAX_POLLERS, 64);
   lSrvBuilder.AddListeningPort(pRpcSrvBindIp + ":0",
                                 grpc::InsecureServerCredentials(),
                                 &lRealPort  /*auto assigned port */);
