@@ -134,7 +134,7 @@ bool TfBuilderInputUCX::start()
 {
   // setting configuration options
   mThreadPoolSize = std::clamp(mConfig->getUInt64Param(UcxTfBuilderThreadPoolSizeKey, UcxTfBuilderThreadPoolSizeDefault), std::size_t(0), std::size_t(256));
-  mThreadPoolSize = std::max(std::size_t(16), (mThreadPoolSize == 0) ? std::thread::hardware_concurrency() : mThreadPoolSize);
+  mThreadPoolSize = std::max(std::size_t(4), (mThreadPoolSize == 0) ? std::thread::hardware_concurrency() : mThreadPoolSize);
   mNumRmaOps = std::clamp(mConfig->getUInt64Param(UcxNumConcurrentRmaGetOpsKey, UcxNumConcurrentRmaGetOpsDefault), std::size_t(1), std::size_t(64));
 
   IDDLOG("TfBuilderInputUCX: Configuration loaded. thread_pool={} num_rma_ops={}", mThreadPoolSize, mNumRmaOps);
