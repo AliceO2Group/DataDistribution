@@ -99,6 +99,7 @@ public:
     mLastBuiltTfId = 0;
     mNumBufferedTfs = 0;
     mNumTfsInBuilding = 0;
+    mNumReqInFlight = 0;
     if (mTfBuildRequests) {
       mTfBuildRequests->flush();
     }
@@ -198,8 +199,11 @@ private:
 
     void UpdateConsulParams();
 
-  std::atomic_uint64_t mMaxNumReqInFlight = MaxNumStfTransferDefault;
-  std::atomic_uint64_t mNumReqInFlight = 0;
+
+  std::mutex mNumInFlightLock;
+    std::condition_variable mNumInFlightCond;
+    std::uint64_t mMaxNumReqInFlight = MaxNumStfTransferDefault;
+    std::uint64_t mNumReqInFlight = 0;
 
   // <tfid, topo?, topo_id, stf_requests>
   ConcurrentFifo<std::tuple<std::uint64_t, bool, std::uint64_t, std::vector<StfRequests>> >  mStfRequestQueue;

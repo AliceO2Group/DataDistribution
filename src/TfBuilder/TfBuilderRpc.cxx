@@ -143,11 +143,13 @@ void TfBuilderRpcImpl::UpdateConsulParams()
         auto lNewMaxNumReqInFlight = std::clamp(mDiscoveryConfig->getUInt64Param(MaxNumStfTransfersKey, MaxNumStfTransferDefault),
           std::uint64_t(2), std::uint64_t(5000));
 
+        std::unique_lock lLock(mNumInFlightLock);
         if (lNewMaxNumReqInFlight != mMaxNumReqInFlight) {
           IDDLOG("MaxNumStfTransfers changed. new={} old={}", lNewMaxNumReqInFlight, mMaxNumReqInFlight);
           mMaxNumReqInFlight = lNewMaxNumReqInFlight;
+          mNumInFlightCond.notify_all();
         }
-        DDDLOG_ONCE("MaxNumStfTransfers value={}", mMaxNumReqInFlight.load());
+        DDDLOG_ONCE("MaxNumStfTransfers value={}", mMaxNumReqInFlight);
       }
 
       {
@@ -492,10 +494,18 @@ void TfBuilderRpcImpl::StfRequestThread()
       const auto lTimeStfReqStart = clock::now();
 
       while (mRunning && !lReqVector.empty()) {
-        // wait for the stf slots to become free
-        if (mNumReqInFlight.load() >= mMaxNumReqInFlight) {
-          std::this_thread::sleep_for(500us);
-          continue; // reevaluate the max TF conditions
+
+        { // wait for the stf slots to become free
+          std::unique_lock lInFlightLock(mNumInFlightLock);
+          while (mRunning && (mNumReqInFlight >= mMaxNumReqInFlight)) {
+            mNumInFlightCond.wait_for(lInFlightLock, 100ms);
+          }
+          if (!mRunning) {
+            continue;
+          }
+
+          mNumReqInFlight += 1;
+          DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);
         }
 
         // select the order in which StfSenders are contacted (consul option)
@@ -519,6 +529,10 @@ void TfBuilderRpcImpl::StfRequestThread()
           // gRPC problem... continue asking for other STFs
           EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={}",
             lStfRequest.mStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize);
+          {
+            std::unique_lock lInFlightLock(mNumInFlightLock);
+            mNumReqInFlight -= 1;
+          }
           continue;
         }
 
@@ -526,6 +540,10 @@ void TfBuilderRpcImpl::StfRequestThread()
           lNumExpectedStfs -= 1;
           EDDLOG("StfSender did not sent data. stfs_id={} reason={}",
             lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
+          {
+            std::unique_lock lInFlightLock(mNumInFlightLock);
+            mNumReqInFlight -= 1;
+          }
           continue;
         }
 
@@ -534,8 +552,6 @@ void TfBuilderRpcImpl::StfRequestThread()
         // Notify input about incoming STF
         mStfInputQueue->push(lStfRequest.mStfSenderId);
 
-        mNumReqInFlight += 1;
-        DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);
       }
 
       DDMON("tfbuilder", "merge.stf_data_req_total_ms", since<std::chrono::milliseconds>(lTimeStfReqStart));
@@ -573,8 +589,13 @@ void TfBuilderRpcImpl::StfRequestThread()
 
 bool TfBuilderRpcImpl::recordStfReceived(const std::string &pStfSenderId, const std::uint64_t pTfId)
 {
-  // unblock the next request
-  mNumReqInFlight -= 1;
+  { // unblock the next request (protect from async counter resets)
+    std::unique_lock lInFlightLock(mNumInFlightLock);
+    if (mNumReqInFlight > 0) {
+      mNumReqInFlight -= 1;
+    }
+    mNumInFlightCond.notify_one();
+  }
 
   // record completion time
   double lStfFetchDurationMs = 0.0;
@@ -583,10 +604,7 @@ bool TfBuilderRpcImpl::recordStfReceived(const std::string &pStfSenderId, const 
     const auto &lStfReqTp = mStfReqDuration[pTfId][pStfSenderId];
     lStfFetchDurationMs = since<std::chrono::milliseconds>(lStfReqTp);
   }
-
-  if (lStfFetchDurationMs > 0.0) {
-    DDMON("tfbuilder", "merge.stf_fetch_ms", lStfFetchDurationMs);
-  }
+  DDMON("tfbuilder", "merge.stf_fetch_ms", lStfFetchDurationMs);
 
   return true;
 }

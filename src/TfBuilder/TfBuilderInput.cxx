@@ -85,9 +85,6 @@ bool TfBuilderInput::start()
   mStfsForMerging.start();
   mStfMergerThread = create_thread_member("tfb_merge", &TfBuilderInput::StfMergerThread, this);
 
-  // finally start accepting TimeFrames
-  mRpc->startAcceptingTfs();
-
   return true;
 }
 
