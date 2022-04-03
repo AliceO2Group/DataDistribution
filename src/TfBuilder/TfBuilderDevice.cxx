@@ -245,7 +245,7 @@ void TfBuilderDevice::stop()
   // stop accepting TFs
   // Note: the object is needed to disconnect the InputHandler
   if (mRpc) {
-    mRpc->startAcceptingTfs();
+    mRpc->stopAcceptingTfs();
   }
 
   if (mTfDplAdapter) {
@@ -356,9 +356,6 @@ void TfBuilderDevice::PostRun()
 
   // reemove run number from monitoring
   DataDistMonitor::enable_datadist(0, mPartitionId);
-
-  // start accepting tfs for the next run
-  mRpc->startAcceptingTfs();
 
   IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
