@@ -489,6 +489,8 @@ void TfBuilderRpcImpl::StfRequestThread()
       std::uint64_t lNumExpectedStfs = lReqVector.size();
       setNumberOfStfs(lTfId, lNumExpectedStfs);
 
+      const auto lTimeStfReqStart = clock::now();
+
       while (mRunning && !lReqVector.empty()) {
         // wait for the stf slots to become free
         if (mNumReqInFlight.load() >= mMaxNumReqInFlight) {
@@ -498,7 +500,6 @@ void TfBuilderRpcImpl::StfRequestThread()
 
         // select the order in which StfSenders are contacted (consul option)
         std::size_t lIdx = getFetchIdx(lReqVector);
-
         DDMON("tfbuilder", "merge.request_idx", double(lReqVector.size()) / double(lIdx + 1));
 
         lStfRequest = std::move(lReqVector[lIdx]);
@@ -536,6 +537,8 @@ void TfBuilderRpcImpl::StfRequestThread()
         mNumReqInFlight += 1;
         DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);
       }
+
+      DDMON("tfbuilder", "merge.stf_data_req_total_ms", since<std::chrono::milliseconds>(lTimeStfReqStart));
 
       // set the number of STFs for merging thread
       if (!lIsTopo) {
