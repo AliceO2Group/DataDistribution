@@ -28,6 +28,7 @@
 #include <vector>
 #include <map>
 #include <thread>
+#include <shared_mutex>
 
 namespace o2::DataDistribution
 {
