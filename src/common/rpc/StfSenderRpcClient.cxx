@@ -23,7 +23,10 @@ StfSenderRpcClient::StfSenderRpcClient(const std::string &pEndpoint)
 {
   mChannel = grpc::CreateChannel(pEndpoint, grpc::InsecureChannelCredentials());
   mStub = StfSenderRpc::NewStub(mChannel);
+
+  // trigger faster connection
   mChannel->GetState(true);
+  mChannel->WaitForConnected(gpr_now(GPR_CLOCK_MONOTONIC));
 }
 
 bool StfSenderRpcClient::is_ready() const {
