@@ -112,6 +112,8 @@ void TfSchedulerInstanceRpcImpl::updatePartitionState(const PartitionState pNewS
 
 void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 {
+  DDDLOG("PartitionMonitorThread: Starting.");
+
   while (mRunning) {
     std::this_thread::sleep_for(500ms);
 

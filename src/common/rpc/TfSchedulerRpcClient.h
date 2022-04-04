@@ -72,7 +72,10 @@ public:
 
     mChannel = grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials());
     mStub = TfSchedulerInstanceRpc::NewStub(mChannel);
+
+    // speed up connection
     mChannel->GetState(true);
+    mChannel->WaitForConnected(gpr_now(GPR_CLOCK_MONOTONIC));
 
     IDDLOG("Connected to TfScheduler RPC endpoint={}", lEndpoint);
 

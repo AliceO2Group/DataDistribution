@@ -59,7 +59,11 @@ public:
 
     mChannel = grpc::CreateChannel(lEndpoint, grpc::InsecureChannelCredentials());
     mStub = TfBuilderRpc::NewStub(mChannel);
+
+    // speed up connecting
     mChannel->GetState(true);
+    mChannel->WaitForConnected(gpr_now(GPR_CLOCK_MONOTONIC));
+
     mRunning = true;
 
     if (is_alive()) {
