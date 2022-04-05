@@ -210,7 +210,7 @@ bool TfBuilderInputUCX::start()
   // Connect all StfSenders
   TfBuilderUCXConnectionResponse lConnResult;
   do {
-    IDDLOG("Requesting StfSender connections from the TfScheduler.");
+    IDDLOG_RL(5000, "Requesting StfSender connections from the TfScheduler.");
 
     lConnResult.Clear();
     if (!mRpc->TfSchedRpcCli().TfBuilderUCXConnectionRequest(lConfStatus, lConnResult)) {

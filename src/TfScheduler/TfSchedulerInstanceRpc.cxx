@@ -114,8 +114,17 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 {
   DDDLOG("PartitionMonitorThread: Starting.");
 
+  bool lMonitorRpcDurationPrev = DataDistMonitorRpcDurationDefault;
+
   while (mRunning) {
     std::this_thread::sleep_for(500ms);
+
+    auto lMonitorRpcDurationNew = mDiscoveryConfig->getBoolParam(DataDistMonitorRpcDurationKey, DataDistMonitorRpcDurationDefault);
+    if (lMonitorRpcDurationPrev != lMonitorRpcDurationNew) {
+      IDDLOG("DataDistMonitorRpcDuration changed. new={} old={}", lMonitorRpcDurationNew, lMonitorRpcDurationPrev);
+      lMonitorRpcDurationPrev = lMonitorRpcDurationNew;
+      mConnManager.setMonitorDuration(lMonitorRpcDurationNew);
+    }
 
     // In teardown?
     if (mPartitionState == PartitionState::PARTITION_TERMINATING

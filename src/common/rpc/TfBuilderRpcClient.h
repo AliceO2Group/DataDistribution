@@ -23,6 +23,7 @@
 #include <vector>
 #include <map>
 #include <thread>
+#include <shared_mutex>
 
 namespace o2::DataDistribution
 {
@@ -91,11 +92,17 @@ public:
   bool BuildTfRequest(const TfBuildingInformation &pTfInfo, BuildTfResponse &pResponse /*out */)
   {
     using namespace std::chrono_literals;
+    auto lStart = std::chrono::steady_clock::now();
 
     ClientContext lContext;
     pResponse.Clear();
 
     auto lStatus = mStub->BuildTfRequest(&lContext, pTfInfo, &pResponse);
+
+    if (mMonitorDuration) {
+      DDMON("datadist.grpc", "BuildTfRequest_ms", since<std::chrono::milliseconds>(lStart));
+    }
+
     if (lStatus.ok()) {
       return true;
     }
@@ -108,6 +115,9 @@ public:
   //  rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
   bool TerminatePartition() {
     ClientContext lContext;
+    // we don't care about the success. TfBuilder will be terminated by ECS
+    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(100));
+
     PartitionInfo lPartitionInfo;
     PartitionResponse lResponse;
 
@@ -116,7 +126,7 @@ public:
     // this is best effort only. ECS could have already stopped them
     DDDLOG("TerminatePartition: TfBuilder. tfb_id={} state={} message={}",
       mTfBuilderConf.info().process_id(), PartitionState_Name(lResponse.partition_state()), lStatus.error_message());
-    return lStatus.ok();
+    return true;
   }
 
   std::string getEndpoint() { return mTfBuilderConf.rpc_endpoint(); }
@@ -133,8 +143,13 @@ public:
     }
     return false;
   }
+
+  void setMonitorDuration(const bool pMonitor) { mMonitorDuration = pMonitor; };
+
 private:
   std::atomic_bool mRunning = false;
+  // monitoring
+  bool mMonitorDuration = false;
 
   TfBuilderConfigStatus mTfBuilderConf;
 
@@ -215,6 +230,7 @@ public:
     RpcClient &lCli = mClients[pId];
     lCli.mClientLock = std::make_unique<std::recursive_mutex>();
     lCli.mClient = std::make_unique<TfBuilderRpcClientCtx>();
+    lCli.mClient->setMonitorDuration(mMonitorRpcDuration);
 
     auto lRet = lCli.mClient->start(mDiscoveryConfig, pId);
     if (!lRet) {
@@ -234,6 +250,7 @@ public:
       RpcClient &lCli = mClients[pId];
       lCli.mClientLock = std::make_unique<std::recursive_mutex>();
       lCli.mClient = std::make_unique<TfBuilderRpcClientCtx>();
+      lCli.mClient->setMonitorDuration(mMonitorRpcDuration);
 
       auto lRet = lCli.mClient->start(mDiscoveryConfig, pId);
       if (!lRet) {
@@ -281,12 +298,24 @@ public:
     mClients.clear();
   }
 
+  void setMonitorDuration(const bool pMon) {
+    mMonitorRpcDuration = pMon;
+    std::shared_lock lLock(mClientsGlobalLock);
+    for (auto &[ mCliId, lClient] : mClients) {
+      (void) mCliId;
+      lClient.mClient->setMonitorDuration(mMonitorRpcDuration);
+    }
+  }
+
 private:
 
   std::shared_ptr<T> mDiscoveryConfig;
 
-  std::recursive_mutex mClientsGlobalLock;
+  std::shared_mutex mClientsGlobalLock;
   std::map<std::string, RpcClient> mClients;
+
+  // monitoring
+  bool mMonitorRpcDuration = false;
 };
 
 

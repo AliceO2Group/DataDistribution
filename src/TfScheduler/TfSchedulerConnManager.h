@@ -134,6 +134,11 @@ class TfSchedulerConnManager
     return mStfSenderRpcClients.size();
   }
 
+  void setMonitorDuration(const bool pMon) {
+    mStfSenderRpcClients.setMonitorDuration(pMon);
+    mTfBuilderRpcClients.setMonitorDuration(pMon);
+  }
+
 private:
   /// Partition information
   PartitionRequest mPartitionInfo;
