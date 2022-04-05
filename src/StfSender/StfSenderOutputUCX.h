@@ -75,7 +75,7 @@ public:
   ConnectStatus connectTfBuilder(const std::string &pTfBuilderId, const std::string &lTfBuilderIp, const unsigned lTfBuilderPort);
   bool disconnectTfBuilder(const std::string &pTfBuilderId);
 
-  bool sendStfToTfBuilder(const std::string &pTfBuilderId, std::unique_ptr<SubTimeFrame> &&pStf);
+  bool sendStfToTfBuilder(const std::string &pTfBuilderId, ScheduledStfInfo &&pStfInfo);
 
   void DataHandlerThread(unsigned pThreadIdx);
   void StfDeallocThread();

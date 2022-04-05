@@ -15,10 +15,13 @@
 #define STF_SENDER_OUTPUT_DEFS_H_
 
 #include <mutex>
-
+#include <chrono>
+#include <memory>
 
 namespace o2::DataDistribution
 {
+
+class SubTimeFrame;
 
 enum ConnectStatus { eOK, eEXISTS, eCONNERR };
 
@@ -45,6 +48,12 @@ struct StdSenderOutputCounters {
       std::uint32_t mMissing = 0;
     } mTotalSent;
   } mValues;
+};
+
+struct ScheduledStfInfo {
+  std::unique_ptr<SubTimeFrame>         mStf;
+  std::chrono::steady_clock::time_point mTimeAdded;
+  std::chrono::steady_clock::time_point mTimeRequested;
 };
 
 } /* namespace o2::DataDistribution */
