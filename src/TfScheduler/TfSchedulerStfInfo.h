@@ -179,6 +179,7 @@ private:
     std::uint64_t mLastStfId = 0;
     std::uint64_t mMaxCompletedTfId = 0;
     std::uint64_t mNotScheduledTfsCount = 0;
+    std::uint64_t mZeroTfsCount = 0;
     std::uint64_t mStaleTfCount = 0;
     std::uint64_t mScheduledTfs = 0;
     EventRecorder mDroppedStfs;
@@ -189,6 +190,7 @@ private:
       mLastStfId = 0;
       mMaxCompletedTfId = 0;
       mNotScheduledTfsCount = 0;
+      mZeroTfsCount = 0;
       mStaleTfCount = 0;
       mScheduledTfs = 0;
       mDroppedStfs.reset();
@@ -208,7 +210,7 @@ private:
       mNotScheduledTfsCount++;
     }
 
-  inline void requestDropAllFromSchedule(const std::uint64_t lStfId) {
+  inline void requestDropAllFromSchedule(const std::uint64_t lStfId, const std::uint64_t pInc = 1) {
     std::scoped_lock lLock(mGlobalStfInfoLock);
     if (mDroppedStfs.GetEvent(lStfId) != false) {
       EDDLOG_RL(1000, "Request for dripping of already discarded TF. tf_id={}", lStfId);
@@ -216,7 +218,7 @@ private:
     mDroppedStfs.SetEvent(lStfId);
     mStfInfoMap.erase(lStfId);
     mDropQueue.push(std::make_tuple(lStfId, ""));
-    mNotScheduledTfsCount++;
+    mNotScheduledTfsCount += pInc;
   }
 
   inline void requestDropTopoStf(const std::uint64_t lStfId, const std::string &pStfsId) {

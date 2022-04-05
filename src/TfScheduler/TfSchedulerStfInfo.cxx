@@ -80,6 +80,15 @@ void TfSchedulerStfInfo::SchedulingThread()
       lTfSize += lStfI.stf_size();
       (*lRequest.mutable_stf_size_map())[lStfI.process_id()] = lStfI.stf_size();
     }
+
+    // check for TF size. Discard zero-length TFs that have no detector data
+    if (lTfSize == 0) {
+      mZeroTfsCount += 1;
+      DDMON("tfscheduler", "tf.rejected.zero", mZeroTfsCount);
+      requestDropAllFromSchedule(lTfId, 0); // do not decrement rejected tf counter
+      continue;
+    }
+
     lRequest.set_tf_id(lTfId);
     lRequest.set_tf_size(lTfSize);
     lRequest.set_tf_source(StfSource::DEFAULT);
