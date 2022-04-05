@@ -196,6 +196,8 @@ public:
         lStfSenderId,
         std::make_unique<StfSenderRpcClient>(lStfSenderStatus.rpc_endpoint())
       );
+
+      mClients[lStfSenderId]->setMonitorDuration(mMonitorRpcDuration);
     }
 
     // make sure all connections are established
@@ -270,10 +272,11 @@ public:
   bool started() const { return (mRunning && mClientsCreated); }
 
   void setMonitorDuration(const bool pMon) {
+    mMonitorRpcDuration = pMon;
     std::shared_lock lLock(mClientsGlobalLock);
     for (auto &[ mCliId, lClient] : mClients) {
       (void) mCliId;
-      lClient->setMonitorDuration(pMon);
+      lClient->setMonitorDuration(mMonitorRpcDuration);
     }
   }
 
@@ -285,6 +288,9 @@ private:
   bool mClientsCreated = false;
   std::shared_mutex mClientsGlobalLock;
   std::map<std::string, std::unique_ptr<StfSenderRpcClient>> mClients;
+
+  // monitoring
+  bool mMonitorRpcDuration = false;
 };
 
 } /* namespace o2::DataDistribution */

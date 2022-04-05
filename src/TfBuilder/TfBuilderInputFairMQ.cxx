@@ -124,7 +124,7 @@ bool TfBuilderInputFairMQ::start(std::shared_ptr<ConsulTfBuilder> pConfig, std::
   // Connect all StfSenders
   TfBuilderConnectionResponse lConnResult;
   do {
-    IDDLOG("Requesting StfSender connections from the TfScheduler.");
+    IDDLOG_RL(5000, "Requesting StfSender connections from the TfScheduler.");
 
     lConnResult.Clear();
     if (!mRpc->TfSchedRpcCli().TfBuilderConnectionRequest(lStatus, lConnResult)) {
