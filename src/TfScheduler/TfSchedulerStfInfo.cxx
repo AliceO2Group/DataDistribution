@@ -170,10 +170,10 @@ void TfSchedulerStfInfo::StaleCleanupThread()
   std::vector<StfInfo> lStfInfos;
 
   // update housekeeping parameters
-  auto lStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(StaleStfTimeoutMsKey, StaleStfTimeoutMsValue),
+  auto lStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(StaleTfTimeoutMsKey, StaleTfTimeoutMsDefault),
       std::uint64_t(250), std::uint64_t(60000));
 
-  IDDLOG("StaleCleanupThread: parameter (consul) {}={}", StaleStfTimeoutMsKey, lStaleStfTimeoutMs);
+  IDDLOG("StaleCleanupThread: parameter (consul) {}={}", StaleTfTimeoutMsKey, lStaleStfTimeoutMs);
 
   while (mRunning) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -181,7 +181,7 @@ void TfSchedulerStfInfo::StaleCleanupThread()
 
     lStaleStfsToComplete.clear();
     // update housekeeping parameters
-    lStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(StaleStfTimeoutMsKey, StaleStfTimeoutMsValue),
+    lStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(StaleStfTimeoutMsKey, StaleStfTimeoutMsDefault),
       std::uint64_t(250), std::uint64_t(60000));
     {
       std::unique_lock lLock(mGlobalStfInfoLock);

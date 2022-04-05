@@ -34,6 +34,7 @@ namespace o2::DataDistribution
 {
 
 using namespace std::chrono_literals;
+using timepoint = std::chrono::steady_clock::time_point;
 
 void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
 {
@@ -78,6 +79,9 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
 
   // create stf drop thread
   mStfDropThread = create_thread_member("stfs_drop", &StfSenderOutput::StfDropThread, this);
+
+  // create stale stf thread
+  mStaleStfThread = create_thread_member("stfs_stale", &StfSenderOutput::StaleStfThread, this);
 
   // create scheduler thread
   mSchedulerThread = create_thread_member("stfs_sched", &StfSenderOutput::StfSchedulerThread, this);
@@ -124,6 +128,11 @@ void StfSenderOutput::stop()
   // Stop standalone KeepThread
   if (mStfKeepThread.joinable()) {
     mStfKeepThread.join();
+  }
+
+  // stop the stale thread
+  if (mStaleStfThread.joinable()) {
+    mStaleStfThread.join();
   }
 
   // stop the drop queue
@@ -186,7 +195,8 @@ bool StfSenderOutput::disconnectTfBuilderUCX(const std::string &pTfBuilderId)
   return mOutputUCX->disconnectTfBuilder(pTfBuilderId);
 }
 
-// Keep configurable of STFs until the set goal is reached
+// Keep configurable number of STFs until the set goal is reached
+// Only used in standalone runs
 void StfSenderOutput::StfKeepThread()
 {
   std::default_random_engine lGen;
@@ -250,6 +260,7 @@ void StfSenderOutput::StfKeepThread()
   DDDLOG("StfKeepThread: Exiting.");
 }
 
+// Reports incoming STFs to TfScheduler and queues them for transmitting or dropping
 void StfSenderOutput::StfSchedulerThread()
 {
   // Notifies the scheduler about stfs
@@ -342,13 +353,14 @@ void StfSenderOutput::StfSchedulerThread()
     // to avoid races, move the stf into the triage map before notifying the scheduler
     {
       std::scoped_lock lLock(mScheduledStfMapLock);
-      auto [it, ins] = mScheduledStfMap.try_emplace(lStfId, std::move(lStf));
-      if (!ins) {
-        (void)it;
+
+      if (mScheduledStfMap.count(lStfId) > 0) {
         EDDLOG_RL(500, "StfSchedulerThread: Stf is already scheduled! Skipping the duplicate. stf_id={}", lStfId);
         mDropQueue.push(std::move(lStf));
         continue;
       }
+
+      mScheduledStfMap.emplace(lStfId, ScheduledStfInfo{ std::move(lStf), timepoint::clock::now(), timepoint{} } );
     }
 
     // Send STF info to scheduler
@@ -362,7 +374,7 @@ void StfSenderOutput::StfSchedulerThread()
           // find the stf in the map and erase it
           const auto lStfIter = mScheduledStfMap.find(lStfId);
           if (lStfIter != mScheduledStfMap.end()) {
-            mDropQueue.push(std::move(lStfIter->second));
+            mDropQueue.push(std::move(lStfIter->second.mStf));
             mScheduledStfMap.erase(lStfIter);
           }
         }
@@ -396,19 +408,21 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     }
   } else if (pTfBuilderId == "-1") { // check if it is drop request from the scheduler
     pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
-    mDropQueue.push(std::move(lStfIter->second));
+    mDropQueue.push(std::move(lStfIter->second.mStf));
     mScheduledStfMap.erase(lStfIter);
   } else {
 
-    // extract the Stf
-    auto lStf = std::move(lStfIter->second);
+    // extract the StfInfo
+    auto lStfInfo = std::move(lStfIter->second);
+    auto &lStf = lStfInfo.mStf;
     const auto lStfSize = lStf->getDataSize();
+    lStfInfo.mTimeRequested = timepoint::clock::now();
     mScheduledStfMap.erase(lStfIter);
 
     // send to output backend
     bool lOk = false;
     if (mOutputUCX) {
-      lOk = mOutputUCX->sendStfToTfBuilder(pTfBuilderId, std::move(lStf));
+      lOk = mOutputUCX->sendStfToTfBuilder(pTfBuilderId, std::move(lStfInfo));
     } else if (mOutputFairMQ) {
       lOk = mOutputFairMQ->sendStfToTfBuilder(pTfBuilderId, std::move(lStf));
     }
@@ -463,6 +477,55 @@ void StfSenderOutput::StfDropThread()
   }
 
   DDDLOG("Exiting DataDropThread thread");
+}
+
+// Monitor for stale STFs that were not requested by TfBuilders
+void StfSenderOutput::StaleStfThread()
+{
+  DDDLOG("Starting StfStaleStfThread thread.");
+
+  timepoint lLastRun = timepoint::clock::now();
+
+  while (mRunning) {
+    while (since<std::chrono::milliseconds>(lLastRun) < 1000.0) { // test stfs every 1 second
+      std::this_thread::sleep_for(500ms);
+      continue;
+    }
+
+    { // Update the parameter from consul
+      const auto lStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(StaleStfTimeoutMsKey, StaleStfTimeoutMsDefault),
+        std::uint64_t(5000), std::uint64_t(300000));
+
+      if (mStaleStfTimeoutMs != lStaleStfTimeoutMs) {
+        IDDLOG("StaleStfTimeoutMs new={} old={}", lStaleStfTimeoutMs, mStaleStfTimeoutMs);
+        mStaleStfTimeoutMs = lStaleStfTimeoutMs;
+      }
+    }
+
+    lLastRun = timepoint::clock::now();
+
+    std::scoped_lock lLock(mScheduledStfMapLock);
+
+    while (!mScheduledStfMap.empty()) {
+      // check the STF with the lowest id (the oldest)
+      auto &lStfInfo = mScheduledStfMap.begin()->second;
+
+      const auto lStfTimeMs = since<std::chrono::milliseconds>(lStfInfo.mTimeAdded);
+      if (lStfTimeMs <= mStaleStfTimeoutMs) {
+        // nothing to clean
+        DDDLOG_RL(10000, "StfStaleStfThread: No STFs to clean. num_stfs={} oldest_ms={}", mScheduledStfMap.size(), lStfTimeMs);
+        break;
+      }
+
+      WDDLOG_RL(10000, "StfStaleStfThread: Deleting an STF because it was not requested by any TfBuilder. stf_id={} stale_ms={}",
+        lStfInfo.mStf->id(),lStfTimeMs);
+
+      mDropQueue.push(std::move(lStfInfo.mStf));
+      mScheduledStfMap.erase(mScheduledStfMap.cbegin());
+    }
+  }
+
+  DDDLOG("Exiting StfStaleStfThread thread");
 }
 
 void StfSenderOutput::StfMonitoringThread()

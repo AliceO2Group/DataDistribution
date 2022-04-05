@@ -54,6 +54,10 @@ static constexpr bool StartTopologicalStfOnNewOrbitDefault = true;
 static constexpr std::string_view StfBufferSizeMBKey = "StfBufferSizeMB";
 static constexpr std::uint64_t StfBufferSizeMBDefault = (32ULL << 10);
 
+// Time to wait until an STF is claimed by a TfBuilder
+static constexpr std::string_view StaleStfTimeoutMsKey = "StaleStfTimeoutMs";
+static constexpr std::uint64_t StaleStfTimeoutMsDefault = 60000;
+
 // Standalone: Chance the stf will be deleted on arrival
 static constexpr std::string_view StandaloneStfDeleteChanceKey = "StandaloneStfDeleteChance";
 static constexpr std::uint64_t StandaloneStfDeleteChanceDefault = 50;
@@ -109,8 +113,8 @@ static constexpr std::string_view BuildIncompleteTfsKey = "BuildIncompleteTfs";
 static constexpr bool BuildIncompleteTfsValue = true;
 
 // An incomplete TF is considered stale when the following timeout expires after the last STF is reported.
-static constexpr std::string_view StaleStfTimeoutMsKey = "StaleTfTimeoutMs";
-static constexpr std::uint64_t StaleStfTimeoutMsValue = 1000;
+static constexpr std::string_view StaleTfTimeoutMsKey = "StaleTfTimeoutMs";
+static constexpr std::uint64_t StaleTfTimeoutMsDefault = 1000;
 
 // Max number of incomplete TFs to keep before considering them stale
 static constexpr std::string_view IncompleteTfsMaxCntKey = "IncompleteTfsMaxCnt";

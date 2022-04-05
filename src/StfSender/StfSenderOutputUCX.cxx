@@ -193,9 +193,9 @@ bool StfSenderOutputUCX::disconnectTfBuilder(const std::string &pTfBuilderId)
   return true;
 }
 
-bool StfSenderOutputUCX::sendStfToTfBuilder(const std::string &pTfBuilderId, std::unique_ptr<SubTimeFrame> &&pStf)
+bool StfSenderOutputUCX::sendStfToTfBuilder(const std::string &pTfBuilderId, ScheduledStfInfo &&pStfInfo)
 {
-  mSendRequestQueue.push(SendStfInfo{std::move(pStf), pTfBuilderId});
+  mSendRequestQueue.push(SendStfInfo{std::move(pStfInfo.mStf), pTfBuilderId});
   return true;
 }
 

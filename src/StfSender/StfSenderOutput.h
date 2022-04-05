@@ -19,6 +19,7 @@
 #include "StfSenderOutputUCX.h"
 
 #include <ConfigConsul.h>
+#include <DataDistributionOptions.h>
 
 #include <SubTimeFrameDataModel.h>
 #include <SubTimeFrameVisitors.h>
@@ -55,6 +56,7 @@ public:
   void StfSchedulerThread();
   void StfKeepThread();
   void StfDropThread();
+  void StaleStfThread();
   void StfMonitoringThread();
 
   /// RPC requests
@@ -96,6 +98,10 @@ public:
   /// Monitoring thread
   std::thread mMonitoringThread;
 
+  /// Stale STF thread
+  std::thread mStaleStfThread;
+  std::uint64_t mStaleStfTimeoutMs = StaleStfTimeoutMsDefault;
+
   /// Stf keeper thread for standalone runs
   std::atomic_uint64_t mKeepTarget = 512ULL << 20;
   std::atomic_uint64_t mDeletePercentage = 50;
@@ -111,7 +117,7 @@ public:
   std::thread mSchedulerThread;
   std::uint64_t mLastStfId = 0;
   std::mutex mScheduledStfMapLock;
-    std::map<std::uint64_t, std::unique_ptr<SubTimeFrame>> mScheduledStfMap;
+    std::map<std::uint64_t, ScheduledStfInfo> mScheduledStfMap;
 
   /// Buffer utilization counters
   StdSenderOutputCounters mCounters;
