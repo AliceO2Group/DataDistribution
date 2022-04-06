@@ -71,6 +71,34 @@ public:
   }
 
   // rpc StfDataRequest(StfDataRequestMessage) returns (StfDataResponse) { }
+  bool StfDataRequestTest() {
+    auto lStart = std::chrono::steady_clock::now();
+
+    int lRetries = 0;
+
+    while (++lRetries < 5) {
+      StfDataRequestMessage lParam;
+      lParam.set_stf_id(0);
+      lParam.set_tf_builder_id("-1");
+      StfDataResponse lRet;
+      ClientContext lContext;
+      lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(1000));
+      lContext.set_wait_for_ready(true);
+
+      auto lRetVal = mStub->StfDataRequest(&lContext, lParam, &lRet);
+      if (mMonitorDuration) {
+        DDMON("datadist.grpc", "StfDataRequest_ms", since<std::chrono::milliseconds>(lStart));
+      }
+
+      if (lRetVal.error_code() == grpc::StatusCode::OK) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // rpc StfDataRequest(StfDataRequestMessage) returns (StfDataResponse) { }
   grpc::Status StfDataRequest(const StfDataRequestMessage &pParam, StfDataResponse &pRet /*out*/) {
     auto lStart = std::chrono::steady_clock::now();
 
@@ -106,11 +134,14 @@ public:
   // rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
   bool TerminatePartition() {
     ClientContext lContext;
+    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(2000));
+    lContext.set_wait_for_ready(true);
+
     PartitionInfo lPartInfo;
     PartitionResponse lRet;
 
-    const auto lStatus = mStub->TerminatePartition(&lContext, lPartInfo, &lRet);
-    return lStatus.ok(); // could have been stopped by the ECS
+    mStub->TerminatePartition(&lContext, lPartInfo, &lRet);
+    return true; // could have been stopped by the ECS
   }
 
   bool is_ready() const;
@@ -223,14 +254,26 @@ public:
     // retry connecting all Clients
     if (lWaitForStfSenders) {
       // back off until gRPC servers on all StfSeners become ready
-      std::this_thread::sleep_for(250ms);
+      std::this_thread::sleep_for(150ms);
       return false;
+    }
+
+    // test if actual connections are performing on StfSender
+    // NOTE: we cannot fail TfBuilder because the whole run will fail until nmin ODC/DDS is implemented
+    //       TfBuilder must be transition to Ready, but the input will be disabled
+    bool lConnWorking = checkStfSenderRpcConn();
+
+    auto lMsg = "StfSender gRPC connection finished. success={} failed={}";
+    if (lConnWorking) {
+      IDDLOG(lMsg, lConnWorking, getNumConnectedClients() - getNumWorkingClients());
+    } else {
+      EDDLOG(lMsg, lConnWorking, getNumConnectedClients() - getNumWorkingClients());
     }
 
     // only continue when all connections are established
     mClientsCreated = lAllConnReady;
 
-    return lAllConnReady;
+    return mClientsCreated;
   }
 
   void stop()
@@ -239,6 +282,25 @@ public:
     std::unique_lock lLock(mClientsGlobalLock);
     mClients.clear();
     mClientsCreated = false;
+  }
+
+  bool checkStfSenderRpcConn() {
+    std::shared_lock lLock(mClientsGlobalLock);
+
+    bool lConnWorking = true;
+    mNumWorkingClients = 0;
+
+    for (auto &[ mCliId, lClient] : mClients) {
+      // attempt the test StfDataRequest()
+      if (!lClient->StfDataRequestTest()) {
+        EDDLOG("StfSender gRPC connection is not working. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
+        lConnWorking = false;
+        continue;
+      }
+      mNumWorkingClients += 1;
+    }
+
+    return lConnWorking;
   }
 
   bool checkStfSenderRpcConn(const std::string &lStfSenderId)
@@ -280,12 +342,17 @@ public:
     }
   }
 
+  unsigned getNumWorkingClients() const { return mNumWorkingClients; }
+  unsigned getNumConnectedClients() const { return mClients.size(); }
+
 private:
 
   std::atomic_bool mRunning = false;
   std::shared_ptr<T> mDiscoveryConfig;
 
   bool mClientsCreated = false;
+  unsigned mNumWorkingClients = 0;
+
   std::shared_mutex mClientsGlobalLock;
   std::map<std::string, std::unique_ptr<StfSenderRpcClient>> mClients;
 
