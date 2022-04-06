@@ -172,8 +172,14 @@ void TfBuilderRpcImpl::UpdateConsulParams()
 // make sure these are sent immediately
 void TfBuilderRpcImpl::startAcceptingTfs() {
   std::unique_lock lLock(mUpdateLock);
-  mAcceptingTfs = true;
-  sendTfBuilderUpdate();
+
+  if (getNumFailedRpcConnections() == 0) {
+    mAcceptingTfs = true;
+    sendTfBuilderUpdate();
+  } else {
+    EDDLOG_RL(10000, "TfBuilderRpc::Not enabling TfBuilder because some gRPC connections are not working. failed_cnt={}",
+      getNumFailedRpcConnections());
+  }
 }
 
 void TfBuilderRpcImpl::stopAcceptingTfs() {

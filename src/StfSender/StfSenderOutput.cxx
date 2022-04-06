@@ -517,8 +517,7 @@ void StfSenderOutput::StaleStfThread()
         break;
       }
 
-      WDDLOG_RL(10000, "StfStaleStfThread: Deleting an STF because it was not requested by any TfBuilder. stf_id={} stale_ms={}",
-        lStfInfo.mStf->id(),lStfTimeMs);
+      IDDLOG_RL(10000, "StfStaleStfThread: Deleting an stale STF. stf_id={} stale_ms={}", lStfInfo.mStf->id(),lStfTimeMs);
 
       mDropQueue.push(std::move(lStfInfo.mStf));
       mScheduledStfMap.erase(mScheduledStfMap.cbegin());

@@ -204,12 +204,12 @@ public:
 
   bool remove(const std::string pId)
   {
-    std::scoped_lock lLock(mClientsGlobalLock);
+    std::unique_lock lLock(mClientsGlobalLock);
     if (mClients.count(pId) > 0) {
       RpcClient lCliStruct = std::move(mClients.at(pId));
       {
         // we have to wait for RpcClient lock before erasing
-        std::scoped_lock lCliLock(mClientsGlobalLock, *(lCliStruct.mClientLock));
+        std::scoped_lock lCliLock(*(lCliStruct.mClientLock));
         lCliStruct.mClient->stop();
         mClients.erase(pId);
       } // need to unlock lCliStruct.mClientLock here before destroying the object
@@ -221,19 +221,19 @@ public:
 
   bool add(const std::string &pId)
   {
-    std::scoped_lock lLock(mClientsGlobalLock);
-
+    std::unique_lock lLock(mClientsGlobalLock);
     remove(pId);
-
     mClients.emplace(pId, RpcClient());
-
     RpcClient &lCli = mClients[pId];
+    lLock.unlock();
+
     lCli.mClientLock = std::make_unique<std::recursive_mutex>();
     lCli.mClient = std::make_unique<TfBuilderRpcClientCtx>();
     lCli.mClient->setMonitorDuration(mMonitorRpcDuration);
 
     auto lRet = lCli.mClient->start(mDiscoveryConfig, pId);
     if (!lRet) {
+      std::unique_lock lLockErase(mClientsGlobalLock);
       mClients.erase(pId);
     }
 
@@ -242,28 +242,31 @@ public:
 
   bool add_if_new(const std::string &pId)
   {
-    std::scoped_lock lLock(mClientsGlobalLock);
+    std::unique_lock lLock(mClientsGlobalLock);
 
     if (mClients.count(pId) == 0) {
       mClients.emplace(pId, RpcClient());
-
       RpcClient &lCli = mClients[pId];
+      lLock.unlock();
+
       lCli.mClientLock = std::make_unique<std::recursive_mutex>();
       lCli.mClient = std::make_unique<TfBuilderRpcClientCtx>();
       lCli.mClient->setMonitorDuration(mMonitorRpcDuration);
 
       auto lRet = lCli.mClient->start(mDiscoveryConfig, pId);
       if (!lRet) {
+        std::unique_lock lLockErase(mClientsGlobalLock);
         mClients.erase(pId);
       }
     }
 
+    std::shared_lock lLockReturn(mClientsGlobalLock);
     return mClients[pId].mClient->is_alive();
   }
 
   TfBuilderRpcClient get(const std::string &pId)
   {
-    std::scoped_lock lLock(mClientsGlobalLock);
+    std::shared_lock lLock(mClientsGlobalLock);
 
     if (mClients.count(pId) > 0) {
 
@@ -284,14 +287,14 @@ public:
 
   void clear() {
     // remove each of the clients while holding their locks
-    std::scoped_lock lLock(mClientsGlobalLock);
+    std::unique_lock lLock(mClientsGlobalLock);
 
     for (auto &[lId, lCli] : mClients) {
       (void)lCli;
       RpcClient lCliStruct = std::move(mClients.at(lId));
 
       // we have to wait for RpcClient lock before erasing
-      std::scoped_lock lCliLock(mClientsGlobalLock, *(lCliStruct.mClientLock));
+      std::scoped_lock lCliLock(*(lCliStruct.mClientLock));
       lCliStruct.mClient->stop();
     }
 

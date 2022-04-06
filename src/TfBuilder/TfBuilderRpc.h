@@ -63,6 +63,10 @@ public:
     std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > pRecvQueue);
   void stop();
 
+  unsigned getNumFailedRpcConnections() const {
+    return (mStfSenderRpcClients.getNumConnectedClients() - mStfSenderRpcClients.getNumWorkingClients());
+  }
+
   void startAcceptingTfs();
   void stopAcceptingTfs();
 
