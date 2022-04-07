@@ -336,11 +336,6 @@ void StfSenderOutput::StfSchedulerThread()
         lInfoPtr->set_data_subspec(lStfEquip.begin()->mSubSpecification);
         break;
       }
-      case SubTimeFrame::Header::Origin::eNull:
-      {
-        lStfInfo.set_stf_source(StfSource::EMPTY);
-        break;
-      }
       default:
       {
         EDDLOG_RL(1000, "StfSchedulerThread: dropping STF of unknown type stf_source={}", lStf->header().mOrigin);

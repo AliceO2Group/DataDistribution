@@ -59,16 +59,13 @@ class SubTimeFrameReadoutBuilder
 
     std::unique_ptr<SubTimeFrame> lStf = std::move(mStf);
 
-    // mark as NULL if data was rejected
-    if (lStf && !mAcceptStfData) {
-      lStf->setOrigin(SubTimeFrame::Header::Origin::eNull);
-    }
+    auto lRet = (lStf && mAcceptStfData) ? std::optional<std::unique_ptr<SubTimeFrame>>(std::move(lStf)) : std::nullopt;
 
     mStf = nullptr;
     mAcceptStfData = true;
     mFirstFiltered.clear();
 
-    return (lStf) ? std::optional<std::unique_ptr<SubTimeFrame>>(std::move(lStf)) : std::nullopt;
+    return lRet;
   }
 
   // for aggregation of threshold scan data

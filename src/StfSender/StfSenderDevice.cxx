@@ -149,10 +149,10 @@ void StfSenderDevice::InitTask()
 
       // contact the scheduler on gRPC
       while (I().mTfSchedulerRpcClient.should_retry_start() && !I().mTfSchedulerRpcClient.start(I().mDiscoveryConfig)) {
-        std::this_thread::sleep_for(100ms * (rand()%5 + 1));
+        std::this_thread::sleep_for(150ms);
       }
 
-      // We failed to connect to the TfScheduler
+      // Did we failed to connect to the TfScheduler?
       if (!I().mTfSchedulerRpcClient.should_retry_start()) {
         EDDLOG("InitTask: Failed to connect to TfScheduler. Exiting.");
         ChangeState(fair::mq::Transition::ErrorFound);
