@@ -310,7 +310,7 @@ class SubTimeFrame : public IDataModelObject
       eInvalid = -1,
       eReadout = 1,
       eReadoutTopology, // MFT/ITS topology run
-      eNull
+      eNull     // TODO: remove after DD v1.4
     } mOrigin = eInvalid;
     std::uint64_t mCreationTimeMs = sInvalidTimeMs; // miliseconds since unix epoch
 

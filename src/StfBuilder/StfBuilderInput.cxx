@@ -570,64 +570,34 @@ void StfInputInterface::StfSequencerThread()
 {
   using namespace std::chrono_literals;
 
-  static constexpr std::uint64_t sMaxMissingStfsForSeq = 2ull * 11234 / 256; // 2 seconds of STFs
-
-  std::uint64_t lMissingStfs = 0;
-
   while (mRunning) {
-    auto lStf = mSeqStfQueue.pop_wait_for(500ms);
-
-    // monitoring cumulative metric
-    DDMON("stfbuilder", "stf_input.missing.total", lMissingStfs);
-
+    auto lStf = mSeqStfQueue.pop_wait_for(250ms);
     if (lStf == std::nullopt || !mAcceptingData) {
       continue;
     }
 
     // have data, check the sequence
-    if (lStf) {
-      const auto lCurrId = (*lStf)->id();
+    const auto lCurrId = (*lStf)->id();
 
-      if (lCurrId <= mLastSeqStfId) {
-        EDDLOG_RL(500, "READOUT INTERFACE: Repeated STF will be rejected. previous_stf_id={} current_stf_id={}",
-          mLastSeqStfId, lCurrId);
-        // reject this STF.
-        continue;
-      }
-
-      // expected next stf
-      if ((mLastSeqStfId + 1) == lCurrId) {
-        mLastSeqStfId = lCurrId;
-        mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
-        continue;
-      }
-
-      // there are missing STFs
-      const auto lMissingIdStart = mLastSeqStfId + 1;
-      const auto lMissingCnt = lCurrId - lMissingIdStart;
-
-      if (lMissingCnt < sMaxMissingStfsForSeq) {
-        WDDLOG_RL(1000, "READOUT INTERFACE: Creating empty (missing) STFs. previous_stf_id={} num_missing={}",
-          mLastSeqStfId, lMissingCnt);
-        // create the missing ones and continue
-        for (std::uint64_t lStfIdIdx = lMissingIdStart; lStfIdIdx < lCurrId; lStfIdIdx++) {
-          auto lEmptyStf = std::make_unique<SubTimeFrame>(lStfIdIdx);
-          lEmptyStf->setOrigin(SubTimeFrame::Header::Origin::eNull);
-          mDevice.I().queue(eStfBuilderOut, std::move(lEmptyStf));
-
-          lMissingStfs++;
-        }
-      } else {
-        WDDLOG_RL(1000, "READOUT INTERFACE: Large STF gap. previous_stf_id={} current_stf_id={} num_missing={}",
-          mLastSeqStfId, lCurrId, lMissingCnt);
-      }
-
-      // insert the actual stf
-      mLastSeqStfId = lCurrId;
-      mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
-
+    if (lCurrId <= mLastSeqStfId) {
+      EDDLOG_RL(500, "READOUT INTERFACE: Repeated STF will be rejected. previous_stf_id={} current_stf_id={}",
+        mLastSeqStfId, lCurrId);
+      // reject this STF.
       continue;
     }
+
+    mDevice.I().queue(eStfBuilderOut, std::move(*lStf));
+
+    const auto lMissingCnt = lCurrId - mLastSeqStfId - 1;
+
+    if (lMissingCnt > 0) {
+      // monitoring cumulative metric
+      mMissingStfs += (lCurrId - mLastSeqStfId - 1);
+      DDMON("stfbuilder", "stf_input.missing_stf.total", mMissingStfs);
+    }
+
+    mLastSeqStfId = lCurrId;
+
   }
 
   DDDLOG("Exiting StfSequencerThread thread.");

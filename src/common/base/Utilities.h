@@ -73,6 +73,20 @@ double since(std::chrono::time_point<clock_t, duration_t> const& start)
   }
 }
 
+// return duration in desired units, with provided finish
+template <
+    class unit       = std::chrono::seconds,
+    class clock_t    = std::chrono::steady_clock,
+    class duration_t = std::chrono::microseconds >
+double since(std::chrono::time_point<clock_t, duration_t> const& start, std::chrono::time_point<clock_t, duration_t> const& finish)
+{
+  if constexpr (std::is_same_v<unit, std::chrono::seconds>) {
+    return std::chrono::duration<double>(finish - start).count();
+  } else {
+    return std::chrono::duration<double>(finish - start) / unit(1);
+  }
+}
+
 template <
   typename T,
   size_t N = 1024,

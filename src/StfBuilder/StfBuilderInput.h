@@ -14,6 +14,7 @@
 #ifndef ALICEO2_STFBUILDER_INPUT_H_
 #define ALICEO2_STFBUILDER_INPUT_H_
 
+#include <DataDistMonitoring.h>
 #include <SubTimeFrameBuilder.h>
 #include <ConcurrentQueue.h>
 #include <Utilities.h>
@@ -48,9 +49,12 @@ public:
       mStfIdReceiving = 0;
       mStfIdBuilding = 0;
       mLastSeqStfId = 0;
+      mMissingStfs = 0;
     }
 
     mAcceptingData = pRunning;
+
+    DDMON("stfbuilder", "stf_input.missing_stf.total", 0);
   }
 
   void StfReceiverThread();
@@ -79,9 +83,11 @@ public:
   std::thread mBuilderThread;
 
   /// StfSequencer thread
+  std::thread mStfSeqThread;
   ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mSeqStfQueue;
   std::uint64_t mLastSeqStfId = 0;
-  std::thread mStfSeqThread;
+  std::uint64_t mMissingStfs = 0;
+
 };
 
 } /* namespace o2::DataDistribution */
