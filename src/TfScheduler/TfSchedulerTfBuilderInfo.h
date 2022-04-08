@@ -38,7 +38,7 @@ namespace o2::DataDistribution
 using namespace std::chrono_literals;
 
 struct TfBuilderInfo {
-  std::chrono::system_clock::time_point mUpdateLocalTime;
+  std::chrono::steady_clock::time_point mUpdateLocalTime;
   TfBuilderUpdateMessage mTfBuilderUpdate;
   std::uint64_t mLastScheduledTf = 0;
   std::uint64_t mEstimatedFreeMemory = 0;
@@ -50,7 +50,7 @@ struct TfBuilderInfo {
 
   TfBuilderInfo() = delete;
 
-  TfBuilderInfo(std::chrono::system_clock::time_point pUpdateLocalTime, const TfBuilderUpdateMessage &pTfBuilderUpdate)
+  TfBuilderInfo(std::chrono::steady_clock::time_point pUpdateLocalTime, const TfBuilderUpdateMessage &pTfBuilderUpdate)
   : mUpdateLocalTime(pUpdateLocalTime),
     mTfBuilderUpdate(pTfBuilderUpdate)
   {

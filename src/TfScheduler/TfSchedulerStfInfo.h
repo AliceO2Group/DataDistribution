@@ -39,16 +39,20 @@ namespace o2::DataDistribution
 using namespace std::chrono_literals;
 
 struct StfInfo {
-  std::chrono::steady_clock::time_point mUpdateLocalTime;
+  struct ProxyStfInfo {};
+
   StfSenderStfInfo mStfInfo;
-  bool mIsScheduled = false;
+  bool mProxy = false; // if completed by the future stf update
 
   StfInfo() = delete;
-  StfInfo(const std::chrono::steady_clock::time_point pUpdateLocalTime, const StfSenderStfInfo &pStfInfo)
-  : mUpdateLocalTime(pUpdateLocalTime),
-    mStfInfo(pStfInfo)
-  {
-  }
+  explicit StfInfo(const StfSenderStfInfo &&pStfInfo)
+  : mStfInfo(std::move(pStfInfo)),
+    mProxy(false)
+  { }
+
+  explicit StfInfo(ProxyStfInfo)
+  : mProxy(true)
+  { }
 
   const std::string& process_id() const { return mStfInfo.info().process_id(); }
   std::uint64_t stf_id() const { return mStfInfo.stf_id(); }
@@ -59,7 +63,6 @@ struct TopoStfInfo {
   StfSenderStfInfo mStfInfo;
   char mDataOrigin[4]; // detector id
   std::uint64_t mSubSpec;
-  bool mIsScheduled = false;
 
   TopoStfInfo() = delete;
   TopoStfInfo(const StfSenderStfInfo &pStfInfo, const std::string_view &pDataOrigin, const std::uint64_t pSubSpec)
@@ -95,6 +98,7 @@ public:
 
     mRunning = true;
     // Start the scheduling threads
+    mCompletingThread = create_thread_member("tf_completer", &TfSchedulerStfInfo::TfCompleterThread, this);
     mSchedulingThread = create_thread_member("sched_sched", &TfSchedulerStfInfo::SchedulingThread, this);
     mStaleStfThread = create_thread_member("stale_drop", &TfSchedulerStfInfo::StaleCleanupThread, this);
     mWatermarkThread = create_thread_member("wmark", &TfSchedulerStfInfo::HighWatermarkThread, this);
@@ -109,6 +113,11 @@ public:
     mDropQueue.stop();
     mCompleteStfsInfoQueue.stop();
     mTopoStfInfoQueue.stop();
+
+    mReportedStfInfoQueue.stop();
+    if (mCompletingThread.joinable()) {
+      mCompletingThread.join();
+    }
 
     if (mSchedulingThread.joinable()) {
       DDDLOG("Waiting on TfSchedulerStfInfo::SchedulingThread");
@@ -144,6 +153,7 @@ public:
 
   void addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse);
 
+  void TfCompleterThread();
   void SchedulingThread();
   void TopoSchedulingThread();
   void StaleCleanupThread();
@@ -173,15 +183,30 @@ private:
   /// GLOBAL RUN: Stfs global info
   mutable std::mutex mGlobalStfInfoLock;
     std::condition_variable mMemWatermarkCondition;
-    std::map<std::uint64_t, std::vector<StfInfo>> mStfInfoMap;
+    std::condition_variable mStaleCondition;
+    std::map<std::uint64_t, std::map< std::string, StfInfo>> mStfInfoMap;
+    std::map<std::uint64_t, std::chrono::steady_clock::time_point> mStfInfoStartTimeMap;
+    std::map<std::uint64_t, bool> mStfInfoIncomplete;
+
     std::map<std::string, StfSenderInfo> mStfSenderInfoMap;
     std::uint64_t mRunNumber = 0;
+
+    std::atomic_uint64_t mNotScheduledTfsCount = 0;
+
+    /// TfCompleterThread
+    std::atomic_uint64_t mStaleStfTimeoutMs = StaleTfTimeoutMsDefault;
+    std::uint64_t mCompleteTfCount = 0;
+    std::atomic_uint64_t mIncompleteTfCount = 0;
     std::uint64_t mLastStfId = 0;
     std::uint64_t mMaxCompletedTfId = 0;
-    std::uint64_t mNotScheduledTfsCount = 0;
-    std::uint64_t mZeroTfsCount = 0;
+    std::map<std::string, std::uint64_t> mMaxStfIdPerStfSender;
+    // total sizes
+    std::uint64_t mTfSizeTotalScheduled = 0;
+    std::uint64_t mTfSizeTotalRejected = 0;
+
     std::uint64_t mStaleTfCount = 0;
     std::uint64_t mScheduledTfs = 0;
+
     EventRecorder mDroppedStfs;
     EventRecorder mBuiltTfs;
 
@@ -190,9 +215,17 @@ private:
       mLastStfId = 0;
       mMaxCompletedTfId = 0;
       mNotScheduledTfsCount = 0;
-      mZeroTfsCount = 0;
+
+      mCompleteTfCount = 0;
+      mIncompleteTfCount = 0;
+      mMaxStfIdPerStfSender.clear();
+
       mStaleTfCount = 0;
       mScheduledTfs = 0;
+
+      mTfSizeTotalScheduled = 0;
+      mTfSizeTotalRejected = 0;
+
       mDroppedStfs.reset();
       mBuiltTfs.reset();
 
@@ -203,22 +236,34 @@ private:
     }
 
     inline void requestDropAllLocked(const std::uint64_t lStfId) {
-      assert (mDroppedStfs.GetEvent(lStfId) == false);
-      mDroppedStfs.SetEvent(lStfId);
+      if (mDroppedStfs.GetEvent(lStfId) == false) {
+        mDroppedStfs.SetEvent(lStfId);
+        mNotScheduledTfsCount++;
+      }
       mStfInfoMap.erase(lStfId);
       mDropQueue.push(std::make_tuple(lStfId, ""));
-      mNotScheduledTfsCount++;
+    }
+
+    inline void requestDropAllUnlocked(const std::uint64_t lStfId) {
+      std::scoped_lock lLock(mGlobalStfInfoLock);
+      if (mDroppedStfs.GetEvent(lStfId) == false) {
+        mDroppedStfs.SetEvent(lStfId);
+        mNotScheduledTfsCount++;
+      }
+      mStfInfoMap.erase(lStfId);
+      mDropQueue.push(std::make_tuple(lStfId, ""));
     }
 
   inline void requestDropAllFromSchedule(const std::uint64_t lStfId, const std::uint64_t pInc = 1) {
     std::scoped_lock lLock(mGlobalStfInfoLock);
     if (mDroppedStfs.GetEvent(lStfId) != false) {
-      EDDLOG_RL(1000, "Request for dripping of already discarded TF. tf_id={}", lStfId);
+      DDDLOG_RL(10000, "Request for dropping of already discarded TimeFrame. tf_id={}", lStfId);
+    } else {
+      mDroppedStfs.SetEvent(lStfId);
+      mNotScheduledTfsCount += pInc;
     }
-    mDroppedStfs.SetEvent(lStfId);
     mStfInfoMap.erase(lStfId);
     mDropQueue.push(std::make_tuple(lStfId, ""));
-    mNotScheduledTfsCount += pInc;
   }
 
   inline void requestDropTopoStf(const std::uint64_t lStfId, const std::string &pStfsId) {
@@ -226,8 +271,13 @@ private:
     mNotScheduledTfsCount++;
   }
 
+  /// tf completing thread
+  ConcurrentQueue<StfInfo> mReportedStfInfoQueue;
+  std::thread mCompletingThread;
+
   /// scheduling thread & queue
-  ConcurrentFifo<std::vector<StfInfo>> mCompleteStfsInfoQueue;
+  // <complete flag ,StfInfoMao>
+  ConcurrentQueue<std::tuple<bool, std::map<std::string, StfInfo>>> mCompleteStfsInfoQueue;
   std::thread mSchedulingThread;
 
   /// memory watermark thread
@@ -240,7 +290,7 @@ private:
   void addTopologyStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse);
 
   /// scheduling thread & queue
-  ConcurrentFifo<std::unique_ptr<TopoStfInfo>> mTopoStfInfoQueue;
+  ConcurrentQueue<std::unique_ptr<TopoStfInfo>> mTopoStfInfoQueue;
   std::thread mTopoSchedulingThread;
 
 };

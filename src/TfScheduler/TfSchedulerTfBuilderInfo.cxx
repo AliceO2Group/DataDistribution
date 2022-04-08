@@ -42,7 +42,7 @@ bool operator==(const TfBuilderTopoInfo& lhs, const TfBuilderTopoInfo& rhs)
 void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage &pTfBuilderUpdate)
 {
   using namespace std::chrono_literals;
-  const auto lLocalTime = std::chrono::system_clock::now();
+  const auto lLocalTime = std::chrono::steady_clock::now();
 
   // recreate timepoint from the received millisecond time stamp
   const std::chrono::milliseconds lUpdateDuration(pTfBuilderUpdate.info().last_update_t());
@@ -50,7 +50,7 @@ void TfSchedulerTfBuilderInfo::updateTfBuilderInfo(const TfBuilderUpdateMessage 
   const auto &lTfBuilderId = pTfBuilderUpdate.info().process_id();
 
   // check for system time drifts; account for gRPC latency
-  const auto lTimeDiff = lLocalTime - lUpdateTimepoint;
+  const auto lTimeDiff = std::chrono::system_clock::now() - lUpdateTimepoint;
   if (std::chrono::abs(lTimeDiff) > 1s) {
     WDDLOG("Large system clock drift detected. tfb_id={} drift_ms={}", lTfBuilderId,
       std::chrono::duration_cast<std::chrono::milliseconds>(lTimeDiff).count());
@@ -249,8 +249,6 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
   std::vector<std::string> lIdsToErase;
 
   while (mRunning) {
-    std::this_thread::sleep_for(2000ms);
-
     // update scheduling parameters
     setMaxTfsInBuilding(mDiscoveryConfig->getUInt64Param(MaxNumTfsInBuildingKey, MaxNumTfsInBuildingDevault));
 
@@ -261,7 +259,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
       assert (lIdsToErase.empty());
       for (const auto &lIdInfo : mGlobalInfo) {
         const auto &lInfo = lIdInfo.second;
-        const auto lNow = std::chrono::system_clock::now();
+        const auto lNow = std::chrono::steady_clock::now();
         const auto lTimeDiff = std::chrono::abs(lNow - lInfo->mUpdateLocalTime);
         if (lTimeDiff >= sTfBuilderDiscardTimeout) {
           lIdsToErase.push_back(lInfo->mTfBuilderUpdate.info().process_id());
@@ -275,7 +273,7 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
 
     if (!lIdsToErase.empty()) {
       for (const auto &lId : lIdsToErase) {
-        std::scoped_lock lLock(mGlobalInfoLock); // CHECK if we need this lock?
+        std::scoped_lock lLock(mGlobalInfoLock);
 
         mGlobalInfo.erase(lId);
         removeReadyTfBuilder(lId);
@@ -283,6 +281,8 @@ void TfSchedulerTfBuilderInfo::HousekeepingThread()
       }
       lIdsToErase.clear();
     }
+
+    std::this_thread::sleep_for(2000ms);
   }
 
   DDDLOG("Exiting TfBuilderInfo-Housekeeping thread.");
