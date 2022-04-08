@@ -97,7 +97,7 @@ public:
         lNumConsulTries += 1;
         IDDLOG("Connecting to Consul. endpoint={}", mEndpoint);
         mConsul = std::make_unique<ppconsul::Consul>(mEndpoint,
-          ppconsul::kw::connect_timeout = std::chrono::milliseconds{10000},
+          ppconsul::kw::connect_timeout = std::chrono::milliseconds{5000},
           ppconsul::kw::request_timeout = std::chrono::milliseconds{30000});
 
         mConsul->get("/");
