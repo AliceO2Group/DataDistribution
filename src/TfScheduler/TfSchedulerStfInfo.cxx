@@ -126,12 +126,15 @@ void TfSchedulerStfInfo::SchedulingThread()
               break;
           }
         } else {
-          EDDLOG("Scheduling of Tf failed. to_tfb_id={} reason=grpc_error", lTfBuilderId);
-          EDDLOG("Removing TfBuilder from scheduling. tfb_id={}", lTfBuilderId);
+          WDDLOG_RL(10000, "Scheduling of Tf failed. to_tfb_id={} reason=grpc_error", lTfBuilderId);
+          WDDLOG("Removing TfBuilder from scheduling. tfb_id={} reason=BuildTfRequest_failed", lTfBuilderId);
 
           lRpcCli.put();
 
-          requestDropAllFromSchedule(lTfId);
+          // NOTE: if tfbuilder was not reached, stfsender will be able to clean the stfs on their own
+          //       if tfbuilder was reached (grpc timeout), it will continue to fetch the TF
+          // requestDropAllFromSchedule(lTfId);
+
           mConnManager.removeTfBuilder(lTfBuilderId);
           mTfBuilderInfo.removeReadyTfBuilder(lTfBuilderId);
         }
