@@ -95,6 +95,7 @@ public:
     auto lStart = std::chrono::steady_clock::now();
 
     ClientContext lContext;
+    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(5000));
     pResponse.Clear();
 
     auto lStatus = mStub->BuildTfRequest(&lContext, pTfInfo, &pResponse);

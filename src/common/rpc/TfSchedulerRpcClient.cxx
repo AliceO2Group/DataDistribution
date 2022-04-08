@@ -266,7 +266,7 @@ bool TfSchedulerRpcClient::TfBuilderUpdate(TfBuilderUpdateMessage &pMsg) {
     return true;
   }
 
-  EDDLOG_GRL(2000, "gRPC: TfBuilderUpdate error. code={} message={}", lStatus.error_code(), lStatus.error_message());
+  DDDLOG_GRL(1000, "gRPC: TfBuilderUpdate error. code={} message={}", lStatus.error_code(), lStatus.error_message());
   return false;
 }
 

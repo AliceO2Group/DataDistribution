@@ -50,7 +50,7 @@ bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize, std::shared_ptr<Co
 
   // Interact with the scheduler
   if (!mTfSchedulerRpcClient.should_retry_start()) {
-    WDDLOG("TfSchedulerRpc: Failed to connect to scheduler. Exiting.");
+    IDDLOG_RL(10000, "TfSchedulerRpc: Failed to connect to scheduler. Exiting.");
     mTerminateRequested = true;
     return false;
   }
@@ -243,8 +243,8 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
   DDDLOG_RL(5000, "Sending TfBuilder update. accepting={} total={}", mAcceptingTfs, sUpdateCnt);
 
   auto lRet = mTfSchedulerRpcClient.TfBuilderUpdate(lUpdate);
-  if (!lRet && mRunning) {
-    EDDLOG_RL(1000, "Sending TfBuilder status update failed.");
+  if (!lRet && !mTerminateRequested && mRunning) {
+    WDDLOG_RL(10000, "Sending TfBuilder status update failed.");
   }
 
   DDMON("tfbuilder", "buffer.tf_cnt", mNumBufferedTfs);
@@ -362,6 +362,8 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
     // count how many TFs are in "building". Decremented in recordTfBuilt()
     mNumTfsInBuilding += 1;
   }
+
+  assert (lTfId != 0);
 
   sNumTfRequests++;
   DDDLOG_GRL(5000, "Requesting SubTimeFrames. tf_id={} tf_size={} total_requests={}", lTfId, lTfSize, sNumTfRequests);
@@ -571,6 +573,10 @@ void TfBuilderRpcImpl::StfRequestThread()
 
       // cleanup if we reached no StfSenders
       if (lNumExpectedStfs == 0) {
+        // Let the scheduler know that we are not building the current TF
+        mNumTfsInBuilding = std::max(0, mNumTfsInBuilding - 1);
+        mLastBuiltTfId = std::max(mLastBuiltTfId, lTfId);
+
         if (lIsTopo) {
           // Topological: indicate that we're deleting topological (renamed) Id
           std::scoped_lock lLock(mTopoTfIdLock);
@@ -585,6 +591,7 @@ void TfBuilderRpcImpl::StfRequestThread()
           // notify Input stage not to wait for STFs if we reached none of StfSender
           mReceivedDataQueue->push(ReceivedStfMeta(ReceivedStfMeta::MetaType::DELETE, lTfId));
         }
+        mUpdateCondition.notify_one();
       }
     }
   }
