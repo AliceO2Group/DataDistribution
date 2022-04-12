@@ -13,6 +13,7 @@
 
 #include "StfBuilderDevice.h"
 #include <options/FairMQProgOptions.h>
+#include <grpc/grpc.h>
 
 #include <SubTimeFrameFileSink.h>
 #include <SubTimeFrameFileSource.h>
@@ -30,6 +31,8 @@ int main(int argc, char* argv[])
     using namespace fair::mq;
     using namespace fair::mq::hooks;
     namespace bpo = boost::program_options;
+
+    grpc_init();
 
     // set InfoLogger Facility
     DataDistLogger::sInfoLoggerFacility = "datadist/stfbuilder";
@@ -112,5 +115,9 @@ int main(int argc, char* argv[])
       r.fDevice = std::make_unique<o2::DataDistribution::StfBuilderDevice>();
     });
 
-    return runner.RunWithExceptionHandlers();
+    auto lRet = runner.RunWithExceptionHandlers();
+
+    grpc_shutdown();
+
+    return lRet;
 }
