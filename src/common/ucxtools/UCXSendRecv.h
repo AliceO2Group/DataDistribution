@@ -44,7 +44,6 @@ struct dd_ucp_multi_req {
   alignas(128)
   const std::uint64_t mSlotsCount = 1;
   std::atomic_uint64_t mSlotsUsed = 0;
-  std::atomic_uint64_t mTotalDone = 0;
   std::atomic_bool mFinished = false;
 
   dd_ucp_multi_req() = delete;
@@ -64,8 +63,6 @@ struct dd_ucp_multi_req {
     }
   }
 
-  inline std::uint64_t total_done() const  { return mTotalDone.load(); }
-
   inline bool add_request(void *req) {
     if (UCS_PTR_IS_ERR(req)) {
       EDDLOG("Failed run ucp_get_nbx ucx_err={}", ucs_status_string(UCS_PTR_STATUS(req)));
@@ -82,7 +79,6 @@ struct dd_ucp_multi_req {
     // operation returned request
     if (req && UCS_PTR_IS_PTR(req)) {
       mSlotsUsed -= 1;
-      mTotalDone += 1;
       ucp_request_free(req);
     }
     return true;
