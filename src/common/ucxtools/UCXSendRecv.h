@@ -41,32 +41,20 @@ static constexpr ucp_tag_t STF_DONE_TAG           = 1'000'000'000ULL;
 namespace ucx::io {
 
 struct dd_ucp_multi_req {
+  alignas(128)
   const std::uint64_t mSlotsCount = 1;
   std::atomic_uint64_t mSlotsUsed = 0;
   std::atomic_uint64_t mTotalDone = 0;
   std::atomic_bool mFinished = false;
-
-  std::mutex mRequestLock;
-    boost::container::small_flat_set<void*, 128> mRequests;
 
   dd_ucp_multi_req() = delete;
   explicit dd_ucp_multi_req(const std::uint64_t pSlotsCount) : mSlotsCount(pSlotsCount)  { }
   dd_ucp_multi_req(const dd_ucp_multi_req&) = delete;
   dd_ucp_multi_req(dd_ucp_multi_req&&) = delete;
 
-  ~dd_ucp_multi_req() {
-    assert (mTotalDone.load() >= mRequests.size());
+  ~dd_ucp_multi_req() { }
 
-    std::scoped_lock lLock(mRequestLock);
-    for (const auto req_ptr : mRequests) {
-      if (req_ptr && UCS_PTR_IS_PTR(req_ptr)) {
-        ucp_request_free(req_ptr);
-      }
-    }
-  }
-
-  inline
-  bool done() const {
+  inline bool done() const {
     if (!mFinished) {
       // let rma progress as long as there are free slots
       return (mSlotsUsed.load() < mSlotsCount);
@@ -76,34 +64,26 @@ struct dd_ucp_multi_req {
     }
   }
 
-  inline
-  std::uint64_t total_done() const  { return mTotalDone.load(); }
+  inline std::uint64_t total_done() const  { return mTotalDone.load(); }
 
-  inline
-  bool add_request(void *req) {
+  inline bool add_request(void *req) {
     if (UCS_PTR_IS_ERR(req)) {
       EDDLOG("Failed run ucp_get_nbx ucx_err={}", ucs_status_string(UCS_PTR_STATUS(req)));
       return false;
     }
     // operation returned request
     if (req && UCS_PTR_IS_PTR(req)) {
-      std::scoped_lock lLock(mRequestLock);
-      mRequests.insert(req);
       mSlotsUsed += 1;
     }
     return true;
   }
 
-  inline
-  bool remove_request(void *req) {
+  inline bool remove_request(void *req) {
     // operation returned request
     if (req && UCS_PTR_IS_PTR(req)) {
-      ucp_request_free(req);
-      std::scoped_lock lLock(mRequestLock);
-      mRequests.erase(req);
-
-      mTotalDone += 1;
       mSlotsUsed -= 1;
+      mTotalDone += 1;
+      ucp_request_free(req);
     }
     return true;
   }
