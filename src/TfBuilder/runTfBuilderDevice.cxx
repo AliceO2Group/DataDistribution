@@ -21,6 +21,7 @@
 
 #include <options/FairMQProgOptions.h>
 #include <fairmq/DeviceRunner.h>
+#include <grpc/grpc.h>
 
 using namespace o2::DataDistribution;
 
@@ -29,6 +30,8 @@ int main(int argc, char* argv[])
     using namespace fair::mq;
     using namespace fair::mq::hooks;
     namespace bpo = boost::program_options;
+
+    grpc_init();
 
     // set InfoLogger Facility
     DataDistLogger::sInfoLoggerFacility = "datadist/tfbuilder";
@@ -95,5 +98,9 @@ int main(int argc, char* argv[])
       r.fDevice = std::make_unique<o2::DataDistribution::TfBuilderDevice>();
     });
 
-    return runner.RunWithExceptionHandlers();
+    auto lRet = runner.RunWithExceptionHandlers();
+
+    grpc_shutdown();
+
+    return lRet;
 }

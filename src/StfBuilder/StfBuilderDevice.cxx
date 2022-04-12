@@ -50,7 +50,7 @@ StfBuilderDevice::~StfBuilderDevice()
   DDDLOG("StfBuilderDevice::~StfBuilderDevice()");
 
   if (!sResetDeviceCalled) {
-    EDDLOG("StfBuilderDevice::Reset() was not called. Performing cleanup");
+    DDDLOG("StfBuilderDevice::Reset() was not called. Performing cleanup");
     // clear all Stfs from the pipeline before the transport is deleted
     if (mI) {
       I().stopPipeline();
