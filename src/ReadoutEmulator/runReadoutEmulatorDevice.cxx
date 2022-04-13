@@ -14,8 +14,7 @@
 #include "ReadoutDevice.h"
 
 #include <fairmq/ProgOptions.h>
-
-#include "runFairMQDevice.h"
+#include <fairmq/runDevice.h>
 
 namespace bpo = boost::program_options;
 template class std::basic_string<char, std::char_traits<char>, std::allocator<char> >; // Workaround for bug in CC7 devtoolset7
@@ -46,7 +45,7 @@ void addCustomOptions(bpo::options_description& options)
     "Input throughput per link (bits per second).");
 }
 
-FairMQDevicePtr getDevice(const fair::mq::ProgOptions& /*config*/)
+std::unique_ptr<fair::mq::Device> getDevice(const fair::mq::ProgOptions& /*config*/)
 {
-  return new o2::DataDistribution::ReadoutDevice();
+  return std::make_unique<o2::DataDistribution::ReadoutDevice>();
 }

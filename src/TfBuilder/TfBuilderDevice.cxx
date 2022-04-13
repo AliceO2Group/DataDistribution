@@ -49,7 +49,7 @@ void TfBuilderDevice::Init()
   mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
   if (mPartitionId.empty()) {
     WDDLOG("TfBuilder 'discovery-partition' parameter not set during Init(). Exiting.");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -145,7 +145,7 @@ void TfBuilderDevice::InitTask()
   } catch (...) {
     lBuffersAllocatedFuture.wait();
     EDDLOG("Consul Initialization failed. Exiting...");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -160,7 +160,7 @@ void TfBuilderDevice::InitTask()
   if (!mFileSink.loadVerifyConfig(*(this->GetConfig()))) {
     lBuffersAllocatedFuture.wait();
     AbortInitTask();
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -179,7 +179,7 @@ void TfBuilderDevice::InitTask()
       EDDLOG("Can not start TfBuilder. id={}", lStatus.info().process_id());
       EDDLOG("Process with the same id already running? If not, clear the key manually.");
       EDDLOG("Discovery database error: this TfBuilder was/is already present. Exiting.");
-      ChangeState(fair::mq::Transition::ErrorFound);
+      ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
       return;
     }
   }
@@ -218,7 +218,7 @@ void TfBuilderDevice::InitTask()
   if (!mFlpInputHandler->start()) {
     AbortInitTask();
     EDDLOG("Could not initialize input connections. Exiting.");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -227,7 +227,7 @@ void TfBuilderDevice::InitTask()
   if (!lBuffersAllocatedFuture.get()) {
     AbortInitTask();
     EDDLOG("InitTask::MemorySegment allocation failed. Exiting...");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -235,7 +235,7 @@ void TfBuilderDevice::InitTask()
   if (!mFlpInputHandler->map_data_region()) {
     AbortInitTask();
     EDDLOG("Could not initialize input connections. Exiting.");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 

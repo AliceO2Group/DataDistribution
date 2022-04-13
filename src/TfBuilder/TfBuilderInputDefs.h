@@ -34,7 +34,7 @@ struct ReceivedStfMeta {
     std::chrono::time_point<std::chrono::steady_clock> mTimeReceived;
 
     std::unique_ptr<IovStfHdrMeta> mRecvStfHeaderMeta;
-    std::unique_ptr<std::vector<fair::mq::MessagePtr>> mRecvStfData;
+    std::unique_ptr<std::vector<fair::mq::MessagePtr>> mRecvStfdata;
     std::unique_ptr<SubTimeFrame> mStf;
     std::string mStfSenderId;
 
@@ -47,7 +47,7 @@ struct ReceivedStfMeta {
                     const SubTimeFrame::Header::Origin pStfOrigin,
                     const std::string &pStfSenderId,
                     std::unique_ptr<IovStfHdrMeta> &&pRcvHdrMeta,
-                    std::unique_ptr<std::vector<fair::mq::MessagePtr>> &&pRecvStfData)
+                    std::unique_ptr<std::vector<fair::mq::MessagePtr>> &&pRecvStfdata)
     : mType(INFO),
       mStfId(pStfId),
       mStfOrigin(pStfOrigin),

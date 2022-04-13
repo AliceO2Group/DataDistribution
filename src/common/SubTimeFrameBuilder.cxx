@@ -20,8 +20,8 @@
 #include <Headers/Stack.h>
 #include <Framework/DataProcessingHeader.h>
 
-#include <fairmq/FairMQDevice.h>
-#include <fairmq/FairMQUnmanagedRegion.h>
+#include <fairmq/Device.h>
+#include <fairmq/UnmanagedRegion.h>
 
 #include <optional>
 

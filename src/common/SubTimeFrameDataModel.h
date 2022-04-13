@@ -209,11 +209,11 @@ class SubTimeFrame : public IDataModelObject
   struct StfData {
 
     StfData() = delete;
-    StfData(fair::mq::MessagePtr &&pHdr, fair::mq::MessagePtr &&pData)
+    StfData(std::unique_ptr<fair::mq::Message> &&pHdr, std::unique_ptr<fair::mq::Message> &&pData)
     : mHeader(std::move(pHdr)), mData(std::move(pData)) { }
 
-    fair::mq::MessagePtr mHeader;
-    fair::mq::MessagePtr mData;
+    std::unique_ptr<fair::mq::Message> mHeader;
+    std::unique_ptr<fair::mq::Message> mData;
 
     inline const o2hdr::DataHeader* getDataHeader() const
     {
@@ -229,14 +229,14 @@ class SubTimeFrame : public IDataModelObject
 
     StfMessage() = delete;
 
-    StfMessage(fair::mq::MessagePtr &&pHeader)
+    StfMessage(std::unique_ptr<fair::mq::Message> &&pHeader)
       : mHeader(std::move(pHeader))
     {
       assert(mHeader);
     }
 
-    fair::mq::MessagePtr mHeader;
-    std::vector<fair::mq::MessagePtr> mDataParts;
+    std::unique_ptr<fair::mq::Message> mHeader;
+    std::vector<std::unique_ptr<fair::mq::Message>> mDataParts;
 
     inline o2hdr::DataHeader* getDataHeaderMutable() {
       if (!mHeader) {

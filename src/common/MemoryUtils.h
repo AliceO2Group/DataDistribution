@@ -20,8 +20,8 @@
 #include <boost/icl/interval_map.hpp>
 #include <boost/icl/right_open_interval.hpp>
 
-#include <fairmq/FairMQDevice.h>
-#include <fairmq/FairMQChannel.h>
+#include <fairmq/Device.h>
+#include <fairmq/Channel.h>
 
 #include <Headers/DataHeader.h>
 
@@ -343,7 +343,7 @@ public:
   void* get_ucx_ptr(void *ptr) const  { return (reinterpret_cast<char*>(ptr) - mSegmentAddr + mUCXSegmentAddr); }
 
   inline
-  fair::mq::MessagePtr NewFairMQMessage(const std::size_t pSize) {
+  std::unique_ptr<fair::mq::Message> NewFairMQMessage(const std::size_t pSize) {
     auto* lMem = do_allocate(pSize);
     if (lMem) {
       if constexpr (FREE_STRATEGY == eRefCount) {
@@ -362,7 +362,7 @@ public:
 
   template<typename T>
   inline
-  fair::mq::MessagePtr NewFairMQMessage(const T pData, const std::size_t pSize) {
+  std::unique_ptr<fair::mq::Message> NewFairMQMessage(const T pData, const std::size_t pSize) {
     static_assert(std::is_pointer_v<T>, "Require pointer");
 
     auto lMessage = NewFairMQMessage(pSize);
@@ -373,7 +373,7 @@ public:
   }
 
   inline
-  fair::mq::MessagePtr NewFairMQMessageFromPtr(void *pPtr, std::size_t pSize) {
+  std::unique_ptr<fair::mq::Message> NewFairMQMessageFromPtr(void *pPtr, std::size_t pSize) {
     // we can have a zero allocation
     if ((pSize > 0) && (pPtr != nullptr)) {
       assert(pPtr >= static_cast<char*>(mRegion->GetData()));

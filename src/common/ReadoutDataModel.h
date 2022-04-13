@@ -20,7 +20,7 @@
 #include <Headers/RAWDataHeader.h>
 #include <Headers/DAQID.h>
 
-#include <fairmq/FairMQMessage.h>
+#include <fairmq/Message.h>
 
 #include <istream>
 #include <cstdint>

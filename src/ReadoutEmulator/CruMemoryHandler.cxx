@@ -17,8 +17,8 @@
 
 #include <ConcurrentQueue.h>
 
-#include <fairmq/FairMQUnmanagedRegion.h>
-#include <fairmq/FairMQDevice.h> /* NewUnmanagedRegionFor */
+#include <fairmq/UnmanagedRegion.h>
+#include <fairmq/Device.h> /* NewUnmanagedRegionFor */
 #include <fairmq/ProgOptions.h>
 
 #include <chrono>

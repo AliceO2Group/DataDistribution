@@ -21,7 +21,7 @@
 #include <DataDistLogger.h>
 #include <DataDistributionOptions.h>
 
-#include <FairMQDevice.h>
+#include <fairmq/Device.h>
 
 #include <vector>
 #include <queue>
