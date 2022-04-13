@@ -15,7 +15,7 @@
 #include "ReadoutDataModel.h"
 #include "DataDistLogger.h"
 
-#include <fairmq/FairMQDevice.h>
+#include <fairmq/Device.h>
 
 #include <Headers/DataHeader.h>
 #include <Headers/DAQID.h>
@@ -73,7 +73,7 @@ ReadoutDataUtils::getSubSpecification(const RDHReader &R)
 }
 
 std::tuple<std::size_t, bool>
-ReadoutDataUtils::getHBFrameMemorySize(const FairMQMessagePtr &pMsg)
+ReadoutDataUtils::getHBFrameMemorySize(const fair::mq::MessagePtr &pMsg)
 {
   std::size_t lMemRet = 0;
   bool lStopRet = false;

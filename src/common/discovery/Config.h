@@ -14,8 +14,8 @@
 #ifndef ALICEO2_DATADIST_CONFIG_H_
 #define ALICEO2_DATADIST_CONFIG_H_
 
-#include <options/FairMQProgOptions.h>
-#include <tools/Network.h>
+#include <fairmq/ProgOptions.h>
+#include <fairmq/tools/Network.h>
 
 #include <boost/program_options/options_description.hpp>
 
@@ -142,7 +142,7 @@ public:
   }
 
   static
-  std::string getNetworkIfAddressOption(const FairMQProgOptions& pFMQProgOpt)
+  std::string getNetworkIfAddressOption(const fair::mq::ProgOptions& pFMQProgOpt)
   {
     const std::string lIf = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryNetInterface);
     if (lIf.empty()) {
@@ -168,14 +168,14 @@ public:
   }
 
   static
-  std::string getEndpointOption(const FairMQProgOptions& pFMQProgOpt)
+  std::string getEndpointOption(const fair::mq::ProgOptions& pFMQProgOpt)
   {
     auto lOpt = pFMQProgOpt.GetValue<std::string>(OptionKeyDiscoveryEndpoint);
     return lOpt;
   }
 
   static
-  std::string getIdOption(const ProcessType pProcType, const FairMQProgOptions& pFMQProgOpt, const bool pRequired = true)
+  std::string getIdOption(const ProcessType pProcType, const fair::mq::ProgOptions& pFMQProgOpt, const bool pRequired = true)
   {
     // check cmdline first
     {
@@ -209,7 +209,7 @@ public:
   }
 
   static
-  std::optional<std::string> getPartitionOption(const FairMQProgOptions& pFMQProgOpt)
+  std::optional<std::string> getPartitionOption(const fair::mq::ProgOptions& pFMQProgOpt)
   {
     // check ecs value first
     if (!DataDistLogger::sPartitionIdStr.empty()) {

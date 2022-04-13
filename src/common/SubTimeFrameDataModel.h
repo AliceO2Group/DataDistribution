@@ -208,11 +208,11 @@ class SubTimeFrame : public IDataModelObject
   struct StfData {
 
     StfData() = delete;
-    StfData(std::unique_ptr<FairMQMessage> &&pHdr, std::unique_ptr<FairMQMessage> &&pData)
+    StfData(std::unique_ptr<fair::mq::Message> &&pHdr, std::unique_ptr<fair::mq::Message> &&pData)
     : mHeader(std::move(pHdr)), mData(std::move(pData)) { }
 
-    std::unique_ptr<FairMQMessage> mHeader;
-    std::unique_ptr<FairMQMessage> mData;
+    std::unique_ptr<fair::mq::Message> mHeader;
+    std::unique_ptr<fair::mq::Message> mData;
 
     inline const o2hdr::DataHeader* getDataHeader() const
     {
@@ -228,14 +228,14 @@ class SubTimeFrame : public IDataModelObject
 
     StfMessage() = delete;
 
-    StfMessage(std::unique_ptr<FairMQMessage> &&pHeader)
+    StfMessage(std::unique_ptr<fair::mq::Message> &&pHeader)
       : mHeader(std::move(pHeader))
     {
       assert(mHeader);
     }
 
-    std::unique_ptr<FairMQMessage> mHeader;
-    std::vector<std::unique_ptr<FairMQMessage>> mDataParts;
+    std::unique_ptr<fair::mq::Message> mHeader;
+    std::vector<std::unique_ptr<fair::mq::Message>> mDataParts;
 
     inline o2hdr::DataHeader* getDataHeaderMutable() {
       if (!mHeader) {
@@ -431,7 +431,7 @@ private:
     return &(lNewMsg.mDataParts);
   }
   // optimized version without vector lookup
-  inline void addStfDataReadout(std::vector<FairMQMessagePtr> *pInVector, FairMQMessagePtr &&pData)
+  inline void addStfDataReadout(std::vector<fair::mq::MessagePtr> *pInVector, fair::mq::MessagePtr &&pData)
   {
     if (!pInVector || pInVector->empty()) {
       EDDLOG("BUG: addStfDataAppend: No header message.");
@@ -459,7 +459,7 @@ private:
 
   // Append a split-payload message
   // e.g. when deserializing a channel or a file
-  inline void addStfDataAppend(std::vector<FairMQMessagePtr> *pInVector, FairMQMessagePtr &&pData)
+  inline void addStfDataAppend(std::vector<fair::mq::MessagePtr> *pInVector, fair::mq::MessagePtr &&pData)
   {
     if (!pInVector || pInVector->empty()) {
       EDDLOG("BUG: addStfDataAppend: No header message");

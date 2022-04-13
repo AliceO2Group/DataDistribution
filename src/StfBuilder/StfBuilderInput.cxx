@@ -21,7 +21,7 @@
 #include <DataDistLogger.h>
 #include <DataDistributionOptions.h>
 
-#include <FairMQDevice.h>
+#include <fairmq/Device.h>
 
 #include <vector>
 #include <queue>
@@ -37,7 +37,7 @@ void StfInputInterface::start(bool pBuildStf, std::shared_ptr<ConsulStfBuilder> 
   mBuildStf = pBuildStf;
   mDiscoveryConfig = pStfBuilderConfig;
 
-  mBuilderInputQueue = std::make_unique<ConcurrentFifo<std::vector<FairMQMessagePtr>>>();
+  mBuilderInputQueue = std::make_unique<ConcurrentFifo<std::vector<fair::mq::MessagePtr>>>();
   mStfBuilder = std::make_unique<SubTimeFrameReadoutBuilder>(mDevice.MemI());
 
   // sequence thread only needed when building physics STFs
@@ -87,7 +87,7 @@ mRunning = false;
 void StfInputInterface::StfReceiverThread()
 {
   using namespace std::chrono_literals;
-  std::vector<FairMQMessagePtr> lReadoutMsgs;
+  std::vector<fair::mq::MessagePtr> lReadoutMsgs;
   lReadoutMsgs.reserve(4096);
 
   // Reference to the input channel
@@ -191,7 +191,7 @@ void StfInputInterface::StfBuilderThread()
   using namespace std::chrono_literals;
 
   bool lStarted = false;
-  std::vector<FairMQMessagePtr> lReadoutMsgs;
+  std::vector<fair::mq::MessagePtr> lReadoutMsgs;
   lReadoutMsgs.reserve(1U << 20);
 
   // support FEEID masking
@@ -217,7 +217,7 @@ void StfInputInterface::StfBuilderThread()
   // insert and mask the feeid
   auto lInsertWithFeeIdMasking = [&lStfBuilder, lFeeIdMask] (const header::DataOrigin &pDataOrigin,
     const header::DataHeader::SubSpecificationType &pSubSpec, const ReadoutSubTimeframeHeader &pRdoHeader,
-    const FairMQParts::iterator pStartHbf, const std::size_t pInsertCnt) {
+    const fair::mq::Parts::iterator pStartHbf, const std::size_t pInsertCnt) {
 
     // mask the subspecification if the fee mode is used
     auto lMaskedSubspec = pSubSpec;
@@ -402,7 +402,7 @@ void StfInputInterface::TopologicalStfBuilderThread()
   using namespace std::chrono_literals;
 
   bool lStarted = false;
-  std::vector<FairMQMessagePtr> lReadoutMsgs(1U << 20);
+  std::vector<fair::mq::MessagePtr> lReadoutMsgs(1U << 20);
   lReadoutMsgs.clear();
 
   // per equipment data cache
@@ -447,7 +447,7 @@ void StfInputInterface::TopologicalStfBuilderThread()
     const header::DataOrigin &pDataOrigin,
     const header::DataHeader::SubSpecificationType &pSubSpec,
     const ReadoutSubTimeframeHeader &pRdoHeader,
-    FairMQParts::iterator &pStartHbf /* in/out */,
+    fair::mq::Parts::iterator &pStartHbf /* in/out */,
     std::size_t &pInsertCnt /* in/out */) -> std::optional<std::unique_ptr<SubTimeFrame> > {
 
     // mask the subspecification if the fee mode is used

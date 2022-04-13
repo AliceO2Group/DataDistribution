@@ -60,7 +60,7 @@ class ReadoutDevice : public DataDistDevice
   void SendingThread();
 
   // data and Descriptor regions
-  // must be here because NewUnmanagedRegionFor() is a method of FairMQDevice...
+  // must be here because NewUnmanagedRegionFor() is a method of fair::mq::Device...
   std::unique_ptr<DataRegionAllocatorResource> mDataRegion;
 
   std::string mOutChannelName;
@@ -79,7 +79,7 @@ class ReadoutDevice : public DataDistDevice
   std::vector<std::unique_ptr<CruLinkEmulator>> mCruLinks;
 
   // messages to send
-  std::vector<FairMQMessagePtr> mDataBlockMsgs;
+  std::vector<fair::mq::MessagePtr> mDataBlockMsgs;
   std::thread mSendingThread;
 
   /// Observables

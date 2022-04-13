@@ -112,7 +112,7 @@ public:
 
   /// Discovery configuration
   std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
-  std::shared_ptr<FairMQTransportFactory> mZMQTransportFactory;
+  std::shared_ptr<fair::mq::TransportFactory> mZMQTransportFactory;
 
   /// Scheduler threads
   std::thread mSchedulerThread;

@@ -21,7 +21,7 @@ namespace o2::DataDistribution
 
 using namespace std::chrono_literals;
 
-void StfSenderOutputFairMQ::start(std::shared_ptr<FairMQTransportFactory> pZMQTransportFactory)
+void StfSenderOutputFairMQ::start(std::shared_ptr<fair::mq::TransportFactory> pZMQTransportFactory)
 {
   mZMQTransportFactory = pZMQTransportFactory;
   mRunning = true;
@@ -63,7 +63,7 @@ ConnectStatus StfSenderOutputFairMQ::connectTfBuilder(const std::string &pTfBuil
   auto lChanName = "tf_builder_" + pTfBuilderId;
   std::replace(lChanName.begin(), lChanName.end(),'.', '_');
 
-  auto lNewChannel = std::make_unique<FairMQChannel>(
+  auto lNewChannel = std::make_unique<fair::mq::Channel>(
     lChanName ,              // name
     "push",                  // type
     "connect",               // method

@@ -20,8 +20,8 @@
 #include <Headers/Stack.h>
 #include <Framework/DataProcessingHeader.h>
 
-#include <fairmq/FairMQDevice.h>
-#include <fairmq/FairMQUnmanagedRegion.h>
+#include <fairmq/Device.h>
+#include <fairmq/UnmanagedRegion.h>
 
 #include <optional>
 
@@ -53,7 +53,7 @@ bool SubTimeFrameReadoutBuilder::addHbFrames(
   const o2::header::DataOrigin &pDataOrig,
   const o2::header::DataHeader::SubSpecificationType pSubSpecification,
   const ReadoutSubTimeframeHeader& pHdr,
-  std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen)
+  std::vector<fair::mq::MessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen)
 {
   static thread_local std::vector<bool> lRemoveBlocks;
 
@@ -181,7 +181,7 @@ bool SubTimeFrameReadoutBuilder::addHbFrames(
   const o2hdr::DataIdentifier lDataId(o2::header::gDataDescriptionRawData.str,  pDataOrig.str);
 
   // Speed up adding messages by saving the vector of split-payloads
-  std::vector<FairMQMessagePtr> *pInVector = nullptr;
+  std::vector<fair::mq::MessagePtr> *pInVector = nullptr;
 
   for (size_t i = 0; i < pHBFrameLen; i++) {
 
@@ -222,12 +222,12 @@ std::optional<std::unique_ptr<SubTimeFrame>> SubTimeFrameReadoutBuilder::addTopo
   const o2::header::DataOrigin &pDataOrig,
   const o2::header::DataHeader::SubSpecificationType pSubSpecification,
   const ReadoutSubTimeframeHeader& pHdr,
-  std::vector<FairMQMessagePtr>::iterator &pHbFramesBegin, std::size_t &pHBFrameLen,
+  std::vector<fair::mq::MessagePtr>::iterator &pHbFramesBegin, std::size_t &pHBFrameLen,
   const std::uint64_t pMaxNumMessages, bool pCutTfOnNewOrbit)
 {
   static uint32_t sTfId = 1;
 
-  auto isFirstPacketOfOrbit = [&](const FairMQMessagePtr &pMsg) -> bool {
+  auto isFirstPacketOfOrbit = [&](const fair::mq::MessagePtr &pMsg) -> bool {
     if (!pMsg) {
       return false;
     }
@@ -455,7 +455,7 @@ void TimeFrameBuilder::allocate_memory(const std::size_t pDataSegSize, const std
   mMemRes.start();
 }
 
-FairMQMessagePtr TimeFrameBuilder::newHeaderMessage(const char *pData, const std::size_t pSize)
+fair::mq::MessagePtr TimeFrameBuilder::newHeaderMessage(const char *pData, const std::size_t pSize)
 {
     if (pSize < sizeof (DataHeader)) {
       EDDLOG_RL(1000, "TimeFrameBuilder: Header size less that DataHeader size={}", pSize);

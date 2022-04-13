@@ -101,7 +101,7 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
   return lSinkDesc;
 }
 
-bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt)
+bool SubTimeFrameFileSink::loadVerifyConfig(const fair::mq::ProgOptions& pFMQProgOpt)
 {
   mEnabled = pFMQProgOpt.GetValue<bool>(OptionKeyStfSinkEnable);
 

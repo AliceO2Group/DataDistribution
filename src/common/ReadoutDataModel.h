@@ -20,7 +20,7 @@
 #include <Headers/RAWDataHeader.h>
 #include <Headers/DAQID.h>
 
-#include <fairmq/FairMQMessage.h>
+#include <fairmq/Message.h>
 
 #include <istream>
 #include <cstdint>
@@ -242,7 +242,7 @@ public:
     mRDHSize = sRDHReader->CheckRdhData(mData, mSize);
   }
 
-  explicit RDHReader(const FairMQMessagePtr &msg) {
+  explicit RDHReader(const fair::mq::MessagePtr &msg) {
     if (!msg) {
       throw std::runtime_error("RDHReader::msg is null");
     }
@@ -405,7 +405,7 @@ public:
   static o2::header::DataOrigin getDataOrigin(const RDHReader &R);
   static o2::header::DataHeader::SubSpecificationType getSubSpecification(const RDHReader &R);
 
-  static std::tuple<std::size_t, bool> getHBFrameMemorySize(const FairMQMessagePtr &pMsg);
+  static std::tuple<std::size_t, bool> getHBFrameMemorySize(const fair::mq::MessagePtr &pMsg);
 
   static bool rdhSanityCheck(const char* data, const std::size_t len);
   static bool filterEmptyTriggerBlocks(const char* pData, const std::size_t pLen);

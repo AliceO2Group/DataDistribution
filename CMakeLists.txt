@@ -79,7 +79,7 @@ message(STATUS "CMAKE_CXX_STANDARD = ${CMAKE_CXX_STANDARD}")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
 find_package(Threads REQUIRED)
-find_package(FairMQ 1.4 REQUIRED)
+find_package(FairMQ 1.4.41 REQUIRED)
 find_package(FairLogger ${FairMQ_FairLogger_VERSION} REQUIRED)
 message(STATUS "Looking for FairLogger dependencies: ${FairLogger_PACKAGE_DEPENDENCIES}" )
 foreach(dep IN LISTS FairLogger_PACKAGE_DEPENDENCIES)

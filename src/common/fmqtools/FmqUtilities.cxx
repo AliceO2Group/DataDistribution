@@ -17,7 +17,7 @@
 #include <DataDistLogger.h>
 #include <DataDistMonitoring.h>
 
-#include <fairmq/FairMQDevice.h>
+#include <fairmq/Device.h>
 #include <fairmq/DeviceRunner.h>
 
 #include<boost/algorithm/string.hpp>
