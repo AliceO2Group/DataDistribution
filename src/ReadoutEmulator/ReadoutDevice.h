@@ -63,7 +63,7 @@ class ReadoutDevice : public DataDistDevice
   void SendingThread();
 
   // data and Descriptor regions
-  // must be here because NewUnmanagedRegionFor() is a method of FairMQDevice...
+  // must be here because NewUnmanagedRegionFor() is a method of fair::mq::Device...
   std::unique_ptr<DataRegionAllocatorResource> mDataRegion;
 
   std::string mOutChannelName;

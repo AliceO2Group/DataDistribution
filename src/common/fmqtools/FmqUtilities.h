@@ -14,14 +14,14 @@
 #ifndef ALICEO2_DATADIST_FMQUTILITIES_H_
 #define ALICEO2_DATADIST_FMQUTILITIES_H_
 
-#include <fairmq/FairMQDevice.h>
+#include <fairmq/Device.h>
 #include <fairmq/DeviceRunner.h>
 
 #include <thread>
 
 namespace o2::DataDistribution {
 
-class DataDistDevice : public FairMQDevice {
+class DataDistDevice : public fair::mq::Device {
 
 public:
 

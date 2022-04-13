@@ -15,7 +15,7 @@
 #include "ReadoutDataModel.h"
 #include "DataDistLogger.h"
 
-#include <fairmq/FairMQDevice.h>
+#include <fairmq/Device.h>
 
 #include <Headers/DataHeader.h>
 #include <Headers/DAQID.h>

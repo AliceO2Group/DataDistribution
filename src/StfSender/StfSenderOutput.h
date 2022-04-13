@@ -147,8 +147,8 @@ public:
   ConcurrentFifo<StfCopyInfo> mCopyQueue;
 
   std::mutex mStfOrderingLock;
-    std::condition_variable mStfOrderingCv;
-    std::queue<std::uint64_t> mStfOrderingQueue;
+  std::condition_variable mStfOrderingCv;
+  std::queue<std::uint64_t> mStfOrderingQueue;
 
   /// Scheduler threads
   struct StfSchedInfo {

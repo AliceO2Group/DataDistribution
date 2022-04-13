@@ -92,7 +92,7 @@ void StfSenderDevice::Init()
   I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
   if (I().mPartitionId.empty()) {
     WDDLOG("StfSender 'discovery-partition' parameter not set during Init(). Exiting.");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -130,7 +130,7 @@ void StfSenderDevice::Init()
   lBuffersAllocatedFuture.wait();
   if (!lBuffersAllocatedFuture.get()) {
     EDDLOG("Init::MemorySegment allocation failed. Exiting...");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -185,7 +185,7 @@ void StfSenderDevice::InitTask()
   // Not available in Init()
   if (fair::mq::Transport::SHM != Transport()->GetType()) {
     EDDLOG("Default transport parameter must be set to shm.");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -195,13 +195,13 @@ void StfSenderDevice::InitTask()
     GetChannel(I().mInputChannelName, 0);
   } catch (...) {
     EDDLOG("Requested input channel is not configured. input_chan={}", I().mInputChannelName);
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
   // File sink
   if (!I().mFileSink->loadVerifyConfig(*GetConfig())) {
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -224,7 +224,7 @@ void StfSenderDevice::InitTask()
         if (NewStatePending()) {
           IDDLOG("InitTask: The control system requested abort.");
           AbortInitTask();
-          ChangeState(fair::mq::Transition::ErrorFound);
+          ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
           return;
         }
 
@@ -234,7 +234,7 @@ void StfSenderDevice::InitTask()
       // Did we fail to connect to the TfScheduler?
       if (!I().mTfSchedulerRpcClient.started()) {
         EDDLOG("InitTask: Failed to connect to TfScheduler. Exiting.");
-        ChangeState(fair::mq::Transition::ErrorFound);
+        ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
         return;
       }
     }

@@ -46,7 +46,7 @@ void TfSchedulerDevice::InitTask()
   mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
   if (mPartitionId.empty()) {
     WDDLOG("TfScheduler 'discovery-partition' parameter not set during InitTask(). Exiting.");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -57,13 +57,13 @@ void TfSchedulerDevice::InitTask()
     // prevent infinite looping. Look for the specified request for 5min and exit
     if (since<std::chrono::minutes>(mStartTime) > 30.0) {
       IDDLOG("Partition request not found. Exiting. partition={}", mPartitionId);
-      ChangeState(fair::mq::Transition::ErrorFound);
+      ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
       return;
     }
 
     if (NewStatePending()) {
       IDDLOG("Exiting on request from control system.");
-      ChangeState(fair::mq::Transition::ErrorFound);
+      ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
       return;
     }
 
@@ -86,7 +86,7 @@ void TfSchedulerDevice::InitTask()
         mPartitionStartTime = std::chrono::steady_clock::now();
       } else {
         EDDLOG("Failed to create new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
-        ChangeState(fair::mq::Transition::ErrorFound);
+        ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
         return;
       }
     }
@@ -99,7 +99,7 @@ void TfSchedulerDevice::PreRun()
 
 void TfSchedulerDevice::PostRun()
 {
-  ChangeState(fair::mq::Transition::End);
+  ChangeStateOrThrow(fair::mq::Transition::End);
 }
 
 void TfSchedulerDevice::ResetTask()
@@ -114,7 +114,7 @@ void TfSchedulerDevice::ResetTask()
   mPartitionId.clear();
 
   // throw "Intentional exit";
-  ChangeState(fair::mq::Transition::End);
+  ChangeStateOrThrow(fair::mq::Transition::End);
 }
 
 bool TfSchedulerDevice::ConditionalRun()
@@ -124,7 +124,7 @@ bool TfSchedulerDevice::ConditionalRun()
 
   if (mSchedInstance) {
     if (mSchedInstance->isTerminated() || mSchedInstance->isError()) {
-      ChangeState(fair::mq::Transition::End);
+      ChangeStateOrThrow(fair::mq::Transition::End);
       return false; // -> PostRun() -> exit
     }
 

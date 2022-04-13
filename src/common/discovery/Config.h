@@ -15,7 +15,7 @@
 #define ALICEO2_DATADIST_CONFIG_H_
 
 #include <fairmq/ProgOptions.h>
-#include <tools/Network.h>
+#include <fairmq/tools/Network.h>
 
 #include <boost/program_options/options_description.hpp>
 

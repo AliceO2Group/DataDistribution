@@ -110,7 +110,7 @@ void StfBuilderDevice::InitTask()
   }
   if (I().mPartitionId.empty()) {
     EDDLOG("Partition id is not provided during InitTask(). Check command line or ECS parameters. Exiting.");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -143,7 +143,7 @@ void StfBuilderDevice::InitTask()
   // check run type
   if (ReadoutDataUtils::sRunType == ReadoutDataUtils::RunType::eInvalid) {
     EDDLOG("Run type paramter must be correctly set.");
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -153,7 +153,7 @@ void StfBuilderDevice::InitTask()
       (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginMFT))) {
       EDDLOG("Run type paramter 'topology' is supported only for ITS and MFT. Please specify the detector option. detector={}",
         ReadoutDataUtils::sSpecifiedDataOrigin.as<std::string>());
-      ChangeState(fair::mq::Transition::ErrorFound);
+      ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
       return;
     }
   }
@@ -180,13 +180,13 @@ void StfBuilderDevice::InitTask()
 
   // File sink
   if (!I().mFileSink->loadVerifyConfig(*(this->GetConfig()))) {
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
   // File source
   if (!I().mFileSource->loadVerifyConfig(*(this->GetConfig()))) {
-    ChangeState(fair::mq::Transition::ErrorFound);
+    ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
     return;
   }
 
@@ -214,7 +214,7 @@ void StfBuilderDevice::InitTask()
       (ReadoutDataUtils::sSpecifiedDataOrigin == o2::header::gDataOriginAny)) {
       EDDLOG("Detector string parameter must be specified when receiving the data from the "
         "readout and not using RDHv6 or greater.");
-      ChangeState(fair::mq::Transition::ErrorFound);
+      ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
       return;
     } else {
       IDDLOG("READOUT INTERFACE: Configured detector: {}", ReadoutDataUtils::sSpecifiedDataOrigin.as<std::string>());
@@ -222,7 +222,7 @@ void StfBuilderDevice::InitTask()
 
     if (ReadoutDataUtils::sRdhVersion == ReadoutDataUtils::RdhVersion::eRdhInvalid) {
       EDDLOG("The RDH version must be specified when receiving data from readout.");
-      ChangeState(fair::mq::Transition::ErrorFound);
+      ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
       return;
     } else {
       IDDLOG("READOUT INTERFACE: Configured RDHv{}", ReadoutDataUtils::sRdhVersion);
@@ -261,7 +261,7 @@ void StfBuilderDevice::InitTask()
         GetChannel(I().mInputChannelName);
       } catch(std::exception &) {
         EDDLOG("Input channel not configured (from o2-readout-exe) and not running with file source enabled.");
-        ChangeState(fair::mq::Transition::ErrorFound);
+        ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
         return;
       }
     }
@@ -272,7 +272,7 @@ void StfBuilderDevice::InitTask()
       }
     } catch(std::exception &e) {
       EDDLOG("Output channel (to DPL or StfSender) must be configured if not running in stand-alone mode.");
-      ChangeState(fair::mq::Transition::ErrorFound);
+      ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
       return;
     }
   }
