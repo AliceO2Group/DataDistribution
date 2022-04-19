@@ -278,29 +278,29 @@ private:
     return "epn/data-dist/partition/"s + pPartId + "/info"s;
   }
   static
-  constexpr std::string getGlobalTunablePrefix() {
+  const std::string getGlobalTunablePrefix() {
     using namespace std::string_literals;
-    return "epn/data-dist/parameters/Global/"s;
+    return "epn/data-dist/parameters/Global/";
   }
 
   static
-  constexpr std::string getTunablePrefix() {
+  const std::string getTunablePrefix() {
     using namespace std::string_literals;
 
     if constexpr (std::is_same_v<T, TfSchedulerConfigStatus>) {
-      return "epn/data-dist/parameters/TfScheduler/"s;
+      return "epn/data-dist/parameters/TfScheduler/";
     }
 
     if constexpr (std::is_same_v<T, StfBuilderConfigStatus>) {
-      return "epn/data-dist/parameters/StfBuilder/"s;
+      return "epn/data-dist/parameters/StfBuilder/";
     }
 
     if constexpr (std::is_same_v<T, StfSenderConfigStatus>) {
-      return "epn/data-dist/parameters/StfSender/"s;
+      return "epn/data-dist/parameters/StfSender/";
     }
 
     if constexpr (std::is_same_v<T, TfBuilderConfigStatus>) {
-      return "epn/data-dist/parameters/TfBuilder/"s;
+      return "epn/data-dist/parameters/TfBuilder/";
     }
 
     static_assert (
@@ -308,7 +308,7 @@ private:
       !std::is_same_v<T, StfBuilderConfigStatus>  ||
       !std::is_same_v<T, StfSenderConfigStatus>   ||
       !std::is_same_v<T, TfBuilderConfigStatus> , "wrong Config Type");
-    return ""s;
+    return "";
   }
 
   void ConsulPollingThread()
