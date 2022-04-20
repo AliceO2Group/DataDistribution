@@ -44,6 +44,7 @@ struct TfBuilderInfo {
   std::uint64_t mEstimatedFreeMemory = 0;
   std::uint64_t mReportedFreeMemory = 0;
   std::size_t mTfsInBuilding = 0;
+  std::size_t mTfsBuffered = 0;
 
   // Topological distribution
   double mTotalUtilization = 0.0;
@@ -124,7 +125,11 @@ class TfSchedulerTfBuilderInfo
   void addReadyTfBuilder(std::shared_ptr<TfBuilderInfo> pInfo)
   {
     std::scoped_lock lLock(mReadyInfoLock);
-    mReadyTfBuilders.push_back(std::move(pInfo));
+    if (rand() % 2) {
+      mReadyTfBuilders.push_back(std::move(pInfo));
+    } else {
+      mReadyTfBuilders.push_front(std::move(pInfo));
+    }
   }
 
   void removeReadyTfBuilder(const std::string &pId)
@@ -184,7 +189,7 @@ class TfSchedulerTfBuilderInfo
 
 private:
   /// Overestimation of actual size for TF building
-  static constexpr std::uint64_t sTfSizeOverestimatePercent = std::uint64_t(10);
+  static constexpr std::uint64_t sTfSizeOverestimatePercent = std::uint64_t(20);
 
   /// Discard timeout for non-complete TFs
   static constexpr auto sTfBuilderDiscardTimeout = 5s;
