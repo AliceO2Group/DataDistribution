@@ -292,10 +292,10 @@ void StfSenderOutputUCX::visit(const SubTimeFrame &pStf, void *pData)
           // add the data part info
           for (auto &lDataMsg : lStfDataIter.mDataParts) {
             lStfDataPtrs.emplace_back(UCXData());
-            lStfDataPtrs.back().set_idx(lDataIovIdx++);
-            lStfDataPtrs.back().set_len(lDataMsg->GetSize());
-            // add pointer for start, then reset to region offset later
-            lStfDataPtrs.back().set_start(reinterpret_cast<std::uint64_t>(lDataMsg->GetData()));
+            auto &lDataPtr = lStfDataPtrs.back();
+            lDataPtr.set_idx(lDataIovIdx++);
+            lDataPtr.set_len(lDataMsg->GetSize());
+            lDataPtr.set_start(reinterpret_cast<std::uint64_t>(lDataMsg->GetData()));
           }
         }
       }
