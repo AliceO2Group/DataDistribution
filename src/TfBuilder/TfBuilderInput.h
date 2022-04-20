@@ -53,6 +53,7 @@ class TfBuilderInput
     std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
     mStfMergeMap.clear();
     mMaxMergedTfId = 0;
+    mStfIdsToDrop.clear();
   }
 
   auto getStfRequestQueue() const { return mStfRequestQueue; }
@@ -101,6 +102,7 @@ class TfBuilderInput
     std::map<TimeFrameIdType, std::vector<ReceivedStfMeta> > mStfMergeMap;
     std::map<TimeFrameIdType, std::uint64_t> mStfMergeCountMap; // contains number of stfs when all Stfsenders are reached
     std::uint64_t mMaxMergedTfId = 0;
+    std::set<std::uint64_t> mStfIdsToDrop;
 
     inline void triggerStfMerger() {
       mStfMergerRun = true;
