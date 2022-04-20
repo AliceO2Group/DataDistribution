@@ -165,6 +165,7 @@ void TfBuilderInput::StfPacingThread()
       assert (mStfMergeMap.count(lTfId) == 1);
       assert (mStfMergeMap[lTfId].empty());
 
+      mStfIdsToDrop.insert(lTfId); // set the drop flag for receiving of the future stfs
       mStfMergeMap.erase(lTfId);
       continue;
     }
@@ -186,10 +187,15 @@ void TfBuilderInput::StfPacingThread()
       lStfInfo.mStfId = lNewTfId;
     }
 
-
     // TfScheduler should manage memory of the region and not overcommit the TfBuilders
     { // Push the STF into the merger queue
       std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);
+
+      // check if there were issues with requesting STFs
+      if (mStfIdsToDrop.count(lTfId) > 0) {
+        mStfMergeMap.erase(lTfId);
+        continue;
+      }
 
       if (lTfId > mMaxMergedTfId) {
         mStfMergeMap[lTfId].push_back(std::move(lStfInfo));
@@ -247,6 +253,11 @@ void TfBuilderInput::StfDeserializingThread()
     const auto lStfId = lMinTfInfo->first;
     auto &lStfVector = lMinTfInfo->second;
 
+    // check if the TF should be dropped
+    if (mStfIdsToDrop.count(lStfId) > 0) {
+      mStfMergeMap.erase(mStfMergeMap.begin());
+    }
+
     // deserialize headers of any new STFs
     deserialize_headers(lStfVector);
 
@@ -259,7 +270,7 @@ void TfBuilderInput::StfDeserializingThread()
     }
 
     // Check if the TF is completed
-    if ((lStfVector.size() == lNumStfsOpt)) {
+    if (!lStfVector.empty() && (lStfVector.size() == lNumStfsOpt)) {
       mStfsForMerging.push(std::move(lStfVector));
 
       mStfMergeMap.erase(lStfId);
@@ -293,9 +304,11 @@ void TfBuilderInput::StfMergerThread()
     }
     auto &lStfVector = lStfVectorOpt.value();
 
+    assert (lStfVector.size() > 0);
+
     // merge the current TF!
-    const std::chrono::duration<double, std::milli> lBuildDurationMs =
-      lStfVector.rbegin()->mTimeReceived - lStfVector.begin()->mTimeReceived;
+    const double lBuildDurationMs = since<std::chrono::milliseconds>(
+      lStfVector.cbegin()->mTimeReceived, lStfVector.crbegin()->mTimeReceived);
 
     // start from the first element (using it as the seed for the TF)
     std::unique_ptr<SubTimeFrame> lTf = std::move(lStfVector.begin()->mStf);
@@ -320,8 +333,7 @@ void TfBuilderInput::StfMergerThread()
     // account the size of received TF
     mRpc->recordTfBuilt(*lTf);
 
-    DDDLOG_RL(1000, "Building of TF completed. tf_id={:d} duration_ms={} total_tf={:d}",
-      lTfId, lBuildDurationMs.count(), lNumBuiltTfs);
+    DDDLOG_RL(5000, "Building of TF completed. tf_id={} duration_ms={:.4} total_tf={}", lTfId, lBuildDurationMs, lNumBuiltTfs);
 
     {
       const auto lNow = hres_clock::now();
@@ -330,7 +342,7 @@ void TfBuilderInput::StfMergerThread()
       const auto lRate = (1.0 / lTfDur.count());
 
       DDMON("tfbuilder", "data_input.rate", (lRate * lTf->getDataSize()));
-      DDMON("tfbuilder", "merge.receive_span_ms", lBuildDurationMs.count());
+      DDMON("tfbuilder", "merge.receive_span_ms", lBuildDurationMs);
     }
 
     // Queue out the TF for consumption

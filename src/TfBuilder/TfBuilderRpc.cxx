@@ -564,15 +564,15 @@ void TfBuilderRpcImpl::StfRequestThread()
 
       DDMON("tfbuilder", "merge.stf_data_req_total_ms", since<std::chrono::milliseconds>(lTimeStfReqStart));
 
-      // set the number of STFs for merging thread
-      if (!lIsTopo) {
-        setNumberOfStfs(lTfId, lNumExpectedStfs);
+      if (lNumExpectedStfs > 0) {
+        // set the number of STFs for merging thread
+        if (!lIsTopo) {
+          setNumberOfStfs(lTfId, lNumExpectedStfs);
+        } else {
+          setNumberOfStfs(lTfRenamedId, lNumExpectedStfs);
+        }
       } else {
-        setNumberOfStfs(lTfRenamedId, lNumExpectedStfs);
-      }
-
-      // cleanup if we reached no StfSenders
-      if (lNumExpectedStfs == 0) {
+        // cleanup if we reached no StfSenders
         // Let the scheduler know that we are not building the current TF
         mNumTfsInBuilding = std::max(0, mNumTfsInBuilding - 1);
         mLastBuiltTfId = std::max(mLastBuiltTfId, lTfId);
