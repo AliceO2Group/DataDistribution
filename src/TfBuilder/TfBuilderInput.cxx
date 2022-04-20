@@ -62,8 +62,11 @@ bool TfBuilderInput::start()
   if (mInputFairMQ) {
     mInputFairMQ->start(mConfig, lTransportFactory);
   }
+
   if (mInputUCX) {
-    mInputUCX->start();
+    if (!mInputUCX->start()) {
+      return false;
+    }
   }
 
   // Start all the threads
