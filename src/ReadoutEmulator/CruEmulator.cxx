@@ -22,9 +22,7 @@
 
 #include <Headers/DAQID.h>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 void CruLinkEmulator::linkReadoutThread()
@@ -33,9 +31,9 @@ void CruLinkEmulator::linkReadoutThread()
 
   const auto cSuperpageSize = mMemHandler->getSuperpageSize();
   const auto cHBFrameSize = (mLinkBitsPerS / cHBFrameFreq) >> 3;
-  const auto cStfLinkSize = cHBFrameSize * cHBFrameFreq * 256 / cHBFrameFreq;
-  const auto cNumDmaChunkPerSuperpage = std::min(size_t(256), size_t(cSuperpageSize / mDmaChunkSize));
-  constexpr int64_t cStfTimeUs = std::chrono::microseconds(std::uint64_t(1000000) * 256 / cHBFrameFreq).count();
+  const auto cStfLinkSize = cHBFrameSize * cHBFrameFreq * mOrbitsInTf / cHBFrameFreq;
+  const auto cNumDmaChunkPerSuperpage = std::min(size_t(mOrbitsInTf), size_t(cSuperpageSize / mDmaChunkSize));
+  const int64_t cStfTimeUs = std::chrono::microseconds(std::uint64_t(1000000) * mOrbitsInTf / cHBFrameFreq).count();
 
   DDDLOG("Superpage size: {}", cSuperpageSize);
   DDDLOG("mDmaChunkSize size: {}", mDmaChunkSize);
@@ -47,14 +45,14 @@ void CruLinkEmulator::linkReadoutThread()
   // os might sleep much longer than requested
   // keep count of transmitted pages and adjust when needed
   int64_t lSentStf = 0;
-  using hres_clock = std::chrono::high_resolution_clock;
+  using hres_clock = std::chrono::steady_clock;
   const auto lOpStart = hres_clock::now();
 
   std::vector<CRUSuperpage> lSuperpages;
 
   while (mRunning) {
 
-    const int64_t lUsSinceStart = std::chrono::duration_cast<std::chrono::microseconds>(hres_clock::now() - lOpStart).count();
+    const int64_t lUsSinceStart = since<std::chrono::microseconds>(lOpStart);
     const int64_t lStfToSend = lUsSinceStart / cStfTimeUs - lSentStf;
 
     if (lStfToSend <= 0) {
@@ -63,7 +61,7 @@ void CruLinkEmulator::linkReadoutThread()
     }
 
     if (lStfToSend > 1 || lStfToSend < 0) {
-      WDDLOG("Data producer is running slow. StfBacklog: {}", lStfToSend);
+      WDDLOG_GRL(10000, "Data producer is running slow. StfBacklog: {}", lStfToSend);
     }
 
     const std::int64_t lPagesToSend = std::max(lStfToSend, int64_t(lStfToSend * (cStfLinkSize + cSuperpageSize - 1) / cSuperpageSize));
@@ -77,7 +75,7 @@ void CruLinkEmulator::linkReadoutThread()
     lPagesAvail = lSuperpages.size();
 
     for (int64_t stf = 0; stf < lStfToSend; stf++, lSentStf++) {
-      auto lHbfToSend = 256;
+      auto lHbfToSend = mOrbitsInTf;
 
       while (lHbfToSend > 0) {
         if (!lSuperpages.empty()) {
@@ -117,6 +115,7 @@ void CruLinkEmulator::linkReadoutThread()
               std::memcpy(lRdh+12, &lEquipment, sizeof(std::uint32_t));
             }
 
+            assert (d * mDmaChunkSize < cSuperpageSize);
             linkO2Data.mLinkRawData.push_back(CruDmaPacket{
               mMemHandler->getDataRegion(),
               sp.mDataVirtualAddress + (d * mDmaChunkSize),        // Valid data DMA Chunk <superpage offset + length>
@@ -158,5 +157,4 @@ void CruLinkEmulator::stop()
   }
 }
 
-}
 } /* namespace o2::DataDistribution */

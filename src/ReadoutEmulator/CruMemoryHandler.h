@@ -16,7 +16,7 @@
 
 #include "Headers/DataHeader.h"
 
-#include <fairmq/FairMQUnmanagedRegion.h>
+#include <MemoryUtils.h>
 
 #include <stack>
 #include <map>
@@ -39,12 +39,11 @@ using namespace o2::header;
 
 struct CRUSuperpage {
   char* mDataVirtualAddress;
-  char* mDataBusAddress;
 };
 
 struct CruDmaPacket {
-  FairMQUnmanagedRegion* mDataSHMRegion = nullptr;
-  char* mDataPtr = nullptr;
+  DataRegionAllocatorResource *mDataSHMRegion = nullptr;
+  char *mDataPtr = nullptr;
   size_t mDataSize = size_t(0);
 };
 
@@ -62,7 +61,7 @@ class CruMemoryHandler
     teardown();
   }
 
-  void init(FairMQUnmanagedRegion* pDataRegion, std::size_t pSuperPageSize);
+  void init(DataRegionAllocatorResource *pDataRegion, std::size_t pSuperPageSize);
   void teardown();
 
   std::size_t getSuperpageSize() const
@@ -77,15 +76,23 @@ class CruMemoryHandler
   template <class OutputIt>
   std::size_t getSuperpages(unsigned long n, OutputIt spDst)
   {
-    return mSuperpages.try_pop_n(n, spDst);
+    std::scoped_lock lLock(mDataRegionLock);
+    for (unsigned long i = 0; i < n; i++) {
+      void *ptr = mDataRegion->do_allocate(mSuperpageSize);
+      if (ptr) {
+        spDst = CRUSuperpage{reinterpret_cast<char*>(ptr)};
+        spDst++;
+      } else {
+        return i;
+      }
+    }
+
+    return n;
   }
 
   // not useful
   void put_superpage(const char* spVirtAddr);
 
-  // address must match shm fairmq messages sent out
-  void get_data_buffer(const char* dataBufferAddr, const std::size_t dataBuffSize);
-  void put_data_buffer(const char* dataBufferAddr, const std::size_t dataBuffSize);
   size_t free_superpages();
 
   auto getDataRegion() const
@@ -95,14 +102,16 @@ class CruMemoryHandler
 
   char* getDataRegionPtr() const
   {
+    std::scoped_lock lLock(mDataRegionLock);
     return reinterpret_cast<char*>(
-      (reinterpret_cast<uintptr_t>(mDataRegion->GetData()) + mSuperpageSize - 1)  & ~(mSuperpageSize - 1)
+      (reinterpret_cast<uintptr_t>(mDataRegion->address()) + mSuperpageSize - 1)  & ~(mSuperpageSize - 1)
     );
   }
 
   auto getDataRegionSize() const
   {
-    return mDataRegion->GetSize();
+    std::scoped_lock lLock(mDataRegionLock);
+    return mDataRegion->size();
   }
 
   // FIFO of filled ReadoutLinkO2Data updates to be sent to STFBuilder (thread safe)
@@ -117,30 +126,9 @@ class CruMemoryHandler
   }
 
  private:
-  FairMQUnmanagedRegion* mDataRegion;
-
+  mutable std::mutex mDataRegionLock;
+  DataRegionAllocatorResource *mDataRegion;
   std::size_t mSuperpageSize;
-
-  /// stack of free superpages
-  ConcurrentLifo<CRUSuperpage> mSuperpages;
-
-  /// used buffers
-  /// split tracking for scalability into several buckets based on sp address
-  static constexpr unsigned long cBufferBucketSize = 127;
-
-  struct BufferBucket {
-    std::mutex mLock;
-    std::unordered_map<const char*, CRUSuperpage> mVirtToSuperpage;
-    // map<sp_address, map<buff_addr, buf_len>>
-    std::unordered_map<const char*, std::unordered_map<const char*, std::size_t>> mUsedSuperPages;
-  };
-
-  BufferBucket mBufferMap[cBufferBucketSize];
-
-  BufferBucket& getBufferBucket(const char* pAddr)
-  {
-    return mBufferMap[std::hash<const char*>{}(pAddr) % cBufferBucketSize];
-  }
 
   /// output data queue
   ConcurrentFifo<ReadoutLinkO2Data> mO2LinkDataQueue;

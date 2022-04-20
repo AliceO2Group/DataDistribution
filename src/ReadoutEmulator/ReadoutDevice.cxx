@@ -13,6 +13,8 @@
 
 #include <ReadoutDataModel.h>
 
+#include <MemoryUtils.h>
+
 #include <options/FairMQProgOptions.h>
 
 #include <chrono>
@@ -38,11 +40,9 @@ void ReadoutDevice::InitTask()
 {
   mOutChannelName = GetConfig()->GetValue<std::string>(OptionKeyOutputChannelName);
   mDataRegionSize = GetConfig()->GetValue<std::size_t>(OptionKeyReadoutDataRegionSize);
-
   mLinkIdOffset = GetConfig()->GetValue<std::size_t>(OptionKeyLinkIdOffset);
-
   mSuperpageSize = GetConfig()->GetValue<std::size_t>(OptionKeyCruSuperpageSize);
-
+  mOrbitsInTf = GetConfig()->GetValue<std::size_t>(OptionKeyOrbitsInTf);
   mCruLinkCount = GetConfig()->GetValue<std::size_t>(OptionKeyCruLinkCount);
   mCruLinkBitsPerS = GetConfig()->GetValue<double>(OptionKeyCruLinkBitsPerS);
 
@@ -54,17 +54,11 @@ void ReadoutDevice::InitTask()
   mDmaChunkSize = (mCruLinkBitsPerS / 11223ULL) >> 3;
   IDDLOG("Using HBFrame size of {} B.", mDmaChunkSize);
 
-  mDataRegion.reset();
+  // mDataRegion.stop();
 
   // Open SHM regions (segments). Increase size to make sure we can start on the mSuperpageSize boundary
-  mDataRegion = NewUnmanagedRegionFor(
-    mOutChannelName, 0,
-    mDataRegionSize + mSuperpageSize,
-    [this](const std::vector<FairMQRegionBlock>& pBlkVect) { // callback to be called when message buffers no longer needed by transport
-      for (const auto &lBlk : pBlkVect) {
-          mCruMemoryHandler->put_data_buffer(static_cast<char*>(lBlk.ptr), lBlk.size);
-      }
-    });
+  std::string lSegName = "cru_seg";
+  mDataRegion = std::make_unique<DataRegionAllocatorResource>(lSegName, std::nullopt, mDataRegionSize + mSuperpageSize, *Transport(), 0, true);
 
   IDDLOG("Memory regions created");
 
@@ -73,7 +67,7 @@ void ReadoutDevice::InitTask()
   mCruLinks.clear();
   for (unsigned e = 0; e < mCruLinkCount; e++) {
     mCruLinks.push_back(std::make_unique<CruLinkEmulator>(mCruMemoryHandler, mLinkIdOffset + e,
-      mCruLinkBitsPerS, mDmaChunkSize));
+      mCruLinkBitsPerS, mDmaChunkSize, mOrbitsInTf));
   }
 }
 
@@ -125,7 +119,7 @@ void ReadoutDevice::SendingThread()
 
   // finish an STF every ~1/45 seconds
   static const auto cDataTakingStart = std::chrono::high_resolution_clock::now();
-  static constexpr auto cStfInterval = std::chrono::microseconds(22810);
+  static const auto cStfInterval = std::chrono::microseconds((1000000ULL * mOrbitsInTf) / 11223ULL);
   uint64_t lNumberSentStfs = 0;
   uint64_t lCurrentTfId = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::high_resolution_clock::now().time_since_epoch()).count() / cStfInterval.count() - 71394000000;
@@ -185,11 +179,8 @@ void ReadoutDevice::SendingThread()
 
     // create messages for the data
     for (const auto& lDmaChunk : lCruLinkData.mLinkRawData) {
-      // mark this as used in the memory handler
-      mCruMemoryHandler->get_data_buffer(lDmaChunk.mDataPtr, lDmaChunk.mDataSize);
-
       // create a message out of unmanaged region
-      mDataBlockMsgs.push_back(lOutputChan.NewMessage(mDataRegion, lDmaChunk.mDataPtr, lDmaChunk.mDataSize));
+      mDataBlockMsgs.push_back(mDataRegion->NewFairMQMessageFromPtr(lDmaChunk.mDataPtr, lDmaChunk.mDataSize));
     }
 
     if (lTfIdToSkip == lHBFHeader.mTimeFrameId) {

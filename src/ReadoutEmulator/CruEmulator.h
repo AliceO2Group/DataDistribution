@@ -26,9 +26,7 @@
 #include <condition_variable>
 #include <thread>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 struct RawDmaChunkDesc {
@@ -40,11 +38,12 @@ struct RawDmaChunkDesc {
 class CruLinkEmulator
 {
  public:
-  CruLinkEmulator(std::shared_ptr<CruMemoryHandler> pMemHandler, uint64_t pLinkId, uint64_t pLinkBitsPerS, uint64_t pDmaChunkSize)
+  CruLinkEmulator(std::shared_ptr<CruMemoryHandler> pMemHandler, uint64_t pLinkId, uint64_t pLinkBitsPerS, uint64_t pDmaChunkSize, size_t pOrbitsInTf)
     : mMemHandler{ pMemHandler },
       mLinkID{ pLinkId },
       mLinkBitsPerS{ pLinkBitsPerS },
       mDmaChunkSize{ pDmaChunkSize },
+      mOrbitsInTf{ pOrbitsInTf },
       mRunning{ false }
   {
   }
@@ -67,11 +66,12 @@ class CruLinkEmulator
   std::uint64_t mLinkID;
   std::uint64_t mLinkBitsPerS;
   std::uint64_t mDmaChunkSize;
+  std::uint64_t mOrbitsInTf;
 
   std::thread mCRULinkThread;
   bool mRunning;
 };
-}
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_CRU_EMULATOR_H_ */
