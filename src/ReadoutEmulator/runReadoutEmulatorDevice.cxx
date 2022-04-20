@@ -32,6 +32,9 @@ void addCustomOptions(bpo::options_description& options)
     o2::DataDistribution::ReadoutDevice::OptionKeyCruSuperpageSize,
     bpo::value<size_t>()->default_value(2ULL << 20 /* 2MiB */),
     "CRU DMA superpage size")(
+    o2::DataDistribution::ReadoutDevice::OptionKeyOrbitsInTf,
+    bpo::value<size_t>()->default_value(128ULL),
+    "Number of orbits in TimeFrame")(
     o2::DataDistribution::ReadoutDevice::OptionKeyCruLinkCount,
     bpo::value<uint64_t>()->default_value(2),
     "Number of CRU equipments to emulate (links, user logics, ...).")(

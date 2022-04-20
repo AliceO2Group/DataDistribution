@@ -16,6 +16,7 @@
 #include <ReadoutDataModel.h>
 #include <Utilities.h>
 #include <FmqUtilities.h>
+#include <MemoryUtils.h>
 
 #include <memory>
 #include <deque>
@@ -34,6 +35,8 @@ class ReadoutDevice : public DataDistDevice
   static constexpr const char* OptionKeyLinkIdOffset = "link-id-offset";
 
   static constexpr const char* OptionKeyCruSuperpageSize = "cru-superpage-size";
+
+  static constexpr const char* OptionKeyOrbitsInTf = "orbits-in-tf";
 
   static constexpr const char* OptionKeyCruLinkCount = "cru-link-count";
   static constexpr const char* OptionKeyCruLinkBitsPerS = "cru-link-bits-per-s";
@@ -58,7 +61,7 @@ class ReadoutDevice : public DataDistDevice
 
   // data and Descriptor regions
   // must be here because NewUnmanagedRegionFor() is a method of FairMQDevice...
-  FairMQUnmanagedRegionPtr mDataRegion;
+  std::unique_ptr<DataRegionAllocatorResource> mDataRegion;
 
   std::string mOutChannelName;
   std::size_t mDataRegionSize;
@@ -66,6 +69,7 @@ class ReadoutDevice : public DataDistDevice
   std::size_t mLinkIdOffset;
 
   std::size_t mSuperpageSize;
+  std::size_t mOrbitsInTf;
   std::size_t mDmaChunkSize;
   unsigned mCruLinkCount;
   std::uint64_t mCruLinkBitsPerS;
