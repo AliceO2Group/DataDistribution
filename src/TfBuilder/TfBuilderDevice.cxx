@@ -379,9 +379,6 @@ bool TfBuilderDevice::ConditionalRun()
 
 void TfBuilderDevice::TfForwardThread()
 {
-  using hres_clock = std::chrono::high_resolution_clock;
-  auto lRateStartTime = hres_clock::now();
-
   DDMON_RATE("tfbuilder", "tf_output", 0.0);
 
   while (mRunning) {
@@ -415,11 +412,7 @@ void TfBuilderDevice::TfForwardThread()
     auto &lTf = lTfOpt.value();
     const auto lTfId = lTf->id();
     {
-      const auto lStfDur = std::chrono::duration<double>(hres_clock::now() - lRateStartTime);
-      lRateStartTime = hres_clock::now();
-      const auto lRate = (1.0 / lStfDur.count());
       DDMON("tfbuilder", "tf_output.id", lTfId);
-      DDMON("tfbuilder", "data_output.rate", (lRate * lTf->getDataSize()));
 
       mTfFwdTotalDataSize += lTf->getDataSize();
       mTfFwdTotalTfCount += 1;
