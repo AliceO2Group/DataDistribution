@@ -67,6 +67,8 @@ public:
     return (mStfSenderRpcClients.getNumConnectedClients() - mStfSenderRpcClients.getNumWorkingClients());
   }
 
+  std::vector<std::string> getStfSenderIds() const { return mStfSenderRpcClients.getStfSenderIds(); }
+
   void startAcceptingTfs();
   void stopAcceptingTfs();
 

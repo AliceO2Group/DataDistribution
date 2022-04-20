@@ -24,6 +24,8 @@
 
 #include <UCXSendRecv.h>
 
+#include <boost/algorithm/string/join.hpp>
+
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -36,9 +38,9 @@ using namespace std::chrono_literals;
 
 static void client_ep_err_cb(void *arg, ucp_ep_h, ucs_status_t status)
 {
-  dd_ucx_conn_info *lConnInfo = reinterpret_cast<dd_ucx_conn_info*>(arg);
+  TfBuilderUCXConnInfo *lConnInfo = reinterpret_cast<TfBuilderUCXConnInfo*>(arg);
   if (lConnInfo) {
-    lConnInfo->mInputUCX->handle_client_ep_error(lConnInfo, status);
+    lConnInfo->mInputUCX.handle_client_ep_error(lConnInfo, status);
   }
 }
 
@@ -46,6 +48,38 @@ static void listen_conn_handle_cb(ucp_conn_request_h conn_request, void *arg)
 {
   dd_ucp_listener_context_t *lCtx = reinterpret_cast<dd_ucp_listener_context_t*>(arg);
   lCtx->mInputUcx->new_conn_handle(conn_request);
+}
+
+static ucs_status_t ucp_am_data_cb(void *arg, const void *header, size_t header_length,
+                            void *data, size_t length, const ucp_am_recv_param_t *param)
+{
+  TfBuilderInputUCX *lInputUcx = reinterpret_cast<TfBuilderInputUCX*>(arg);
+  (void) header;
+  (void) header_length;
+
+  const auto lMetaDecodeStart = std::chrono::steady_clock::now();
+
+  if (param->recv_attr & UCP_AM_RECV_ATTR_FLAG_RNDV) {
+    /* Rendezvous request arrived, data contains an internal UCX descriptor,
+      * which has to be passed to ucp_am_recv_data_nbx function to confirm
+      * data transfer.
+      */
+
+    EDDLOG_RL(1000, "ucp_am_data_cb RNDV stf_meta_size={}", length);
+
+    lInputUcx->pushRndvMetadata(data, length);
+    return UCS_INPROGRESS;
+  }
+
+  assert (param->recv_attr & UCP_AM_RECV_ATTR_FLAG_DATA);
+
+  // Translate data to UCX metadata message and queue
+  UCXIovStfHeader lMeta;
+  if (lInputUcx->createMetadata(data, length, lMeta)) {
+    lInputUcx->pushMetadata(std::move(lMeta));
+  }
+  DDMON("tfbuilder", "recv.meta_decode_ms", since<std::chrono::milliseconds>(lMetaDecodeStart));
+  return UCS_OK;
 }
 
 // callback on new connection
@@ -74,42 +108,59 @@ void TfBuilderInputUCX::new_conn_handle(ucp_conn_request_h conn_request)
   mConnRequestQueue.push(lStfSenderAddr, lStfSenderPort, conn_request);
 }
 
-
 void TfBuilderInputUCX::ListenerThread()
 {
-  while(mState.load() == CONFIGURING) {
+  const auto lListenerStart = std::chrono::steady_clock::now();
+
+  while(mState.load() == CONFIGURING && !mConnectionIssues) {
     // progress the listener worker
-    const auto lProgress = ucp_worker_progress(listener_worker.ucp_worker);
+    while (ucp_worker_progress(listener_worker.ucp_worker) > 0) { }
 
-    const auto lSleep = lProgress > 0 ? 1us : 5000us;
-
-    auto lConnInfoOpt = mConnRequestQueue.pop_wait_for(lSleep);
+    auto lConnInfoOpt = mConnRequestQueue.pop_wait_for(50ms);
     if (!lConnInfoOpt.has_value()) {
+      // complain about missing connections
+      std::size_t lNumConnected = 0;
+      std::set<std::string> lMissingStfSenderIds = mExpectedStfSenderIds;
+      {
+        std::scoped_lock lLock(mConnectionMapLock);
+        lNumConnected = mConnMap.size();
+        for (const auto &lConn : mConnMap) {
+          lMissingStfSenderIds.erase(lConn.first);
+        }
+      }
+
+      if (lNumConnected < mNumStfSenders) {
+        if (since<std::chrono::seconds>(lListenerStart) > 5.0) {
+          IDDLOG_RL(5000, "TfBuilderInputUCX: Missing connections from StfSender. missing_cnt={} missing_stfsenders={}",
+            (mNumStfSenders - lNumConnected), boost::algorithm::join(lMissingStfSenderIds, ","));
+        }
+      }
       continue;
     }
 
     // we have a connection request
+    assert (lConnInfoOpt.has_value());
     const auto lStfSenderAddr = std::get<0>(lConnInfoOpt.value());
     ucp_conn_request_h conn_request = std::get<2>(lConnInfoOpt.value());
 
-    // Create stfsender (data) worker + endpoint
-    auto lConnStruct = std::make_unique<dd_ucx_conn_info>(this);
+    // use one of the configured workers for the TfBuilder connection
+    static std::atomic_uint sCurrentWorkerIdx = 0;
+    const auto lWorkerIndex = (sCurrentWorkerIdx++) % mDataWorkers.size();
 
-    DDDLOG("ListenerThread: ucx::util::create_ucp_worker() ...");
-    if (!ucx::util::create_ucp_worker(ucp_context, &lConnStruct->worker, lStfSenderAddr)) {
-      continue;
-    }
+    // Create stfsender (data) worker + endpoint
+    auto lConnStruct = std::make_unique<TfBuilderUCXConnInfo>(*this, mDataWorkers[lWorkerIndex]);
+    lConnStruct->mStfSenderIp = lStfSenderAddr;
 
     // Create stfsender endpoint
     DDDLOG("ListenerThread: ucx::util::create_ucp_ep() ...");
-    if (!ucx::util::create_ucp_ep(lConnStruct->worker.ucp_worker, conn_request, &lConnStruct->ucp_ep,
+    if (!ucx::util::create_ucp_ep(lConnStruct->mWorker.ucp_worker, conn_request, &lConnStruct->ucp_ep,
       client_ep_err_cb, lConnStruct.get(), lStfSenderAddr)) {
       continue;
     }
 
     // receive the StfSenderId
     DDDLOG("ListenerThread: ucx::util::ucx_receive_string() ...");
-    auto lStfSenderIdOpt = ucx::io::ucx_receive_string(lConnStruct->worker);
+    auto lStfSenderIdOpt = ucx::io::ucx_receive_string(lConnStruct->mWorker);
 
     if (!lStfSenderIdOpt) {
       EDDLOG("ListenerThread: Connection request: Failed to receive StfSenderId");
@@ -117,9 +168,14 @@ void TfBuilderInputUCX::ListenerThread()
     }
 
     const auto &lStfSenderId = lStfSenderIdOpt.value();
-
     DDDLOG("UCXListenerThread::Connection request. stf_sender_id={}", lStfSenderId);
     lConnStruct->mStfSenderId = lStfSenderId;
+
+    { // create the meta queue mapping to the selected worker
+      std::unique_lock lLock(mStfMetaWorkerQueuesMutex);
+      mStfMetaWorkerQueues[lStfSenderId] = mDataWorkersQueues[lWorkerIndex];
+      mStfSenderToWorkerMap[lStfSenderId] = lWorkerIndex;
+    }
 
     // add the connection info map
     std::scoped_lock lLock(mConnectionMapLock);
@@ -133,13 +189,16 @@ void TfBuilderInputUCX::ListenerThread()
 bool TfBuilderInputUCX::start()
 {
   // setting configuration options
-  mThreadPoolSize = std::clamp(mConfig->getUInt64Param(UcxTfBuilderThreadPoolSizeKey, UcxTfBuilderThreadPoolSizeDefault), std::size_t(0), std::size_t(256));
-  mThreadPoolSize = std::max(std::size_t(4), (mThreadPoolSize == 0) ? std::thread::hardware_concurrency() : mThreadPoolSize);
-  mNumRmaOps = std::clamp(mConfig->getUInt64Param(UcxNumConcurrentRmaGetOpsKey, UcxNumConcurrentRmaGetOpsDefault), std::size_t(1), std::size_t(64));
-
-  IDDLOG("TfBuilderInputUCX: Configuration loaded. thread_pool={} num_rma_ops={}", mThreadPoolSize, mNumRmaOps);
+  mThreadPoolSize = std::clamp(mConfig->getUInt64Param(UcxTfBuilderThreadPoolSizeKey, UcxTfBuilderThreadPoolSizeDefault), std::size_t(1), std::size_t(256));
+  IDDLOG("TfBuilderInputUCX: Configuration loaded. thread_pool={}", mThreadPoolSize);
 
   auto &lConfStatus = mConfig->status();
+
+  // get list of stfsender ids
+  for (const auto &lStfSenderId : mRpc->getStfSenderIds()) {
+    mExpectedStfSenderIds.insert(lStfSenderId);
+  }
+  IDDLOG("TfBuilderInputUCX: Expecting connections from StfSenders. stf_sender_cnt={}", mExpectedStfSenderIds.size());
 
   // disabled until the listener is initialized
   lConfStatus.mutable_ucx_info()->set_enabled(false);
@@ -149,11 +208,26 @@ bool TfBuilderInputUCX::start()
     return false;
   }
 
+  // create all data workers
+  for (unsigned i = 0; i < mThreadPoolSize; i++) {
+    mDataWorkers.emplace_back();
+    if (!ucx::util::create_ucp_worker(ucp_context, &mDataWorkers.back(), std::to_string(i))) {
+      return false;
+    }
+    // register the am handler
+    DDDLOG("ListenerThread: ucx::util::register_am_callback() ...");
+    if (!ucx::util::register_am_callback(mDataWorkers.back(), ucx::io::AM_STF_META, ucp_am_data_cb, this)) {
+      return false;
+    }
+
+    // create worker queues
+    mDataWorkersQueues.emplace_back(std::make_shared<ConcurrentQueue<StfMetaRdmaInfo>>());
+  }
+
   // Create listener worker for accepting connections from StfSender
   if (!ucx::util::create_ucp_worker(ucp_context, &listener_worker, "Listener")) {
     return false;
   }
-
 
   // Create the listener
   // Run the connection callback with pointer to us
@@ -196,14 +270,13 @@ bool TfBuilderInputUCX::start()
   }
 
   // Get number of StfSenders in the partition
-  std::uint32_t lNumStfSenders;
-  if (!mRpc->TfSchedRpcCli().NumStfSendersInPartitionRequest(lNumStfSenders)) {
+  if (!mRpc->TfSchedRpcCli().NumStfSendersInPartitionRequest(mNumStfSenders)) {
     WDDLOG_RL(5000, "gRPC error: cannot reach scheduler. scheduler_ep={}", mRpc->TfSchedRpcCli().getEndpoint());
     return false;
   }
 
-  if (lNumStfSenders == 0 || lNumStfSenders == std::uint32_t(-1)) {
-    EDDLOG("gRPC error: number of StfSenders in partition: {}." , lNumStfSenders);
+  if (mNumStfSenders == 0 || mNumStfSenders == std::uint32_t(-1)) {
+    EDDLOG("gRPC error: number of StfSenders in partition: {}." , mNumStfSenders);
     return false;
   }
 
@@ -248,16 +321,21 @@ bool TfBuilderInputUCX::start()
       lNumConnected = mConnMap.size();
     }
 
-    if (lNumConnected == lNumStfSenders) {
+    if (lNumConnected == mNumStfSenders) {
       break;
     }
 
     std::this_thread::sleep_for(100ms);
-    DDDLOG_RL(5000, "TfBuilderInputUCX::start: Waiting for all StfSender ucx endpoints. connected={} total={}", lNumConnected, lNumStfSenders);
-  } while (true);
+    DDDLOG_RL(5000, "TfBuilderInputUCX::start: Waiting for all StfSender ucx endpoints. connected={} total={}", lNumConnected, mNumStfSenders);
+  } while (!mConnectionIssues);
 
   // This will stop the Listener thread
   mState = RUNNING;
+
+  if (mConnectionIssues) {
+    EDDLOG("TfBuilderInputUCX::start: Connection issues. Exiting.");
+    return false;
+  }
 
   DDDLOG("TfBuilderInputUCX::start: Finished");
   return true;
@@ -284,12 +362,26 @@ bool TfBuilderInputUCX::map_data_region()
   // start receiving thread pool
   // NOTE: This must come after the region mapping. Threads are using mapped addresses
   for (unsigned i = 0; i < mThreadPoolSize; i++) {
-    std::string lThreadName = "tfb_ucx_";
-    lThreadName += std::to_string(i);
+    { // preprocess threads
+      std::string lThreadName = "tfb_ucx_prep_" + std::to_string(i);
+      mPrepThreadPool.emplace_back(std::move(
+        create_thread_member(lThreadName.c_str(), &TfBuilderInputUCX::StfPreprocessThread, this, i))
+      );
+    }
 
-    mThreadPool.emplace_back(std::move(
-      create_thread_member(lThreadName.c_str(), &TfBuilderInputUCX::DataHandlerThread, this, i))
-    );
+    { // rma get threads
+      std::string lThreadName = "tfb_ucx_rdma_" + std::to_string(i);
+      mThreadPool.emplace_back(std::move(
+        create_thread_member(lThreadName.c_str(), &TfBuilderInputUCX::DataHandlerThread, this, i))
+      );
+    }
+
+    { // postprocess threads
+      std::string lThreadName = "tfb_ucx_post_" + std::to_string(i);
+      mPrepThreadPool.emplace_back(std::move(
+        create_thread_member(lThreadName.c_str(), &TfBuilderInputUCX::StfPostprocessThread, this, i))
+      );
+    }
   }
 
   return true;
@@ -310,11 +402,31 @@ void TfBuilderInputUCX::stop()
   // Wait for input threads to stop
   DDDLOG("TfBuilderInputUCX::stop: Waiting for input threads to terminate.");
   mStfReqQueue.stop();
+  mStfPreprocessQueue.stop();
+  mStfPostprocessQueue.stop();
+
+  for (auto &lQueue : mDataWorkersQueues) {
+    lQueue->stop();
+  }
+
+  for (auto& lIdThread : mPrepThreadPool) {
+    if (lIdThread.joinable())
+      lIdThread.join();
+  }
+
   for (auto& lIdThread : mThreadPool) {
     if (lIdThread.joinable())
       lIdThread.join();
   }
+
+  for (auto& lIdThread : mPostThreadPool) {
+    if (lIdThread.joinable())
+      lIdThread.join();
+  }
+
+  mPrepThreadPool.clear();
   mThreadPool.clear();
+  mPostThreadPool.clear();
   DDDLOG("TfBuilderInputUCX::stop: All input threads terminated.");
 
   // Disconnect all input channels
@@ -347,23 +459,72 @@ void TfBuilderInputUCX::stop()
       for (auto & lRKeyIt : lConn.second->mRemoteKeys) {
         ucp_rkey_destroy(lRKeyIt.second);
       }
-      ucx::util::close_connection(lConn.second->worker, lConn.second->ucp_ep);
+      ucx::util::close_ep_connection(lConn.second->mWorker, lConn.second->ucp_ep);
     }
     mConnMap.clear();
+  }
+
+  {// close the listener and all workers
+    ucp_listener_destroy(ucp_listener);
+    ucp_worker_destroy(listener_worker.ucp_worker);
+    for (auto &lWorker : mDataWorkers) {
+      ucp_worker_destroy(lWorker.ucp_worker);
+    }
+    ucp_cleanup(ucp_context);
   }
 
   DDDLOG("TfBuilderInputUCX::stop: All input channels are closed.");
 }
 
+/// Receive buffer allocation thread
+void TfBuilderInputUCX::StfPreprocessThread(const unsigned pThreadIdx)
+{
+  using clock = std::chrono::steady_clock;
+  DDDLOG("Starting ucx preprocess thread {}", pThreadIdx);
+
+  std::optional<UCXIovStfHeader> lStfMetaOpt;
+  while ((lStfMetaOpt = mStfPreprocessQueue.pop()) != std::nullopt) {
+
+    UCXIovStfHeader lStfMeta = std::move(lStfMetaOpt.value());
+    StfMetaRdmaInfo lStfRdmaInfo;
+
+    const auto lAllocStart = clock::now();
+
+    // Allocate data memory
+    using UCXIovTxg = UCXIovStfHeader::UCXIovTxg;
+    std::vector<std::uint64_t> lTxgSizes;
+
+    lTxgSizes.reserve(lStfMeta.stf_txg_iov().size());
+    lStfRdmaInfo.mTxgPtrs.reserve(lStfMeta.stf_txg_iov().size());
+
+    std::for_each(lStfMeta.stf_txg_iov().cbegin(), lStfMeta.stf_txg_iov().cend(), [&lTxgSizes](const UCXIovTxg &txg) {
+      lTxgSizes.push_back(txg.len());
+    });
+
+    mTimeFrameBuilder.allocDataBuffers(lTxgSizes, lStfRdmaInfo.mTxgPtrs);
+    assert (!(lStfMeta.stf_txg_iov_size() > 0) || (lStfRdmaInfo.mTxgPtrs.size() == (lStfMeta.stf_txg_iov().rbegin()->txg() + 1)));
+
+    DDMON("tfbuilder", "recv.data_alloc_ms", since<std::chrono::milliseconds>(lAllocStart));
+
+    lStfRdmaInfo.mStfMeta = std::move(lStfMeta);
+
+    pushRdmaInfo(std::move(lStfRdmaInfo));
+  }
+
+  DDDLOG("Exiting ucx preprocess thread {}", pThreadIdx);
+}
+
 /// Receiving thread
 void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
 {
+  using clock = std::chrono::steady_clock;
+
   DDDLOG("Starting receiver thread[{}]", pThreadIdx);
   // Deserialization object (stf ID)
   IovDeserializer lStfReceiver(mTimeFrameBuilder);
 
   // memory for meta-tag receive; increased later if needed
-  std::uint64_t lMetaMemSize = std::uint64_t(2) << 20;
+  std::uint64_t lMetaMemSize = 1024;
   FairMQMessagePtr lMetaMemMsg = nullptr;
   void *lMetaMemPtr = nullptr;
 
@@ -374,18 +535,32 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
   };
   fAllocateMetaMessage(lMetaMemSize);
 
-  std::optional<std::string> lStfSenderIdOpt;
-  std::vector<void*> lTxgPtrs;
+  // local worker we advance here
+  assert (pThreadIdx < mDataWorkers.size());
+  ucx::dd_ucp_worker &lWorker = mDataWorkers[pThreadIdx];
+  // request queue for the local worker
+  assert (pThreadIdx < mDataWorkersQueues.size());
+  auto lStfMetaQueue = mDataWorkersQueues[pThreadIdx];
+
   std::vector<std::pair<void*, std::size_t>> lDataMsgsBuffers;
 
-  while ((lStfSenderIdOpt = mStfReqQueue.pop()) != std::nullopt) {
-    using clock = std::chrono::steady_clock;
+  while (mState != TERMINATED) {
+    std::optional<StfMetaRdmaInfo> lStfMetaOpt = lStfMetaQueue->pop_wait_for(5ms);
+    while (ucp_worker_progress(lWorker.ucp_worker) > 0) { }
+    if (!lStfMetaOpt) {
+      continue;
+    }
 
-    const auto &lStfSenderId = lStfSenderIdOpt.value();
-    std::uint64_t lTfId = 0;
+    StfMetaRdmaInfo lStfRdmaInfo = std::move(lStfMetaOpt.value());
+    UCXIovStfHeader &lStfMeta = lStfRdmaInfo.mStfMeta;
+    const std::uint64_t lTfId = lStfMeta.stf_hdr_meta().stf_id();
+    const std::string &lStfSenderId = lStfMeta.stf_sender_id();
+    const auto &lTxgPtrs = lStfRdmaInfo.mTxgPtrs;
+
+    const auto lRmaReqStart = clock::now();
 
     // Reference to the input channel
-    dd_ucx_conn_info *lConn = nullptr;
+    TfBuilderUCXConnInfo *lConn = nullptr;
     {
       std::scoped_lock lLock(mConnectionMapLock);
       if (mConnMap.count(lStfSenderId) == 1) {
@@ -398,49 +573,11 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
       }
     }
 
-    UCXIovStfHeader lMeta;
-    lTxgPtrs.clear();
-
-    clock::time_point lMetaDecodeStart;
     {
       std::scoped_lock lStfSenderIoLock(lConn->mStfSenderIoLock);
 
-      auto lStartLoop = clock::now();
-
-      // Receive STF iov and metadata
-      std::uint64_t lReqSize = 0;
-      auto lRecvMetaSize = ucx::io::ucx_receive_tag(lConn->worker, lMetaMemPtr, lMetaMemSize, &lReqSize);
-      if (lRecvMetaSize < 0) {
-        EDDLOG("UCXDataHandlerThread: Failed to receive stf meta structure. from={}", lStfSenderId);
-        continue;
-      } if ((lRecvMetaSize == 0) && (lReqSize > lMetaMemSize)) {
-        // memory too small
-        while (lMetaMemSize < lReqSize) {
-          lMetaMemSize *= 2;
-        }
-        // allocate larger buffer and continue
-        fAllocateMetaMessage(lMetaMemSize);
-        lRecvMetaSize = ucx::io::ucx_receive_tag_data(lConn->worker, lMetaMemPtr, lReqSize);
-        if (lRecvMetaSize < 0) {
-          EDDLOG("UCXDataHandlerThread: Failed to receive stf meta message. from={}", lStfSenderId);
-          continue;
-        }
-        assert (lRecvMetaSize > 0 && std::uint64_t(lRecvMetaSize) == lReqSize);
-      }
-
-      DDMON("tfbuilder", "recv.receive_meta_ms", since<std::chrono::milliseconds>(lStartLoop));
-      lMetaDecodeStart = clock::now();
-
-      if (!lMeta.ParseFromArray(lMetaMemPtr, lRecvMetaSize)) {
-        EDDLOG("UCXDataHandlerThread: Failed to parse stf meta message. from={} size={}" ,lStfSenderId, lRecvMetaSize);
-      }
-
-      lTfId = lMeta.stf_hdr_meta().stf_id();
-
-      IDDLOG_GRL(1000, "Received StfMeta stf_id={} data_parts={}", lTfId, lMeta.stf_data_iov_size());
-
       // make sure we have remote keys unpacked
-      for (const auto &lRegion : lMeta.data_regions() ) {
+      for (const auto &lRegion : lStfMeta.data_regions() ) {
         if (lConn->mRemoteKeys.count(lRegion.region_rkey()) == 0) {
           DDDLOG("Mapping the new region size={}", lRegion.size());
           auto lNewRkeyIter = lConn->mRemoteKeys.emplace(lRegion.region_rkey(), ucp_rkey_h());
@@ -448,59 +585,59 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
         }
       }
 
-      DDMON("tfbuilder", "recv.meta_decode_ms", since<std::chrono::milliseconds>(lMetaDecodeStart));
-      auto lAllocStart = clock::now();
-
-      // Allocate data memory
-      using UCXIovTxg = UCXIovStfHeader::UCXIovTxg;
-      std::vector<std::uint64_t> lTxgSizes;
-
-      lTxgSizes.reserve(lMeta.stf_txg_iov().size());
-      lTxgPtrs.reserve(lMeta.stf_txg_iov().size());
-
-      std::for_each(lMeta.stf_txg_iov().cbegin(), lMeta.stf_txg_iov().cend(), [&lTxgSizes](const UCXIovTxg &txg) {
-        lTxgSizes.push_back(txg.len());
-      });
-
-      mTimeFrameBuilder.allocDataBuffers(lTxgSizes, lTxgPtrs);
-      assert (!(lMeta.stf_txg_iov_size() > 0) || (lTxgPtrs.size() == (lMeta.stf_txg_iov().rbegin()->txg() + 1)));
-
-      DDMON("tfbuilder", "recv.data_alloc_ms", since<std::chrono::milliseconds>(lAllocStart));
-
       // RMA get all the txgs
       auto lRmaGetStart = clock::now();
-      ucx::io::dd_ucp_multi_req lRmaReqSem(mNumRmaOps);
+      ucx::io::dd_ucp_multi_req_v2 lRmaReqSem;
 
-      for (auto &lStfTxg : lMeta.stf_txg_iov()) {
+      for (auto &lStfTxg : lStfMeta.stf_txg_iov()) {
         auto lTxgUcxPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lTxgPtrs[lStfTxg.txg()]);
-        ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lConn->mRemoteKeys[lMeta.data_regions(lStfTxg.region()).region_rkey()], &lRmaReqSem);
-
-        if (!ucx::io::ucp_wait(lConn->worker, lRmaReqSem)) {
-          EDDLOG("Error from ucp_wait");
-          break;
-        }
+        ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lConn->mRemoteKeys[lStfMeta.data_regions(lStfTxg.region()).region_rkey()], &lRmaReqSem);
       }
       // wait for final completion
-      lRmaReqSem.mark_finished();
-      if (!ucx::io::ucp_wait(lConn->worker, lRmaReqSem)) {
-        EDDLOG("Error from ucp_wait");
+      if (!ucx::io::ucp_wait_poll(lConn->mWorker, lRmaReqSem)) {
         break;
       }
 
-      // notify StfSender we completed
-      struct StringData {
-        std::uint64_t mSize;
-        char mMsg[4];
-      } *lOk = reinterpret_cast<struct StringData*>(lMetaMemPtr);
-      lOk->mSize = 2;
-      std::memcpy(lOk->mMsg, "OK", 2);
+      // notify StfSender we completed (use mapped scratch memory)
+      std::uint64_t *lAckMsgStfId = reinterpret_cast<std::uint64_t *>(lMetaMemPtr);
+      *lAckMsgStfId = lTfId;
 
-      if (!ucx::io::ucx_send_data(lConn->worker, lConn->ucp_ep, lOk->mMsg, &lOk->mSize) ) {
+      if (!ucx::io::ucx_send_am_hdr(lConn->mWorker, lConn->ucp_ep, ucx::io::AM_STF_ACK, lAckMsgStfId, sizeof(std::uint64_t)) ) {
         EDDLOG_GRL(10000, "StfSender was NOT notified about transfer finish stf_sender={} tf_id={}", lStfSenderId, lTfId);
       }
 
       DDMON("tfbuilder", "recv.rma_get_total_ms", since<std::chrono::milliseconds>(lRmaGetStart));
     }
+
+    // RDMA DONE: send to post-processing
+    pushPostprocessMetadata(std::move(lStfRdmaInfo));
+
+    DDMON_RATE("tfbuilder", "receive_time", since<std::chrono::seconds>(lRmaReqStart));
+  }
+
+  DDDLOG("Exiting UCX input thread[{}]", pThreadIdx);
+}
+
+
+/// FMQ message creating thread
+void TfBuilderInputUCX::StfPostprocessThread(const unsigned pThreadIdx)
+{
+  using clock = std::chrono::steady_clock;
+
+  DDDLOG("Starting ucx postprocess thread {}", pThreadIdx);
+  // Deserialization object (stf ID)
+  IovDeserializer lStfReceiver(mTimeFrameBuilder);
+
+  std::vector<std::pair<void*, std::size_t>> lDataMsgsBuffers;
+
+  std::optional<StfMetaRdmaInfo> lStfRdmaInfoOpt;
+  while ((lStfRdmaInfoOpt = mStfPostprocessQueue.pop()) != std::nullopt) {
+
+    StfMetaRdmaInfo lStfRdmaInfo = std::move(lStfRdmaInfoOpt.value());
+    UCXIovStfHeader &lStfMeta = lStfRdmaInfo.mStfMeta;
+    const std::uint64_t lTfId = lStfMeta.stf_hdr_meta().stf_id();
+    const std::string &lStfSenderId = lStfMeta.stf_sender_id();
+    const auto &lTxgPtrs = lStfRdmaInfo.mTxgPtrs;
 
     auto lFmqPrepareStart = clock::now();
 
@@ -508,15 +645,15 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
     mRpc->recordStfReceived(lStfSenderId, lTfId);
 
     // sort messages back to the original order
-    std::sort(lMeta.mutable_stf_data_iov()->begin(), lMeta.mutable_stf_data_iov()->end(), [](auto &a, auto &b) { return a.idx() < b.idx(); });
+    std::sort(lStfMeta.mutable_stf_data_iov()->begin(), lStfMeta.mutable_stf_data_iov()->end(), [](auto &a, auto &b) { return a.idx() < b.idx(); });
 
     // create fmq messages from txgs
     lDataMsgsBuffers.clear();
     auto lDataVec = std::make_unique<std::vector<FairMQMessagePtr> >();
-    lDataVec->reserve(lMeta.stf_data_iov_size());
+    lDataVec->reserve(lStfMeta.stf_data_iov_size());
 
-    for (const auto &lDataMsg : lMeta.stf_data_iov()) {
-      const auto &lTxg = lMeta.stf_txg_iov(lDataMsg.txg());
+    for (const auto &lDataMsg : lStfMeta.stf_data_iov()) {
+      const auto &lTxg = lStfMeta.stf_txg_iov(lDataMsg.txg());
 
       assert (lDataMsg.start() >= lTxg.start());
       const auto lTxgOff = (lDataMsg.start() - lTxg.start());
@@ -531,10 +668,9 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
     mTimeFrameBuilder.newDataFmqMessagesFromPtr(lDataMsgsBuffers, *lDataVec.get());
 
     // copy header meta
-    auto lStfHdr = std::make_unique<IovStfHdrMeta>(std::move(lMeta.stf_hdr_meta()));
+    auto lStfHdr = std::make_unique<IovStfHdrMeta>(std::move(lStfMeta.stf_hdr_meta()));
 
     DDMON("tfbuilder", "recv.fmq_msg_ms", since<std::chrono::milliseconds>(lFmqPrepareStart));
-    DDMON("tfbuilder", "recv.total_ms", since<std::chrono::milliseconds>(lMetaDecodeStart));
 
     const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(*lStfHdr.get());
     assert (lTfId == lStfHeader.mId);
@@ -543,7 +679,7 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
     mReceivedDataQueue.push(lTfId, lStfHeader.mOrigin, lStfSenderId, std::move(lStfHdr), std::move(lDataVec));
   }
 
-  DDDLOG("Exiting UCX input thread[{}]", pThreadIdx);
+  DDDLOG("Exiting ucx postprocess thread {}", pThreadIdx);
 }
 
 

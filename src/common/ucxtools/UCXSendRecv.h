@@ -18,8 +18,7 @@
 
 #include <ucp/api/ucp.h>
 
-#include <boost/container/small_vector.hpp>
-#include <boost/container/flat_set.hpp>
+#include <new>
 
 namespace o2::DataDistribution {
 
@@ -33,17 +32,18 @@ static constexpr ucp_tag_t STRING_TAG             = 3;
 static constexpr ucp_tag_t STRING_SIZE_TAG        = 4;
 static constexpr ucp_tag_t STF_DONE_TAG           = 1'000'000'000ULL;
 
-#define make_ucp_req() (reinterpret_cast<char*>(alloca(UCX_REQUEST_SIZE)) + UCX_REQUEST_SIZE)
-
 } /* ucx::impl */
 
 
 namespace ucx::io {
 
+static constexpr unsigned AM_STF_META = 23;
+static constexpr unsigned AM_STF_ACK  = 99;
+
 struct dd_ucp_multi_req {
   alignas(128)
-  const std::uint64_t mSlotsCount = 1;
   std::atomic_uint64_t mSlotsUsed = 0;
+  const std::uint64_t mSlotsCount = 1;
   std::atomic_bool mFinished = false;
 
   dd_ucp_multi_req() = delete;
@@ -88,6 +88,48 @@ struct dd_ucp_multi_req {
 };
 
 
+struct dd_ucp_multi_req_v2 {
+  alignas(128)
+  volatile uint64_t mReqsStarted = 0;
+  std::atomic_uint64_t mReqsDone = 0;
+
+  dd_ucp_multi_req_v2() { }
+  dd_ucp_multi_req_v2(const dd_ucp_multi_req&) = delete;
+  dd_ucp_multi_req_v2(dd_ucp_multi_req&&) = delete;
+
+  ~dd_ucp_multi_req_v2() { }
+
+  inline bool done() const {
+    if (mReqsStarted > mReqsDone) {
+      return false;
+    }
+    assert (mReqsStarted == mReqsDone);
+    return true;
+  }
+
+  inline bool add_request(void *req) {
+    if (UCS_PTR_IS_ERR(req)) {
+      return false;
+    }
+    // operation returned request
+    if (req && UCS_PTR_IS_PTR(req)) {
+      mReqsStarted += 1;
+      return true;
+    }
+    return false;
+  }
+
+  inline bool remove_request(void *req) {
+    // operation returned request
+    if (req && UCS_PTR_IS_PTR(req)) {
+      mReqsDone += 1;
+      ucp_request_free(req);
+    }
+    return true;
+  }
+};
+
+
 static inline
 bool ucp_wait(dd_ucp_worker &pDDCtx, dd_ucp_multi_req &pReq)
 {
@@ -120,6 +162,18 @@ bool ucp_wait(dd_ucp_worker &pDDCtx, dd_ucp_multi_req &pReq)
   return pReq.done();
 }
 
+static inline
+bool ucp_wait_poll(dd_ucp_worker &pDDCtx, dd_ucp_multi_req_v2 &pReq)
+{
+  for (;;) {
+    // check if request is done
+    if (pReq.done()) {
+      return true;
+    }
+    while (ucp_worker_progress(pDDCtx.ucp_worker) > 0) { }
+  }
+  return true;
+}
 
 static
 void send_multi_cb(void *req, ucs_status_t status, void *user_data)
@@ -213,7 +267,7 @@ bool receive_tag_blocking(dd_ucp_worker &worker, void *data, const std::size_t s
 
 
 static inline
-bool get(ucp_ep_h ep, void *buffer, const std::size_t size, const std::uint64_t rptr, ucp_rkey_h rkey, dd_ucp_multi_req *dd_req)
+bool get(ucp_ep_h ep, void *buffer, const std::size_t size, const std::uint64_t rptr, ucp_rkey_h rkey, dd_ucp_multi_req_v2 *dd_req)
 {
   ucp_request_param_t param;
 
@@ -251,6 +305,86 @@ bool ucx_send_data(dd_ucp_worker &worker, ucp_ep_h ep, const void *pData, const 
   }
   // send actual string data
   return send_tag_blocking(worker, ep, pData, pSizeOrig, impl::STRING_TAG);
+}
+
+static inline
+bool ucx_send_am(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, const void *pData, const std::size_t pSize)
+{
+  ucp_request_param_t param;
+  void *ucp_request; // ucp allocated request
+  dd_ucp_multi_req dd_request(1);
+
+  param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK    |
+                       UCP_OP_ATTR_FIELD_DATATYPE    |
+                       UCP_OP_ATTR_FIELD_USER_DATA   |
+                       UCP_OP_ATTR_FIELD_MEMORY_TYPE |
+                       UCP_OP_ATTR_FIELD_FLAGS;
+  param.cb.send      = send_multi_cb;
+  param.datatype     = ucp_dt_make_contig(1);
+  param.user_data    = &dd_request;
+  param.memory_type  = ucs_memory_type_t::UCS_MEMORY_TYPE_HOST;
+  param.flags        = UCP_AM_SEND_FLAG_EAGER;
+
+  ucp_request = ucp_am_send_nbx(ep, id, NULL, 0, pData, pSize, &param);
+
+  if (ucp_request == NULL) {
+    return true;
+  }
+
+  if (UCS_PTR_IS_ERR(ucp_request)) {
+    EDDLOG("Failed ucx_send_am. id={} err={}", id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
+    return false;
+  } else {
+    dd_request.add_request(ucp_request);
+    dd_request.mark_finished();
+    ucp_wait(worker, dd_request);
+    const bool ok = dd_request.done();
+    if (!ok) {
+      EDDLOG("Failed ucx_send_am. flag={} id={} err={}", dd_request.done(), id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
+    }
+  }
+
+  return true;
+}
+
+static inline
+bool ucx_send_am_hdr(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, const void *pHdrData, const std::size_t pHdrSize)
+{
+  ucp_request_param_t param;
+  void *ucp_request; // ucp allocated request
+  dd_ucp_multi_req dd_request(1);
+
+  param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK    |
+                       UCP_OP_ATTR_FIELD_DATATYPE    |
+                       UCP_OP_ATTR_FIELD_USER_DATA   |
+                       UCP_OP_ATTR_FIELD_MEMORY_TYPE |
+                       UCP_OP_ATTR_FIELD_FLAGS;
+  param.cb.send      = send_multi_cb;
+  param.datatype     = ucp_dt_make_contig(1);
+  param.user_data    = &dd_request;
+  param.memory_type  = ucs_memory_type_t::UCS_MEMORY_TYPE_HOST;
+  param.flags        = UCP_AM_SEND_FLAG_EAGER;
+
+  ucp_request = ucp_am_send_nbx(ep, id, pHdrData, pHdrSize, NULL, 0, &param);
+
+  if (ucp_request == NULL) {
+    return true;
+  }
+
+  if (UCS_PTR_IS_ERR(ucp_request)) {
+    EDDLOG("Failed ucx_send_am. id={} err={}", id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
+    return false;
+  } else {
+    dd_request.add_request(ucp_request);
+    dd_request.mark_finished();
+    ucp_wait(worker, dd_request);
+    const bool ok = dd_request.done();
+    if (!ok) {
+      EDDLOG("Failed ucx_send_am. flag={} id={} err={}", dd_request.done(), id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
+    }
+  }
+
+  return true;
 }
 
 static inline
