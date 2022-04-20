@@ -43,6 +43,7 @@ std::string to_string(const TfBuilderState s) {
 
 struct PartitionRequest {
   std::string   mPartitionId;
+  std::string   mReqCreatedTime;
   std::vector<std::string> mStfSenderIdList;
 };
 

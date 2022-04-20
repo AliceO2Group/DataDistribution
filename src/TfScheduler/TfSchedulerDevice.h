@@ -22,7 +22,7 @@
 #include <FmqUtilities.h>
 
 #include <thread>
-
+#include <chrono>
 
 namespace o2
 {
@@ -50,6 +50,10 @@ class TfSchedulerDevice : public DataDistDevice
 
   /// Scheduler Instances
   std::string mPartitionId;
+
+  std::chrono::steady_clock::time_point mStartTime;
+  std::chrono::steady_clock::time_point mPartitionStartTime;
+
   std::unique_ptr<TfSchedulerInstanceHandler> mSchedInstance;
 
   std::shared_ptr<ConsulTfScheduler> mDiscoveryConfig;

@@ -452,21 +452,18 @@ public:
     return pDefault;
   }
 
-  bool getNewPartitionRequest(PartitionRequest &pNewPartitionRequest)
+  bool getNewPartitionRequest(const std::string &pPartitionId, PartitionRequest &pNewPartitionRequest /*out*/)
   {
     using namespace std::string_literals;
 
-    static const std::string sReqKeyPrefix = "epn/data-dist/request"s;
+    static const std::string sReqKeyPrefix = "epn/data-dist/request_v2/"s;
     static const std::string sInvalidKeyPrefix = "epn/data-dist/invalid_requests/"s; // + "time_t"
 
     static const std::string sTimeSubKey = "/request-time"s;
 
     static const std::string sPartitionIdSubKey = "/partition-id"s;
+    static const std::string sRequestCreateTimeKey = "/request-create-time"s;
     static const std::string sStfSenderListSubKey = "/stf-sender-id-list"s;
-
-
-    static const std::string sReqPartitionIdKey   = sReqKeyPrefix + sPartitionIdSubKey;
-    static const std::string sReqStfSenderListKey = sReqKeyPrefix + sStfSenderListSubKey;
 
     static_assert(std::is_same_v<T, TfSchedulerConfigStatus>, "Only TfScheduler can call this method.");
 
@@ -474,6 +471,11 @@ public:
 
     // check for 'epn/data-dist/request/partition-name' key
     try {
+      const auto lPartReqKey = sReqKeyPrefix + pPartitionId;
+      const auto lReqPartitionIdKey = lPartReqKey + sPartitionIdSubKey;
+      const auto lReqCreateTimeKey = lPartReqKey + sRequestCreateTimeKey;
+      const auto lReqStfSenderListKey = lPartReqKey + sStfSenderListSubKey;
+
       std::scoped_lock lLock(mConsulLock);
 
       Kv kv(*mConsul);
@@ -481,69 +483,83 @@ public:
       std::vector<KeyValue> lReqItems;
 
       do {
-        lReqItems = kv.items(sReqKeyPrefix);
+        lReqItems = kv.items(lPartReqKey);
 
         if (lReqItems.size() == 0) {
           return false;
         }
 
-        if (lReqItems.size() < 2) {
-          DDDLOG("Incomplete partition request, retrying...");
+        if (lReqItems.size() < 3) {
+          DDDLOG_RL(1000, "Incomplete partition request, retrying...");
           return false;
         }
 
-        if (lReqItems.size() == 2) {
-          // get the request fields
-          auto lPartitionIdIt = std::find_if(std::begin(lReqItems), std::end(lReqItems),
-            [&] (KeyValue const& p) { return p.key == sReqPartitionIdKey; });
-          if (lPartitionIdIt == std::end(lReqItems)) {
-            EDDLOG("Invalid new partition request. Missing key: {}", sReqPartitionIdKey);
-            break;
-          }
-
-          auto lFlpIdList = std::find_if(std::begin(lReqItems), std::end(lReqItems),
-            [&] (KeyValue const& p) { return p.key == sReqStfSenderListKey; });
-          if (lFlpIdList == std::end(lReqItems)) {
-            EDDLOG("Invalid new partition request. Missing key: {}", sReqStfSenderListKey);
-            break;
-          }
-
-          // validate the request fields
-          // partition name, check if already exist
-          const std::string lPartitionId = boost::trim_copy(lPartitionIdIt->value);
-          if (lPartitionId.empty()) {
-            EDDLOG("Invalid new partition request. Partition (ID) cannot be empty.");
-            break;
-          }
-
-          // validate the flp list
-          std::vector<std::string> lStfSenderIds;
-          const std::string lStfSenderIdsReq = lFlpIdList->value;
-
-          // split, trim, remove empty
-          boost::split(lStfSenderIds, lStfSenderIdsReq, boost::is_any_of(";,\n\t\r "), boost::token_compress_on);
-          const auto lNumStfSendersReq = lStfSenderIds.size();
-
-          // sort and unique
-          std::sort(std::begin(lStfSenderIds), std::end(lStfSenderIds));
-          lStfSenderIds.erase( std::unique(std::begin(lStfSenderIds), std::end(lStfSenderIds)), std::end(lStfSenderIds));
-
-          if (lStfSenderIds.empty()) {
-            EDDLOG("Invalid new partition request. List of StfSender IDs is empty.");
-            break;
-          }
-
-          if (lNumStfSendersReq != lStfSenderIds.size()) {
-            EDDLOG("Invalid new partition request. Requested FLP IDs are not unique. "
-              "provided_num={} unique_num={}", lNumStfSendersReq, lStfSenderIds.size());
-            break;
-          }
-
-          pNewPartitionRequest.mPartitionId = lPartitionId;
-          pNewPartitionRequest.mStfSenderIdList = std::move(lStfSenderIds);
-
-          lReqValid = true;
+        // get the request fields
+        // partition id key
+        // ../<part-id>/partition-id: <par-id>
+        auto lPartitionIdIt = std::find_if(std::begin(lReqItems), std::end(lReqItems),
+          [&] (KeyValue const& p) { return p.key == lReqPartitionIdKey; });
+        if (lPartitionIdIt == std::end(lReqItems)) {
+          EDDLOG("Invalid new partition request. Missing key: {}", lReqPartitionIdKey);
+          break;
         }
+
+        // request creation time
+        // ../<part-id>/request-create-time: <str date-time>
+        auto lReqCreateTimeIt = std::find_if(std::begin(lReqItems), std::end(lReqItems),
+          [&] (KeyValue const& p) { return p.key == lReqCreateTimeKey; });
+        if (lReqCreateTimeIt == std::end(lReqItems)) {
+          EDDLOG("Invalid new partition request. Missing key: {}", lReqCreateTimeKey);
+          break;
+        }
+
+        // list of all FLPs
+        // ../<part-id>/stf-sender-id-list: <str date-time>
+        auto lFlpIdList = std::find_if(std::begin(lReqItems), std::end(lReqItems),
+          [&] (KeyValue const& p) { return p.key == lReqStfSenderListKey; });
+        if (lFlpIdList == std::end(lReqItems)) {
+          EDDLOG("Invalid new partition request. Missing key: {}", lReqStfSenderListKey);
+          break;
+        }
+
+        // validate the request fields
+        // partition name, check if already exist
+        const std::string lPartitionId = boost::trim_copy(lPartitionIdIt->value);
+        if (lPartitionId.empty()) {
+          EDDLOG("Invalid new partition request. Partition (ID) value cannot be empty. key={}",
+            lReqPartitionIdKey);
+          break;
+        }
+
+        // validate the flp list
+        std::vector<std::string> lStfSenderIds;
+        const std::string lStfSenderIdsReq = lFlpIdList->value;
+
+        // split, trim, remove empty
+        boost::split(lStfSenderIds, lStfSenderIdsReq, boost::is_any_of(";,\n\t\r "), boost::token_compress_on);
+        const auto lNumStfSendersReq = lStfSenderIds.size();
+
+        // sort and unique
+        std::sort(std::begin(lStfSenderIds), std::end(lStfSenderIds));
+        lStfSenderIds.erase( std::unique(std::begin(lStfSenderIds), std::end(lStfSenderIds)), std::end(lStfSenderIds));
+
+        if (lStfSenderIds.empty()) {
+          EDDLOG("Invalid new partition request. List of StfSender IDs is empty.");
+          break;
+        }
+
+        if (lNumStfSendersReq != lStfSenderIds.size()) {
+          EDDLOG("Invalid new partition request. Requested FLP IDs are not unique. "
+            "provided_num={} unique_num={}", lNumStfSendersReq, lStfSenderIds.size());
+          break;
+        }
+
+        pNewPartitionRequest.mPartitionId = lPartitionId;
+        pNewPartitionRequest.mReqCreatedTime = boost::trim_copy(lReqCreateTimeIt->value);
+        pNewPartitionRequest.mStfSenderIdList = std::move(lStfSenderIds);
+
+        lReqValid = true;
+
       } while(false);
 
       // move the partition request if exists
@@ -557,11 +573,12 @@ public:
           lInfoPrefix = sInvalidKeyPrefix + std::to_string(lTimet);
         }
 
+        kv.set(lInfoPrefix + sRequestCreateTimeKey, pNewPartitionRequest.mReqCreatedTime);
         kv.set(lInfoPrefix + sTimeSubKey, lTimeStr);
 
         // move values and erase original request
         for (const auto &lKeyVal : lReqItems) {
-          auto lNewKey = lInfoPrefix + lKeyVal.key.substr(sReqKeyPrefix.length());
+          auto lNewKey = lInfoPrefix + lKeyVal.key.substr(lPartReqKey.length());
           kv.set(lNewKey, lKeyVal.value);
           kv.erase(lKeyVal.key);
         }
@@ -688,8 +705,6 @@ public:
     }
     return false;
   }
-
-
 };
 
 
