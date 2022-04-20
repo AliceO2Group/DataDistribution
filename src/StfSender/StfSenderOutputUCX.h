@@ -28,6 +28,7 @@
 #include <vector>
 #include <map>
 #include <thread>
+#include <shared_mutex>
 #include <boost/container/small_vector.hpp>
 
 namespace o2::DataDistribution
@@ -42,23 +43,22 @@ typedef struct ucp_listener_context {
 
 
 struct StfSenderUCXConnInfo {
-
-  StfSenderOutputUCX *mOutputUCX;
+  StfSenderOutputUCX &mOutputUCX;
+  ucx::dd_ucp_worker &mWorker;
 
   // peer name
   std::string mTfBuilderId;
   // peer lock (thread pool)
   std::mutex mTfBuilderLock;
 
-  // ucp_worker_h  ucp_worker;
-  ucx::dd_ucp_worker worker;
   ucp_ep_h      ucp_ep;
 
   std::atomic_bool mConnError = false;
 
   StfSenderUCXConnInfo() = delete;
-  StfSenderUCXConnInfo(StfSenderOutputUCX *pOutputUCX, const std::string &pTfBuilderId)
+  StfSenderUCXConnInfo(StfSenderOutputUCX &pOutputUCX, ucx::dd_ucp_worker &pWorker, const std::string &pTfBuilderId)
   : mOutputUCX(pOutputUCX),
+    mWorker(pWorker),
     mTfBuilderId(pTfBuilderId)
   { }
 };
@@ -77,11 +77,16 @@ public:
 
   bool sendStfToTfBuilder(const std::string &pTfBuilderId, ScheduledStfInfo &&pStfInfo);
 
+  // void MetaHandlerThread(unsigned pThreadIdx);
   void DataHandlerThread(unsigned pThreadIdx);
+  void StfAckThread();
   void StfDeallocThread();
 
-  void handle_client_ep_error(StfSenderUCXConnInfo *pUCXConnInfo, ucs_status_t status)
-  {
+  void pushStfAck(const std::uint64_t pStfId) {
+    mStfAckQueue.push(pStfId);
+  }
+
+  void handle_client_ep_error(StfSenderUCXConnInfo *pUCXConnInfo, ucs_status_t status) {
     // TfBuilder gets disconnected?
     if (pUCXConnInfo) {
       pUCXConnInfo->mConnError = true;
@@ -171,6 +176,7 @@ private:
 
   /// Discovery configuration
   std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
+  const std::string mStfSenderId;
 
   /// Runtime options
   std::size_t mRmaGap;
@@ -179,29 +185,40 @@ private:
   // Global stf counters
   StdSenderOutputCounters &mCounters;
 
-  mutable std::mutex mOutputMapLock;
+  mutable std::shared_mutex mOutputMapLock;
     std::map<std::string, std::unique_ptr<StfSenderUCXConnInfo> > mOutputMap;
 
   /// UCX objects
 
   /// context and listener
   ucp_context_h ucp_context;
-  ucp_worker_h  ucp_listener_worker;
-  ucp_listener_h ucp_listener;
+  boost::container::small_vector<ucx::dd_ucp_worker, 512> mDataWorkers;
 
   dd_ucp_listener_context_t ucp_listen_context;
 
   // make UCXIovStfHeader
   void prepareStfMetaHeader(const SubTimeFrame &pStf, UCXIovStfHeader *pStfUCXMeta);
 
-  // thread pool channel
+  // thread pool for stf requests
   std::vector<std::thread> mThreadPool;
   struct SendStfInfo {
     std::unique_ptr<SubTimeFrame> mStf;
     std::string mTfBuilderId;
-  };
-  ConcurrentFifo<SendStfInfo> mSendRequestQueue;
 
+    SendStfInfo(std::unique_ptr<SubTimeFrame> &&pStf, const std::string &pTfBuilderId)
+    : mStf(std::move(pStf)), mTfBuilderId(pTfBuilderId) { }
+  };
+
+  ConcurrentFifo<std::unique_ptr<SendStfInfo>> mSendRequestQueue;
+
+  /// map of STFs waiting on transfers
+  std::mutex mStfsInFlightMutex;
+    std::map<std::uint64_t, std::unique_ptr<SendStfInfo>> mStfsInFlight;
+    std::set<std::string> mDisconnectedTfBuilders;
+  ConcurrentQueue<std::uint64_t> mStfAckQueue;
+  std::thread mStfAckThread;
+
+  // stf dealloc thread
   std::thread mDeallocThread;
   ConcurrentQueue<std::unique_ptr<SubTimeFrame>> mStfDeleteQueue;
 };

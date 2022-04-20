@@ -154,6 +154,25 @@ bool create_ucp_listener(ucp_worker_h ucp_worker, const std::string &pIp, ucp_li
 }
 
 static inline
+bool register_am_callback(dd_ucp_worker &worker, unsigned id, ucp_am_recv_callback_t ucp_am_cb, void *cb_arg)
+{
+  ucp_am_handler_param_t am_param;
+  am_param.field_mask = UCP_AM_HANDLER_PARAM_FIELD_ID |
+                        UCP_AM_HANDLER_PARAM_FIELD_CB |
+                        UCP_AM_HANDLER_PARAM_FIELD_ARG;
+  am_param.id         = id;
+  am_param.cb         = ucp_am_cb;
+  am_param.arg        = cb_arg;
+
+  auto status = ucp_worker_set_am_recv_handler(worker.ucp_worker, &am_param);
+  if (status != UCS_OK) {
+    EDDLOG("Failed to register UCX AM callback. err={}", ucs_status_string(status));
+    return false;
+  }
+  return true;
+}
+
+static inline
 bool create_ucp_ep(ucp_worker_h worker, ucp_conn_request_h conn_req, ucp_ep_h *ep, ucp_err_handler_cb_t pErrCb, void* pErrCbArg, const std::string_view &pMsg)
 {
   ucp_ep_params_t ep_params;
@@ -230,7 +249,7 @@ bool flush_ep_blocking(ucp_worker_h worker, ucp_ep_h ep)
 }
 
 static inline
-void close_connection(dd_ucp_worker &worker, ucp_ep_h ep)
+void close_ep_connection(dd_ucp_worker &worker, ucp_ep_h ep)
 {
   ucp_request_param_t param;
   param.op_attr_mask = UCP_OP_ATTR_FIELD_FLAGS;
@@ -246,8 +265,6 @@ void close_connection(dd_ucp_worker &worker, ucp_ep_h ep)
 
     ucp_request_free(close_req);
   }
-
-  ucp_worker_destroy(worker.ucp_worker);
 }
 
 bool create_rkey_for_region(ucp_context_h ctx, void *addr, const std::uint64_t size, bool rdonly,

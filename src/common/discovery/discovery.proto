@@ -377,6 +377,7 @@ message IovStfHeader {
 /// UCX STF-IOV structures
 message UCXIovStfHeader {
   IovStfHdrMeta stf_hdr_meta                 = 1;
+  string        stf_sender_id                = 2;
 
   // data txgs (message grouping)
   message UCXIovTxg {

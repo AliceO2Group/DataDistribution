@@ -345,6 +345,16 @@ public:
   unsigned getNumWorkingClients() const { return mNumWorkingClients; }
   unsigned getNumConnectedClients() const { return mClients.size(); }
 
+  std::vector<std::string> getStfSenderIds() const {
+    std::shared_lock lLock(mClientsGlobalLock);
+    std::vector<std::string> lRetVec;
+
+    for (const auto &lCliIt : mClients) {
+      lRetVec.push_back(lCliIt.first);
+    }
+    return lRetVec;
+  }
+
 private:
 
   std::atomic_bool mRunning = false;
@@ -353,7 +363,7 @@ private:
   bool mClientsCreated = false;
   unsigned mNumWorkingClients = 0;
 
-  std::shared_mutex mClientsGlobalLock;
+  mutable std::shared_mutex mClientsGlobalLock;
   std::map<std::string, std::unique_ptr<StfSenderRpcClient>> mClients;
 
   // monitoring

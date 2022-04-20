@@ -28,11 +28,30 @@ static void client_ep_err_cb(void *arg, ucp_ep_h ep, ucs_status_t status)
 {
     (void) ep;
     StfSenderUCXConnInfo *lConnInfo = reinterpret_cast<StfSenderUCXConnInfo*>(arg);
-    lConnInfo->mOutputUCX->handle_client_ep_error(lConnInfo, status);
+    lConnInfo->mOutputUCX.handle_client_ep_error(lConnInfo, status);
+}
+
+static ucs_status_t ucp_am_data_cb(void *arg, const void *header, size_t header_length,
+                                  void *data, size_t length, const ucp_am_recv_param_t *param)
+{
+  StfSenderOutputUCX *lOutputUcx = reinterpret_cast<StfSenderOutputUCX*>(arg);
+  (void) data;
+  (void) length;
+  (void) header_length;
+  (void) param;
+
+  assert (header_length == sizeof (std::uint64_t));
+
+  std::uint64_t lAckStfId = 0;
+  std::memcpy(&lAckStfId, header, sizeof (std::uint64_t));
+
+  lOutputUcx->pushStfAck(lAckStfId);
+  return UCS_OK;
 }
 
 StfSenderOutputUCX::StfSenderOutputUCX(std::shared_ptr<ConsulStfSender> pDiscoveryConfig, StdSenderOutputCounters &pCounters)
   : mDiscoveryConfig(pDiscoveryConfig),
+    mStfSenderId(pDiscoveryConfig->status().info().process_id()),
     mCounters(pCounters)
 {
 }
@@ -52,20 +71,36 @@ bool StfSenderOutputUCX::start()
     return false;
   }
 
+  // first create all worker objects
+  for (std::size_t i = 0; i < mThreadPoolSize; i++) {
+    mDataWorkers.emplace_back();
+    if (!ucx::util::create_ucp_worker(ucp_context, &mDataWorkers.back(), std::to_string(i))) {
+      return false;
+    }
+    // register the am handler
+    DDDLOG("ListenerThread: ucx::util::register_am_callback() ...");
+    if (!ucx::util::register_am_callback(mDataWorkers.back(), ucx::io::AM_STF_ACK, ucp_am_data_cb, this)) {
+      return false;
+    }
+  }
+
+  // we can accept connections after all workers are created
+  mRunning = true;
+
   // start thread pool
   for (std::size_t i = 0; i < mThreadPoolSize; i++) {
     std::string lThreadName = "stfs_ucx_" + std::to_string(i);
-
     mThreadPool.emplace_back(
       std::move(create_thread_member(lThreadName.c_str(), &StfSenderOutputUCX::DataHandlerThread, this, i))
     );
   }
 
+  // start astf ack thread
+  mStfAckThread = std::move(create_thread_member("stfs_ack", &StfSenderOutputUCX::StfAckThread, this));
+
   // start dealloc thread
   mDeallocThread = std::move(create_thread_member("stfs_dealloc", &StfSenderOutputUCX::StfDeallocThread, this));
 
-  // we can accept connections
-  mRunning = true;
   return true;
 }
 
@@ -76,12 +111,18 @@ void StfSenderOutputUCX::stop()
   // stop the thread pool
   mSendRequestQueue.stop();
   mStfDeleteQueue.stop();
+  mStfAckQueue.stop();
+
   for (auto &lThread : mThreadPool) {
     if (lThread.joinable()) {
       lThread.join();
     }
   }
   mThreadPool.clear();
+
+  if (mStfAckThread.joinable()) {
+    mStfAckThread.join();
+  }
 
   if (mDeallocThread.joinable()) {
     mDeallocThread.join();
@@ -99,12 +140,20 @@ void StfSenderOutputUCX::stop()
 
   // close all connections
   {
-    std::scoped_lock lLock(mOutputMapLock);
-    // for (auto &lConn : mOutputMap) {
-    //   ucx::util::close_connection(lConn.second->worker, lConn.second->ucp_ep);
-    // }
+    std::unique_lock lLock(mOutputMapLock);
+    for (auto &lConn : mOutputMap) {
+      ucx::util::close_ep_connection(lConn.second->mWorker, lConn.second->ucp_ep);
+    }
     mOutputMap.clear();
   }
+
+  {// close all workers and the context
+    for (auto &lWorker : mDataWorkers) {
+      ucp_worker_destroy(lWorker.ucp_worker);
+    }
+    ucp_cleanup(ucp_context);
+  }
+
   DDDLOG("StfSenderOutputUCX::stop: closed all connections.");
 }
 
@@ -118,7 +167,7 @@ ConnectStatus StfSenderOutputUCX::connectTfBuilder(const std::string &pTfBuilder
 
   // Check if connection already exists
   {
-    std::scoped_lock lLock(mOutputMapLock);
+    std::shared_lock lLock(mOutputMapLock);
 
     if (mOutputMap.count(pTfBuilderId) > 0) {
       EDDLOG("StfSenderOutputUCX::connectTfBuilder: TfBuilder is already connected. tfb_id={}", pTfBuilderId);
@@ -126,25 +175,23 @@ ConnectStatus StfSenderOutputUCX::connectTfBuilder(const std::string &pTfBuilder
     }
   }
 
-  auto lConnInfo = std::make_unique<StfSenderUCXConnInfo>(this, pTfBuilderId);
+  // use one of the configured workers for the TfBuilder connection
+  static std::atomic_uint sCurrentWorkerIdx = 0;
+  auto lWorkerIndex = (sCurrentWorkerIdx++) % mDataWorkers.size();
 
-  // create worker the TfBuilder connection
-  DDDLOG("StfSenderOutputUCX::connectTfBuilder: ucx::util::create_ucp_worker ip={} port={}", lTfBuilderIp, lTfBuilderPort);
-  if (!ucx::util::create_ucp_worker(ucp_context, &lConnInfo->worker, pTfBuilderId)) {
-    return eCONNERR;
-  }
+  auto lConnInfo = std::make_unique<StfSenderUCXConnInfo>(*this, mDataWorkers[lWorkerIndex], pTfBuilderId);
 
   // create endpoint for TfBuilder connection
   DDDLOG("Connect to TfBuilder ip={} port={}", lTfBuilderIp, lTfBuilderPort);
   DDDLOG("StfSenderOutputUCX::connectTfBuilder: ucx::util::create_ucp_client_ep ip={} port={}", lTfBuilderIp, lTfBuilderPort);
-  if (!ucx::util::create_ucp_client_ep(lConnInfo->worker, lTfBuilderIp, lTfBuilderPort,
+  if (!ucx::util::create_ucp_client_ep(lConnInfo->mWorker, lTfBuilderIp, lTfBuilderPort,
     &lConnInfo->ucp_ep, client_ep_err_cb, lConnInfo.get(), pTfBuilderId)) {
 
     return eCONNERR;
   }
   DDDLOG("StfSenderOutputUCX::connectTfBuilder: ucx::io::ucx_send_string ip={} port={}", lTfBuilderIp, lTfBuilderPort);
   const std::string lStfSenderId = mDiscoveryConfig->status().info().process_id();
-  auto lOk = ucx::io::ucx_send_string(lConnInfo->worker, lConnInfo->ucp_ep, lStfSenderId);
+  auto lOk = ucx::io::ucx_send_string(lConnInfo->mWorker, lConnInfo->ucp_ep, lStfSenderId);
   if (!lOk) {
     EDDLOG("connectTfBuilder: Sending of local id failed.");
     return eCONNERR;
@@ -152,7 +199,7 @@ ConnectStatus StfSenderOutputUCX::connectTfBuilder(const std::string &pTfBuilder
 
   // Add the connection to connection map
   {
-    std::scoped_lock lLock(mOutputMapLock);
+    std::unique_lock lLock(mOutputMapLock);
     const auto lItOk = mOutputMap.try_emplace(pTfBuilderId, std::move(lConnInfo));
     if (!lItOk.second) {
       EDDLOG("connectTfBuilder: TfBuilder connection already exists tfbuilder_id={}", pTfBuilderId);
@@ -170,24 +217,34 @@ bool StfSenderOutputUCX::disconnectTfBuilder(const std::string &pTfBuilderId)
   // find and remove from the connection map
   std::unique_ptr<StfSenderUCXConnInfo> lConnInfo;
   {
-    std::scoped_lock lLock(mOutputMapLock);
+    std::unique_lock lLock(mOutputMapLock);
 
     auto lIt = mOutputMap.find(pTfBuilderId);
 
     if (lIt == mOutputMap.end()) {
       DDDLOG("StfSenderOutputUCX::disconnectTfBuilder: TfBuilder was not connected. tfb_id={}", pTfBuilderId);
+      {// mark the tfbuilder as disconnected. if there was a connection before, wait until ucx ep is destroyed
+        std::scoped_lock lLockTfBuilders(mStfsInFlightMutex);
+        mDisconnectedTfBuilders.insert(pTfBuilderId);
+      }
       return true;
     }
     lConnInfo = std::move(mOutputMap.extract(lIt).mapped());
   }
 
   // Transport is only closed when other side execute close as well. Execute async
-  std::thread([pConnInfo = std::move(lConnInfo), pTfBuilderId](){
+  std::thread([this, pConnInfo = std::move(lConnInfo), pTfBuilderId](){
     DDDLOG("StfSenderOutputUCX::disconnectTfBuilder: closing transport for tf_builder={}", pTfBuilderId);
     // acquire the lock and close the connection
     std::unique_lock lTfSenderLock(pConnInfo->mTfBuilderLock);
-    ucx::util::close_connection(pConnInfo->worker, pConnInfo->ucp_ep);
+    ucx::util::close_ep_connection(pConnInfo->mWorker, pConnInfo->ucp_ep);
     DDDLOG("StfSenderOutputUCX::disconnectTfBuilder: transport stopped for tf_builder={}", pTfBuilderId);
+
+    {// mark the tfbuilder as disconnected
+      std::scoped_lock lLockTfBuilders(mStfsInFlightMutex);
+      mDisconnectedTfBuilders.insert(pTfBuilderId);
+    }
+
   }).detach();
 
   return true;
@@ -195,7 +252,7 @@ bool StfSenderOutputUCX::disconnectTfBuilder(const std::string &pTfBuilderId)
 
 bool StfSenderOutputUCX::sendStfToTfBuilder(const std::string &pTfBuilderId, ScheduledStfInfo &&pStfInfo)
 {
-  mSendRequestQueue.push(SendStfInfo{std::move(pStfInfo.mStf), pTfBuilderId});
+  mSendRequestQueue.push(std::make_unique<SendStfInfo>(std::move(pStfInfo.mStf), pTfBuilderId));
   return true;
 }
 
@@ -214,6 +271,7 @@ void StfSenderOutputUCX::visit(const SubTimeFrame &pStf, void *pData)
   lStfUCXMeta->mutable_stf_hdr_meta()->set_stf_size(pStf.getDataSize());
   // Pack the Stf header
   lStfUCXMeta->mutable_stf_hdr_meta()->set_stf_dd_header(&pStf.header(), sizeof(SubTimeFrame::Header));
+  lStfUCXMeta->set_stf_sender_id(mDiscoveryConfig->status().info().process_id());
 
   // pack all headers and collect data
   std::vector<UCXData> lStfDataPtrs;
@@ -341,35 +399,43 @@ void StfSenderOutputUCX::prepareStfMetaHeader(const SubTimeFrame &pStf, UCXIovSt
   pStf.accept(*this, pStfUCXMeta);
 }
 
-/// Sending thread
+/// prepare ucx metadata for stfs
 void StfSenderOutputUCX::DataHandlerThread(unsigned pThreadIdx)
 {
-  DDDLOG("StfSenderOutputUCX: Starting the thread pool {}", pThreadIdx);
+  DDDLOG("StfSenderOutputUCX: Starting meta thread {}", pThreadIdx);
 
-  const std::string lStfSenderId = mDiscoveryConfig->status().info().process_id();
+  // local worker we advance here
+  assert (pThreadIdx < mDataWorkers.size());
+  ucx::dd_ucp_worker &lWorker = mDataWorkers[pThreadIdx];
+  UCXIovStfHeader lStfMeta;
 
-  assert(mSendRequestQueue.is_running());
+  while (mRunning) {
+    std::optional<std::unique_ptr<SendStfInfo>> lSendReqOpt = mSendRequestQueue.pop_wait_for(5ms);
+    while (ucp_worker_progress(lWorker.ucp_worker) > 0) { }
+    if (!lSendReqOpt) {
+      continue;
+    }
 
-  DDMON_RATE("stfsender", "stf_output", 0.0);
+    std::unique_ptr<SendStfInfo> lSendReq = std::move(lSendReqOpt.value());
+    auto &lStf = lSendReq->mStf;
+    const auto lStfId = lStf->id();
+    lStfMeta.Clear();
 
-  std::uint64_t lNumSentStfs = 0;
+    const auto &lTfBuilderId = lSendReq->mTfBuilderId;
 
-  std::optional<SendStfInfo> lSendReqOpt;
+    // pack the ucx meta
+    prepareStfMetaHeader(*lStf, &lStfMeta);
 
-  while ((lSendReqOpt = mSendRequestQueue.pop()) != std::nullopt) {
-    SendStfInfo &lSendReq = lSendReqOpt.value();
-    const auto &lTfBuilderId = lSendReq.mTfBuilderId;
-    auto &lStf = lSendReq.mStf;
-
+    // send the meta to tfbuilder
     StfSenderUCXConnInfo *lConnInfo;
     {
       // get the thread data.
-      std::scoped_lock lLock(mOutputMapLock);
+      std::shared_lock lLock(mOutputMapLock);
       if (mOutputMap.count(lTfBuilderId) == 1) {
         lConnInfo = mOutputMap[lTfBuilderId].get();
 
         if (lConnInfo && lConnInfo->mConnError) {
-          EDDLOG_GRL(1000, "StfSenderOutputUCX: Skipping sending data because peer connection issues. tfbuilder_id={}", lConnInfo->mTfBuilderId);
+          EDDLOG_GRL(1000, "StfSenderOutputUCX: Skipping sending data because of peer connection issues. tfbuilder_id={}", lConnInfo->mTfBuilderId);
           mStfDeleteQueue.push(std::move(lStf));
           continue;
         }
@@ -379,73 +445,110 @@ void StfSenderOutputUCX::DataHandlerThread(unsigned pThreadIdx)
       }
     }
 
-    const auto lStfId = lStf->id();
-    const auto lStfSize = lStf->getDataSize();
-
-    UCXIovStfHeader lMeta;
-    prepareStfMetaHeader(*lStf, &lMeta);
-
-    std::string lStfMetaData = lMeta.SerializeAsString();
-
-    DDDLOG_GRL(5000, "Sending an STF to TfBuilder. stf_id={} tfb_id={} stf_size={} total_sent_stf={} meta_size={}",
-      lStfId, lTfBuilderId, lStfSize, lNumSentStfs, lStfMetaData.size());
-
-    DDMON("stfsender", "ucx_meta.size", lStfMetaData.size());
-
-    // Send meta and wait for ack (locked)
-    { // lock the TfBuilder for sending
-      std::scoped_lock lTfBuilderLock(lConnInfo->mTfBuilderLock);
-
-      if (ucx::io::ucx_send_string(lConnInfo->worker, lConnInfo->ucp_ep, lStfMetaData)) {
-        // wait here until we get cometed notification
-        auto lOkStrOpt = ucx::io::ucx_receive_string(lConnInfo->worker);
-        if (!(lOkStrOpt.has_value() && (lOkStrOpt.value() == "OK"))) {
-          EDDLOG("StfSender was NOT notified about transfer finish tf_builder={} tf_id={}", lTfBuilderId, lStfId);
-        }
-      } else {
-        EDDLOG("StfSender could not transfer stf metadata to tf_builder={} tf_id={}", lTfBuilderId, lStfId);
-      }
-      lConnInfo = nullptr;
-    } // Unlock TfBuilder to avoid serializing on STF destruction
-
-    // send Stf to dealloc thread
-    DDMON_RATE("stfsender", "stf_output", lStf->getDataSize());
-    mStfDeleteQueue.push(std::move(lStf));
-
-    // update buffer status
-    lNumSentStfs += 1;
-
-    StdSenderOutputCounters::Values lCounters;
     {
-      std::scoped_lock lCntLock(mCounters.mCountersLock);
-      mCounters.mValues.mBuffered.mSize -= lStfSize;
-      mCounters.mValues.mBuffered.mCnt -= 1;
-      mCounters.mValues.mInSending.mSize -= lStfSize;
-      mCounters.mValues.mInSending.mCnt -= 1;
-      mCounters.mValues.mTotalSent.mSize += lStfSize;
-      mCounters.mValues.mTotalSent.mCnt += 1;
+      { // store the request before we notify tfbuilder to avoid race on freeing
+        std::scoped_lock lLock(mStfsInFlightMutex);
+        mStfsInFlight[lStfId] = std::move(lSendReq);
+      }
 
-      lCounters = mCounters.mValues;
+      std::string lStfMetaData = lStfMeta.SerializeAsString();
+
+      DDMON_RATE("stfsender", "ucx_meta", lStfMetaData.size());
+
+      if (!ucx::io::ucx_send_am(lConnInfo->mWorker, lConnInfo->ucp_ep, ucx::io::AM_STF_META, lStfMetaData.data(), lStfMetaData.size())) {
+        EDDLOG("StfSender could not transfer stf metadata to tf_builder={} tf_id={}", lTfBuilderId, lStfId);
+        {
+          std::scoped_lock lLock(mStfsInFlightMutex);
+          mStfDeleteQueue.push(std::move(mStfsInFlight[lStfId]->mStf));
+        }
+      }
     }
-
-    if (lCounters.mInSending.mCnt > 100) {
-      DDDLOG_RL(2000, "DataHandlerThread: Number of buffered STFs. tfb_id={} num_stf_total={} size_stf_total={}",
-        lTfBuilderId, lCounters.mInSending.mCnt, lCounters.mInSending.mSize);
-    }
-
-    DDMON("stfsender", "stf_output.stf_id", lStfId);
   }
 
-  DDDLOG("Exiting StfSenderOutputUCX[{}]", pThreadIdx);
+  DDDLOG("StfSenderOutputUCX: exiting meta thread {}", pThreadIdx);
+}
+
+void StfSenderOutputUCX::StfAckThread()
+{
+  DDMON_RATE("stfsender", "stf_output", 0.0);
+
+  while (mRunning) {
+    std::optional<std::uint64_t> lStfAckOpt = mStfAckQueue.pop_wait_for(100ms);
+
+     auto lDeallocStfInfo = [this](std::unique_ptr<SendStfInfo> &&pStfInfo, const bool pSent) -> void {
+      // all is well remove
+      assert (pStfInfo);
+      auto &lStf = pStfInfo->mStf;
+      const auto lStfSize = lStf->getDataSize();
+
+      DDMON_RATE("stfsender", "stf_output", lStfSize);
+
+
+      { // update the counters
+        std::scoped_lock lCntLock(mCounters.mCountersLock);
+        mCounters.mValues.mBuffered.mSize -= lStfSize;
+        mCounters.mValues.mBuffered.mCnt -= 1;
+        mCounters.mValues.mInSending.mSize -= lStfSize;
+        mCounters.mValues.mInSending.mCnt -= 1;
+        if (pSent) {
+          mCounters.mValues.mTotalSent.mSize += lStfSize;
+          mCounters.mValues.mTotalSent.mCnt += 1;
+        }
+      }
+      // send for dealloc
+      mStfDeleteQueue.push(std::move(lStf));
+    };
+
+    // deallocate finished stf
+    if (lStfAckOpt.has_value()) {
+      // extract the stf info from the map
+      std::unique_ptr<SendStfInfo> lStfInfo = nullptr;
+      const auto lStfId = lStfAckOpt.value();
+
+      {
+        std::scoped_lock lLock(mStfsInFlightMutex);
+        auto lStfInfoIt = mStfsInFlight.find(lStfId);
+        if (lStfInfoIt != mStfsInFlight.end()) {
+          lStfInfo = std::move(lStfInfoIt->second);
+          mStfsInFlight.erase(lStfInfoIt);
+        }
+      }
+
+      if (lStfInfo) {
+        lDeallocStfInfo(std::move(lStfInfo), true);
+      }
+    }
+
+    {// check if the oldest stf should be removed because tfbuilder disconnected
+      // extract the stf info from the map
+      std::unique_ptr<SendStfInfo> lStfInfo = nullptr;
+      {
+        std::scoped_lock lLock(mStfsInFlightMutex);
+
+        if (!mStfsInFlight.empty()) {
+          const auto &lTfBuilderId = mStfsInFlight.begin()->second->mTfBuilderId;
+
+          if (mDisconnectedTfBuilders.count(lTfBuilderId) > 0) {
+
+            lStfInfo = std::move(mStfsInFlight.begin()->second);
+            mStfsInFlight.erase(mStfsInFlight.cbegin());
+
+          }
+        }
+      }
+      if (lStfInfo) {
+        lDeallocStfInfo(std::move(lStfInfo), false);
+      }
+    }
+  }
 }
 
 void StfSenderOutputUCX::StfDeallocThread()
 {
   std::optional<std::unique_ptr<SubTimeFrame> > lStfOpt;
   while ((lStfOpt = mStfDeleteQueue.pop()) != std::nullopt) {
-
+    // intentionally left blank
   }
 }
-
 
 } /* o2::DataDistribution */

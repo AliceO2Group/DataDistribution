@@ -27,8 +27,10 @@
 
 #include <vector>
 #include <map>
+#include <boost/container/small_vector.hpp>
 
 #include <thread>
+#include <shared_mutex>
 
 namespace o2::DataDistribution
 {
@@ -36,22 +38,22 @@ class TfBuilderInputUCX;
 class TimeFrameBuilder;
 class TfBuilderRpcImpl;
 
-
 struct dd_ucp_listener_context_t {
   /// Self reference to handle new connections
   TfBuilderInputUCX *mInputUcx;
 };
 
-struct dd_ucx_conn_info {
+struct TfBuilderUCXConnInfo {
   /// Self reference to perform cleanup on errors
-  TfBuilderInputUCX* mInputUCX;
+  TfBuilderInputUCX &mInputUCX;
+
+  /// UCP worker and ep
+  ucx::dd_ucp_worker  &mWorker;
+  ucp_ep_h ucp_ep;
 
   /// Peer StfSender id
   std::string mStfSenderId;
-
-  /// UCP worker and ep
-  ucx::dd_ucp_worker  worker;
-  ucp_ep_h ucp_ep;
+  std::string mStfSenderIp;
 
   /// Lock to ensure only one thread is using the endpoint at any time
   std::mutex mStfSenderIoLock;
@@ -62,10 +64,10 @@ struct dd_ucx_conn_info {
   /// Signal that peer connection has problems
   std::atomic_bool mConnError = false;
 
-  dd_ucx_conn_info() = delete;
-  dd_ucx_conn_info(TfBuilderInputUCX *pThis) : mInputUCX(pThis) { }
+  TfBuilderUCXConnInfo() = delete;
+  TfBuilderUCXConnInfo(TfBuilderInputUCX &pThis, ucx::dd_ucp_worker &pWorker)
+  : mInputUCX(pThis), mWorker(pWorker) { }
 };
-
 
 class TfBuilderInputUCX
 {
@@ -87,20 +89,55 @@ public:
   void stop();
   void reset() { }
 
+  void StfPreprocessThread(const unsigned pThreadIdx);
   void DataHandlerThread(const unsigned pThreadIdx);
+  void StfPostprocessThread(const unsigned pThreadIdx);
 
-  void handle_client_ep_error(dd_ucx_conn_info *pConn, ucs_status_t pStatus) {
+  struct StfMetaRdmaInfo {
+    UCXIovStfHeader mStfMeta;
+    std::vector<void*> mTxgPtrs;
+  };
+
+  bool createMetadata(const void *pPtr, const std::size_t pLen, UCXIovStfHeader &lMeta /* out */) {
+    if (!lMeta.ParseFromArray(pPtr, pLen)) {
+      EDDLOG("UCXDataHandlerThread: Failed to parse stf meta message. meta_size={}", pLen);
+      return false;
+    }
+    return true;
+  }
+
+  void pushMetadata(UCXIovStfHeader &&pMeta) {
+    mStfPreprocessQueue.push(std::move(pMeta));
+  }
+
+  void pushRdmaInfo(StfMetaRdmaInfo &&pInfo) {
+    const auto &lStfSenderId = pInfo.mStfMeta.stf_sender_id();
+
+    std::shared_lock lLock(mStfMetaWorkerQueuesMutex);
+
+    assert (mStfMetaWorkerQueues[lStfSenderId] != nullptr);
+    mStfMetaWorkerQueues[lStfSenderId]->push(std::move(pInfo));
+  }
+
+  void pushPostprocessMetadata(StfMetaRdmaInfo &&pInfo) {
+    mStfPostprocessQueue.push(std::move(pInfo));
+  }
+
+  void pushRndvMetadata(void* pUcxDesc, const std::size_t pStfMetaLen) {
+    mStfMetaRndvQueue.push(std::make_tuple(pUcxDesc, pStfMetaLen));
+  }
+
+  void handle_client_ep_error(TfBuilderUCXConnInfo *pConn, ucs_status_t pStatus) {
 
     if (pConn) {
       pConn->mConnError = true;
-      EDDLOG("TfBuilderInputUCX: peer connection error. stfsender_id={} err={}", pConn->mStfSenderId, ucs_status_string(pStatus));
+
+      WDDLOG("TfBuilderInputUCX: peer connection error. stfsender_ip={} stfsender_id={} err={}",
+        pConn->mStfSenderIp, pConn->mStfSenderId, ucs_status_string(pStatus));
     }
 
-    // TODO: survive loss of StfSender peer?
-    bool lExpectedStop = false;
-    if (mStopRequested.compare_exchange_strong(lExpectedStop, true)) {
-      std::thread([&](){ stop(); }).detach();
-    }
+    // TODO: survive loss of StfSender peers?
+    mConnectionIssues = true;
   }
 
 private:
@@ -119,8 +156,23 @@ private:
   // STF request queue
   ConcurrentQueue<std::string> &mStfReqQueue;
   std::size_t mThreadPoolSize;
-  std::uint64_t mNumRmaOps;
+
+  /// STF UCX metadata queue
+  ConcurrentQueue<std::tuple<void*, std::size_t>> mStfMetaRndvQueue;
+
+  // STF preprocess threads
+  ConcurrentQueue<UCXIovStfHeader> mStfPreprocessQueue;
+  std::vector<std::thread> mPrepThreadPool;
+
+  // STF RDMA get threads
+  std::shared_mutex mStfMetaWorkerQueuesMutex;
+    std::unordered_map<std::string, std::size_t> mStfSenderToWorkerMap;
+    std::unordered_map<std::string, std::shared_ptr<ConcurrentQueue<StfMetaRdmaInfo> > >  mStfMetaWorkerQueues;
   std::vector<std::thread> mThreadPool;
+
+  // STF postprocess threads
+  ConcurrentQueue<StfMetaRdmaInfo> mStfPostprocessQueue;
+  std::vector<std::thread> mPostThreadPool;
 
   /// Queue for received STFs
   ConcurrentQueue<ReceivedStfMeta> &mReceivedDataQueue;
@@ -128,6 +180,8 @@ private:
 private:
   /// UCX context
   ucp_context_h ucp_context;
+  boost::container::small_vector<ucx::dd_ucp_worker, 512> mDataWorkers;
+  boost::container::small_vector<std::shared_ptr<ConcurrentQueue<StfMetaRdmaInfo>>, 512> mDataWorkersQueues;
   bool ucp_data_region_set = false;
   ucp_mem_h ucp_data_region;
 
@@ -135,12 +189,15 @@ private:
   ucx::dd_ucp_worker listener_worker;
   ucp_listener_h ucp_listener;
   dd_ucp_listener_context_t dd_ucp_listen_context;
+  std::atomic_bool mConnectionIssues = false;
 
   void ListenerThread();
+  std::set<std::string> mExpectedStfSenderIds;
   std::thread mListenerThread;
+  std::uint32_t mNumStfSenders;
   ConcurrentQueue<std::tuple<std::string, unsigned, ucp_conn_request_h> > mConnRequestQueue;
   std::mutex mConnectionMapLock;
-    std::map<std::string, std::unique_ptr<dd_ucx_conn_info>> mConnMap;
+    std::map<std::string, std::unique_ptr<TfBuilderUCXConnInfo>> mConnMap;
 
 public:
   // UCX callbacks

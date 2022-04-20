@@ -36,9 +36,9 @@ bool create_ucp_context(ucp_context_h *ucp_ctx)
                                  UCP_PARAM_FIELD_MT_WORKERS_SHARED |
                                  UCP_PARAM_FIELD_ESTIMATED_NUM_EPS;
 
-  ucp_params.features          = UCP_FEATURE_TAG | UCP_FEATURE_RMA | UCP_FEATURE_WAKEUP;
+  ucp_params.features          = UCP_FEATURE_AM | UCP_FEATURE_TAG | UCP_FEATURE_RMA | UCP_FEATURE_WAKEUP;
   ucp_params.mt_workers_shared = 1;
-  ucp_params.estimated_num_eps = 250; // Number of TfBuilders
+  ucp_params.estimated_num_eps = 256; // Number of TfBuilders
 
   const auto lStatus = ucp_init(&ucp_params, NULL, ucp_ctx);
 
