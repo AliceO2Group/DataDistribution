@@ -42,43 +42,33 @@ TfSchedulerDevice::~TfSchedulerDevice()
 void TfSchedulerDevice::InitTask()
 {
   DataDistLogger::SetThreadName("tfs-main");
-}
 
-void TfSchedulerDevice::PreRun()
-{
   mDiscoveryConfig = std::make_shared<ConsulTfScheduler>(ProcessType::TfScheduler, Config::getEndpointOption(*GetConfig()));
-}
 
-void TfSchedulerDevice::PostRun()
-{
-  IDDLOG("Stopping the TfScheduler and exiting. partition_id={}", mPartitionId);
-
-  // delete everything
-  if (mSchedInstance) {
-    mSchedInstance->stop();
+  mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
+  if (mPartitionId.empty()) {
+    WDDLOG("TfScheduler 'discovery-partition' parameter not set during InitTask(). Exiting.");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
   }
-  mSchedInstance.reset();
-  mPartitionId.clear();
 
-  throw "Intentional exit";
-}
+  mStartTime = std::chrono::steady_clock::now();
 
-void TfSchedulerDevice::ResetTask()
-{
-}
 
-bool TfSchedulerDevice::ConditionalRun()
-{
-  // nothing to do here sleep for awhile
-  std::this_thread::sleep_for(500ms);
+  while (!mSchedInstance) {
+    // prevent infinite looping. Look for the specified request for 5min and exit
+    if (since<std::chrono::minutes>(mStartTime) > 10.0) {
+      IDDLOG("Partition request not found. Exiting. partition={}", mPartitionId);
+      ChangeState(fair::mq::Transition::ErrorFound);
+      return;
+    }
 
-  if (!mSchedInstance) {
     // check for new requests
     PartitionRequest lNewPartitionRequest;
     DDDLOG_RL(5000, "Checking for new partition creation requests.");
-    if (mDiscoveryConfig->getNewPartitionRequest(lNewPartitionRequest)) {
+    if (mDiscoveryConfig->getNewPartitionRequest(mPartitionId, lNewPartitionRequest)) {
       // new request
-      IDDLOG("Request for starting a new partition. partition={}", lNewPartitionRequest.mPartitionId);
+      IDDLOG_RL(5000, "Request for starting a new partition. partition={}", lNewPartitionRequest.mPartitionId);
 
       // Create a new instance for the partition
       mPartitionId = lNewPartitionRequest.mPartitionId;
@@ -89,18 +79,58 @@ bool TfSchedulerDevice::ConditionalRun()
       );
       if (mSchedInstance->start()) {
         IDDLOG("Created new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
+        mPartitionStartTime = std::chrono::steady_clock::now();
       } else {
         EDDLOG("Failed to create new scheduler instance. partition={}", lNewPartitionRequest.mPartitionId);
-        return false;
+        ChangeState(fair::mq::Transition::ErrorFound);
+        return;
       }
     }
   }
+}
+
+void TfSchedulerDevice::PreRun()
+{
+}
+
+void TfSchedulerDevice::PostRun()
+{
+  ChangeState(fair::mq::Transition::End);
+}
+
+void TfSchedulerDevice::ResetTask()
+{
+  IDDLOG("Stopping the TfScheduler and exiting. partition_id={}", mPartitionId);
+
+  // delete everything
+  if (mSchedInstance) {
+    mSchedInstance->stop();
+  }
+  mSchedInstance.reset();
+  mPartitionId.clear();
+
+  // throw "Intentional exit";
+  ChangeState(fair::mq::Transition::End);
+}
+
+bool TfSchedulerDevice::ConditionalRun()
+{
+  // nothing to do here sleep for awhile
+  std::this_thread::sleep_for(500ms);
 
   if (mSchedInstance) {
     if (mSchedInstance->isTerminated() || mSchedInstance->isError()) {
-      std::this_thread::sleep_for(2000ms);
+      ChangeState(fair::mq::Transition::End);
       return false; // -> PostRun() -> exit
     }
+
+    // prevent indefinite processes. Stop after 120 hours
+    if (since<std::chrono::hours>(mPartitionStartTime) > 120.0) {
+      IDDLOG("Scheduler closing on timeout. Missing terminate request? Exiting. partition={}", mPartitionId);
+      return false;
+    }
+  } else {
+    return false;
   }
 
   return true;
