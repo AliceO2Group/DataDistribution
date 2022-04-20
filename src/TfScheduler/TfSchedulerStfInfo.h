@@ -235,23 +235,35 @@ private:
       mStfInfoMap.clear();
     }
 
-    inline void requestDropAllLocked(const std::uint64_t lStfId) {
-      if (mDroppedStfs.GetEvent(lStfId) == false) {
-        mDroppedStfs.SetEvent(lStfId);
-        mNotScheduledTfsCount++;
-      }
-      mStfInfoMap.erase(lStfId);
-      mDropQueue.push(std::make_tuple(lStfId, ""));
+    inline void requestDropSingle(const std::uint64_t lStfId, const std::string &pStfsId) {
+      // NOTE: this is called on late, invalid, or duplicate STF updates
+      //       Do not set any global flags. The TF might have been dropped or incomplete
+
+      mDropQueue.push(std::make_tuple(lStfId, pStfsId));
     }
 
-    inline void requestDropAllUnlocked(const std::uint64_t lStfId) {
-      std::scoped_lock lLock(mGlobalStfInfoLock);
-      if (mDroppedStfs.GetEvent(lStfId) == false) {
-        mDroppedStfs.SetEvent(lStfId);
-        mNotScheduledTfsCount++;
+    inline void requestDropAllLocked(const std::uint64_t pStfId, const std::string &pStfsId) {
+
+      mStfInfoMap.erase(pStfId);
+
+      // first check if this was scheduled. There could be a race with incomplete scheduling
+      if (mBuiltTfs.GetEvent(pStfId)) {
+        // only drop this particular instance
+        mDropQueue.push(std::make_tuple(pStfId, pStfsId));
+      } else {
+
+        if (mDroppedStfs.GetEvent(pStfId) == false) {
+          mDroppedStfs.SetEvent(pStfId);
+          mNotScheduledTfsCount++;
+        }
+        mDropQueue.push(std::make_tuple(pStfId, ""));
       }
-      mStfInfoMap.erase(lStfId);
-      mDropQueue.push(std::make_tuple(lStfId, ""));
+    }
+
+    inline void requestDropAllUnlocked(const std::uint64_t pStfId, const std::string &pStfsId) {
+      std::scoped_lock lLock(mGlobalStfInfoLock);
+
+      requestDropAllLocked(pStfId, pStfsId);
     }
 
   inline void requestDropAllFromSchedule(const std::uint64_t lStfId, const std::uint64_t pInc = 1) {
