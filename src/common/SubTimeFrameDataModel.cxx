@@ -144,7 +144,8 @@ void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf, const std::strin
     lUnionSet.emplace(lId);
   }
 
-  for (const auto& lId : pStf->getEquipmentIdentifiers()) {
+  const auto lIncomingEqs = pStf->getEquipmentIdentifiers();
+  for (const auto& lId : lIncomingEqs) {
     if (lUnionSet.emplace(lId).second == false /* not inserted */) {
       IDDLOG_RL(5000, "Merging STFs error: Equipment already present: fee={} new_stfs_id={}", lId.info(), mStfSenderId);
     }
