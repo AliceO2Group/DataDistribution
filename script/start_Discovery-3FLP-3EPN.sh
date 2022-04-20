@@ -132,8 +132,8 @@ STF_BUILDER+=" --detector-rdh 4"
 STF_BUILDER+=" --monitoring-interval=1.0"
 STF_BUILDER+=" --monitoring-log"
 STF_BUILDER+=" --discovery-partition=$PARTITION"
-# STF_BUILDER+=" --discovery-endpoint=http://localhost:8500"
-STF_BUILDER+=" --discovery-endpoint=no-op://localhost:8500"
+STF_BUILDER+=" --discovery-endpoint=http://localhost:8500"
+# STF_BUILDER+=" --discovery-endpoint=no-op://localhost:8500"
 # STF_BUILDER+=" --run-type=topology"
 
 # use DPL serialization on FLPs
@@ -198,6 +198,8 @@ TF_SCHEDULER+=" --discovery-net-if=$EPN_NETIF"
 TF_SCHEDULER+=" --discovery-endpoint=http://localhost:8500"
 TF_SCHEDULER+=" --monitoring-interval=2.0"
 TF_SCHEDULER+=" --monitoring-log"
+TF_SCHEDULER+=" --severity=debug"
+TF_SCHEDULER+=" --discovery-partition=${PARTITION}"
 
 echo "$STF_BUILDER"
 echo "$STF_SENDER"
@@ -206,8 +208,10 @@ echo "$TF_BUILDER"
 
 # export DATADIST_DEBUG_DPL_CHAN=1
 export DATADIST_NEW_DPL_CHAN=1
-# export UCX_LOG_LEVEL=req
-export UCX_TLS=all
+export UCX_LOG_LEVEL=data
+# export UCX_RNDV_THRESH=4mb
+# export UCX_TLS=rc,ud
+# export UCX_NET_DEVICES=mlx5_0:1
 
 if [[ -z $USE_TMUX ]]; then
 
@@ -298,5 +302,6 @@ fi
 
 
 # send request to scheduler to create a new partition
-docker exec -it consul-datadist consul kv put epn/data-dist/request/partition-id "$PARTITION"
-docker exec -it consul-datadist consul kv put epn/data-dist/request/stf-sender-id-list "$FLP_ID_LIST"
+docker exec -it consul-datadist consul kv put "epn/data-dist/request_v2/${PARTITION}/partition-id" "${PARTITION}"
+docker exec -it consul-datadist consul kv put "epn/data-dist/request_v2/${PARTITION}/request-create-time" $(date +"%Y-%m-%dT%H:%M:%S%:z")
+docker exec -it consul-datadist consul kv put "epn/data-dist/request_v2/${PARTITION}/stf-sender-id-list" "$FLP_ID_LIST"
