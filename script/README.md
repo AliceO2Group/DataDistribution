@@ -35,17 +35,15 @@
  - `UcxRdmaGapB` (8192 Bytes) Allowed gap between two messages of the same region when creating RMA txgs.
                               Larger gap creates fewer transactions, but can increase the amount of transferred data.
 
- - `UcxStfSenderThreadPoolSize` (0) Size of StfSender tread pool. Default 0 (number of cpu cores). Threads are not CPU intensive,
-                                    they enable simultaneous transfers.
+ - `UcxStfSenderThreadPoolSize` (8) Size of StfSender tread pool. Default 8. Threads are not CPU intensive, they enable simultaneous transfers.
 
 
 ### TfBuilder
 
  - `MaxNumStfTransfers` (100) Define maximum number of concurrent STF transfers. Helps with long tails of TCP transfers.
 
- - `UcxTfBuilderThreadPoolSize` (0) Size of receiver tread pool. Default 0 (number of cpu cores)
+ - `UcxTfBuilderThreadPoolSize` (2) Size of receiver tread pool. Best to keep low, 1-4.
 
- - `UcxNumConcurrentRmaGetOps` (8) Number of concurrent RMA Get operations per ucx thread.
 
 
 ### TfScheduler
