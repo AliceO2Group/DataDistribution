@@ -483,9 +483,9 @@ public:
       }
 
       if (mCanFail && !lRet) {
-        WDDLOG_RL(1000, "RegionAllocatorResource: Allocation failed. region={} alloc={} region_size={} free={}",
+        WDDLOG_GRL(10000, "RegionAllocatorResource: Allocation failed. region={} alloc={} region_size={} free={}",
           mSegmentName, pSize, mRegion->GetSize(), mFree);
-          WDDLOG_RL(1000, "Memory region '{}' is too small, or there is a large backpressure.", mSegmentName);
+          WDDLOG_GRL(10000, "Memory region '{}' is too small, or there is a large backpressure.", mSegmentName);
         return nullptr;
       }
 
@@ -561,7 +561,9 @@ private:
     mLength = 0;
 
     if (mFreeRanges.empty()) {
-      WDDLOG_GRL(1000, "DataRegionResource {} try_reclaim({}): FREE MAP is empty! free={}", mSegmentName, pSize, mFree);
+      if (mFree != 0) {
+        EDDLOG_GRL(1000, "DataRegionResource {} try_reclaim({}): FREE MAP is empty! free={}", mSegmentName, pSize, mFree);
+      }
       return false;
     }
 
