@@ -212,8 +212,8 @@ void TfSchedulerStfInfo::StaleCleanupThread()
 
     lStaleStfsToComplete.clear();
     // update housekeeping parameters
-    const auto lStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(StaleStfTimeoutMsKey, StaleStfTimeoutMsDefault),
-      std::uint64_t(250), std::uint64_t(60000));
+    const auto lStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(StaleTfTimeoutMsKey, StaleTfTimeoutMsDefault),
+      std::uint64_t(25), std::uint64_t(60000));
     if (lStaleStfTimeoutMs != mStaleStfTimeoutMs) {
       mStaleStfTimeoutMs = lStaleStfTimeoutMs;
       IDDLOG("Parameter updated (consul) {}={}", StaleTfTimeoutMsKey, mStaleStfTimeoutMs);
