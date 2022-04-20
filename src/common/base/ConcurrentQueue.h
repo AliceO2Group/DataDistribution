@@ -168,9 +168,10 @@ class ConcurrentContainerImpl
     return d;
   }
 
-  bool pop_wait_for(T& d, const std::chrono::microseconds &us)
+  template <typename duration>
+  bool pop_wait_for(T& d, const duration &dur)
   {
-    const auto lWaitUntil = std::chrono::system_clock::now() + us;
+    const auto lWaitUntil = std::chrono::system_clock::now() + dur;
     {
       std::unique_lock<std::mutex> lLock(mImpl->mLock);
       if (mImpl->mContainer.empty() && (mImpl->mRunning)) {
@@ -189,9 +190,10 @@ class ConcurrentContainerImpl
     return try_pop(d);
   }
 
-  std::optional<T> pop_wait_for(const std::chrono::microseconds &us)
+  template <typename duration>
+  std::optional<T> pop_wait_for(const duration &dur)
   {
-    const auto lWaitUntil = std::chrono::system_clock::now() + us;
+    const auto lWaitUntil = std::chrono::system_clock::now() + dur;
 
     std::unique_lock<std::mutex> lLock(mImpl->mLock);
     if (mImpl->mContainer.empty() && (mImpl->mRunning)) {
@@ -378,9 +380,10 @@ class IFifoPipeline
     return t;
   }
 
-  std::optional<T> dequeue_for(const unsigned pStage, const std::chrono::microseconds &pWaitUs)
+  template <typename duration>
+  std::optional<T> dequeue_for(const unsigned pStage, const duration &pWaitDur)
   {
-    return mPipelineQueues[pStage].pop_wait_for(pWaitUs);
+    return mPipelineQueues[pStage].pop_wait_for(pWaitDur);
   }
 
   bool try_pop(unsigned pStage)
