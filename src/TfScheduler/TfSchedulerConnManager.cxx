@@ -354,9 +354,10 @@ void TfSchedulerConnManager::ConnectTfBuilderUCXThread(const std::string lStfSen
     const auto &lTfBuilderId = lParam.tf_builder_id();
 
     ConnectTfBuilderUCXResponse lResponse;
-    if(!lRpcClient->ConnectTfBuilderUCXRequest(lParam, lResponse).ok()) {
-      EDDLOG_RL(1000, "TfBuilder UCX Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={}",
-        lStfSenderId, lTfBuilderId);
+    const auto lGrpcStatus = lRpcClient->ConnectTfBuilderUCXRequest(lParam, lResponse);
+    if(!lGrpcStatus.ok()) {
+      EDDLOG_RL(1000, "TfBuilder UCX Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={} err_code={} err={}",
+        lStfSenderId, lTfBuilderId, lGrpcStatus.error_code(), lGrpcStatus.error_message());
       lConnectionsOk = false;
       break;
     }
