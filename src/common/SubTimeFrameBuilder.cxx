@@ -75,17 +75,9 @@ bool SubTimeFrameReadoutBuilder::addHbFrames(
     mFirstFiltered.clear();
   }
 
-  if (pHdr.mTimeframeOrbitFirst != 0) {
-    mStf->updateFirstOrbit(pHdr.mTimeframeOrbitFirst);
-  } else {
-    WDDLOG_RL(1000, "READOUT INTERFACE: First orbit in TF is not set.");
-    try {
-      const auto R = RDHReader(pHbFramesBegin[0]);
-      mStf->updateFirstOrbit(R.getOrbit());
-    } catch (...) {
-      EDDLOG("Error getting RDHReader instance. Not using {} HBFs", pHBFrameLen);
-      return false;
-    }
+  mStf->updateFirstOrbit(pHdr.mTimeframeOrbitFirst);
+  if (pHdr.mTimeframeOrbitFirst == 0) {
+    WDDLOG_ONCE("READOUT INTERFACE: First orbit in TF is set to 0.");
   }
 
   // filter empty trigger
