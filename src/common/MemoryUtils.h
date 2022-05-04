@@ -632,6 +632,9 @@ private:
   // mReclaimLock must be held!
   void reclaimSHMMessage(const void* pData, const std::size_t pSize)
   {
+    assert ((pSize / ALIGN * ALIGN) == pSize);
+    assert (pSize >= ALIGN);
+
     mFreeRanges += std::make_pair(
       icl::discrete_interval<std::size_t>::right_open(
         reinterpret_cast<std::size_t>(pData), reinterpret_cast<std::size_t>(pData) + pSize),

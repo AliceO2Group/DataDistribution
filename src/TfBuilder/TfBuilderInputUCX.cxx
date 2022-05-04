@@ -28,6 +28,7 @@
 
 #include <condition_variable>
 #include <mutex>
+#include <shared_mutex>
 #include <thread>
 #include <chrono>
 
@@ -122,7 +123,7 @@ void TfBuilderInputUCX::ListenerThread()
       std::size_t lNumConnected = 0;
       std::set<std::string> lMissingStfSenderIds = mExpectedStfSenderIds;
       {
-        std::scoped_lock lLock(mConnectionMapLock);
+        std::unique_lock lLock(mConnectionMapLock);
         lNumConnected = mConnMap.size();
         for (const auto &lConn : mConnMap) {
           lMissingStfSenderIds.erase(lConn.first);
@@ -178,7 +179,7 @@ void TfBuilderInputUCX::ListenerThread()
     }
 
     // add the connection info map
-    std::scoped_lock lLock(mConnectionMapLock);
+    std::unique_lock lLock(mConnectionMapLock);
     assert (mConnMap.count(lStfSenderId) == 0);
     mConnMap[lStfSenderId] = std::move(lConnStruct);
   }
@@ -317,7 +318,7 @@ bool TfBuilderInputUCX::start()
   do {
     std::size_t lNumConnected = 0;
     {
-      std::scoped_lock lLock(mConnectionMapLock);
+      std::shared_lock lLock(mConnectionMapLock);
       lNumConnected = mConnMap.size();
     }
 
@@ -452,10 +453,10 @@ void TfBuilderInputUCX::stop()
 
   // close ucx: destroy remote rma keys and disconnect
   {
-    std::scoped_lock lLock(mConnectionMapLock);
+    std::unique_lock lLock(mConnectionMapLock);
 
     for (auto & lConn : mConnMap) {
-      std::scoped_lock lIoLock(lConn.second->mStfSenderIoLock);
+      std::unique_lock lIoLock(lConn.second->mRemoteKeysLock);
       for (auto & lRKeyIt : lConn.second->mRemoteKeys) {
         ucp_rkey_destroy(lRKeyIt.second);
       }
@@ -482,19 +483,21 @@ void TfBuilderInputUCX::StfPreprocessThread(const unsigned pThreadIdx)
   using clock = std::chrono::steady_clock;
   DDDLOG("Starting ucx preprocess thread {}", pThreadIdx);
 
+  std::vector<std::uint64_t> lTxgSizes(16 << 10);
+
   std::optional<UCXIovStfHeader> lStfMetaOpt;
   while ((lStfMetaOpt = mStfPreprocessQueue.pop()) != std::nullopt) {
 
     UCXIovStfHeader lStfMeta = std::move(lStfMetaOpt.value());
     StfMetaRdmaInfo lStfRdmaInfo;
 
+    lTxgSizes.clear();
+
     const auto lAllocStart = clock::now();
 
     // Allocate data memory
     using UCXIovTxg = UCXIovStfHeader::UCXIovTxg;
-    std::vector<std::uint64_t> lTxgSizes;
 
-    lTxgSizes.reserve(lStfMeta.stf_txg_iov().size());
     lStfRdmaInfo.mTxgPtrs.reserve(lStfMeta.stf_txg_iov().size());
 
     std::for_each(lStfMeta.stf_txg_iov().cbegin(), lStfMeta.stf_txg_iov().cend(), [&lTxgSizes](const UCXIovTxg &txg) {
@@ -505,6 +508,50 @@ void TfBuilderInputUCX::StfPreprocessThread(const unsigned pThreadIdx)
     assert (!(lStfMeta.stf_txg_iov_size() > 0) || (lStfRdmaInfo.mTxgPtrs.size() == (lStfMeta.stf_txg_iov().rbegin()->txg() + 1)));
 
     DDMON("tfbuilder", "recv.data_alloc_ms", since<std::chrono::milliseconds>(lAllocStart));
+
+
+    { // make sure all remote keys are unpacked
+      // We make this in two passes in order to minimize impact on the RDMA thread.
+      // Only take writer key lock if a region needs to be mapped.
+      // This should only happen at the beginning.
+      // NOTE: Region mapping could be moved to the init handshake, but it's not certain that sender knows about all regions at that time...
+
+      const std::string &lStfSenderId = lStfMeta.stf_sender_id();
+      // Reference to the input channel
+      TfBuilderUCXConnInfo *lConn = nullptr;
+
+      std::shared_lock lLock(mConnectionMapLock);
+      if (mConnMap.count(lStfSenderId) == 1) {
+        lConn = mConnMap.at(lStfSenderId).get();
+        if (lConn && lConn->mConnError) {
+          lConn = nullptr; // we don't do anything if error is signalled
+        }
+      }
+
+      bool lAllMapped = true;
+      {// check if all regions are mapped (reding mode)
+        std::shared_lock lKeysLock(lConn->mRemoteKeysLock);
+
+        for (const auto &lRegion : lStfMeta.data_regions()) {
+          if (lConn->mRemoteKeys.count(lRegion.region_rkey()) == 0) {
+            lAllMapped = false;
+            break;
+          }
+        }
+      }
+
+      if (!lAllMapped) {// make sure all regions are mapped (writer mode)
+        std::unique_lock lKeysLock(lConn->mRemoteKeysLock);
+
+        for (const auto &lRegion : lStfMeta.data_regions()) {
+          if (lConn->mRemoteKeys.count(lRegion.region_rkey()) == 0) {
+            DDDLOG("UCX: Mapping a new remote region stf_sender={} size={}", lRegion.size());
+            auto lNewRkeyIter = lConn->mRemoteKeys.emplace(lRegion.region_rkey(), ucp_rkey_h());
+            ucp_ep_rkey_unpack(lConn->ucp_ep, lRegion.region_rkey().data(), &(lNewRkeyIter.first->second));
+          }
+        }
+      }
+    }
 
     lStfRdmaInfo.mStfMeta = std::move(lStfMeta);
 
@@ -523,17 +570,10 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
   // Deserialization object (stf ID)
   IovDeserializer lStfReceiver(mTimeFrameBuilder);
 
-  // memory for meta-tag receive; increased later if needed
-  std::uint64_t lMetaMemSize = 1024;
-  FairMQMessagePtr lMetaMemMsg = nullptr;
-  void *lMetaMemPtr = nullptr;
-
-  auto fAllocateMetaMessage = [&](std::uint64_t pSize) {
-    lMetaMemSize = pSize;
-    lMetaMemMsg = mTimeFrameBuilder.newDataMessage(pSize);
-    lMetaMemPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lMetaMemMsg->GetData());
-  };
-  fAllocateMetaMessage(lMetaMemSize);
+  // memory for meta-tag receive
+  const std::uint64_t lMetaMemSize = 1024;
+  FairMQMessagePtr lMetaMemMsg = mTimeFrameBuilder.newDataMessage(lMetaMemSize);
+  void *lMetaMemPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lMetaMemMsg->GetData());
 
   // local worker we advance here
   assert (pThreadIdx < mDataWorkers.size());
@@ -542,8 +582,6 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
   assert (pThreadIdx < mDataWorkersQueues.size());
   auto lStfMetaQueue = mDataWorkersQueues[pThreadIdx];
 
-  std::vector<std::pair<void*, std::size_t>> lDataMsgsBuffers;
-
   while (mState != TERMINATED) {
     std::optional<StfMetaRdmaInfo> lStfMetaOpt = lStfMetaQueue->pop_wait_for(5ms);
     while (ucp_worker_progress(lWorker.ucp_worker) > 0) { }
@@ -551,47 +589,44 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
       continue;
     }
 
+    const auto lRmaGetStart = clock::now();
+
     StfMetaRdmaInfo lStfRdmaInfo = std::move(lStfMetaOpt.value());
     UCXIovStfHeader &lStfMeta = lStfRdmaInfo.mStfMeta;
     const std::uint64_t lTfId = lStfMeta.stf_hdr_meta().stf_id();
     const std::string &lStfSenderId = lStfMeta.stf_sender_id();
     const auto &lTxgPtrs = lStfRdmaInfo.mTxgPtrs;
 
-    const auto lRmaReqStart = clock::now();
 
     // Reference to the input channel
     TfBuilderUCXConnInfo *lConn = nullptr;
-    {
-      std::scoped_lock lLock(mConnectionMapLock);
-      if (mConnMap.count(lStfSenderId) == 1) {
-        lConn = mConnMap.at(lStfSenderId).get();
-        if (lConn && lConn->mConnError) {
-          continue; // we are stoping anyway
-        }
-      } else {
-        continue;
+    std::shared_lock lLock(mConnectionMapLock);
+
+    if (mConnMap.count(lStfSenderId) == 1) {
+      lConn = mConnMap.at(lStfSenderId).get();
+      if (lConn && lConn->mConnError) {
+        continue; // we are stoping
       }
+    } else {
+      continue;
     }
 
     {
       std::scoped_lock lStfSenderIoLock(lConn->mStfSenderIoLock);
-
-      // make sure we have remote keys unpacked
-      for (const auto &lRegion : lStfMeta.data_regions() ) {
-        if (lConn->mRemoteKeys.count(lRegion.region_rkey()) == 0) {
-          DDDLOG("Mapping the new region size={}", lRegion.size());
-          auto lNewRkeyIter = lConn->mRemoteKeys.emplace(lRegion.region_rkey(), ucp_rkey_h());
-          ucp_ep_rkey_unpack(lConn->ucp_ep, lRegion.region_rkey().data(), &(lNewRkeyIter.first->second));
-        }
-      }
-
-      // RMA get all the txgs
-      auto lRmaGetStart = clock::now();
       ucx::io::dd_ucp_multi_req_v2 lRmaReqSem;
+      {
+        // It's safe to use shared key lock because preprocess thread created required keys for this stf
+        std::shared_lock lKeysLock(lConn->mRemoteKeysLock);
 
-      for (auto &lStfTxg : lStfMeta.stf_txg_iov()) {
-        auto lTxgUcxPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lTxgPtrs[lStfTxg.txg()]);
-        ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lConn->mRemoteKeys[lStfMeta.data_regions(lStfTxg.region()).region_rkey()], &lRmaReqSem);
+        // RMA get all the txgs
+        for (const auto &lStfTxg : lStfMeta.stf_txg_iov()) {
+          if (lStfTxg.len() == 0) {
+            continue;
+          }
+
+          void *lTxgUcxPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lTxgPtrs[lStfTxg.txg()]);
+          ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lConn->mRemoteKeys[lStfMeta.data_regions(lStfTxg.region()).region_rkey()], &lRmaReqSem);
+        }
       }
       // wait for final completion
       if (!ucx::io::ucp_wait_poll(lConn->mWorker, lRmaReqSem)) {
@@ -605,14 +640,12 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
       if (!ucx::io::ucx_send_am_hdr(lConn->mWorker, lConn->ucp_ep, ucx::io::AM_STF_ACK, lAckMsgStfId, sizeof(std::uint64_t)) ) {
         EDDLOG_GRL(10000, "StfSender was NOT notified about transfer finish stf_sender={} tf_id={}", lStfSenderId, lTfId);
       }
-
-      DDMON("tfbuilder", "recv.rma_get_total_ms", since<std::chrono::milliseconds>(lRmaGetStart));
     }
+
+    lStfRdmaInfo.mRdmaTimeMs = since<std::chrono::milliseconds>(lRmaGetStart);
 
     // RDMA DONE: send to post-processing
     pushPostprocessMetadata(std::move(lStfRdmaInfo));
-
-    DDMON_RATE("tfbuilder", "receive_time", since<std::chrono::seconds>(lRmaReqStart));
   }
 
   DDDLOG("Exiting UCX input thread[{}]", pThreadIdx);
@@ -640,6 +673,9 @@ void TfBuilderInputUCX::StfPostprocessThread(const unsigned pThreadIdx)
     const auto &lTxgPtrs = lStfRdmaInfo.mTxgPtrs;
 
     auto lFmqPrepareStart = clock::now();
+
+    DDMON("tfbuilder", "recv.rma_get_total_ms", lStfRdmaInfo.mRdmaTimeMs);
+    DDMON_RATE("tfbuilder", "receive_time", (lStfRdmaInfo.mRdmaTimeMs / 1000.0));
 
     // signal in flight STF is finished (or error)
     mRpc->recordStfReceived(lStfSenderId, lTfId);

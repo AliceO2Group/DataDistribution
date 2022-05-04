@@ -313,67 +313,106 @@ void StfSenderOutputUCX::visit(const SubTimeFrame &pStf, void *pData)
     std::uint32_t lRegionIdx = 0;
 
     UCXIovTxg *lStfTxg = lStfUCXMeta->add_stf_txg_iov();
+    lStfTxg->set_data_parts(0);
+    lStfTxg->set_start(0);
+    lStfTxg->set_len(0);
 
-    UCXData *lData = &lStfDataPtrs.front();
+    auto lUCXData = lStfDataPtrs.begin();
 
-    const UCXMemoryRegionInfo* lRunningRegion = regionLookup(lData->start(), lData->len());
-    // create the first region
-    UCXRegion *lStfRegion = lStfUCXMeta->add_data_regions();
-    lStfRegion->set_region(lRegionIdx++);
-    lStfRegion->set_size(lRunningRegion->mSize);
-    lStfRegion->set_region_rkey(lRunningRegion->ucp_rkey_buf, lRunningRegion->ucp_rkey_buf_size);
+    // apparently shm ptr can be null. Otherwise they must be part of a registered region.
+    // After sorting, null pointers will come to the front of the data array.
+    // We need to associate them with the first txg, and not call regionLookup
+    // NOTE: on EPN such messages will not have null ptr value, but a value within TF buffer (still zero size)
+    // skip all null pointers
+    while ((lUCXData != lStfDataPtrs.end()) && ((lUCXData->start() == 0) || (lUCXData->len() == 0))) {
+      assert (lUCXData->len() == 0);
+      // txg 0 for nullptr messages
+      lUCXData->set_txg(0);
+      lUCXData->set_len(0);
+      lStfTxg->set_data_parts(lStfTxg->data_parts() + 1);
+      lUCXData++;
+    }
 
-    // Update the start to region offset
-    lData->set_txg(lTxgIdx);
+    if (lUCXData != lStfDataPtrs.end()) {
+      assert (lUCXData->len() > 0);
+      const UCXMemoryRegionInfo* lRunningRegion = regionLookup(lUCXData->start(), lUCXData->len());
+      // create the first region
+      UCXRegion *lStfRegion = lStfUCXMeta->add_data_regions();
+      lStfRegion->set_region(lRegionIdx++);
+      lStfRegion->set_size(lRunningRegion->mSize);
+      lStfRegion->set_region_rkey(lRunningRegion->ucp_rkey_buf, lRunningRegion->ucp_rkey_buf_size);
 
-    // create the first txg
-    lStfTxg->set_txg(lTxgIdx++);
-    lStfTxg->set_start(lData->start());
-    lStfTxg->set_len(lData->len());
-    lStfTxg->set_data_parts(1);
-    lStfTxg->set_region(lStfRegion->region());
+      // Update the start to region offset
+      lUCXData->set_txg(lTxgIdx);
 
-    for (std::size_t i = 1; i < lStfDataPtrs.size(); i++) {
-      lData = &lStfDataPtrs[i];
+      // create the first txg
+      lStfTxg->set_txg(lTxgIdx++);
+      lStfTxg->set_start(lUCXData->start());
+      lStfTxg->set_len(lUCXData->len());
+      lStfTxg->set_region(lStfRegion->region());
 
-      const auto lReg = regionLookup(lData->start(), lData->len());
-
-      if (*lReg == *lRunningRegion) {
-        // check if we extend the current txg
-        const auto lGap = lData->start() - (lStfTxg->start() + lStfTxg->len());
-        if (lGap <= mRmaGap) {
-          // extend the existing txg
-          lStfTxg->set_len(lStfTxg->len() + lGap + lData->len());
-          lStfTxg->set_data_parts(lStfTxg->data_parts() + 1);
-          lTotalGap += lGap;
-          // set the data part txg
-          lData->set_txg(lStfTxg->txg());
-
-          if (lGap > 0) {
-            DDMON("stfsender", "ucx.rma_gap", lGap);
-          }
-          continue;
+      // update pointers of null messages to match the first txg
+      for (auto &lNullPtrDataPtr : lStfDataPtrs) {
+        if (lNullPtrDataPtr.len() != 0) {
+          break;
         }
-      } else {
-        // this is a different region. That means we need to add it into the region vector and
-        // start a new txg for the current data buffer
-        lRunningRegion = lReg;
-        // add new region
-        lStfRegion = lStfUCXMeta->add_data_regions();
-        lStfRegion->set_region(lRegionIdx++);
-        lStfRegion->set_size(lRunningRegion->mSize);
-        lStfRegion->set_region_rkey(lRunningRegion->ucp_rkey_buf, lRunningRegion->ucp_rkey_buf_size);
+        lNullPtrDataPtr.set_start(lStfTxg->start());
       }
 
-      // start a new txg
-      lStfTxg = lStfUCXMeta->add_stf_txg_iov();
-      lStfTxg->set_txg(lTxgIdx++);
-      lStfTxg->set_start(lData->start());
-      lStfTxg->set_len(lData->len());
-      lStfTxg->set_data_parts(1);
-      lStfTxg->set_region(lStfRegion->region());
-      // set the data part txg
-      lData->set_txg(lStfTxg->txg());
+      // iterate over regular messages
+      for (lUCXData++; lUCXData != lStfDataPtrs.end(); lUCXData++) {
+
+        // zero size messages can use the running region without lookup. It's not important which region is used
+        if (lUCXData->len() == 0) {
+          // set the data part txg
+          lUCXData->set_txg(lStfTxg->txg());
+          lUCXData->set_start(lStfTxg->start());
+          lStfTxg->set_data_parts(lStfTxg->data_parts() + 1);
+          continue;
+        }
+
+        assert (lUCXData->start() != 0);
+        assert (lUCXData->len() > 0);
+
+        const auto lReg = regionLookup(lUCXData->start(), lUCXData->len());
+
+        if (*lReg == *lRunningRegion) {
+          // check if we extend the current txg
+          const auto lGap = lUCXData->start() - (lStfTxg->start() + lStfTxg->len());
+          if (lGap <= mRmaGap) {
+            // extend the existing txg
+            lStfTxg->set_len(lStfTxg->len() + lGap + lUCXData->len());
+            lStfTxg->set_data_parts(lStfTxg->data_parts() + 1);
+            lTotalGap += lGap;
+            // set the data part txg
+            lUCXData->set_txg(lStfTxg->txg());
+
+            if (lGap > 0) {
+              DDMON("stfsender", "ucx.rma_gap", lGap);
+            }
+            continue;
+          }
+        } else {
+          // this is a different region. That means we need to add it into the region vector and
+          // start a new txg for the current data buffer
+          lRunningRegion = lReg;
+          // add new region
+          lStfRegion = lStfUCXMeta->add_data_regions();
+          lStfRegion->set_region(lRegionIdx++);
+          lStfRegion->set_size(lRunningRegion->mSize);
+          lStfRegion->set_region_rkey(lRunningRegion->ucp_rkey_buf, lRunningRegion->ucp_rkey_buf_size);
+        }
+
+        // start a new txg
+        lStfTxg = lStfUCXMeta->add_stf_txg_iov();
+        lStfTxg->set_txg(lTxgIdx++);
+        lStfTxg->set_start(lUCXData->start());
+        lStfTxg->set_len(lUCXData->len());
+        lStfTxg->set_data_parts(1);
+        lStfTxg->set_region(lStfRegion->region());
+        // set the data part txg
+        lUCXData->set_txg(lStfTxg->txg());
+      }
     }
 
     // prepare the message

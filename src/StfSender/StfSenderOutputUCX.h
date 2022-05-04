@@ -151,6 +151,7 @@ public:
         }
       }
       if (!lReloadCache) {
+        EDDLOG_RL(1000, "regionLookup: region not found: msg_ptr={} len={}", pPtr, pSize);
         throw std::runtime_error("no region matched");
       }
 
