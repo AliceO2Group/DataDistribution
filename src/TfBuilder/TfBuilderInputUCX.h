@@ -59,7 +59,8 @@ struct TfBuilderUCXConnInfo {
   std::mutex mStfSenderIoLock;
 
   /// cache of unpacked remote rma keys
-  std::map<std::string, ucp_rkey_h> mRemoteKeys;
+  std::shared_mutex mRemoteKeysLock;
+    std::map<std::string, ucp_rkey_h> mRemoteKeys;
 
   /// Signal that peer connection has problems
   std::atomic_bool mConnError = false;
@@ -96,6 +97,7 @@ public:
   struct StfMetaRdmaInfo {
     UCXIovStfHeader mStfMeta;
     std::vector<void*> mTxgPtrs;
+    double mRdmaTimeMs;
   };
 
   bool createMetadata(const void *pPtr, const std::size_t pLen, UCXIovStfHeader &lMeta /* out */) {
@@ -196,7 +198,7 @@ private:
   std::thread mListenerThread;
   std::uint32_t mNumStfSenders;
   ConcurrentQueue<std::tuple<std::string, unsigned, ucp_conn_request_h> > mConnRequestQueue;
-  std::mutex mConnectionMapLock;
+  std::shared_mutex mConnectionMapLock;
     std::map<std::string, std::unique_ptr<TfBuilderUCXConnInfo>> mConnMap;
 
 public:
