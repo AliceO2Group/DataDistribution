@@ -356,7 +356,7 @@ void TfSchedulerConnManager::ConnectTfBuilderUCXThread(const std::string lStfSen
     ConnectTfBuilderUCXResponse lResponse;
     const auto lGrpcStatus = lRpcClient->ConnectTfBuilderUCXRequest(lParam, lResponse);
     if(!lGrpcStatus.ok()) {
-      EDDLOG_RL(1000, "TfBuilder UCX Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={} err_code={} err={}",
+      IDDLOG_RL(1000, "TfBuilder UCX Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={} err_code={} err={}",
         lStfSenderId, lTfBuilderId, lGrpcStatus.error_code(), lGrpcStatus.error_message());
       lConnectionsOk = false;
       break;
@@ -364,7 +364,7 @@ void TfSchedulerConnManager::ConnectTfBuilderUCXThread(const std::string lStfSen
 
     // check StfSender status
     if (lResponse.status() != OK) {
-      EDDLOG_RL(1000, "TfBuilder UCX Connection error: cannot connect. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
+    IDDLOG_RL(1000, "TfBuilder UCX Connection error: cannot connect. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
       lConnectionsOk = false;
       break;
     }
@@ -395,7 +395,7 @@ void TfSchedulerConnManager::disconnectTfBuilderUCX(const TfBuilderConfigStatus 
   for (auto &[lStfSenderId, lRpcClient] : mStfSenderRpcClients) {
     StatusResponse lResponse;
     if(!lRpcClient->DisconnectTfBuilderUCXRequest(lParam, lResponse).ok()) {
-      EDDLOG_RL(1000, "TfBuilder UCX Disconnection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={}",
+      IDDLOG_RL(5000, "TfBuilder UCX Disconnection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={}",
         lStfSenderId, lTfBuilderId);
       pResponse.set_status(ERROR_GRPC_STF_SENDER);
       continue;
@@ -403,7 +403,7 @@ void TfSchedulerConnManager::disconnectTfBuilderUCX(const TfBuilderConfigStatus 
 
     // check StfSender status
     if (lResponse.status() != 0) {
-      IDDLOG_RL(1000, "TfBuilder disconnection error. stfs_id={} tfb_id={} response={}", lStfSenderId, lTfBuilderId, lResponse.status());
+      IDDLOG_RL(5000, "TfBuilder disconnection error. stfs_id={} tfb_id={} response={}", lStfSenderId, lTfBuilderId, lResponse.status());
       pResponse.set_status(ERROR_STF_SENDER_CONNECTING);
       continue;
     }
