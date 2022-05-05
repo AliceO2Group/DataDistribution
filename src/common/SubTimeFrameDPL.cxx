@@ -225,6 +225,11 @@ void StfToDplAdapter::inspect() const
       lIdx += 2;
     }
   }
+
+  // DEBUG: TFs with first tf orbit == 0
+  if (lFirstTForbit == 0) {
+    WDDLOG_RL(500, "DPL output: TF with FirstTForbit == 0. run={} dh_tf_counter={} num_messages={}", lRunNumber, lTfCounter, mMessages.size());
+  }
 }
 
 void StfToDplAdapter::sendToDpl(std::unique_ptr<SubTimeFrame>&& pStf)
