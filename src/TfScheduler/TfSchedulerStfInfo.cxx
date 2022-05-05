@@ -483,6 +483,11 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
         mRunNumber = lRunNumber;
         IDDLOG("NEW RUN NUMBER: {} {}", pStfInfo.partition().partition_id(), lRunNumber);
         DataDistMonitor::enable_datadist(mRunNumber, pStfInfo.partition().partition_id());
+
+        // set log run number
+        DataDistLogger::sRunNumber = mRunNumber;
+        DataDistLogger::sRunNumberStr = std::to_string(mRunNumber);
+        impl::DataDistLoggerCtx::InitInfoLogger();
       } else if (mRunNumber > lRunNumber) {
         EDDLOG_GRL(500, "New RunNumber is smaller than the previous. run_number={} prev_run_number={}", lRunNumber, mRunNumber);
         pResponse.set_status((!mRunning) ? SchedulerStfInfoResponse::DROP_NOT_RUNNING :
@@ -728,6 +733,11 @@ void TfSchedulerStfInfo::TopoSchedulingThread()
       mRunNumber = lRunNum;
       IDDLOG("NEW RUN NUMBER: {} {}", lTopoStfInfo->mStfInfo.partition().partition_id(), mRunNumber);
       DataDistMonitor::enable_datadist(mRunNumber, lTopoStfInfo->mStfInfo.partition().partition_id());
+
+      // set log run number
+      DataDistLogger::sRunNumber = mRunNumber;
+      DataDistLogger::sRunNumberStr = std::to_string(mRunNumber);
+      impl::DataDistLoggerCtx::InitInfoLogger();
     }
 
     TfBuildingInformation lRequest;
