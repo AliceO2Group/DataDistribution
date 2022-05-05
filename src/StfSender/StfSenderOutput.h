@@ -75,6 +75,9 @@ public:
     return mCounters.mValues;
   }
   StdSenderOutputCounters::Values resetCounters() {
+    // Empty the drop queue
+    mDropQueue.flush();
+
     std::scoped_lock lLock(mCounters.mCountersLock);
     auto lRet = mCounters.mValues;
     mCounters.mValues = StdSenderOutputCounters::Values();

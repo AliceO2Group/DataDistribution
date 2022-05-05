@@ -354,9 +354,6 @@ void TfBuilderDevice::PostRun()
   // flush the file writter
   mFileSink.flush();
 
-  // reemove run number from monitoring
-  DataDistMonitor::enable_datadist(0, mPartitionId);
-
   IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 
