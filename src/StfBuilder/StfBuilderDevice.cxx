@@ -491,9 +491,6 @@ void StfBuilderDevice::PostRun()
     I().mDiscoveryConfig->write();
   }
 
-  // remove run number from monitoring
-  DataDistMonitor::enable_datadist(0, DataDistLogger::sPartitionIdStr);
-
   IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 

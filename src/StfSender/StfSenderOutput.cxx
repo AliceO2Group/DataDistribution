@@ -442,11 +442,6 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
 void StfSenderOutput::StfDropThread()
 {
   DDDLOG("Starting DataDropThread thread.");
-  // decrease the priority
-#if defined(__linux__)
-  if (nice(5)) {}
-#endif
-
   std::uint64_t lNumDroppedStfs = 0;
 
   while (mRunning) {
@@ -466,8 +461,10 @@ void StfSenderOutput::StfDropThread()
     lNumDroppedStfs += 1;
     {
       std::scoped_lock lLock(mCounters.mCountersLock);
-      mCounters.mValues.mBuffered.mSize -= lStfSize;
-      mCounters.mValues.mBuffered.mCnt -= 1;
+      if (mCounters.mValues.mBuffered.mCnt > 0) {
+        mCounters.mValues.mBuffered.mSize -= lStfSize;
+        mCounters.mValues.mBuffered.mCnt -= 1;
+      }
     }
   }
 

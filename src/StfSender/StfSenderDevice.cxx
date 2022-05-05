@@ -207,9 +207,6 @@ void StfSenderDevice::PostRun()
   // stop accepting data
   I().mAcceptingData = false;
 
-  // disable run number in monitoring
-  DataDistMonitor::enable_datadist(0, I().mPartitionId);
-
   // update running state
   if (!standalone() && I().mDiscoveryConfig) {
     auto& lStatus = I().mDiscoveryConfig->status();
