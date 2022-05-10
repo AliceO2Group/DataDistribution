@@ -757,6 +757,8 @@ void TfSchedulerStfInfo::TopoSchedulingThread()
 
     DDDLOG_RL(1000, "TopoScheduling: origin={} subspec={} total={}", lDataOrigin, lSubSpec, lNumTfScheds);
 
+    bool lScheduleSuccess = false;
+
     // 1: Get the best TfBuilder
     std::string lTfBuilderId;
     if (mTfBuilderInfo.findTfBuilderForTopoStf(lDataOrigin, lSubSpec, lTfBuilderId /*out*/) ) {
@@ -771,20 +773,21 @@ void TfSchedulerStfInfo::TopoSchedulingThread()
         if (lRpcCli.get().BuildTfRequest(lRequest, lResponse)) {
           switch (lResponse.status()) {
             case BuildTfResponse::OK:
+              lScheduleSuccess = true;
               break;
             case BuildTfResponse::ERROR_NOMEM:
               requestDropTopoStf(lTfId, lStfSenderId);
               break;
             case BuildTfResponse::ERROR_NOT_RUNNING:
-              EDDLOG("Scheduling error: selected TfBuilder returned ERROR_NOT_RUNNING. tf_id={:s}", lTfBuilderId);
+              EDDLOG_RL(1000, "Scheduling error: selected TfBuilder returned ERROR_NOT_RUNNING. tf_id={}", lTfBuilderId);
               requestDropTopoStf(lTfId, lStfSenderId);
               break;
             default:
               break;
           }
         } else {
-          EDDLOG("TopoScheduling of TF failed. to_tfb_id={} reason=grpc_error", lTfBuilderId);
-          WDDLOG("Removing TfBuilder from scheduling. tfb_id={}", lTfBuilderId);
+          EDDLOG_RL(1000, "TopoScheduling of TF failed. to_tfb_id={} reason=grpc_error", lTfBuilderId);
+          WDDLOG_RL(1000, "Removing TfBuilder from scheduling. tfb_id={}", lTfBuilderId);
 
           lRpcCli.put();
 
@@ -804,6 +807,18 @@ void TfSchedulerStfInfo::TopoSchedulingThread()
     } else {
       // No candidate for scheduling
       requestDropTopoStf(lTfId, lStfSenderId);
+    }
+
+
+    if (lScheduleSuccess) {
+      mScheduledTfs += 1;
+      mTfSizeTotalScheduled += lTfSize;
+      DDMON_RATE("tfscheduler", "tf.scheduled.tf", lTfSize);
+      DDMON("tfscheduler", "tf.scheduled.data_size_total", mTfSizeTotalScheduled);
+    } else {
+      mTfSizeTotalRejected += lTfSize;
+      DDMON_RATE("tfscheduler", "tf.rejected.tf", lTfSize);
+      DDMON("tfscheduler", "tf.rejected.data_size_total", mTfSizeTotalRejected);
     }
   }
 
