@@ -42,9 +42,12 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
     }
 
     if (getenv("DATADIST_NEW_DPL_CHAN")) {
-      IDDLOG("StfToDplAdapter: sending reduced-header split-payload messages.");
-      mReducedHdr = true;
+      if ("0" == std::string(getenv("DATADIST_NEW_DPL_CHAN"))) {
+        mReducedHdr = false;
+      }
     }
+
+    IDDLOG("StfToDplAdapter: sending reduced-header split-payload messages={}", mReducedHdr);
   }
 
   virtual ~StfToDplAdapter() = default;
@@ -63,7 +66,7 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
  private:
   std::atomic_bool mRunning = true;
   bool mInspectChannel = false;
-  bool mReducedHdr = false;
+  bool mReducedHdr = true;
 
   std::vector<FairMQMessagePtr> mMessages;
   FairMQChannel& mChan;
