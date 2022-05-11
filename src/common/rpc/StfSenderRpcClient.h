@@ -54,6 +54,7 @@ public:
   // rpc DisconnectTfBuilderRequest(TfBuilderEndpoint) returns (StatusResponse) { }
   grpc::Status DisconnectTfBuilderRequest(const TfBuilderEndpoint &pParam, StatusResponse &pRet /*out*/) {
     ClientContext lContext;
+    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10000));
     return mStub->DisconnectTfBuilderRequest(&lContext, pParam, &pRet);
   }
 
@@ -67,6 +68,7 @@ public:
   //rpc DisconnectTfBuilderUCXRequest(TfBuilderUCXEndpoint) returns (StatusResponse) { }
   grpc::Status DisconnectTfBuilderUCXRequest(const TfBuilderUCXEndpoint &pParam, StatusResponse &pRet) {
     ClientContext lContext;
+    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10000));
     return mStub->DisconnectTfBuilderUCXRequest(&lContext, pParam, &pRet);
   }
 
