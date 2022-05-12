@@ -202,27 +202,18 @@ void StfSenderOutput::StfKeepThread()
   std::default_random_engine lGen;
   std::uniform_int_distribution<unsigned> lUniformDist(0, 99);
 
-  std::unique_ptr<SubTimeFrame> lStf;
-
   mDeletePercentage = mDiscoveryConfig->getUInt64Param(StandaloneStfDeleteChanceKey, StandaloneStfDeleteChanceDefault);
   mDeletePercentage = std::clamp(mDeletePercentage.load(), std::uint64_t(0), std::uint64_t(100));
 
-  while ((lStf = mPipelineI.dequeue(eSenderIn)) != nullptr) {
+  while (mRunning) {
+    auto lStfOpt = mPipelineI.dequeue_for(eSenderIn, 50ms);
+
     std::scoped_lock lMapLock(mStfKeepMapLock);
 
-    const auto lStfId = lStf->id();
-    const auto lStfSize = lStf->getDataSize();
-
-    if (mStfKeepMap.count(lStfId) == 0) {
-      mStfKeepMap[lStfId] = std::move(lStf);
-    }
-
-    // update buffer sizes
+    // get buffer sizes
     StdSenderOutputCounters::Values lCounters;
     {
       std::scoped_lock lLock(mCounters.mCountersLock);
-      mCounters.mValues.mBuffered.mSize += lStfSize;
-      mCounters.mValues.mBuffered.mCnt += 1;
       lCounters = mCounters.mValues;
     }
 
@@ -252,6 +243,23 @@ void StfSenderOutput::StfKeepThread()
 
       mDropQueue.push(std::move(lIter->second));
       mStfKeepMap.erase(lIter->first);
+    }
+
+    if (lStfOpt) {
+      std::unique_ptr<SubTimeFrame> lStf = std::move(lStfOpt.value());
+
+      const auto lStfId = lStf->id();
+      const auto lStfSize = lStf->getDataSize();
+
+      if (mStfKeepMap.count(lStfId) == 0) {
+        mStfKeepMap[lStfId] = std::move(lStf);
+        // update buffer sizes
+        {
+          std::scoped_lock lLock(mCounters.mCountersLock);
+          mCounters.mValues.mBuffered.mSize += lStfSize;
+          mCounters.mValues.mBuffered.mCnt += 1;
+        }
+      }
     }
   }
 

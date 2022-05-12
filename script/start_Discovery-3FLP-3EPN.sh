@@ -160,6 +160,10 @@ STF_SENDER+=" --mq-config $chainConfig"
 STF_SENDER+=" --monitoring-interval=2.0"
 STF_SENDER+=" --monitoring-log"
 STF_SENDER+=" --shm-monitor=false"
+if [[ $EPN_CNT -eq 0 ]]; then
+  STF_SENDER+=" --stand-alone"
+fi
+
 
 TF_BUILDER="TfBuilder"
 TF_BUILDER+=" --discovery-net-if=$EPN_NETIF"
