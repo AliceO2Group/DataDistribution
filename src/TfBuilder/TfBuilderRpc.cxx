@@ -71,6 +71,13 @@ bool TfBuilderRpcImpl::start(const std::uint64_t pBufferSize, std::shared_ptr<Co
   mUpdateThread = create_thread_member("tfb_sched_upd", &TfBuilderRpcImpl::UpdateSendingThread, this);
 
   // start the stf requester thread
+  auto lGrpcPoolSize = mDiscoveryConfig->getUInt64Param(StfSenderGrpcThreadPoolSizeKey, StfSenderGrpcThreadPoolSizeDefault);
+  lGrpcPoolSize = std::clamp(lGrpcPoolSize, std::uint64_t(1), std::uint64_t(std::thread::hardware_concurrency()));
+  for (unsigned i = 0; i < lGrpcPoolSize; i++) {
+    std::string lThreadName = "tfb_grpc_req_" + std::to_string(i);
+    mStfRequestThreadPool.emplace_back(std::move(create_thread_member(lThreadName.c_str(), &TfBuilderRpcImpl::StfRequestGrpcThread, this)));
+  }
+
   mStfRequestThread = create_thread_member("tfb_sched_req", &TfBuilderRpcImpl::StfRequestThread, this);
 
   // Periodically poll on new consul parameters
@@ -89,12 +96,19 @@ void TfBuilderRpcImpl::stop()
     mUpdateThread.join();
   }
 
-  {
+  { // Stop STF request threads
     if (mTfBuildRequests) {
       mTfBuildRequests->stop();
     }
     if (mStfRequestThread.joinable()) {
       mStfRequestThread.join();
+    }
+
+    mGrpcStfRequestQueue.stop();
+    for (auto &lThread : mStfRequestThreadPool) {
+      if (lThread.joinable()) {
+        lThread.join();
+      }
     }
   }
 
@@ -372,7 +386,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
   const auto &lTfBuilderId = mDiscoveryConfig->status().info().process_id();
   lStfRequest.set_tf_builder_id(lTfBuilderId);
 
-  std::vector<StfRequests> lStfRequestVector;
+  std::vector<StfRequest> lStfRequestVector;
 
   for (auto &lStfDataIter : request->stf_size_map()) {
     const auto &lStfSenderId = lStfDataIter.first;
@@ -416,7 +430,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
   return ::grpc::Status::OK;
 }
 
-std::size_t TfBuilderRpcImpl::getFetchIdxStfDataSize(const std::vector<StfRequests> &pReqVector) const
+std::size_t TfBuilderRpcImpl::getFetchIdxStfDataSize(const std::vector<StfRequest> &pReqVector) const
 {
   static thread_local std::random_device lRd;
   static thread_local std::mt19937_64 lGen(lRd());
@@ -453,7 +467,7 @@ std::size_t TfBuilderRpcImpl::getFetchIdxStfDataSize(const std::vector<StfReques
   return lIdx;
 }
 
-std::size_t TfBuilderRpcImpl::getFetchIdxRandom(const std::vector<StfRequests> &pReqVector) const
+std::size_t TfBuilderRpcImpl::getFetchIdxRandom(const std::vector<StfRequest> &pReqVector) const
 {
   static thread_local std::random_device lRd;
   static thread_local std::mt19937_64 lGen(lRd());
@@ -477,9 +491,9 @@ void TfBuilderRpcImpl::StfRequestThread()
   TfBuildingInformation lTfInfo;
 
   while (mRunning) {
-    StfRequests lStfRequest;
+    StfRequest lStfRequest;
     {
-      std::optional<std::tuple<std::uint64_t, bool, std::uint64_t, std::vector<StfRequests>> > lReqOpt;
+      std::optional<std::tuple<std::uint64_t, bool, std::uint64_t, std::vector<StfRequest>> > lReqOpt;
       if ((lReqOpt = mStfRequestQueue.pop_wait_for(100ms)) == std::nullopt) {
         continue;
       }
@@ -496,8 +510,12 @@ void TfBuilderRpcImpl::StfRequestThread()
         lStfSenderIdTopo = lReqVector.front().mStfSenderId;
       }
 
-      std::uint64_t lNumExpectedStfs = lReqVector.size();
-      setNumberOfStfs(lTfId, lNumExpectedStfs);
+      const auto lNumStfs = lReqVector.size();
+      std::atomic_size_t lNumExpectedStfs = 0;
+      std::size_t lNumRequested = 0;
+
+      // set initial guess of how many stfs to expect, refine later if we fail to contact all FLPs
+      setNumberOfStfs(lTfId, lNumStfs);
 
       const auto lTimeStfReqStart = clock::now();
 
@@ -523,43 +541,19 @@ void TfBuilderRpcImpl::StfRequestThread()
         lStfRequest = std::move(lReqVector[lIdx]);
         lReqVector.erase(lReqVector.cbegin() + lIdx);
 
-        { // record the current TP
-          std::unique_lock lLock(mStfDurationMapLock);
-          mStfReqDuration[lTfId][lStfRequest.mStfSenderId] = clock::now();
+        // Fan out STF grpc requests because it's limitting on how fast one EPN can receive data from many FLPs
+        // A single StfDataRequest request takes about 330 us, i.e. fetching 200 STFs -> 70 ms.
+        // This is OK wih runs with many EPNs, but a single EPN should be able to requst all STFs under 10 ms
+        mGrpcStfRequestQueue.push(GrpcStfReqInfo {std::move(lStfRequest), lNumStfs, lNumRequested /*ref*/, lNumExpectedStfs });
+      }
+
+      // wait for all STF to be requested
+      while (true) {
+        std::unique_lock lLock(mNumStfsRequestedLock);
+        mNumStfsRequestedCv.wait_for(lLock, 5ms);
+        if (lNumStfs == lNumRequested) {
+          break;
         }
-
-        auto lStartStfReqTime = clock::now();
-
-        StfDataResponse lStfResponse;
-        grpc::Status lStatus = StfSenderRpcClients()[lStfRequest.mStfSenderId]->StfDataRequest(lStfRequest.mRequest, lStfResponse);
-        if (!lStatus.ok()) {
-          lNumExpectedStfs -= 1;
-          // gRPC problem... continue asking for other STFs
-          EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={}",
-            lStfRequest.mStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize);
-          {
-            std::unique_lock lInFlightLock(mNumInFlightLock);
-            mNumReqInFlight -= 1;
-          }
-          continue;
-        }
-
-        if (lStfResponse.status() != StfDataResponse::OK) {
-          lNumExpectedStfs -= 1;
-          EDDLOG("StfSender did not sent data. stfs_id={} reason={}",
-            lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
-          {
-            std::unique_lock lInFlightLock(mNumInFlightLock);
-            mNumReqInFlight -= 1;
-          }
-          continue;
-        }
-
-        DDMON("tfbuilder", "merge.stf_data_req_ms", since<std::chrono::milliseconds>(lStartStfReqTime));
-
-        // Notify input about incoming STF
-        mStfInputQueue->push(lStfRequest.mStfSenderId);
-
       }
 
       DDMON("tfbuilder", "merge.stf_data_req_total_ms", since<std::chrono::milliseconds>(lTimeStfReqStart));
@@ -598,6 +592,53 @@ void TfBuilderRpcImpl::StfRequestThread()
   // send disconnect update
   assert (!mRunning);
   DDDLOG("Exiting Stf requesting thread.");
+}
+
+// Fanout threads for running grpc StfDataRequest() over all FLPs
+void TfBuilderRpcImpl::StfRequestGrpcThread()
+{
+  while (mRunning) {
+    auto lGrpcReqOpt = mGrpcStfRequestQueue.pop();
+    if (!lGrpcReqOpt) {
+      continue;
+    }
+
+    auto &lGrpcReq = lGrpcReqOpt.value();
+    auto &lStfRequest = lGrpcReq.mStfRequest;
+
+    StfDataResponse lStfResponse;
+    grpc::Status lStatus = StfSenderRpcClients()[lStfRequest.mStfSenderId]->StfDataRequest(lStfRequest.mRequest, lStfResponse);
+    if (!lStatus.ok()) {
+      EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={}",
+        lStfRequest.mStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize);
+      {
+        std::unique_lock lInFlightLock(mNumInFlightLock);
+        mNumReqInFlight -= 1;
+      }
+    } else if (lStfResponse.status() != StfDataResponse::OK) {
+      EDDLOG("StfSender did not sent data. stfs_id={} reason={}",
+        lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
+      {
+        std::unique_lock lInFlightLock(mNumInFlightLock);
+        mNumReqInFlight -= 1;
+      }
+    } else {
+      // Update the expected STF count
+      lGrpcReq.mNumExpectedStfs += 1;
+    }
+
+    { // notify the main request loop
+      std::unique_lock lLock(mNumStfsRequestedLock);
+      lGrpcReq.mNumRequested += 1;
+      if (lGrpcReq.mNumStfSenders == lGrpcReq.mNumRequested) {
+        mNumStfsRequestedCv.notify_one();
+      }
+    }
+
+    // Notify input stage about incoming STF
+    mStfInputQueue->push(lStfRequest.mStfSenderId);
+  }
+  DDDLOG("Exiting Stf grpc request thread.");
 }
 
 bool TfBuilderRpcImpl::recordStfReceived(const std::string &pStfSenderId, const std::uint64_t pTfId)
