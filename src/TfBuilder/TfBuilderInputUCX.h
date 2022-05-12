@@ -21,6 +21,7 @@
 
 #include <SubTimeFrameDataModel.h>
 #include <ConcurrentQueue.h>
+#include <DataDistributionOptions.h>
 
 #include <UCXUtilities.h>
 #include <ucp/api/ucp.h>
@@ -171,6 +172,7 @@ private:
     std::unordered_map<std::string, std::size_t> mStfSenderToWorkerMap;
     std::unordered_map<std::string, std::shared_ptr<ConcurrentQueue<StfMetaRdmaInfo> > >  mStfMetaWorkerQueues;
   std::vector<std::thread> mThreadPool;
+  bool mRdmaPollingWait = UcxPollForRDMACompletionDefault;
 
   // STF postprocess threads
   ConcurrentQueue<StfMetaRdmaInfo> mStfPostprocessQueue;
