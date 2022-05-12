@@ -74,6 +74,7 @@ public:
 
   void UpdateSendingThread();
   void StfRequestThread();
+  void StfRequestGrpcThread();
 
   bool recordStfReceived(const std::string &pStfSenderId, const std::uint64_t pTfId);
   bool recordTfBuilt(const SubTimeFrame &pTf);
@@ -155,18 +156,13 @@ private:
   std::condition_variable mUpdateCondition;
   std::thread mUpdateThread;
 
-  // Stf request thread
-  std::thread mStfRequestThread;
-  std::shared_ptr<ConcurrentQueue<std::string> > mStfInputQueue;
-  std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > mReceivedDataQueue;
-
-    struct StfRequests {
+    struct StfRequest {
       std::string mStfSenderId;
       std::uint64_t mStfDataSize;
       StfDataRequestMessage mRequest;
 
-      StfRequests() = default;
-      StfRequests(const std::string &pStfSenderId, const std::uint64_t pStfDataSize, const StfDataRequestMessage &pRequest)
+      StfRequest() = default;
+      StfRequest(const std::string &pStfSenderId, const std::uint64_t pStfDataSize, const StfDataRequestMessage &pRequest)
       : mStfSenderId(pStfSenderId), mStfDataSize(pStfDataSize), mRequest(pRequest) { }
     };
 
@@ -184,11 +180,11 @@ private:
 
     std::atomic<StfRequestIdxSel> mStfSenderIdxSelMethod = eRandom;
 
-    std::size_t getFetchIdxStfDataSize(const std::vector<StfRequests> &pReqVector) const;
-    std::size_t getFetchIdxRandom(const std::vector<StfRequests> &pReqVector) const;
-    std::size_t getFetchIdxLinear(const std::vector<StfRequests> &pReqVector) const { return (pReqVector.size() - 1); }
+    std::size_t getFetchIdxStfDataSize(const std::vector<StfRequest> &pReqVector) const;
+    std::size_t getFetchIdxRandom(const std::vector<StfRequest> &pReqVector) const;
+    std::size_t getFetchIdxLinear(const std::vector<StfRequest> &pReqVector) const { return (pReqVector.size() - 1); }
 
-    std::size_t getFetchIdx(const std::vector<StfRequests> &pReqVector) {
+    std::size_t getFetchIdx(const std::vector<StfRequest> &pReqVector) {
       assert (pReqVector.size() > 0);
 
       switch (mStfSenderIdxSelMethod.load()) {
@@ -212,8 +208,27 @@ private:
     std::uint64_t mNumReqInFlight = 0;
 
   // <tfid, topo?, topo_id, stf_requests>
-  ConcurrentFifo<std::tuple<std::uint64_t, bool, std::uint64_t, std::vector<StfRequests>> >  mStfRequestQueue;
+  ConcurrentFifo<std::tuple<std::uint64_t, bool, std::uint64_t, std::vector<StfRequest>> >  mStfRequestQueue;
 
+  // Stf request thread
+  std::thread mStfRequestThread;
+  std::shared_ptr<ConcurrentQueue<std::string> > mStfInputQueue;
+  std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > mReceivedDataQueue;
+  std::mutex mNumStfsRequestedLock;
+    std::condition_variable mNumStfsRequestedCv;
+
+  /// STF grpc request threads
+  struct GrpcStfReqInfo {
+    StfRequest mStfRequest;
+    // Protected by mNumStfsRequestedLock
+      std::size_t mNumStfSenders;
+      std::size_t &mNumRequested;
+      std::atomic_size_t &mNumExpectedStfs;
+  };
+  ConcurrentQueue<GrpcStfReqInfo> mGrpcStfRequestQueue;
+  std::vector<std::thread> mStfRequestThreadPool;
+
+  // Topological TFs
   std::mutex mTopoTfIdLock;
   std::uint64_t mTopoStfId = 1;
   std::map<std::string, std::unordered_map<std::uint64_t, std::uint64_t> > mTopoTfIdRenameMap;
