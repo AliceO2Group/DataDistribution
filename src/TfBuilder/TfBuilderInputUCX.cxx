@@ -191,7 +191,8 @@ bool TfBuilderInputUCX::start()
 {
   // setting configuration options
   mThreadPoolSize = std::clamp(mConfig->getUInt64Param(UcxTfBuilderThreadPoolSizeKey, UcxTfBuilderThreadPoolSizeDefault), std::size_t(1), std::size_t(256));
-  IDDLOG("TfBuilderInputUCX: Configuration loaded. thread_pool={}", mThreadPoolSize);
+  mRdmaPollingWait =mConfig->getBoolParam(UcxPollForRDMACompletionKey, UcxPollForRDMACompletionDefault);
+  IDDLOG("TfBuilderInputUCX: Configuration loaded. thread_pool={} polling={}", mThreadPoolSize, mRdmaPollingWait);
 
   auto &lConfStatus = mConfig->status();
 
@@ -628,9 +629,18 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
           ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lConn->mRemoteKeys[lStfMeta.data_regions(lStfTxg.region()).region_rkey()], &lRmaReqSem);
         }
       }
+
       // wait for final completion
-      if (!ucx::io::ucp_wait_poll(lConn->mWorker, lRmaReqSem)) {
-        break;
+      if (mRdmaPollingWait) {
+        // polling
+        if (!lRmaReqSem.wait_poll(lConn->mWorker)) {
+          break;
+        }
+      } else {
+        // blocking
+        if (!lRmaReqSem.wait(lConn->mWorker)) {
+          break;
+        }
       }
 
       // notify StfSender we completed (use mapped scratch memory)

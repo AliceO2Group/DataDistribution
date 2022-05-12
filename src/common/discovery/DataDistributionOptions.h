@@ -81,7 +81,7 @@ static constexpr std::uint64_t UcxStfSenderThreadPoolSizeDefault = 8;
 ////////////////////////////////////////////////////////////////////////////////
 
 // Define maximum number of concurrent STF transfers
-// The value should not be much grater than UcxTfBuilderThreadPoolSize as the requests will will not be processed immediately.
+// The value should be greater than max number of FLPs.
 static constexpr std::string_view MaxNumStfTransfersKey = "MaxNumStfTransfers";
 static constexpr std::uint64_t MaxNumStfTransferDefault = 300;
 
@@ -95,14 +95,13 @@ static constexpr std::uint64_t StfSenderGrpcThreadPoolSizeDefault = 8;
 
 
 /// UCX transport
-// Size of receiver treadpool. Default 0 (number of cpu cores)
+// Size of receiver treadpool. Default 1, works best. Should not be set over 2, to avoid congestion on the receiver.
 static constexpr std::string_view UcxTfBuilderThreadPoolSizeKey = "UcxTfBuilderThreadPoolSize";
 static constexpr std::uint64_t UcxTfBuilderThreadPoolSizeDefault = 1;
 
-// Number of rma_get operation in flight, per ucx thread
-// NOTE: deprecated in DD 1.4
-// static constexpr std::string_view UcxNumConcurrentRmaGetOpsKey = "UcxNumConcurrentRmaGetOps";
-// static constexpr std::uint64_t UcxNumConcurrentRmaGetOpsDefault = 32;
+// Use polling or blocking waiting method for RDMA completion.
+static constexpr std::string_view UcxPollForRDMACompletionKey = "UcxPollForRDMACompletion";
+static constexpr bool UcxPollForRDMACompletionDefault = false;
 
 
 ////////////////////////////////////////////////////////////////////////////////
