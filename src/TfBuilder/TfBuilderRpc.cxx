@@ -649,6 +649,7 @@ bool TfBuilderRpcImpl::recordStfReceived(const std::string &pStfSenderId, const 
       mNumReqInFlight -= 1;
     }
     mNumInFlightCond.notify_one();
+    DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);
   }
 
   // record completion time

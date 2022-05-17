@@ -496,20 +496,19 @@ void TfBuilderInputUCX::StfPreprocessThread(const unsigned pThreadIdx)
 
     const auto lAllocStart = clock::now();
 
-    // Allocate data memory
+    // Allocate data memory for txgs
     using UCXIovTxg = UCXIovStfHeader::UCXIovTxg;
-
-    lStfRdmaInfo.mTxgPtrs.reserve(lStfMeta.stf_txg_iov().size());
 
     std::for_each(lStfMeta.stf_txg_iov().cbegin(), lStfMeta.stf_txg_iov().cend(), [&lTxgSizes](const UCXIovTxg &txg) {
       lTxgSizes.push_back(txg.len());
     });
 
+    lStfRdmaInfo.mTxgPtrs.reserve(lTxgSizes.size());
+
     mTimeFrameBuilder.allocDataBuffers(lTxgSizes, lStfRdmaInfo.mTxgPtrs);
-    assert (!(lStfMeta.stf_txg_iov_size() > 0) || (lStfRdmaInfo.mTxgPtrs.size() == (lStfMeta.stf_txg_iov().rbegin()->txg() + 1)));
+    assert (lStfRdmaInfo.mTxgPtrs.size() == std::size_t(lStfMeta.stf_txg_iov().size()));
 
     DDMON("tfbuilder", "recv.data_alloc_ms", since<std::chrono::milliseconds>(lAllocStart));
-
 
     { // make sure all remote keys are unpacked
       // We make this in two passes in order to minimize impact on the RDMA thread.
@@ -546,7 +545,7 @@ void TfBuilderInputUCX::StfPreprocessThread(const unsigned pThreadIdx)
 
         for (const auto &lRegion : lStfMeta.data_regions()) {
           if (lConn->mRemoteKeys.count(lRegion.region_rkey()) == 0) {
-            DDDLOG("UCX: Mapping a new remote region stf_sender={} size={}", lRegion.size());
+            DDDLOG("UCX: Mapping a new remote region stf_sender={} size={}", lStfSenderId, lRegion.size());
             auto lNewRkeyIter = lConn->mRemoteKeys.emplace(lRegion.region_rkey(), ucp_rkey_h());
             ucp_ep_rkey_unpack(lConn->ucp_ep, lRegion.region_rkey().data(), &(lNewRkeyIter.first->second));
           }
@@ -585,8 +584,8 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
 
   while (mState != TERMINATED) {
     std::optional<StfMetaRdmaInfo> lStfMetaOpt = lStfMetaQueue->pop_wait_for(5ms);
-    while (ucp_worker_progress(lWorker.ucp_worker) > 0) { }
     if (!lStfMetaOpt) {
+      while (ucp_worker_progress(lWorker.ucp_worker) > 0) { }
       continue;
     }
 
@@ -597,7 +596,6 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
     const std::uint64_t lTfId = lStfMeta.stf_hdr_meta().stf_id();
     const std::string &lStfSenderId = lStfMeta.stf_sender_id();
     const auto &lTxgPtrs = lStfRdmaInfo.mTxgPtrs;
-
 
     // Reference to the input channel
     TfBuilderUCXConnInfo *lConn = nullptr;
@@ -614,32 +612,26 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
 
     {
       std::scoped_lock lStfSenderIoLock(lConn->mStfSenderIoLock);
-      ucx::io::dd_ucp_multi_req_v2 lRmaReqSem;
-      {
-        // It's safe to use shared key lock because preprocess thread created required keys for this stf
-        std::shared_lock lKeysLock(lConn->mRemoteKeysLock);
 
-        // RMA get all the txgs
-        for (const auto &lStfTxg : lStfMeta.stf_txg_iov()) {
-          if (lStfTxg.len() == 0) {
-            continue;
+      if (!lStfMeta.stf_txg_iov().empty()) {
+        ucx::io::dd_ucp_multi_req_v2 lRmaReqSem;
+        {
+          // It's safe to use shared key lock because preprocess thread created required keys for this stf
+          std::shared_lock lKeysLock(lConn->mRemoteKeysLock);
+
+          // RMA get all the txgs
+          for (const auto &lStfTxg : lStfMeta.stf_txg_iov()) {
+            assert (lStfTxg.len() > 0);
+
+            void *lTxgUcxPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lTxgPtrs[lStfTxg.txg()]);
+            const ucp_rkey_h lRemoteKey = lConn->mRemoteKeys[lStfMeta.data_regions(lStfTxg.region()).region_rkey()];
+            ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lRemoteKey, &lRmaReqSem);
           }
-
-          void *lTxgUcxPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lTxgPtrs[lStfTxg.txg()]);
-          ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lConn->mRemoteKeys[lStfMeta.data_regions(lStfTxg.region()).region_rkey()], &lRmaReqSem);
         }
-      }
 
-      // wait for final completion
-      if (mRdmaPollingWait) {
-        // polling
-        if (!lRmaReqSem.wait_poll(lConn->mWorker)) {
-          break;
-        }
-      } else {
-        // blocking
-        if (!lRmaReqSem.wait(lConn->mWorker)) {
-          break;
+        // wait for final completion
+        if (!lRmaReqSem.wait(lConn->mWorker, mRdmaPollingWait)) {
+            break;
         }
       }
 
@@ -691,7 +683,8 @@ void TfBuilderInputUCX::StfPostprocessThread(const unsigned pThreadIdx)
     mRpc->recordStfReceived(lStfSenderId, lTfId);
 
     // sort messages back to the original order
-    std::sort(lStfMeta.mutable_stf_data_iov()->begin(), lStfMeta.mutable_stf_data_iov()->end(), [](auto &a, auto &b) { return a.idx() < b.idx(); });
+    std::sort(lStfMeta.mutable_stf_data_iov()->begin(), lStfMeta.mutable_stf_data_iov()->end(),
+      [](auto &a, auto &b) { return a.idx() < b.idx(); });
 
     // create fmq messages from txgs
     lDataMsgsBuffers.clear();
@@ -699,15 +692,21 @@ void TfBuilderInputUCX::StfPostprocessThread(const unsigned pThreadIdx)
     lDataVec->reserve(lStfMeta.stf_data_iov_size());
 
     for (const auto &lDataMsg : lStfMeta.stf_data_iov()) {
-      const auto &lTxg = lStfMeta.stf_txg_iov(lDataMsg.txg());
 
-      assert (lDataMsg.start() >= lTxg.start());
-      const auto lTxgOff = (lDataMsg.start() - lTxg.start());
+      if ((lDataMsg.len() == 0) || (lDataMsg.start() == 0)) {
+        lDataMsgsBuffers.emplace_back(nullptr, 0); // no payload message
+      } else {
+        assert (lDataMsg.txg() != std::uint32_t(-1));
+        const auto &lTxg = lStfMeta.stf_txg_iov(lDataMsg.txg());
+        const auto lTxgOff = (lDataMsg.start() - lTxg.start());
 
-      assert (lTxgOff <  lTxg.len());
-      assert ((lTxgOff + lDataMsg.len()) <= lTxg.len());
+        assert (lDataMsg.start() >= lTxg.start());
+        assert (lTxgOff <  lTxg.len());
+        assert ((lTxgOff + lDataMsg.len()) <= lTxg.len());
 
-      lDataMsgsBuffers.emplace_back(reinterpret_cast<char*>(lTxgPtrs[lDataMsg.txg()])+lTxgOff, lDataMsg.len());
+        // store the address and length of a message within txg buffer
+        lDataMsgsBuffers.emplace_back(reinterpret_cast<char*>(lTxgPtrs[lDataMsg.txg()])+lTxgOff, lDataMsg.len());
+      }
     }
 
     // make data messages

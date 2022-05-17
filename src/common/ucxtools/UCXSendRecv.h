@@ -129,46 +129,46 @@ struct dd_ucp_multi_req_v2 {
   }
 
   inline
-  bool wait(dd_ucp_worker &pDDCtx) {
-    for (;;) {
-      // check if request is done
-      if (done()) {
-        return true;
-      } else if (ucp_worker_progress(pDDCtx.ucp_worker)) {
-        continue;
-      }
-
-      // block on the worker
-      auto status = ucp_worker_arm(pDDCtx.ucp_worker);
-
-      if (UCS_OK == status) {
-        int epoll_ret;
-        do {
-          epoll_ret = epoll_wait(pDDCtx.epoll_fd, &pDDCtx.ev, 1, 100);
-        } while ((epoll_ret == -1) && (errno == EINTR || errno == EAGAIN));
-
-        if (epoll_ret == -1) {
-          EDDLOG("Failed ucp_advance epoll. errno={}", errno);
-          return done();
+  bool wait(dd_ucp_worker &pDDCtx, const bool pPollingWait) const {
+    if (pPollingWait) {
+      for (;;) {
+        // check if request is done
+        if (done()) {
+          return true;
         }
-      } else if (UCS_ERR_BUSY == status) {
-        continue; // could not arm, recheck the request
+        while (ucp_worker_progress(pDDCtx.ucp_worker) > 0) { }
       }
-        // epoll returned or timeout, recheck the request
-    }
-    return done();
-  }
+      return true;
+    } else {
+      // blocking wait
+      for (;;) {
+        // check if request is done
+        if (done()) {
+          return true;
+        } else if (ucp_worker_progress(pDDCtx.ucp_worker)) {
+          continue;
+        }
 
-  inline
-  bool wait_poll(dd_ucp_worker &pDDCtx) const {
-    for (;;) {
-      // check if request is done
-      if (done()) {
-        return true;
+        // block on the worker
+        auto status = ucp_worker_arm(pDDCtx.ucp_worker);
+
+        if (UCS_OK == status) {
+          int epoll_ret;
+          do {
+            epoll_ret = epoll_wait(pDDCtx.epoll_fd, &pDDCtx.ev, 1, 100);
+          } while ((epoll_ret == -1) && (errno == EINTR || errno == EAGAIN));
+
+          if (epoll_ret == -1) {
+            EDDLOG("Failed ucp_advance epoll. errno={}", errno);
+            return done();
+          }
+        } else if (UCS_ERR_BUSY == status) {
+          continue; // could not arm, recheck the request
+        }
+          // epoll returned or timeout, recheck the request
       }
-      while (ucp_worker_progress(pDDCtx.ucp_worker) > 0) { }
+      return done();
     }
-    return true;
   }
 };
 

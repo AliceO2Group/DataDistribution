@@ -291,9 +291,6 @@ void TfBuilderInput::StfDeserializingThread()
 void TfBuilderInput::StfMergerThread()
 {
   using namespace std::chrono_literals;
-  using hres_clock = std::chrono::high_resolution_clock;
-
-  auto lRateStartTime = hres_clock::now();
 
   std::uint64_t lNumBuiltTfs = 0;
 
@@ -337,16 +334,7 @@ void TfBuilderInput::StfMergerThread()
     mRpc->recordTfBuilt(*lTf);
 
     DDDLOG_RL(5000, "Building of TF completed. tf_id={} duration_ms={:.4} total_tf={}", lTfId, lBuildDurationMs, lNumBuiltTfs);
-
-    {
-      const auto lNow = hres_clock::now();
-      const auto lTfDur = std::chrono::duration<double>(lNow - lRateStartTime);
-      lRateStartTime = lNow;
-      const auto lRate = (1.0 / lTfDur.count());
-
-      DDMON("tfbuilder", "data_input.rate", (lRate * lTf->getDataSize()));
-      DDMON("tfbuilder", "merge.receive_span_ms", lBuildDurationMs);
-    }
+    DDMON("tfbuilder", "merge.receive_span_ms", lBuildDurationMs);
 
     // Queue out the TF for consumption
     DDMON_RATE("tfbuilder", "tf_input", lTf->getDataSize());

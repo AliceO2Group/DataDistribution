@@ -242,6 +242,7 @@ public:
         {
           std::scoped_lock lRefCntLock(mAllocBlocksLock);
 
+          // Deref lambda
           const auto lAllocDeref = [&](auto pBlockIter) {
             assert ((pBlockIter != mAllocBlocksMap.end())  && (pBlockIter->second.mRefCnt > 0));
 
@@ -269,17 +270,21 @@ public:
           auto lLastValIter = mAllocBlocksMap.end();
 
           for (const auto lBlock : sBlkVect) {
-            if ((lLastValIter != mAllocBlocksMap.end()) && lLastValIter->second.in_range(lBlock.hint, lBlock.size)) {
-              lAllocDeref(lLastValIter);
-              continue;
+            if (lBlock.size == 0) {
+              continue; // no refcount for zero length messages
             }
 
-            lLastValIter = mAllocBlocksMap.lower_bound(reinterpret_cast<std::size_t>(lBlock.ptr));
-            assert (!mAllocBlocksMap.empty());
-            assert (lLastValIter != mAllocBlocksMap.end());
-            assert (lLastValIter->second.in_range(lBlock.ptr, lBlock.size));
-
-            lAllocDeref(lLastValIter);
+            // check if we are in the cached refcnt interval
+            if ((lLastValIter != mAllocBlocksMap.end()) && lLastValIter->second.in_range(lBlock.hint, lBlock.size)) {
+              lAllocDeref(lLastValIter);
+            } else {
+              // find and cache the new interval
+              lLastValIter = mAllocBlocksMap.lower_bound(reinterpret_cast<std::size_t>(lBlock.ptr));
+              assert (!mAllocBlocksMap.empty());
+              assert (lLastValIter != mAllocBlocksMap.end());
+              assert (lLastValIter->second.in_range(lBlock.ptr, lBlock.size));
+              lAllocDeref(lLastValIter);
+            }
           }
         }
       }
@@ -367,25 +372,36 @@ public:
   }
 
   inline
-  std::unique_ptr<FairMQMessage> NewFairMQMessageFromPtr(void *pPtr, const std::size_t pSize) {
-    assert(pPtr >= static_cast<char*>(mRegion->GetData()));
-    assert(static_cast<char*>(pPtr)+pSize <= static_cast<char*>(mRegion->GetData()) + mRegion->GetSize());
+  std::unique_ptr<FairMQMessage> NewFairMQMessageFromPtr(void *pPtr, std::size_t pSize) {
+    // we can have a zero allocation
+    if ((pSize > 0) && (pPtr != nullptr)) {
+      assert(pPtr >= static_cast<char*>(mRegion->GetData()));
+      assert(static_cast<char*>(pPtr)+pSize <= static_cast<char*>(mRegion->GetData()) + mRegion->GetSize() - 1);
+    } else {
+      // zero size: make sure the pointer is from the region or fmq will complain
+      pPtr = reinterpret_cast<char*>(mRegion->GetData()) + mRegion->GetSize() - 1;
+      pSize = 0;
+    }
 
     if constexpr (FREE_STRATEGY == eRefCount) {
-      std::scoped_lock lLock(mAllocBlocksLock);
-      auto lBlkIter = mAllocBlocksMap.lower_bound(reinterpret_cast<std::size_t>(pPtr));
-      assert (lBlkIter != mAllocBlocksMap.end());
-      assert (lBlkIter->second.in_range(pPtr, pSize));
+      if (pSize > 0) {
+        std::scoped_lock lLock(mAllocBlocksLock);
+        auto lBlkIter = mAllocBlocksMap.lower_bound(reinterpret_cast<std::size_t>(pPtr));
+        assert (lBlkIter != mAllocBlocksMap.end());
+        assert (lBlkIter->second.in_range(pPtr, pSize));
 
-      lBlkIter->second.mRefCnt += 1;
+        lBlkIter->second.mRefCnt += 1;
+      }
     }
 
     if constexpr (FREE_STRATEGY == eExactRegion) {
-      assert (! (reinterpret_cast<std::size_t>(pPtr) & (ALIGN-1)));
+      if (pSize > 0) {
+        assert (! (reinterpret_cast<std::size_t>(pPtr) & (ALIGN-1)));
+      }
     }
 
 #ifndef NDEBUG
-    {
+    if (pSize > 0) {
       std::scoped_lock lock(mReclaimLock);
 
       auto interval = icl::discrete_interval<std::size_t>::right_open(
@@ -422,18 +438,27 @@ public:
       auto lBlkIter = mAllocBlocksMap.end();
 
       for (const auto &lPtrSize : pAllocs) {
-        // check if we need a new lookup
-        if (!(lBlkIter != mAllocBlocksMap.end() && lBlkIter->second.in_range(lPtrSize.first, lPtrSize.second))) {
-          lBlkIter = mAllocBlocksMap.lower_bound(reinterpret_cast<std::size_t>(lPtrSize.first));
-          assert (lBlkIter != mAllocBlocksMap.end());
-          assert (lBlkIter->second.in_range(lPtrSize.first, lPtrSize.second));
+        if (lPtrSize.second > 0) {
+          // refcount all non-zero length messages
+          // check if we need a new lookup
+          if (!(lBlkIter != mAllocBlocksMap.end() && lBlkIter->second.in_range(lPtrSize.first, lPtrSize.second))) {
+            lBlkIter = mAllocBlocksMap.lower_bound(reinterpret_cast<std::size_t>(lPtrSize.first));
+            assert (lBlkIter != mAllocBlocksMap.end());
+            assert (lBlkIter->second.in_range(lPtrSize.first, lPtrSize.second));
+          }
+          lBlkIter->second.mRefCnt += 1;
         }
-        lBlkIter->second.mRefCnt += 1;
       }
     }
 
     for (const auto &lPtrSize : pAllocs) {
-      *pInsertIt++ = std::move(mTransport.CreateMessage(mRegion, lPtrSize.first, lPtrSize.second));
+      if (lPtrSize.second > 0) {
+        *pInsertIt++ = std::move(mTransport.CreateMessage(mRegion, lPtrSize.first, lPtrSize.second));
+      } else {
+        // zero size: make sure the pointer is from the region or fmq will complain
+        *pInsertIt++ = std::move(mTransport.CreateMessage(mRegion,
+          reinterpret_cast<char*>(mRegion->GetData()) + mRegion->GetSize() - 1, 0));
+      }
     }
   }
 
@@ -462,7 +487,7 @@ public:
 
     if (pSize == 0) {
       // return last address of the segment
-      return reinterpret_cast<char*>(mRegion->GetData()) + mRegion->GetSize();
+      return reinterpret_cast<char*>(mRegion->GetData()) + mRegion->GetSize() - 1;
     }
 
     // align up
