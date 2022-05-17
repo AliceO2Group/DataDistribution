@@ -274,9 +274,6 @@ void StfSenderOutputUCX::visit(const SubTimeFrame &pStf, void *pData)
   lStfUCXMeta->set_stf_sender_id(mDiscoveryConfig->status().info().process_id());
 
   // pack all headers and collect data
-  std::vector<UCXData> lStfDataPtrs;
-  lStfDataPtrs.reserve(32768);
-
   std::uint64_t lDataIovIdx = 0;
 
   for (auto& lDataIdentMapIter : pStf.mData) {
@@ -291,49 +288,49 @@ void StfSenderOutputUCX::visit(const SubTimeFrame &pStf, void *pData)
 
           // add the data part info
           for (auto &lDataMsg : lStfDataIter.mDataParts) {
-            lStfDataPtrs.emplace_back(UCXData());
-            auto &lDataPtr = lStfDataPtrs.back();
+            auto &lDataPtr = *lStfUCXMeta->add_stf_data_iov();
             lDataPtr.set_idx(lDataIovIdx++);
             lDataPtr.set_len(lDataMsg->GetSize());
             lDataPtr.set_start(reinterpret_cast<std::uint64_t>(lDataMsg->GetData()));
+            lDataPtr.set_txg(std::uint32_t(-1));
           }
         }
       }
     }
   }
 
-  std::size_t lTotalGap = 0;
+  // Only create transactions if there is actual data.
+  // Note that an STF can have all o2 messages of size zero, but we dont need txgs for them
+  if (lStfSize > 0) {
+    std::size_t lTotalGap = 0;
 
-  if (!lStfDataPtrs.empty()) {
+    assert (!lStfUCXMeta->stf_data_iov().empty());
     // sort all data parts by pointer value in order to make txgs
-    std::sort(lStfDataPtrs.begin(), lStfDataPtrs.end(), [](const UCXData &a, const UCXData &b) { return a.start() < b.start(); } );
-
-    // create transactions
-    std::uint32_t lTxgIdx = 0;
-    std::uint32_t lRegionIdx = 0;
-
-    UCXIovTxg *lStfTxg = lStfUCXMeta->add_stf_txg_iov();
-    lStfTxg->set_data_parts(0);
-    lStfTxg->set_start(0);
-    lStfTxg->set_len(0);
-
-    auto lUCXData = lStfDataPtrs.begin();
+    std::sort(lStfUCXMeta->mutable_stf_data_iov()->begin(), lStfUCXMeta->mutable_stf_data_iov()->end(),
+      [](const UCXData &a, const UCXData &b) { return a.start() < b.start(); } );
 
     // apparently shm ptr can be null. Otherwise they must be part of a registered region.
     // After sorting, null pointers will come to the front of the data array.
     // We need to associate them with the first txg, and not call regionLookup
     // NOTE: on EPN such messages will not have null ptr value, but a value within TF buffer (still zero size)
     // skip all null pointers
-    while ((lUCXData != lStfDataPtrs.end()) && ((lUCXData->start() == 0) || (lUCXData->len() == 0))) {
-      assert (lUCXData->len() == 0);
-      // txg 0 for nullptr messages
-      lUCXData->set_txg(0);
-      lUCXData->set_len(0);
-      lStfTxg->set_data_parts(lStfTxg->data_parts() + 1);
-      lUCXData++;
-    }
 
-    if (lUCXData != lStfDataPtrs.end()) {
+    // move all zero length buffers to the beginning and get the first non-zero buffer iterator
+    auto lUCXData = std::stable_partition(lStfUCXMeta->mutable_stf_data_iov()->begin(), lStfUCXMeta->mutable_stf_data_iov()->end(),
+      [](const UCXData &a) { return ((a.len() == 0) || (a.start() == 0)); } );
+
+
+    if (lUCXData != lStfUCXMeta->mutable_stf_data_iov()->end()) {
+
+      // create the first transaction
+      std::uint32_t lTxgIdx = 0;
+      std::uint32_t lRegionIdx = 0;
+
+      UCXIovTxg *lStfTxg = lStfUCXMeta->add_stf_txg_iov();
+      lStfTxg->set_data_parts(0);
+      lStfTxg->set_start(0);
+      lStfTxg->set_len(0);
+
       assert (lUCXData->len() > 0);
       const UCXMemoryRegionInfo* lRunningRegion = regionLookup(lUCXData->start(), lUCXData->len());
       // create the first region
@@ -351,25 +348,8 @@ void StfSenderOutputUCX::visit(const SubTimeFrame &pStf, void *pData)
       lStfTxg->set_len(lUCXData->len());
       lStfTxg->set_region(lStfRegion->region());
 
-      // update pointers of null messages to match the first txg
-      for (auto &lNullPtrDataPtr : lStfDataPtrs) {
-        if (lNullPtrDataPtr.len() != 0) {
-          break;
-        }
-        lNullPtrDataPtr.set_start(lStfTxg->start());
-      }
-
-      // iterate over regular messages
-      for (lUCXData++; lUCXData != lStfDataPtrs.end(); lUCXData++) {
-
-        // zero size messages can use the running region without lookup. It's not important which region is used
-        if (lUCXData->len() == 0) {
-          // set the data part txg
-          lUCXData->set_txg(lStfTxg->txg());
-          lUCXData->set_start(lStfTxg->start());
-          lStfTxg->set_data_parts(lStfTxg->data_parts() + 1);
-          continue;
-        }
+      // iterate over non-zero messages
+      for (++lUCXData; lUCXData != lStfUCXMeta->mutable_stf_data_iov()->end(); ++lUCXData) {
 
         assert (lUCXData->start() != 0);
         assert (lUCXData->len() > 0);
@@ -377,7 +357,7 @@ void StfSenderOutputUCX::visit(const SubTimeFrame &pStf, void *pData)
         const auto lReg = regionLookup(lUCXData->start(), lUCXData->len());
 
         if (*lReg == *lRunningRegion) {
-          // check if we extend the current txg
+          // check if we can extend the current txg
           const auto lGap = lUCXData->start() - (lStfTxg->start() + lStfTxg->len());
           if (lGap <= mRmaGap) {
             // extend the existing txg
@@ -413,12 +393,6 @@ void StfSenderOutputUCX::visit(const SubTimeFrame &pStf, void *pData)
         // set the data part txg
         lUCXData->set_txg(lStfTxg->txg());
       }
-    }
-
-    // prepare the message
-    for (const auto & lDataPart: lStfDataPtrs) {
-      auto lNewDataPtr = lStfUCXMeta->add_stf_data_iov();
-      *lNewDataPtr = lDataPart;
     }
 
     DDDLOG_GRL(10000, "UCX pack total data_size={} data_cnt={} txg_size={} txg_cnt={} gap_size={}",

@@ -421,7 +421,7 @@ void TfBuilderDevice::TfForwardThread()
 
     if (!mStandalone) {
       try {
-        IDDLOG_RL(5000, "Forwarding a new TF to DPL. tf_id={} stf_size={:d} unique_equipments={} total={}",
+        IDDLOG_RL(5000, "Forwarding a new TF to DPL. tf_id={} size={} unique_equipments={} total={}",
           lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), mTfFwdTotalTfCount);
 
         // adapt headers to include DPL processing header on the stack
