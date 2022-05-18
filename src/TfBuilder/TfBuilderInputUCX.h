@@ -56,9 +56,6 @@ struct TfBuilderUCXConnInfo {
   std::string mStfSenderId;
   std::string mStfSenderIp;
 
-  /// Lock to ensure only one thread is using the endpoint at any time
-  std::mutex mStfSenderIoLock;
-
   /// cache of unpacked remote rma keys
   std::shared_mutex mRemoteKeysLock;
     std::map<std::string, ucp_rkey_h> mRemoteKeys;

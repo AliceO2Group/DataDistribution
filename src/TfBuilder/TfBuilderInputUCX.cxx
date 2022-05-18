@@ -585,8 +585,6 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
       continue;
     }
 
-    const auto lRmaGetStart = clock::now();
-
     StfMetaRdmaInfo lStfRdmaInfo = std::move(lStfMetaOpt.value());
     UCXIovStfHeader &lStfMeta = lStfRdmaInfo.mStfMeta;
     const std::uint64_t lTfId = lStfMeta.stf_hdr_meta().stf_id();
@@ -606,28 +604,33 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
       continue;
     }
 
+    clock::time_point lRmaGetStart = clock::now();
     {
-      std::scoped_lock lStfSenderIoLock(lConn->mStfSenderIoLock);
-
       if (!lStfMeta.stf_txg_iov().empty()) {
         ucx::io::dd_ucp_multi_req_v2 lRmaReqSem;
-        {
+
+        // Put the RDMA-GET operations in the exclusive section to prevent congestion in multi-worker configuration
+        static std::mutex sRdmaSectionMutex;
+        { std::scoped_lock lRdmaSectionLock(sRdmaSectionMutex);
+
           // It's safe to use shared key lock because preprocess thread created required keys for this stf
-          std::shared_lock lKeysLock(lConn->mRemoteKeysLock);
+          { std::shared_lock lKeysLock(lConn->mRemoteKeysLock);
+            lRmaGetStart = clock::now(); // update with exact time we started RDMA operations
 
-          // RMA get all the txgs
-          for (const auto &lStfTxg : lStfMeta.stf_txg_iov()) {
-            assert (lStfTxg.len() > 0);
+            // RMA get all the txgs
+            for (const auto &lStfTxg : lStfMeta.stf_txg_iov()) {
+              assert (lStfTxg.len() > 0);
 
-            void *lTxgUcxPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lTxgPtrs[lStfTxg.txg()]);
-            const ucp_rkey_h lRemoteKey = lConn->mRemoteKeys[lStfMeta.data_regions(lStfTxg.region()).region_rkey()];
-            ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lRemoteKey, &lRmaReqSem);
+              void *lTxgUcxPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lTxgPtrs[lStfTxg.txg()]);
+              const ucp_rkey_h lRemoteKey = lConn->mRemoteKeys[lStfMeta.data_regions(lStfTxg.region()).region_rkey()];
+              ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lRemoteKey, &lRmaReqSem);
+            }
           }
-        }
 
-        // wait for final completion
-        if (!lRmaReqSem.wait(lConn->mWorker, mRdmaPollingWait)) {
+          // wait for the completion
+          if (!lRmaReqSem.wait(lConn->mWorker, mRdmaPollingWait)) {
             break;
+          }
         }
       }
 
