@@ -157,12 +157,14 @@ static inline
 bool register_am_callback(dd_ucp_worker &worker, unsigned id, ucp_am_recv_callback_t ucp_am_cb, void *cb_arg)
 {
   ucp_am_handler_param_t am_param;
-  am_param.field_mask = UCP_AM_HANDLER_PARAM_FIELD_ID |
-                        UCP_AM_HANDLER_PARAM_FIELD_CB |
-                        UCP_AM_HANDLER_PARAM_FIELD_ARG;
+  am_param.field_mask = UCP_AM_HANDLER_PARAM_FIELD_ID   |
+                        UCP_AM_HANDLER_PARAM_FIELD_CB   |
+                        UCP_AM_HANDLER_PARAM_FIELD_ARG  |
+                        UCP_AM_HANDLER_PARAM_FIELD_FLAGS;
   am_param.id         = id;
   am_param.cb         = ucp_am_cb;
   am_param.arg        = cb_arg;
+  am_param.flags      = UCP_AM_FLAG_WHOLE_MSG;
 
   auto status = ucp_worker_set_am_recv_handler(worker.ucp_worker, &am_param);
   if (status != UCS_OK) {
