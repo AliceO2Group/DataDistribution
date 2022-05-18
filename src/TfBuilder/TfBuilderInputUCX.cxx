@@ -66,13 +66,9 @@ static ucs_status_t ucp_am_data_cb(void *arg, const void *header, size_t header_
       * data transfer.
       */
 
-    EDDLOG_RL(1000, "ucp_am_data_cb RNDV stf_meta_size={}", length);
-
-    lInputUcx->pushRndvMetadata(data, length);
-    return UCS_INPROGRESS;
+    EDDLOG_RL(10000, "UCX: Unexpected ucp_am_data_cb RNDV stf_meta_size={}", length);
+    return UCS_OK;
   }
-
-  assert (param->recv_attr & UCP_AM_RECV_ATTR_FLAG_DATA);
 
   // Translate data to UCX metadata message and queue
   UCXIovStfHeader lMeta;

@@ -280,7 +280,10 @@ void StfSenderOutputUCX::visit(const SubTimeFrame &pStf, void *pData)
     for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
       for (auto& lStfDataIter : lSubSpecMapIter.second) {
         if (lStfDataIter.mHeader) {
-          assert (lStfDataIter.mDataParts.size() > 0);
+          if (lStfDataIter.mDataParts.size() == 0) {
+            EDDLOG_GRL(10000, "StfSenderOutput: Data format error: O2 header without data payload. Check the FLP-workflow");
+            continue;
+          }
           // add the header
           auto lHdrMeta = lStfUCXMeta->mutable_stf_hdr_meta()->add_stf_hdr_iov();
           lHdrMeta->set_hdr_data(lStfDataIter.mHeader->GetData(), lStfDataIter.mHeader->GetSize());

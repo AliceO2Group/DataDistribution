@@ -126,10 +126,6 @@ public:
     mStfPostprocessQueue.push(std::move(pInfo));
   }
 
-  void pushRndvMetadata(void* pUcxDesc, const std::size_t pStfMetaLen) {
-    mStfMetaRndvQueue.push(std::make_tuple(pUcxDesc, pStfMetaLen));
-  }
-
   void handle_client_ep_error(TfBuilderUCXConnInfo *pConn, ucs_status_t pStatus) {
 
     if (pConn) {
@@ -159,9 +155,6 @@ private:
   // STF request queue
   ConcurrentQueue<std::string> &mStfReqQueue;
   std::size_t mThreadPoolSize;
-
-  /// STF UCX metadata queue
-  ConcurrentQueue<std::tuple<void*, std::size_t>> mStfMetaRndvQueue;
 
   // STF preprocess threads
   ConcurrentQueue<UCXIovStfHeader> mStfPreprocessQueue;
