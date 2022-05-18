@@ -287,6 +287,11 @@ void StfSenderDevice::StfReceiverThread()
 
     DDMON_RATE("stfsender", "stf_input", lStf->getDataSize());
     DDMON("stfsender", "stf_input.id", lStf->id());
+    DDMON("stfsender", "stf_input.delay_ms",
+      std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now()).time_since_epoch().count()/1000.0 -
+      lStf->header().mCreationTimeMs
+    );
+
     I().queue(eReceiverOut, std::move(lStf));
   }
 
