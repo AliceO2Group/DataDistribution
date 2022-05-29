@@ -43,6 +43,9 @@ void StfToDplAdapter::visit(SubTimeFrame& pStf, void*)
   lStfDistDataHeader.runNumber = pStf.header().mRunNumber;
   lStfDistDataHeader.firstTForbit = pStf.header().mFirstOrbit;
 
+  DDDLOG_RL(10000, "DPL sending a TimeFrame. tf_id={} run_number={} first_orbit={}",
+    pStf.header().mId, pStf.header().mRunNumber, pStf.header().mFirstOrbit);
+
   o2::framework::DataProcessingHeader lDplHeader(pStf.header().mId);
   lDplHeader.creation = pStf.header().mCreationTimeMs;
 

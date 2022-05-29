@@ -87,6 +87,10 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
             typename = std::enable_if_t<std::is_pointer<pointer>::value>>
   bool read_advance(pointer pPtr, std::uint64_t pLen)
   {
+    if (pLen == 0) {
+      return true;
+    }
+
     if (!mFileMap.is_open()) {
       return false;
     }
@@ -116,6 +120,10 @@ class SubTimeFrameFileReader : public ISubTimeFrameVisitor
   inline
   bool ignore_nbytes(const std::size_t pLen)
   {
+    if (pLen == 0) {
+      return true;
+    }
+
     const std::size_t lToIgnore = std::min(pLen, std::size_t(mFileSize - mFileMapOffset));
     if (pLen != lToIgnore) {
       EDDLOG("FileReader: request to ignore bytes beyond the file end. pos={} size={} len={}",

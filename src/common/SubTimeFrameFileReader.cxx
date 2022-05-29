@@ -275,6 +275,10 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
 
   std::int64_t lLeftToRead = lStfDataSize;
 
+  // Get the firstOrbit and run number from data
+  std::uint32_t lFirstOrbit = std::numeric_limits<std::uint32_t>::max();
+  std::uint32_t lRunNumber = std::numeric_limits<std::uint32_t>::max();
+
   // read <hdrStack + data> pairs
   while (lLeftToRead > 0) {
 
@@ -292,6 +296,13 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
       return nullptr;
     }
 
+    // get the first orbit and run
+    if (lDataHeader->firstTForbit > 0) {
+      // we'll use RDH reader if not provided in the header
+      lFirstOrbit = std::min(lFirstOrbit, lDataHeader->firstTForbit);
+    }
+    lRunNumber = std::min(lRunNumber, lDataHeader->runNumber);
+
     // read the data
     const std::uint64_t lDataSize = lDataHeader->payloadSize;
 
@@ -305,13 +316,13 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
       return nullptr;
     }
 
-    // Try to figure out the first orbit
+    // Try to figure out the first orbit in case not provided by readout or sim
     try {
       const auto lHdr = reinterpret_cast<DataHeader*>(lDataHeaderStack.data());
 
       if (lHdr && lHdr->firstTForbit == 0 && lHdr->dataDescription == o2::header::gDataDescriptionRawData) {
         const auto R = RDHReader(lDataMsg);
-        lStf->updateFirstOrbit(R.getOrbit());
+        lFirstOrbit = std::min(lFirstOrbit, R.getOrbit());
       }
     } catch (...) {
       EDDLOG("Error getting RDHReader instance. Not setting firstOrbit for file data");
@@ -319,7 +330,7 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
 
     // only create o2 hdr for the first message of split payload or single messages
     if (lDataHeader->splitPayloadIndex == 0 || lDataHeader->splitPayloadParts <= 1) {
-      // header stack will add DHL header
+      // header stack will add DPL header
       auto lHdrStackMsg = pFileBuilder.newHeaderMessage(lDataHeaderStack, lStf->id());
       if (!lHdrStackMsg) {
         DDDLOG_RL(1000, "Header memory resource stopped. Exiting.");
@@ -342,6 +353,10 @@ std::unique_ptr<SubTimeFrame> SubTimeFrameFileReader::read(SubTimeFrameFileBuild
     EDDLOG("FileRead: Read more data than it is indicated in the META header!");
     return nullptr;
   }
+
+  // update the first orbit and run number
+  lStf->updateFirstOrbit(lFirstOrbit);
+  lStf->updateRunNumber(lRunNumber);
 
   // build the SubtimeFrame
   lStf->accept(*this);
