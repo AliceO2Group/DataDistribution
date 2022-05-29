@@ -417,8 +417,11 @@ bool TfSchedulerConnManager::requestTfBuildersTerminate() {
 
   std::scoped_lock lLock(mStfSenderClientsLock);
 
+  PartitionInfo lPartInfo;
+  lPartInfo.set_partition_id(mPartitionInfo.mPartitionId);
+
   for (auto &lTfBuilder : mTfBuilderRpcClients) {
-    if (!lTfBuilder.second.mClient->TerminatePartition()) {
+    if (!lTfBuilder.second.mClient->TerminatePartition(lPartInfo)) {
       lFailedRpcsForDeletion.push_back(lTfBuilder.first);
     }
   }
@@ -436,8 +439,11 @@ bool TfSchedulerConnManager::requestStfSendersTerminate() {
 
   std::scoped_lock lLock(mStfSenderClientsLock);
 
+  PartitionInfo lPartInfo;
+  lPartInfo.set_partition_id(mPartitionInfo.mPartitionId);
+
   for (auto &lStfSender : mStfSenderRpcClients) {
-    if (!lStfSender.second->TerminatePartition()) {
+    if (!lStfSender.second->TerminatePartition(lPartInfo)) {
       lFailedRpcsForDeletion.push_back(lStfSender.first);
     }
   }

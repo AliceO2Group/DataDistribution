@@ -134,15 +134,12 @@ public:
   }
 
   // rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
-  bool TerminatePartition() {
+  bool TerminatePartition(const PartitionInfo &pPartInfo) {
     ClientContext lContext;
-    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(2000));
-    lContext.set_wait_for_ready(true);
+    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(500));
 
-    PartitionInfo lPartInfo;
     PartitionResponse lRet;
-
-    mStub->TerminatePartition(&lContext, lPartInfo, &lRet);
+    mStub->TerminatePartition(&lContext, pPartInfo, &lRet);
     return true; // could have been stopped by the ECS
   }
 

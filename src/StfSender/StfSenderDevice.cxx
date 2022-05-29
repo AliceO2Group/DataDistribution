@@ -54,6 +54,8 @@ void StfSenderDevice::Init()
     return;
   }
 
+  I().mRpcServer = std::make_unique<StfSenderRpcImpl>(I().mPartitionId);
+
   // start monitoring
   DataDistMonitor::start_datadist(o2::monitoring::tags::Value::StfSender, GetConfig()->GetProperty<std::string>("monitoring-backend"));
   DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
@@ -143,7 +145,7 @@ void StfSenderDevice::InitTask()
       // start the RPC server after output
       int lRpcRealPort = 0;
       auto& lStatus = I().mDiscoveryConfig->status();
-      I().mRpcServer.start(I().mOutputHandler.get(), lStatus.info().ip_address(), lRpcRealPort);
+      I().mRpcServer->start(I().mOutputHandler.get(), lStatus.info().ip_address(), lRpcRealPort);
       lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
       I().mDiscoveryConfig->write();
 
@@ -237,7 +239,7 @@ void StfSenderDevice::ResetTask()
 
   if (!standalone()) {
     // Stop the RPC server after output
-    I().mRpcServer.stop();
+    I().mRpcServer->stop();
 
     // Stop output handler
     I().mOutputHandler->stop();
@@ -305,7 +307,7 @@ void StfSenderDevice::InfoThread()
 
 bool StfSenderDevice::ConditionalRun()
 {
-  if (I().mRpcServer.isTerminateRequested()) {
+  if (I().mRpcServer->isTerminateRequested()) {
     IDDLOG_RL(10000, "DataDistribution partition is terminated.");
     return false; // trigger PostRun()
   }
