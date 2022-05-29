@@ -290,8 +290,13 @@ void StfSenderOutput::StfSchedulerThread()
     {
       std::scoped_lock lLock(mCounters.mCountersLock);
       // check for missing Stfs
-      mCounters.mValues.mTotalSent.mMissing += (lStfId - mLastStfId - 1);
-      mLastStfId = lStfId;
+      if (lStfId > mLastStfId) {
+        mCounters.mValues.mTotalSent.mMissing += (lStfId - mLastStfId - 1);
+      } else {
+        EDDLOG_RL(5000, "StfSender received an SubTimeFrame out of order. received_stf_id={} expected_stf_id={}",
+          lStfId, (mLastStfId + 1));
+      }
+      mLastStfId = std::max(mLastStfId, lStfId);
 
       mCounters.mValues.mBuffered.mSize += lStfSize;
       mCounters.mValues.mBuffered.mCnt += 1;
@@ -379,11 +384,11 @@ void StfSenderOutput::StfSchedulerThread()
           if (lStfIter != mScheduledStfMap.end()) {
             mDropQueue.push(std::move(lStfIter->second.mStf));
             mScheduledStfMap.erase(lStfIter);
-            { // scheduler rejected metric
-              std::scoped_lock lCntLock(mCounters.mCountersLock);
-              mCounters.mValues.mSchedulerStfRejectedCnt += 1;
-            }
           }
+        }
+        { // scheduler rejected metric
+          std::scoped_lock lCntLock(mCounters.mCountersLock);
+          mCounters.mValues.mSchedulerStfRejectedCnt += 1;
         }
 
         WDDLOG_RL(5000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
