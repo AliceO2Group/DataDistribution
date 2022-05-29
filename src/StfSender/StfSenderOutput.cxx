@@ -379,6 +379,10 @@ void StfSenderOutput::StfSchedulerThread()
           if (lStfIter != mScheduledStfMap.end()) {
             mDropQueue.push(std::move(lStfIter->second.mStf));
             mScheduledStfMap.erase(lStfIter);
+            { // scheduler rejected metric
+              std::scoped_lock lCntLock(mCounters.mCountersLock);
+              mCounters.mValues.mSchedulerStfRejectedCnt += 1;
+            }
           }
         }
 
@@ -413,6 +417,10 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     pRes.set_status(StfDataResponse::DATA_DROPPED_SCHEDULER);
     mDropQueue.push(std::move(lStfIter->second.mStf));
     mScheduledStfMap.erase(lStfIter);
+    { // scheduler rejected metric
+      std::scoped_lock lCntLock(mCounters.mCountersLock);
+      mCounters.mValues.mSchedulerStfRejectedCnt += 1;
+    }
   } else {
 
     // extract the StfInfo
@@ -460,7 +468,7 @@ void StfSenderOutput::StfDropThread()
 
     const auto lStfSize = lStf->getDataSize();
 
-    DDDLOG_GRL(5000, "Dropping an STF. stf_id={} stf_size={} total_dropped_stf={}", lStf->header().mId,
+    DDDLOG_GRL(10000, "Dropping an STF. stf_id={} stf_size={} total_dropped_stf={}", lStf->header().mId,
       lStfSize, lNumDroppedStfs);
 
     // delete the data
@@ -469,10 +477,8 @@ void StfSenderOutput::StfDropThread()
     lNumDroppedStfs += 1;
     {
       std::scoped_lock lLock(mCounters.mCountersLock);
-      if (mCounters.mValues.mBuffered.mCnt > 0) {
-        mCounters.mValues.mBuffered.mSize -= lStfSize;
-        mCounters.mValues.mBuffered.mCnt -= 1;
-      }
+      mCounters.mValues.mBuffered.mSize -= lStfSize;
+      mCounters.mValues.mBuffered.mCnt -= 1;
     }
   }
 
@@ -531,13 +537,6 @@ void StfSenderOutput::StfMonitoringThread()
 {
   DDDLOG("Starting StfMonitoring thread.");
 
-  StdSenderOutputCounters::Values lPrevCounters;
-  {
-    std::scoped_lock lLock(mCounters.mCountersLock);
-    lPrevCounters = mCounters.mValues;
-  }
-  std::chrono::high_resolution_clock::time_point lLastSent = std::chrono::high_resolution_clock::now();
-
   while (mRunning) {
     std::this_thread::sleep_for(100ms);
     StdSenderOutputCounters::Values lCurrCounters;
@@ -545,29 +544,17 @@ void StfSenderOutput::StfMonitoringThread()
       std::scoped_lock lLock(mCounters.mCountersLock);
       lCurrCounters = mCounters.mValues;
     }
-    const auto lNow = std::chrono::high_resolution_clock::now();
 
     DDMON("stfsender", "stf_output.sent_count", lCurrCounters.mTotalSent.mCnt);
-    DDMON("stfsender", "stf_output.missing_cnt", lCurrCounters.mTotalSent.mMissing);
     DDMON("stfsender", "stf_output.sent_size", lCurrCounters.mTotalSent.mSize);
+    DDMON("stfsender", "stf_output.rejected_cnt", lCurrCounters.mSchedulerStfRejectedCnt);
+    DDMON("stfsender", "stf_output.missing_cnt", lCurrCounters.mTotalSent.mMissing);
 
     DDMON("stfsender", "buffered.stf_cnt", lCurrCounters.mBuffered.mCnt);
     DDMON("stfsender", "buffered.stf_size", lCurrCounters.mBuffered.mSize);
 
     DDMON("stfsender", "sending.stf_cnt", lCurrCounters.mInSending.mCnt);
     DDMON("stfsender", "sending.stf_size", lCurrCounters.mInSending.mSize);
-
-    const std::chrono::duration<double> lDuration = lNow - lLastSent;
-    const double lSentStfs = double(lCurrCounters.mTotalSent.mCnt - lPrevCounters.mTotalSent.mCnt);
-
-    if (lSentStfs > 0) {
-      const auto lStfRate = lSentStfs / std::max(0.000001, lDuration.count());
-      const auto lStfSize = (lCurrCounters.mTotalSent.mSize - lPrevCounters.mTotalSent.mSize) / lSentStfs;
-      DDMON("stfsender", "data_output.rate", (lStfRate * lStfSize));
-    }
-
-    lPrevCounters = lCurrCounters;
-    lLastSent = lNow;
 
     // Update consul params for standalone run
     if (mStfKeepThread.joinable()) {

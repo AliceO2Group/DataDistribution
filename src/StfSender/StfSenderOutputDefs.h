@@ -30,6 +30,8 @@ struct StdSenderOutputCounters {
   std::mutex mCountersLock;
 
   struct Values {
+    std::uint32_t mSchedulerStfRejectedCnt = 0;
+
     // buffer state
     struct {
       std::uint64_t mSize = 0;

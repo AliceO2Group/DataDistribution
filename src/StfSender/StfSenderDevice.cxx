@@ -214,11 +214,6 @@ void StfSenderDevice::PostRun()
     I().mDiscoveryConfig->write();
   }
 
-  // reset counters
-  if (I().mOutputHandler) {
-    I().mOutputHandler->resetCounters();
-  }
-
   IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
 
