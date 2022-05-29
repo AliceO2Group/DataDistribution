@@ -74,20 +74,18 @@ public:
     std::scoped_lock lLock(mCounters.mCountersLock);
     return mCounters.mValues;
   }
-  StdSenderOutputCounters::Values resetCounters() {
-    // Empty the drop queue
-    mDropQueue.flush();
+  void resetCounters() {
 
-    std::scoped_lock lLock(mCounters.mCountersLock);
-    auto lRet = mCounters.mValues;
-    mCounters.mValues = StdSenderOutputCounters::Values();
-    mLastStfId = 0;
-    {
+    { // clear the state
       std::scoped_lock lMapLock(mStfKeepMapLock);
       mStfKeepMap.clear();
     }
 
-    return lRet;
+    { // clear the buffers
+      std::scoped_lock lLock(mCounters.mCountersLock);
+      mCounters.mValues = StdSenderOutputCounters::Values();
+      mLastStfId = 0;
+    }
   }
 
  private:
