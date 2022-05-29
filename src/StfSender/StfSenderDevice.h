@@ -110,7 +110,7 @@ class StfSenderDevice : public DataDistDevice
     std::unique_ptr<StfSenderOutput> mOutputHandler;
 
     /// RPC service
-    StfSenderRpcImpl mRpcServer;
+    std::unique_ptr<StfSenderRpcImpl> mRpcServer;
 
     /// Info thread
     std::thread mInfoThread;

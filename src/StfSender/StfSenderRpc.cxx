@@ -159,10 +159,15 @@ void StfSenderRpcImpl::stop()
 
 // rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
 ::grpc::Status StfSenderRpcImpl::TerminatePartition(::grpc::ServerContext* /*context*/,
-  const PartitionInfo* /*request*/, PartitionResponse* response)
+  const PartitionInfo* request, PartitionResponse* response)
 {
-  DDDLOG("TerminatePartition request received.");
-  response->set_partition_state(PartitionState::PARTITION_TERMINATING);
+  if (request->partition_id() != mPartitionId) {
+    response->set_partition_state(PartitionState::PARTITION_UNKNOWN);
+    return Status::CANCELLED;
+  }
+
+  IDDLOG("TerminatePartition request received. partition_id={}", request->partition_id());
+
   mTerminateRequested = true;
   return Status::OK;
 }

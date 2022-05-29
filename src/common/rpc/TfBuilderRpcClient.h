@@ -114,15 +114,13 @@ public:
   }
 
   //  rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
-  bool TerminatePartition() {
+  bool TerminatePartition(const PartitionInfo &pPartitionInfo) {
     ClientContext lContext;
     // we don't care about the success. TfBuilder will be terminated by ECS
-    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(100));
+    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(500));
 
-    PartitionInfo lPartitionInfo;
     PartitionResponse lResponse;
-
-    auto lStatus = mStub->TerminatePartition(&lContext, lPartitionInfo, &lResponse);
+    auto lStatus = mStub->TerminatePartition(&lContext, pPartitionInfo, &lResponse);
 
     // this is best effort only. ECS could have already stopped them
     DDDLOG("TerminatePartition: TfBuilder. tfb_id={} state={} message={}",

@@ -36,8 +36,9 @@ class StfSenderOutput;
 class StfSenderRpcImpl final : public StfSenderRpc::Service
 {
  public:
-  StfSenderRpcImpl()
-  : mServer(nullptr)
+  StfSenderRpcImpl(const std::string &pPartitionId)
+  : mPartitionId(pPartitionId),
+    mServer(nullptr)
   { }
 
   virtual ~StfSenderRpcImpl() { }
@@ -80,6 +81,7 @@ class StfSenderRpcImpl final : public StfSenderRpc::Service
   bool isTerminateRequested() const { return mTerminateRequested; }
 
  private:
+  std::string mPartitionId;
   bool mTerminateRequested = false;
   std::unique_ptr<Server> mServer = nullptr;
   StfSenderOutput *mOutput = nullptr;
