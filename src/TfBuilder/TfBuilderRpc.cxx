@@ -606,25 +606,29 @@ void TfBuilderRpcImpl::StfRequestGrpcThread()
     auto &lGrpcReq = lGrpcReqOpt.value();
     auto &lStfRequest = lGrpcReq.mStfRequest;
 
+    bool lReqFailed = true;
     StfDataResponse lStfResponse;
     grpc::Status lStatus = StfSenderRpcClients()[lStfRequest.mStfSenderId]->StfDataRequest(lStfRequest.mRequest, lStfResponse);
     if (!lStatus.ok()) {
       EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={}",
         lStfRequest.mStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize);
-      {
-        std::unique_lock lInFlightLock(mNumInFlightLock);
-        mNumReqInFlight -= 1;
-      }
     } else if (lStfResponse.status() != StfDataResponse::OK) {
       EDDLOG("StfSender did not sent data. stfs_id={} reason={}",
         lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
-      {
-        std::unique_lock lInFlightLock(mNumInFlightLock);
-        mNumReqInFlight -= 1;
-      }
     } else {
       // Update the expected STF count
       lGrpcReq.mNumExpectedStfs += 1;
+      lReqFailed = false;
+    }
+
+    if (lReqFailed) {
+      std::unique_lock lInFlightLock(mNumInFlightLock);
+      mNumReqInFlight -= 1;
+    }
+
+    { // record time of the request to measure total time until STFs is fetched
+      std::scoped_lock lLock(mStfDurationMapLock);
+      mStfReqDuration[lStfRequest.mRequest.stf_id()][lStfRequest.mStfSenderId] = std::chrono::steady_clock::now();
     }
 
     { // notify the main request loop
