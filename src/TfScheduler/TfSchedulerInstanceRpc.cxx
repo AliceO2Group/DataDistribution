@@ -73,7 +73,6 @@ bool TfSchedulerInstanceRpcImpl::start()
 void TfSchedulerInstanceRpcImpl::stop()
 {
   DDDLOG("TfSchedulerInstanceRpcImpl::stop()");
-  mConnManager.stop();
   mStfInfo.stop();
   mTfBuilderInfo.stop();
 
@@ -81,6 +80,11 @@ void TfSchedulerInstanceRpcImpl::stop()
   if (mMonitorThread.joinable()) {
     mMonitorThread.join();
   }
+
+  // Terminate tasks
+  mConnManager.requestTfBuildersTerminate();
+  mConnManager.requestStfSendersTerminate();
+  mConnManager.stop();
 
   if (mServer) {
     mServer->Shutdown();

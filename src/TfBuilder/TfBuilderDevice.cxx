@@ -330,7 +330,6 @@ void TfBuilderDevice::PreRun()
 
   // In Running state
   mInRunningState = true;
-  DDMON("tfbuilder", "running", 1);
 }
 
 // Get here when ConditionalRun returns false
@@ -344,14 +343,13 @@ void TfBuilderDevice::PostRun()
 
   // Not in Running state
   mInRunningState = false;
-  DDMON("tfbuilder", "running", 0);
 
   // update running state
   auto& lStatus = mDiscoveryConfig->status();
   lStatus.mutable_info()->set_process_state(BasicInfo::NOT_RUNNING);
   mDiscoveryConfig->write();
 
-  // flush the file writter
+  // flush the file writer
   mFileSink.flush();
 
   IDDLOG("Exiting running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
@@ -363,14 +361,7 @@ bool TfBuilderDevice::ConditionalRun()
     return false;
   }
   // nothing to do here sleep for awhile
-  std::this_thread::sleep_for(500ms);
-
-  {
-    static unsigned sRateLimit_Monitoring = 0;
-    if ((sRateLimit_Monitoring++ % 32) == 0) {
-      DDMON("tfbuilder", "running", 1);
-    }
-  }
+  std::this_thread::sleep_for(100ms);
   return true;
 }
 

@@ -666,14 +666,21 @@ bool TfBuilderRpcImpl::recordStfReceived(const std::string &pStfSenderId, const 
 
 
 ::grpc::Status TfBuilderRpcImpl::TerminatePartition(::grpc::ServerContext* /*context*/,
-  const ::o2::DataDistribution::PartitionInfo* /*request*/, ::o2::DataDistribution::PartitionResponse* response)
+  const ::o2::DataDistribution::PartitionInfo* request, ::o2::DataDistribution::PartitionResponse* response)
 {
-  IDDLOG("TerminatePartition request received.");
+  const std::string &lPartitionId = mDiscoveryConfig->status().partition().partition_id();
+
+  if (request->partition_id() != lPartitionId) {
+    response->set_partition_state(PartitionState::PARTITION_UNKNOWN);
+    return Status::CANCELLED;
+  }
+
   mTerminateRequested = true;
 
-  response->set_partition_state(PartitionState::PARTITION_TERMINATING);
+  IDDLOG("TerminatePartition request received. partition_id={}", request->partition_id());
 
-  return ::grpc::Status::OK;
+  response->set_partition_state(PartitionState::PARTITION_TERMINATING);
+  return Status::OK;
 }
 
 
