@@ -22,6 +22,7 @@
 #include <boost/filesystem.hpp>
 #include <fstream>
 #include <vector>
+#include <optional>
 
 namespace o2
 {
@@ -39,7 +40,7 @@ class SubTimeFrameFileWriter : public ISubTimeFrameConstVisitor
 
  public:
   SubTimeFrameFileWriter() = delete;
-  SubTimeFrameFileWriter(const boost::filesystem::path& pFileName, bool pWriteInfo = false);
+  SubTimeFrameFileWriter(const boost::filesystem::path& pFileName, bool pWriteInfo, std::optional<EosMetadata> pEosMetadata);
   virtual ~SubTimeFrameFileWriter();
 
   ///
@@ -83,6 +84,9 @@ class SubTimeFrameFileWriter : public ISubTimeFrameConstVisitor
 
   bool mWriteInfo;
   std::ofstream mInfoFile;
+
+  std::optional<EosMetadata> mEosMetadata;
+  boost::filesystem::path mMetaFileName;
 
   std::unique_ptr<char[]> mFileBuf;
   std::unique_ptr<char[]> mInfoFileBuf;

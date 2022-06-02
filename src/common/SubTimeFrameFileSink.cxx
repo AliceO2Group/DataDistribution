@@ -12,6 +12,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "SubTimeFrameFileSink.h"
+#include "SubTimeFrameFile.h"
 #include "FilePathUtils.h"
 #include "FmqUtilities.h"
 #include "DataDistLogger.h"
@@ -28,6 +29,11 @@
 #include <iostream>
 #include <iomanip>
 #include <random>
+
+#ifdef __linux__
+  #include <unistd.h>
+  #include <string.h>
+#endif
 
 namespace o2::DataDistribution
 {
@@ -87,7 +93,10 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
     "Write a sidecar file for each (Sub)TimeFrame file containing information about data blocks "
     "written in the data file. "
     "Note: Useful for debugging. "
-    "Warning: sidecar file format is not stable.");
+    "Warning: sidecar file format is not stable.")(
+    OptionKeyStfSinkEpn2EosMetaDir,
+    bpo::value<std::string>()->default_value(""),
+    "Specify the directory where EPN2EOS metadata will be created. No metadata is created if empty (default).");
 
   return lSinkDesc;
 }
@@ -117,25 +126,75 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   mPercentage = std::clamp(pFMQProgOpt.GetValue<unsigned>(OptionKeyStfSinkStfPercent), 0U, 100U);
   mFileSize <<= 20; /* in MiB */
   mSidecar = pFMQProgOpt.GetValue<bool>(OptionKeyStfSinkSidecar);
+  mEosMetaDir = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSinkEpn2EosMetaDir);
 
   // make sure directory exists and it is writable
   namespace bfs = boost::filesystem;
   bfs::path lDirPath(mRootDir);
   if (!bfs::is_directory(lDirPath)) {
-    EDDLOG("(Sub)TimeFrame file sink directory does not exist");
+    EDDLOG("(Sub)TimeFrame file sink directory does not exist. dir={}", mRootDir);
     return false;
+  }
+
+  // check if metadata dir exists and it is writable
+  if (!mEosMetaDir.empty()) {
+    bfs::path lEosMetaPath(mEosMetaDir);
+    if (!bfs::is_directory(lEosMetaPath)) {
+      EDDLOG("(Sub)TimeFrame file EPN2EOS metadata directory does not exist. epn2eos_meta_dir={}", mEosMetaDir);
+      return false;
+    }
+
+#ifdef __linux__
+    // check write permissions
+    char *lEosMetaDirCopy = strdup(mEosMetaDir.c_str());
+    if (0 != access(lEosMetaDirCopy, W_OK)) {
+      EDDLOG("(Sub)TimeFrame file EPN2EOS metadata directory is not writeable. epn2eos_meta_dir={}", mEosMetaDir);
+    }
+    free(lEosMetaDirCopy);
+#endif
+
+    // Fetching required and optional configuration from ECS
+    // "lhc_period" if empty, replace by the current month, eg, JAN
+    // "run_type" : raw or calib; NOTE: we are always 'raw'...
+    // "detectors" list of detectors, optional
+
+    EosMetadata lEosMetadata;
+    lEosMetadata.mEosMetaDir = mEosMetaDir;
+    lEosMetadata.mLhcPeriod = pFMQProgOpt.GetPropertyAsString("lhc_period", "");
+    lEosMetadata.mFileType = "raw"; /* pFMQProgOpt.GetPropertyAsString("run_type", ""); */
+    lEosMetadata.mDetectorList = pFMQProgOpt.GetPropertyAsString("detectors", "");
+
+    if (lEosMetadata.mLhcPeriod.empty()) {
+      lEosMetadata.mLhcPeriod = getDefaultLhcPeriod();
+      WDDLOG("(Sub)TimeFrame file EPN2EOS metadata: lhc_period not set by ECS. Using default lhc_period={}", lEosMetadata.mLhcPeriod);
+    }
+
+    // NOTE: we are always 'raw'...
+    // if (lEosMetadata.mFileType.empty()) {
+    //   lEosMetadata.mFileType = "raw";
+    //   WDDLOG("(Sub)TimeFrame file EPN2EOS metadata: run_type not set by ECS. Using default run_type={}", lEosMetadata.mFileType);
+    // }
+
+    mEosMetadataOpt = std::move(lEosMetadata);
   }
 
   mEnabled = true;
 
   // print options
-  IDDLOG("(Sub)TimeFrame Sink :: enabled         = {}", (mEnabled ? "yes" : "no"));
-  IDDLOG("(Sub)TimeFrame Sink :: root dir        = {}", mRootDir);
-  IDDLOG("(Sub)TimeFrame Sink :: file pattern    = {}", mFileNamePattern);
-  IDDLOG("(Sub)TimeFrame Sink :: stfs per file   = {}", (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" ));
-  IDDLOG("(Sub)TimeFrame Sink :: stfs percentage = {}", (mPercentage));
-  IDDLOG("(Sub)TimeFrame Sink :: max file size   = {}", mFileSize);
-  IDDLOG("(Sub)TimeFrame Sink :: sidecar files   = {}", (mSidecar ? "yes" : "no"));
+  IDDLOG("(Sub)TimeFrame Sink :: enabled          = {}", (mEnabled ? "yes" : "no"));
+  IDDLOG("(Sub)TimeFrame Sink :: root dir         = {}", mRootDir);
+  IDDLOG("(Sub)TimeFrame Sink :: file pattern     = {}", mFileNamePattern);
+  IDDLOG("(Sub)TimeFrame Sink :: stfs per file    = {}", (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" ));
+  IDDLOG("(Sub)TimeFrame Sink :: stfs percentage  = {}", (mPercentage));
+  IDDLOG("(Sub)TimeFrame Sink :: max file size    = {}", mFileSize);
+  IDDLOG("(Sub)TimeFrame Sink :: sidecar files    = {}", (mSidecar ? "yes" : "no"));
+  IDDLOG("(Sub)TimeFrame Sink :: epn2eos meta dir = {}", mEosMetaDir);
+  if (!mEosMetaDir.empty()) {
+    IDDLOG("(Sub)TimeFrame Sink :: epn2eos meta :: lhc_period = {}", mEosMetadataOpt.value().mLhcPeriod);
+    IDDLOG("(Sub)TimeFrame Sink :: epn2eos meta :: run_type   = {}", mEosMetadataOpt.value().mFileType);
+    IDDLOG("(Sub)TimeFrame Sink :: epn2eos meta :: detectors  = {}", mEosMetadataOpt.value().mDetectorList);
+  }
+
   return mEnabled;
 }
 
@@ -165,6 +224,11 @@ bool SubTimeFrameFileSink::makeDirectory()
   }
 
   IDDLOG("(Sub)TimeFrame Sink :: write dir={:s}", mCurrentDir);
+
+  // EPN2EOS meta: set run number
+  if (mEosMetadataOpt) {
+    mEosMetadataOpt.value().mRunNumber = DataDistLogger::sRunNumberStr;
+  }
 
   mReady = true;
   return true;
@@ -262,7 +326,7 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 
           try {
             mStfWriter = std::make_unique<SubTimeFrameFileWriter>(
-              bfs::path(mCurrentDir) / bfs::path(lCurrentFileName), mSidecar);
+              bfs::path(mCurrentDir) / bfs::path(lCurrentFileName), mSidecar, mEosMetadataOpt);
           } catch (...) {
             mStfWriter.reset();
             break;

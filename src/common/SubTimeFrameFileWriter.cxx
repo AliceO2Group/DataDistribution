@@ -97,9 +97,11 @@ namespace impl {
   }
 }
 
-SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pFileName, bool pWriteInfo)
+SubTimeFrameFileWriter::SubTimeFrameFileWriter(const boost::filesystem::path& pFileName, bool pWriteInfo,
+                                               std::optional<EosMetadata> pEosMetadata)
   : mFileName(pFileName),
-    mWriteInfo(pWriteInfo)
+    mWriteInfo(pWriteInfo),
+    mEosMetadata(pEosMetadata)
 {
   using ios = std::ios_base;
 
@@ -139,6 +141,30 @@ void SubTimeFrameFileWriter::close()
     if (mWriteInfo) {
       mInfoFile.close();
     }
+
+    // Write EosMeta
+    if (mEosMetadata) {
+      // get file size
+      const auto lDataFileSize = boost::filesystem::file_size(mFileName.string() + ".part"s);
+
+      fmt::memory_buffer lEosMetaFileBuffer;
+
+      fmt::format_to(fmt::appender(lEosMetaFileBuffer), "LHCPeriod: {}\n", mEosMetadata.value().mLhcPeriod);
+      fmt::format_to(fmt::appender(lEosMetaFileBuffer), "run: {}\n", mEosMetadata.value().mRunNumber);
+      fmt::format_to(fmt::appender(lEosMetaFileBuffer), "type: {}\n", mEosMetadata.value().mFileType);
+      fmt::format_to(fmt::appender(lEosMetaFileBuffer), "lurl: {}\n", mFileName.string());
+      fmt::format_to(fmt::appender(lEosMetaFileBuffer), "size: {}\n", lDataFileSize);
+      if (!mEosMetadata.value().mDetectorList.empty()) {
+        fmt::format_to(fmt::appender(lEosMetaFileBuffer), "det_composition: {}\n", mEosMetadata.value().mDetectorList);
+      }
+
+      // write meta file without .done extension, rename later
+      mMetaFileName = boost::filesystem::path(mEosMetadata.value().mEosMetaDir) / mFileName.filename().concat(".done_part");
+      std::ofstream lMetaFile;
+      lMetaFile.open(mMetaFileName.string(), std::ios::trunc | std::ios::out);
+      lMetaFile << std::string_view(lEosMetaFileBuffer.begin(), lEosMetaFileBuffer.size());
+      lMetaFile.close();
+    }
   } catch (std::ifstream::failure& eCloseErr) {
     EDDLOG("Closing TimeFrame file failed. error={}", eCloseErr.what());
   } catch (...) {
@@ -168,8 +194,13 @@ SubTimeFrameFileWriter::~SubTimeFrameFileWriter()
       if (mWriteInfo) {
         boost::filesystem::rename(mFileName.string() + ".info.part"s, mFileName.string() + ".info"s);
       }
+
+      if (mEosMetadata) {
+        const auto lFinalMetaFileName = boost::filesystem::path(mMetaFileName).replace_extension(".done");
+        boost::filesystem::rename(mMetaFileName, lFinalMetaFileName);
+      }
     } catch (...) {
-      EDDLOG("Renaming of TimeFrame file failed.");
+      EDDLOG("Renaming of TimeFrame files failed.");
     }
   }
 

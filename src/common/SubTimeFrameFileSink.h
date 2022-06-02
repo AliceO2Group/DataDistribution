@@ -51,6 +51,7 @@ class SubTimeFrameFileSink
   static constexpr const char* OptionKeyStfSinkStfPercent = "data-sink-stf-percentage";
   static constexpr const char* OptionKeyStfSinkFileSize = "data-sink-max-file-size";
   static constexpr const char* OptionKeyStfSinkSidecar = "data-sink-sidecar";
+  static constexpr const char* OptionKeyStfSinkEpn2EosMetaDir = "data-sink-epn2eos-meta-dir";
   static bpo::options_description getProgramOptions();
 
   SubTimeFrameFileSink() = delete;
@@ -103,6 +104,8 @@ class SubTimeFrameFileSink
   unsigned mPercentage = 100;
   std::uint64_t mFileSize;
   bool mSidecar = false;
+  std::string mEosMetaDir;
+  std::optional<EosMetadata> mEosMetadataOpt = std::nullopt;
   std::string mHostname;
 
   /// Thread for file writing

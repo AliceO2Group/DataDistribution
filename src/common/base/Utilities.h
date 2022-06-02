@@ -36,12 +36,24 @@ void assume(const bool pPred) {
   }
 }
 
+// helper function to get default LHC period
+static inline
+std::string getDefaultLhcPeriod() {
+  // From O2 CommonServices::datatakingContextSpec()
+  static const char* months[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+  time_t now = time(nullptr);
+  auto ltm = gmtime(&now);
+  return std::string(months[ltm->tm_mon]);
+}
+
+// convert enum to numeric value
 template <typename T>
 constexpr auto operator+(const T p) noexcept -> std::enable_if_t<std::is_enum<T>::value, std::underlying_type_t<T>>
 {
   return static_cast<std::underlying_type_t<T>>(p);
 }
 
+// create threads using a object method
 template <class F, class ... Args>
 std::thread create_thread_member(const char* name, F&& f, Args&&... args) {
   char *lName = strdup(name);

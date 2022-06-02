@@ -178,6 +178,21 @@ struct SubTimeFrameFileDataIndex {
 
 std::ostream& operator<<(std::ostream& pStream, const SubTimeFrameFileDataIndex& pIndex);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// EosMetadata
+////////////////////////////////////////////////////////////////////////////////
+struct EosMetadata {
+
+  std::string mEosMetaDir;
+
+  std::string mLhcPeriod;
+  std::string mRunNumber;
+  std::string mFileType;
+  std::string mDetectorList;
+};
+
+
 } /* o2::DataDistribution */
 
 #endif /* ALICEO2_SUBTIMEFRAME_FILE_H_ */
