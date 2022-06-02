@@ -87,10 +87,10 @@ public:
   }
 
   void handle_client_ep_error(StfSenderUCXConnInfo *pUCXConnInfo, ucs_status_t status) {
-    // TfBuilder gets disconnected?
+    // TfBuilder disconnected?
     if (pUCXConnInfo) {
       pUCXConnInfo->mConnError = true;
-      EDDLOG_GRL(1000, "UCXConnectionError: tfbuilder_id={} err={}", pUCXConnInfo->mTfBuilderId, ucs_status_string(status));
+      IDDLOG_GRL(5000, "UCXConnection: TfBuilder connection terminated. tfbuilder_id={} err={}", pUCXConnInfo->mTfBuilderId, ucs_status_string(status));
       disconnectTfBuilder(pUCXConnInfo->mTfBuilderId);
     }
   }

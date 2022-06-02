@@ -146,7 +146,7 @@ void TfBuilderInput::StfPacingThread()
 
   while (mState == RUNNING) {
 
-    auto lData = mReceivedDataQueue->pop();
+    auto lData = mReceivedDataQueue->pop_wait_for(500ms);
     if (lData == std::nullopt) {
       continue;
     }
@@ -298,7 +298,7 @@ void TfBuilderInput::StfMergerThread()
 
   while (mState == RUNNING) {
 
-    auto lStfVectorOpt = mStfsForMerging.pop();
+    auto lStfVectorOpt = mStfsForMerging.pop_wait_for(500ms);
     if (lStfVectorOpt == std::nullopt) {
       continue;
     }
