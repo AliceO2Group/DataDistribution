@@ -448,9 +448,10 @@ void TfBuilderInputUCX::stop()
     ucp_mem_unmap(ucp_context, ucp_data_region);
   }
 
-  // close ucx: destroy remote rma keys and disconnect
-  {
+
+  { // close ucx: destroy remote rma keys and disconnect
     std::unique_lock lLock(mConnectionMapLock);
+    DDDLOG("TfBuilderInputUCX::stop: closing ep connections.");
 
     for (auto & lConn : mConnMap) {
       std::unique_lock lIoLock(lConn.second->mRemoteKeysLock);
@@ -463,11 +464,15 @@ void TfBuilderInputUCX::stop()
   }
 
   {// close the listener and all workers
+    DDDLOG("TfBuilderInputUCX::stop: closing the listener.");
     ucp_listener_destroy(ucp_listener);
     ucp_worker_destroy(listener_worker.ucp_worker);
+
+    DDDLOG("TfBuilderInputUCX::stop: destroying data workers.");
     for (auto &lWorker : mDataWorkers) {
       ucp_worker_destroy(lWorker.ucp_worker);
     }
+    DDDLOG("TfBuilderInputUCX::stop: running the ucp cleanup.");
     ucp_cleanup(ucp_context);
   }
 
@@ -598,7 +603,7 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
     if (mConnMap.count(lStfSenderId) == 1) {
       lConn = mConnMap.at(lStfSenderId).get();
       if (lConn && lConn->mConnError) {
-        continue; // we are stoping
+        continue; // we are stopping
       }
     } else {
       continue;

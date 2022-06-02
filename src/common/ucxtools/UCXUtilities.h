@@ -255,7 +255,7 @@ void close_ep_connection(dd_ucp_worker &worker, ucp_ep_h ep)
 {
   ucp_request_param_t param;
   param.op_attr_mask = UCP_OP_ATTR_FIELD_FLAGS;
-  param.flags        = UCP_EP_CLOSE_MODE_FORCE;
+  param.flags        = UCP_EP_CLOSE_FLAG_FORCE;
 
   auto close_req = ucp_ep_close_nbx(ep, &param);
   if (UCS_PTR_IS_PTR(close_req)) {

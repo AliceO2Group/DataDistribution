@@ -128,7 +128,7 @@ public:
     if (pConn) {
       pConn->mConnError = true;
 
-      WDDLOG("TfBuilderInputUCX: peer connection error. stfsender_ip={} stfsender_id={} err={}",
+      IDDLOG_GRL(5000, "TfBuilderInputUCX: peer connection error. stfsender_ip={} stfsender_id={} err={}",
         pConn->mStfSenderIp, pConn->mStfSenderId, ucs_status_string(pStatus));
     }
 
