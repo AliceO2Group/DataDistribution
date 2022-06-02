@@ -188,9 +188,7 @@ void DataDistMonitoring::MonitorThread()
         const auto &lAccValues = lKeyRateAccIter.second;
 
         if (lAccValues.mCount < std::numeric_limits<double>::epsilon()) {
-          lMetric.addValue(0.0, lKey + ".size");        // mean
-          lMetric.addValue(0.0, lKey + ".size.min");    // min
-          lMetric.addValue(0.0, lKey + ".size.max");    // max
+          // don't publish size if there were no samples during the monitoring window
           lMetric.addValue(0.0, lKey + ".rate");        // rate
           lMetric.addValue(0.0, lKey + ".throughput");  // thr
         } else {
