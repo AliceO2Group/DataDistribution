@@ -374,14 +374,12 @@ void TfBuilderDevice::TfForwardThread()
     if (!mRunning) {
       DDDLOG("TfForwardThread: Not running... ");
       break;
-    } else if (!is_running(eTfFwdIn)) {
+    } else if (!is_running(eTfFwdIn)) { // terminating
       DDDLOG("TfForwardThread: Queue closed. Exiting... ");
       break;
-    } else if (!mInRunningState) {
-      if (lTfOpt) {
-        WDDLOG_RL(1000, "Dropping a raw TimeFrame because stop of the run is requested.");
-      }
-
+    } else if (!mInRunningState && lTfOpt) { // run stopped, draining existing TFs
+        DDDLOG_RL(1000, "Forwarding TimeFrame while stop of the run is requested.");
+    } else if (!mInRunningState && !lTfOpt) { // run stopped and we don't have any more TFs cached
       // send EOS if exiting the running state
       if (!mStandalone && mTfDplAdapter && mShouldSendEos) {
         mTfDplAdapter->sendEosToDpl();
@@ -391,28 +389,26 @@ void TfBuilderDevice::TfForwardThread()
     }
 
     if (lTfOpt == std::nullopt) {
-      DDMON("tfbuilder", "tf_output.sent_size", mTfFwdTotalDataSize);
-      DDMON("tfbuilder", "tf_output.sent_count", mTfFwdTotalTfCount);
       continue;
     }
 
     auto &lTf = lTfOpt.value();
     const auto lTfId = lTf->id();
+    const auto lTfSize = lTf->getDataSize();
     {
-      DDMON("tfbuilder", "tf_output.id", lTfId);
-
-      mTfFwdTotalDataSize += lTf->getDataSize();
+      mTfFwdTotalDataSize += lTfSize;
       mTfFwdTotalTfCount += 1;
+
+      DDMON("tfbuilder", "tf_output.id", lTfId);
       DDMON("tfbuilder", "tf_output.sent_size", mTfFwdTotalDataSize);
       DDMON("tfbuilder", "tf_output.sent_count", mTfFwdTotalTfCount);
-
-      DDMON_RATE("tfbuilder", "tf_output", lTf->getDataSize());
+      DDMON_RATE("tfbuilder", "tf_output", lTfSize);
     }
 
     if (!mStandalone) {
       try {
         IDDLOG_RL(5000, "Forwarding a new TF to DPL. tf_id={} size={} unique_equipments={} total={}",
-          lTfId, lTf->getDataSize(), lTf->getEquipmentIdentifiers().size(), mTfFwdTotalTfCount);
+          lTfId, lTfSize, lTf->getEquipmentIdentifiers().size(), mTfFwdTotalTfCount);
 
         // adapt headers to include DPL processing header on the stack
         assert(mTfBuilder);
