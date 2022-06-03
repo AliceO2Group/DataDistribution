@@ -188,7 +188,8 @@ bool TfBuilderInputUCX::start()
   // setting configuration options
   mThreadPoolSize = std::clamp(mConfig->getUInt64Param(UcxTfBuilderThreadPoolSizeKey, UcxTfBuilderThreadPoolSizeDefault), std::size_t(1), std::size_t(256));
   mRdmaPollingWait =mConfig->getBoolParam(UcxPollForRDMACompletionKey, UcxPollForRDMACompletionDefault);
-  IDDLOG("TfBuilderInputUCX: Configuration loaded. thread_pool={} polling={}", mThreadPoolSize, mRdmaPollingWait);
+  mRdmaConcurrentStfSizeMax =mConfig->getUInt64Param(UcxMaxStfSizeForConcurrentFetchBKey, UcxMaxStfSizeForConcurrentFetchBDefault);
+  IDDLOG("TfBuilderInputUCX: Configuration loaded. thread_pool={} polling={} concurrent_size={}", mThreadPoolSize, mRdmaPollingWait, mRdmaConcurrentStfSizeMax);
 
   auto &lConfStatus = mConfig->status();
 
@@ -572,7 +573,7 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
   IovDeserializer lStfReceiver(mTimeFrameBuilder);
 
   // memory for meta-tag receive
-  const std::uint64_t lMetaMemSize = 1024;
+  const std::uint64_t lMetaMemSize = 128;
   FairMQMessagePtr lMetaMemMsg = mTimeFrameBuilder.newDataMessage(lMetaMemSize);
   void *lMetaMemPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lMetaMemMsg->GetData());
 
@@ -590,9 +591,10 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
       continue;
     }
 
-    StfMetaRdmaInfo lStfRdmaInfo = std::move(lStfMetaOpt.value());
-    UCXIovStfHeader &lStfMeta = lStfRdmaInfo.mStfMeta;
+    StfMetaRdmaInfo &lStfRdmaInfo = lStfMetaOpt.value();
+    const UCXIovStfHeader &lStfMeta = lStfRdmaInfo.mStfMeta;
     const std::uint64_t lTfId = lStfMeta.stf_hdr_meta().stf_id();
+    const std::uint64_t lStfSize = lStfMeta.stf_hdr_meta().stf_size();
     const std::string &lStfSenderId = lStfMeta.stf_sender_id();
     const auto &lTxgPtrs = lStfRdmaInfo.mTxgPtrs;
 
@@ -614,10 +616,7 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
       if (!lStfMeta.stf_txg_iov().empty()) {
         ucx::io::dd_ucp_multi_req_v2 lRmaReqSem;
 
-        // Put the RDMA-GET operations in the exclusive section to prevent congestion in multi-worker configuration
-        static std::mutex sRdmaSectionMutex;
-        { std::scoped_lock lRdmaSectionLock(sRdmaSectionMutex);
-
+        auto lRunRdmaLoop = [&]() -> void {
           // It's safe to use shared key lock because preprocess thread created required keys for this stf
           { std::shared_lock lKeysLock(lConn->mRemoteKeysLock);
             lRmaGetStart = clock::now(); // update with exact time we started RDMA operations
@@ -628,14 +627,25 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
 
               void *lTxgUcxPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lTxgPtrs[lStfTxg.txg()]);
               const ucp_rkey_h lRemoteKey = lConn->mRemoteKeys[lStfMeta.data_regions(lStfTxg.region()).region_rkey()];
-              ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lRemoteKey, &lRmaReqSem);
+              if (!ucx::io::get(lConn->ucp_ep, lTxgUcxPtr, lStfTxg.len(), lStfTxg.start(), lRemoteKey, &lRmaReqSem)) {
+                break;
+              }
             }
           }
 
           // wait for the completion
-          if (!lRmaReqSem.wait(lConn->mWorker, mRdmaPollingWait)) {
-            break;
-          }
+          lRmaReqSem.wait(lConn->mWorker, mRdmaPollingWait);
+        };
+
+        // Put the RDMA-GET operations in the exclusive section to prevent congestion in multi-worker configuration
+        // Allow a thread to proceed without RDMA lock if the STF size is small. It should not have impact on congestion
+        // but will allow for higher rate of STF/s
+        if (lStfSize <= mRdmaConcurrentStfSizeMax) {
+          lRunRdmaLoop();
+        } else {
+          static std::mutex sRdmaSectionMutex;
+          std::scoped_lock lRdmaSectionLock(sRdmaSectionMutex);
+          lRunRdmaLoop();
         }
       }
 
