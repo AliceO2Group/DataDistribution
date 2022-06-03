@@ -391,7 +391,6 @@ void TfBuilderDevice::TfForwardThread()
     }
 
     if (lTfOpt == std::nullopt) {
-      DDMON("tfbuilder", "data_output.rate", 0);
       DDMON("tfbuilder", "tf_output.sent_size", mTfFwdTotalDataSize);
       DDMON("tfbuilder", "tf_output.sent_count", mTfFwdTotalTfCount);
       continue;
