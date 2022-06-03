@@ -163,8 +163,9 @@ private:
     std::unordered_map<std::string, std::shared_ptr<ConcurrentQueue<StfMetaRdmaInfo> > >  mStfMetaWorkerQueues;
   std::vector<std::thread> mThreadPool;
   bool mRdmaPollingWait = UcxPollForRDMACompletionDefault;
+  std::uint64_t mRdmaConcurrentStfSizeMax  = UcxMaxStfSizeForConcurrentFetchBDefault;
 
-  // STF postprocess threads
+  // STF postprocessing threads
   ConcurrentQueue<StfMetaRdmaInfo> mStfPostprocessQueue;
   std::vector<std::thread> mPostThreadPool;
 

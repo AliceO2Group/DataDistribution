@@ -97,11 +97,15 @@ static constexpr std::uint64_t StfSenderGrpcThreadPoolSizeDefault = 8;
 /// UCX transport
 // Size of receiver treadpool. Default 1, works best. Should not be set over 2, to avoid congestion on the receiver.
 static constexpr std::string_view UcxTfBuilderThreadPoolSizeKey = "UcxTfBuilderThreadPoolSize";
-static constexpr std::uint64_t UcxTfBuilderThreadPoolSizeDefault = 1;
+static constexpr std::uint64_t UcxTfBuilderThreadPoolSizeDefault = 2;
 
 // Use polling or blocking waiting method for RDMA completion.
 static constexpr std::string_view UcxPollForRDMACompletionKey = "UcxPollForRDMACompletion";
 static constexpr bool UcxPollForRDMACompletionDefault = false;
+
+// Allow smaller STFs to be fetched concurrently to improve TF building time
+static constexpr std::string_view UcxMaxStfSizeForConcurrentFetchBKey = "UcxMaxStfSizeForConcurrentFetchB";
+static constexpr std::uint64_t UcxMaxStfSizeForConcurrentFetchBDefault = std::uint64_t(4) << 20;
 
 
 ////////////////////////////////////////////////////////////////////////////////
