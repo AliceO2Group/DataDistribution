@@ -282,12 +282,16 @@ void StfSenderDevice::StfReceiverThread()
     DDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
+    const auto lStfDelay = std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now()).time_since_epoch().count()/1000.0 -
+      lStf->header().mCreationTimeMs;
+
     DDMON_RATE("stfsender", "stf_input", lStf->getDataSize());
     DDMON("stfsender", "stf_input.id", lStf->id());
-    DDMON("stfsender", "stf_input.delay_ms",
-      std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now()).time_since_epoch().count()/1000.0 -
-      lStf->header().mCreationTimeMs
-    );
+    DDMON("stfsender", "stf_input.delay_ms", lStfDelay);
+
+    if (lStfDelay > 500.0) {
+      WDDLOG_RL(5000, "Large delay of STFs on arrival to StfSender. delay_ms={:4f}", lStfDelay);
+    }
 
     I().queue(eReceiverOut, std::move(lStf));
   }

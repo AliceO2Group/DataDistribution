@@ -536,14 +536,13 @@ void TfBuilderRpcImpl::StfRequestThread()
 
         // select the order in which StfSenders are contacted (consul option)
         std::size_t lIdx = getFetchIdx(lReqVector);
-        DDMON("tfbuilder", "merge.request_idx", double(lReqVector.size()) / double(lIdx + 1));
 
         lStfRequest = std::move(lReqVector[lIdx]);
         lReqVector.erase(lReqVector.cbegin() + lIdx);
 
         // Fan out STF grpc requests because it's limitting on how fast one EPN can receive data from many FLPs
         // A single StfDataRequest request takes about 330 us, i.e. fetching 200 STFs -> 70 ms.
-        // This is OK wih runs with many EPNs, but a single EPN should be able to requst all STFs under 10 ms
+        // This is OK wih runs with many EPNs, but a single EPN should be able to request all STFs under 10 ms
         mGrpcStfRequestQueue.push(GrpcStfReqInfo {std::move(lStfRequest), lNumStfs, lNumRequested /*ref*/, lNumExpectedStfs });
       }
 

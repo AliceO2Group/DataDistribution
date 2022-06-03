@@ -335,8 +335,6 @@ void StfBuilderDevice::StfOutputThread()
     lStfDplAdapter = std::make_unique<StfToDplAdapter>(lOutputChan, MemI());
   }
 
-  decltype(hres_clock::now()) lStfStartTime = hres_clock::now();
-
   DDMON_RATE("stfbuilder", "stf_output", 0.0);
 
   while (I().mState.mRunning) {
@@ -360,29 +358,18 @@ void StfBuilderDevice::StfOutputThread()
 
     lShouldSendEos = true;
     if (lStfOpt == std::nullopt) {
-      DDMON("stfbuilder", "data_output.rate", 0);
       continue;
     }
 
     auto &lStf = lStfOpt.value();
     DDMON_RATE("stfbuilder", "stf_output", lStf->getDataSize());
+    DDMON("stfbuilder", "stf_output.id", lStf->id());
 
     // decrement the stf counter
     I().mCounters.mNumStfs--;
 
     DDDLOG_RL(5000, "Sending an STF out. stf_id={} stf_size={} unique_equipments={}",
       lStf->id(), lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
-
-    {
-      // Output STF frequency
-      const auto lNow = hres_clock::now();
-      const auto lStfDur = std::chrono::duration<double>(lNow - lStfStartTime);
-      lStfStartTime = lNow;
-
-      const auto lRate = 1.0 / std::max(lStfDur.count(), 0.00001);
-      DDMON("stfbuilder", "stf_output.id", lStf->id());
-      DDMON("stfbuilder", "data_output.rate", (lRate * lStf->getDataSize()));
-    }
 
     if (!isStandalone()) {
       try {
