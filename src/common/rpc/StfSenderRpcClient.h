@@ -105,8 +105,24 @@ public:
     auto lStart = std::chrono::steady_clock::now();
 
     ClientContext lContext;
-    // const auto lDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(1000);
-    // lContext.set_deadline(lDeadline);
+    lContext.set_wait_for_ready(false);
+    auto lRet = mStub->StfDataRequest(&lContext, pParam, &pRet);
+
+    if (mMonitorDuration) {
+      DDMON("datadist.grpc", "StfDataRequest_ms", since<std::chrono::milliseconds>(lStart));
+    }
+
+    return lRet;
+  }
+
+  // rpc StfDataRequest(StfDataRequestMessage) returns (StfDataResponse) { }
+  template <typename Dur>
+  grpc::Status StfDataRequestWithTimeout(const Dur pTimeout, const StfDataRequestMessage &pParam, StfDataResponse &pRet /*out*/) {
+    auto lStart = std::chrono::steady_clock::now();
+
+    ClientContext lContext;
+    const auto lDeadline = std::chrono::system_clock::now() + pTimeout;
+    lContext.set_deadline(lDeadline);
     lContext.set_wait_for_ready(false);
     auto lRet = mStub->StfDataRequest(&lContext, pParam, &pRet);
 
@@ -121,8 +137,8 @@ public:
     auto lStart = std::chrono::steady_clock::now();
 
     ClientContext lContext;
-    // const auto lDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(1000);
-    // lContext.set_deadline(lDeadline);
+    const auto lDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(500);
+    lContext.set_deadline(lDeadline);
     lContext.set_wait_for_ready(false);
     auto lRet = mStub->StfDataRequest(&lContext, pParam, &pRet);
 
@@ -325,7 +341,49 @@ public:
 
   std::size_t size() const { return mClients.size(); }
   std::size_t count(const std::string &pId) const { return mClients.count(pId); }
-  auto& operator[](const std::string &pId) const { return mClients.at(pId); }
+  // auto& operator[](const std::string &pId) const { return mClients.at(pId); }
+
+  template <typename... Args>
+  auto StfDataRequest(const std::string &pId, Args&&... args) {
+    std::shared_lock lLock(mClientsGlobalLock);
+    return mClients.at(pId)->StfDataRequest(std::forward<Args>(args)...);
+  }
+
+  template <typename Dur, typename... Args>
+  auto StfDataRequestWithTimeout(const std::string &pId, const Dur pTimeout, Args&&... args) {
+    std::shared_lock lLock(mClientsGlobalLock);
+    return mClients.at(pId)->StfDataRequestWithTimeout(pTimeout, std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  auto StfDataDropRequest(const std::string &pId, Args&&... args) {
+    std::shared_lock lLock(mClientsGlobalLock);
+    return mClients.at(pId)->StfDataDropRequest(std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  auto TerminatePartition(const std::string &pId, Args&&... args) {
+    std::shared_lock lLock(mClientsGlobalLock);
+    return mClients.at(pId)->TerminatePartition(std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  auto ConnectTfBuilderRequest(const std::string &pId, Args&&... args) {
+    std::shared_lock lLock(mClientsGlobalLock);
+    return mClients.at(pId)->ConnectTfBuilderRequest(std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  auto ConnectTfBuilderUCXRequest(const std::string &pId, Args&&... args) {
+    std::shared_lock lLock(mClientsGlobalLock);
+    return mClients.at(pId)->ConnectTfBuilderUCXRequest(std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  auto DisconnectTfBuilderRequest(const std::string &pId, Args&&... args) {
+    std::shared_lock lLock(mClientsGlobalLock);
+    return mClients.at(pId)->DisconnectTfBuilderRequest(std::forward<Args>(args)...);
+  }
 
   auto begin() const { return mClients.begin(); }
   auto end() const { return mClients.end(); }

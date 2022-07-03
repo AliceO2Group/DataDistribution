@@ -86,6 +86,12 @@ public:
       mCounters.mValues = StdSenderOutputCounters::Values();
       mLastStfId = 0;
     }
+
+    { // clear the stf maps
+      std::scoped_lock lLock(mScheduledStfMapLock);
+      mScheduledStfMap.clear();
+      mSchedulingResult.clear();
+    }
   }
 
  private:
@@ -119,6 +125,7 @@ public:
   std::uint64_t mLastStfId = 0;
   std::mutex mScheduledStfMapLock;
     std::map<std::uint64_t, ScheduledStfInfo> mScheduledStfMap;
+    std::map<std::string, std::pair<std::uint64_t, StfDataResponse::StfDataStatus> > mSchedulingResult; // use for answering retried StfRequest() grpc
 
   /// Buffer utilization counters
   StdSenderOutputCounters mCounters;

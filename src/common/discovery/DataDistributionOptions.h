@@ -89,6 +89,10 @@ static constexpr std::uint64_t MaxNumStfTransferDefault = 300;
 static constexpr std::string_view StfSenderIdxSelectionMethodKey = "StfSenderIdxSelectionMethod";
 static constexpr std::string_view StfSenderIdxSelectionMethodDefault = "random";
 
+// Stf Request grpc timeout in milliseconds, after the call is retried
+static constexpr std::string_view StfDataRequestGrpcTimeoutMsKey = "StfDataRequestGrpcTimeoutMs";
+static constexpr std::uint64_t StfDataRequestGrpcTimeoutMsDefault = 100;
+
 // Stf Request thread pool. Parallelize the grpc calls to all StfSenders,
 static constexpr std::string_view StfSenderGrpcThreadPoolSizeKey = "StfSenderGrpcThreadPoolSize";
 static constexpr std::uint64_t StfSenderGrpcThreadPoolSizeDefault = 8;

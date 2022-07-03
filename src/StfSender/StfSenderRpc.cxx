@@ -166,7 +166,7 @@ void StfSenderRpcImpl::stop()
     return Status::CANCELLED;
   }
 
-  IDDLOG("TerminatePartition request received. partition_id={}", request->partition_id());
+  IDDLOG_GRL(5000, "TerminatePartition request received. partition_id={}", request->partition_id());
 
   mTerminateRequested = true;
   return Status::OK;
