@@ -31,6 +31,8 @@ void StfSenderRpcImpl::start(StfSenderOutput *pOutput, const std::string pRpcSrv
   IDDLOG("Starting the gRPC server... ip={}", pRpcSrvBindIp);
 
   ServerBuilder lSrvBuilder;
+  lSrvBuilder.SetSyncServerOption(ServerBuilder::SyncServerOption::NUM_CQS, 4);
+  lSrvBuilder.SetSyncServerOption(ServerBuilder::SyncServerOption::MAX_POLLERS, 20);
   lSrvBuilder.AddListeningPort(pRpcSrvBindIp + ":0", grpc::InsecureServerCredentials(), &lRealPort);
   lSrvBuilder.RegisterService(this);
 
