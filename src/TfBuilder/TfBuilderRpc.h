@@ -216,6 +216,7 @@ private:
   std::shared_ptr<ConcurrentQueue<ReceivedStfMeta> > mReceivedDataQueue;
   std::mutex mNumStfsRequestedLock;
     std::condition_variable mNumStfsRequestedCv;
+  std::atomic<std::chrono::milliseconds> mRequestTimeoutMs = std::chrono::milliseconds(StfDataRequestGrpcTimeoutMsDefault);
 
   /// STF grpc request threads
   struct GrpcStfReqInfo {

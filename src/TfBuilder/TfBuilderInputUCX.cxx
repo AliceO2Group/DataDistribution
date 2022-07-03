@@ -187,8 +187,8 @@ bool TfBuilderInputUCX::start()
 {
   // setting configuration options
   mThreadPoolSize = std::clamp(mConfig->getUInt64Param(UcxTfBuilderThreadPoolSizeKey, UcxTfBuilderThreadPoolSizeDefault), std::size_t(1), std::size_t(256));
-  mRdmaPollingWait =mConfig->getBoolParam(UcxPollForRDMACompletionKey, UcxPollForRDMACompletionDefault);
-  mRdmaConcurrentStfSizeMax =mConfig->getUInt64Param(UcxMaxStfSizeForConcurrentFetchBKey, UcxMaxStfSizeForConcurrentFetchBDefault);
+  mRdmaPollingWait = mConfig->getBoolParam(UcxPollForRDMACompletionKey, UcxPollForRDMACompletionDefault);
+  mRdmaConcurrentStfSizeMax = mConfig->getUInt64Param(UcxMaxStfSizeForConcurrentFetchBKey, UcxMaxStfSizeForConcurrentFetchBDefault);
   IDDLOG("TfBuilderInputUCX: Configuration loaded. thread_pool={} polling={} concurrent_size={}", mThreadPoolSize, mRdmaPollingWait, mRdmaConcurrentStfSizeMax);
 
   auto &lConfStatus = mConfig->status();

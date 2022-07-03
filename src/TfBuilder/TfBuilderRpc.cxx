@@ -167,6 +167,17 @@ void TfBuilderRpcImpl::UpdateConsulParams()
       }
 
       {
+        auto lNewGrpcReqTimeoutMs = std::chrono::milliseconds(mDiscoveryConfig->getUInt64Param(StfDataRequestGrpcTimeoutMsKey,
+          StfDataRequestGrpcTimeoutMsDefault));
+
+        if (lNewGrpcReqTimeoutMs != mRequestTimeoutMs.load()) {
+          IDDLOG("StfDataRequestGrpcTimeoutMs changed. new={} old={}", lNewGrpcReqTimeoutMs.count(), mRequestTimeoutMs.load().count());
+          mRequestTimeoutMs = lNewGrpcReqTimeoutMs;
+        }
+        DDDLOG_ONCE("StfDataRequestGrpcTimeoutMs value={}", mRequestTimeoutMs.load().count());
+      }
+
+      {
         static bool sMonitorRpc = DataDistMonitorRpcDurationDefault;
         auto lNewMonitorRpc = mDiscoveryConfig->getBoolParam(DataDistMonitorRpcDurationKey, DataDistMonitorRpcDurationDefault);
 
@@ -473,7 +484,7 @@ std::size_t TfBuilderRpcImpl::getFetchIdxRandom(const std::vector<StfRequest> &p
   static thread_local std::mt19937_64 lGen(lRd());
 
   assert (pReqVector.size() > 0);
-  if (pReqVector.size() == 0) {
+  if (pReqVector.size() <= 2) {
     return 0;
   }
 
@@ -492,100 +503,102 @@ void TfBuilderRpcImpl::StfRequestThread()
 
   while (mRunning) {
     StfRequest lStfRequest;
-    {
-      std::optional<std::tuple<std::uint64_t, bool, std::uint64_t, std::vector<StfRequest>> > lReqOpt;
-      if ((lReqOpt = mStfRequestQueue.pop_wait_for(100ms)) == std::nullopt) {
-        continue;
-      }
 
-      assert (lReqOpt);
-      const auto lTfId = std::get<0>(lReqOpt.value());
-      const auto lIsTopo = std::get<1>(lReqOpt.value());
-      const auto lTfRenamedId = std::get<2>(lReqOpt.value());
-      auto &lReqVector = std::get<3>(lReqOpt.value());
+    // <tf id, is topo, renamed topo id, requests>
+    std::optional<std::tuple<std::uint64_t, bool, std::uint64_t, std::vector<StfRequest>> > lReqOpt;
+    if ((lReqOpt = mStfRequestQueue.pop_wait_for(100ms)) == std::nullopt) {
+      continue;
+    }
 
-      std::string lStfSenderIdTopo;
-      if (lIsTopo) {
-        assert (lReqVector.size() == 1);
-        lStfSenderIdTopo = lReqVector.front().mStfSenderId;
-      }
+    assert (lReqOpt);
+    const auto lTfId = std::get<0>(lReqOpt.value());
+    const auto lIsTopo = std::get<1>(lReqOpt.value());
+    const auto lTfRenamedId = std::get<2>(lReqOpt.value());
+    auto &lReqVector = std::get<3>(lReqOpt.value());
 
-      const auto lNumStfs = lReqVector.size();
-      std::atomic_size_t lNumExpectedStfs = 0;
-      std::size_t lNumRequested = 0;
+    std::string lStfSenderIdTopo;
+    if (lIsTopo) {
+      assert (lReqVector.size() == 1);
+      lStfSenderIdTopo = lReqVector.front().mStfSenderId;
+    }
 
-      // set initial guess of how many stfs to expect, refine later if we fail to contact all FLPs
-      setNumberOfStfs(lTfId, lNumStfs);
+    const auto lNumStfs = lReqVector.size();
+    std::atomic_size_t lNumExpectedStfs = 0;
+    std::size_t lNumRequested = 0;
 
-      const auto lTimeStfReqStart = clock::now();
+    // set initial guess of how many stfs to expect, refine later if we fail to contact all FLPs
+    setNumberOfStfs(lTfId, lNumStfs);
 
-      while (mRunning && !lReqVector.empty()) {
+    const auto lTimeStfReqStart = clock::now();
 
-        { // wait for the stf slots to become free
-          std::unique_lock lInFlightLock(mNumInFlightLock);
-          while (mRunning && (mNumReqInFlight >= mMaxNumReqInFlight)) {
-            mNumInFlightCond.wait_for(lInFlightLock, 100ms);
-          }
-          if (!mRunning) {
-            continue;
-          }
+    while (mRunning && !lReqVector.empty()) {
 
-          mNumReqInFlight += 1;
-          DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);
+      { // wait for the stf slots to become free
+        std::unique_lock lInFlightLock(mNumInFlightLock);
+        while (mRunning && (mNumReqInFlight >= mMaxNumReqInFlight)) {
+          mNumInFlightCond.wait_for(lInFlightLock, 100ms);
+        }
+        if (!mRunning) {
+          continue;
         }
 
-        // select the order in which StfSenders are contacted (consul option)
-        std::size_t lIdx = getFetchIdx(lReqVector);
-
-        lStfRequest = std::move(lReqVector[lIdx]);
-        lReqVector.erase(lReqVector.cbegin() + lIdx);
-
-        // Fan out STF grpc requests because it's limitting on how fast one EPN can receive data from many FLPs
-        // A single StfDataRequest request takes about 330 us, i.e. fetching 200 STFs -> 70 ms.
-        // This is OK wih runs with many EPNs, but a single EPN should be able to request all STFs under 10 ms
-        mGrpcStfRequestQueue.push(GrpcStfReqInfo {std::move(lStfRequest), lNumStfs, lNumRequested /*ref*/, lNumExpectedStfs });
+        mNumReqInFlight += 1;
+        DDMON("tfbuilder", "merge.num_stf_in_flight", mNumReqInFlight);
       }
 
-      // wait for all STF to be requested
-      while (true) {
-        std::unique_lock lLock(mNumStfsRequestedLock);
-        mNumStfsRequestedCv.wait_for(lLock, 5ms);
-        if (lNumStfs == lNumRequested) {
-          break;
-        }
+      // select the order in which StfSenders are contacted (consul option)
+      std::size_t lIdx = getFetchIdx(lReqVector);
+
+      lStfRequest = std::move(lReqVector[lIdx]);
+      lReqVector.erase(lReqVector.cbegin() + lIdx);
+
+      // Fan out STF grpc requests because it's limiting on how fast one EPN can receive data from many FLPs
+      // A single StfDataRequest request takes about 330 us, i.e. fetching 200 STFs -> 70 ms.
+      // This is OK wih runs with many EPNs, but a single EPN should be able to request all STFs under 10 ms
+      mGrpcStfRequestQueue.push(GrpcStfReqInfo {std::move(lStfRequest), lNumStfs, lNumRequested /*ref*/, lNumExpectedStfs });
+    }
+
+    // wait for all STF to be requested
+    while (true) {
+      std::unique_lock lLock(mNumStfsRequestedLock);
+      mNumStfsRequestedCv.wait_for(lLock, 5ms);
+      if (lNumStfs == lNumRequested) {
+        break;
       }
+    }
 
-      DDMON("tfbuilder", "merge.stf_data_req_total_ms", since<std::chrono::milliseconds>(lTimeStfReqStart));
+    DDMON("tfbuilder", "merge.stf_data_req_total_ms", since<std::chrono::milliseconds>(lTimeStfReqStart));
 
-      if (lNumExpectedStfs > 0) {
-        // set the number of STFs for merging thread
-        if (!lIsTopo) {
-          setNumberOfStfs(lTfId, lNumExpectedStfs);
-        } else {
-          setNumberOfStfs(lTfRenamedId, lNumExpectedStfs);
-        }
+    if (lNumExpectedStfs > 0) {
+      // set the number of STFs for merging thread
+      if (!lIsTopo) {
+        setNumberOfStfs(lTfId, lNumExpectedStfs);
       } else {
-        // cleanup if we reached no StfSenders
-        // Let the scheduler know that we are not building the current TF
+        setNumberOfStfs(lTfRenamedId, lNumExpectedStfs);
+      }
+    } else {
+      // cleanup if we reached no StfSenders
+      { // Let the scheduler know that we are not building the current TF
+        std::scoped_lock lLock(mTfIdSizesLock);
         mNumTfsInBuilding = std::max(0, mNumTfsInBuilding - 1);
         mLastBuiltTfId = std::max(mLastBuiltTfId, lTfId);
-
-        if (lIsTopo) {
-          // Topological: indicate that we're deleting topological (renamed) Id
-          std::scoped_lock lLock(mTopoTfIdLock);
-          assert (mTopoTfIdRenameMap[lStfSenderIdTopo].count(lTfId) == 1);
-          assert (lTfRenamedId == mTopoTfIdRenameMap[lStfSenderIdTopo][lTfId]);
-
-          mTopoTfIdRenameMap[lStfSenderIdTopo].erase(lTfId);
-
-          // notify Input stage about new Stf (renamed)
-          mReceivedDataQueue->push(ReceivedStfMeta(ReceivedStfMeta::MetaType::DELETE, lTfRenamedId));
-        } else {
-          // notify Input stage not to wait for STFs if we reached none of StfSender
-          mReceivedDataQueue->push(ReceivedStfMeta(ReceivedStfMeta::MetaType::DELETE, lTfId));
-        }
-        mUpdateCondition.notify_one();
       }
+
+      if (lIsTopo) {
+        // Topological: indicate that we're deleting topological (renamed) Id
+        std::scoped_lock lLock(mTopoTfIdLock);
+        assert (mTopoTfIdRenameMap[lStfSenderIdTopo].count(lTfId) == 1);
+        assert (lTfRenamedId == mTopoTfIdRenameMap[lStfSenderIdTopo][lTfId]);
+
+        mTopoTfIdRenameMap[lStfSenderIdTopo].erase(lTfId);
+
+        // notify Input stage about new Stf (renamed)
+        mReceivedDataQueue->push(ReceivedStfMeta(ReceivedStfMeta::MetaType::DELETE, lTfRenamedId));
+      } else {
+        // notify Input stage not to wait for STFs if we reached none of StfSender
+        mReceivedDataQueue->push(ReceivedStfMeta(ReceivedStfMeta::MetaType::DELETE, lTfId));
+      }
+      mUpdateCondition.notify_one();
     }
   }
   // send disconnect update
@@ -607,12 +620,22 @@ void TfBuilderRpcImpl::StfRequestGrpcThread()
 
     bool lReqFailed = true;
     StfDataResponse lStfResponse;
-    grpc::Status lStatus = StfSenderRpcClients()[lStfRequest.mStfSenderId]->StfDataRequest(lStfRequest.mRequest, lStfResponse);
+
+    grpc::Status lStatus;
+    do {
+      lStatus = StfSenderRpcClients().StfDataRequestWithTimeout(lStfRequest.mStfSenderId,
+        mRequestTimeoutMs.load(), lStfRequest.mRequest, lStfResponse);
+      if (!lStatus.ok() && (lStatus.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED)) {
+        DDDLOG_RL(1000, "StfDataRequest timeout. stf_id={} stfs_id={} timeout_ms={}", lStfRequest.mRequest.stf_id(),
+          lStfRequest.mStfSenderId, mRequestTimeoutMs.load().count());
+      }
+    } while (!lStatus.ok());
+
     if (!lStatus.ok()) {
-      EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={}",
-        lStfRequest.mStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize);
+      EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={} timeout={}",
+        lStfRequest.mRequest.stf_id(), lStfRequest.mStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize, (lStatus.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED));
     } else if (lStfResponse.status() != StfDataResponse::OK) {
-      EDDLOG("StfSender did not sent data. stfs_id={} reason={}",
+      EDDLOG("StfSender did not send data. stf_id={} stfs_id={} reason={}",
         lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));
     } else {
       // Update the expected STF count
@@ -623,9 +646,7 @@ void TfBuilderRpcImpl::StfRequestGrpcThread()
     if (lReqFailed) {
       std::unique_lock lInFlightLock(mNumInFlightLock);
       mNumReqInFlight -= 1;
-    }
-
-    { // record time of the request to measure total time until STFs is fetched
+    } else { // record time of the request to measure total time until STFs is fetched
       std::scoped_lock lLock(mStfDurationMapLock);
       mStfReqDuration[lStfRequest.mRequest.stf_id()][lStfRequest.mStfSenderId] = std::chrono::steady_clock::now();
     }
@@ -638,8 +659,10 @@ void TfBuilderRpcImpl::StfRequestGrpcThread()
       }
     }
 
-    // Notify input stage about incoming STF
-    mStfInputQueue->push(lStfRequest.mStfSenderId);
+    if (!lReqFailed) {
+      // Notify input stage about incoming STF
+      mStfInputQueue->push(lStfRequest.mStfSenderId);
+    }
   }
   DDDLOG("Exiting Stf grpc request thread.");
 }

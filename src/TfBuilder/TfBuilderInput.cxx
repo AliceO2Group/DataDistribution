@@ -174,13 +174,13 @@ void TfBuilderInput::StfPacingThread()
     }
 
     assert (lStfInfo.mType == ReceivedStfMeta::MetaType::INFO);
-    assert (lStfInfo.mRecvStfdata);
+    assert (lStfInfo.mRecvStfData);
 
     // Rename STF id if this is a Topological TF
     if (lStfInfo.mStfOrigin == SubTimeFrame::Header::Origin::eReadoutTopology) {
       // deserialize here to be able to rename the stf
-      lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfHeaderMeta.get(), *lStfInfo.mRecvStfdata));
-      lStfInfo.mRecvStfdata = nullptr;
+      lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfHeaderMeta.get(), *lStfInfo.mRecvStfData));
+      lStfInfo.mRecvStfData = nullptr;
 
       const std::uint64_t lNewTfId = mRpc->getIdForTopoTf(lStfInfo.mStfSenderId, lStfInfo.mStfId);
 
@@ -229,8 +229,8 @@ void TfBuilderInput::deserialize_headers(std::vector<ReceivedStfMeta> &pStfs)
     }
 
     // deserialize the data
-    lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfHeaderMeta.get(), *lStfInfo.mRecvStfdata));
-    lStfInfo.mRecvStfdata = nullptr;
+    lStfInfo.mStf = std::move(lStfReceiver.deserialize(*lStfInfo.mRecvStfHeaderMeta.get(), *lStfInfo.mRecvStfData));
+    lStfInfo.mRecvStfData = nullptr;
   }
 }
 
@@ -259,6 +259,7 @@ void TfBuilderInput::StfDeserializingThread()
     // check if the TF should be dropped
     if (mStfIdsToDrop.count(lStfId) > 0) {
       mStfMergeMap.erase(mStfMergeMap.begin());
+      continue;
     }
 
     // deserialize headers of any new STFs
@@ -273,7 +274,7 @@ void TfBuilderInput::StfDeserializingThread()
     }
 
     // Check if the TF is completed
-    if (!lStfVector.empty() && (lStfVector.size() == lNumStfsOpt)) {
+    if (!lStfVector.empty() && (lStfVector.size() == lNumStfsOpt.value())) {
       mStfsForMerging.push(std::move(lStfVector));
 
       mStfMergeMap.erase(lStfId);

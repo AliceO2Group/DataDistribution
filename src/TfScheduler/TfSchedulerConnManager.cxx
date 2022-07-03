@@ -227,8 +227,7 @@ void TfSchedulerConnManager::disconnectTfBuilder(const TfBuilderConfigStatus &pT
       lParam.set_endpoint(lSocketInfo.endpoint());
       StatusResponse lResponse;
 
-      auto &lRpcClient = mStfSenderRpcClients[lSocketInfo.peer_id()];
-      if(!lRpcClient->DisconnectTfBuilderRequest(lParam, lResponse).ok()) {
+      if(!mStfSenderRpcClients.DisconnectTfBuilderRequest(lSocketInfo.peer_id(), lParam, lResponse).ok()) {
         IDDLOG_RL(1000, "StfSender disconnection error: gRPC error. stfs_id={} tfb_id={}", lStfSenderId, lTfBuilderId);
         pResponse.set_status(ERROR_GRPC_STF_SENDER);
         continue;
@@ -349,12 +348,11 @@ void TfSchedulerConnManager::ConnectTfBuilderUCXThread(const std::string lStfSen
 
     bool lConnectionsOk = true;
 
-    auto &lRpcClient = mStfSenderRpcClients[lStfSenderId];
     const auto &lParam = lStfSenderIdOpt.value()->mRpcReq;
     const auto &lTfBuilderId = lParam.tf_builder_id();
 
     ConnectTfBuilderUCXResponse lResponse;
-    const auto lGrpcStatus = lRpcClient->ConnectTfBuilderUCXRequest(lParam, lResponse);
+    const auto lGrpcStatus = mStfSenderRpcClients.ConnectTfBuilderUCXRequest(lStfSenderId, lParam, lResponse);
     if(!lGrpcStatus.ok()) {
       IDDLOG_RL(1000, "TfBuilder UCX Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={} err_code={} err={}",
         lStfSenderId, lTfBuilderId, lGrpcStatus.error_code(), lGrpcStatus.error_message());
@@ -523,9 +521,7 @@ void TfSchedulerConnManager::DropStfThread()
       continue;
     }
 
-    auto &lStfSenderRpcCli = mStfSenderRpcClients[lStfSenderId];
-
-    auto lStatus = lStfSenderRpcCli->StfDataDropRequest(lStfRequest, lStfResponse);
+    auto lStatus = mStfSenderRpcClients.StfDataDropRequest(lStfSenderId, lStfRequest, lStfResponse);
     if (!lStatus.ok()) {
       // gRPC problem...
       WDDLOG_GRL(1000, "StfSender gRPC connection error. stfs_id={} code={} error={}",

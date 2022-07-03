@@ -406,10 +406,20 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
   assert(!pTfBuilderId.empty());
   std::scoped_lock lLock(mScheduledStfMapLock);
 
+  { // Check if we handled this grpc call before, and we are handling a retry now
+    const auto lResIter = mSchedulingResult.find(pTfBuilderId);
+    if (lResIter != mSchedulingResult.end()) {
+
+      if (lResIter->second.first == pStfId) {
+        pRes.set_status(lResIter->second.second);
+        return;
+      }
+    }
+  }
+
   const auto lStfIter = mScheduledStfMap.find(pStfId);
   // verify we have the STF.
   if (lStfIter == mScheduledStfMap.end()) {
-
     if (pTfBuilderId != "-1") {
       // request for Stf we don't have is an error
       pRes.set_status(StfDataResponse::DATA_DROPPED_UNKNOWN);
@@ -442,21 +452,23 @@ void StfSenderOutput::sendStfToTfBuilder(const std::uint64_t pStfId, const std::
     } else if (mOutputFairMQ) {
       lOk = mOutputFairMQ->sendStfToTfBuilder(pTfBuilderId, std::move(lStf));
     }
-    if (!lOk) {
-      pRes.set_status(StfDataResponse::TF_BUILDER_UNKNOWN);
-      mDropQueue.push(std::move(lStf));
-      EDDLOG_GRL(1000, "sendStfToTfBuilder: TfBuilder not known to StfSender. tfb_id={}", pTfBuilderId);
-      return;
-    }
-
-    // update status and counters
-    pRes.set_status(StfDataResponse::OK);
-    {
+    if (lOk) {
+      // update status and counters
+      pRes.set_status(StfDataResponse::OK);
       std::scoped_lock lCntLock(mCounters.mCountersLock);
       mCounters.mValues.mInSending.mSize += lStfSize;
       mCounters.mValues.mInSending.mCnt += 1;
+    } else {
+      pRes.set_status(StfDataResponse::TF_BUILDER_UNKNOWN);
+      mDropQueue.push(std::move(lStf));
+      EDDLOG_GRL(1000, "sendStfToTfBuilder: TfBuilder not known to StfSender. tfb_id={}", pTfBuilderId);
     }
   }
+
+  // remember the result for the stf
+  auto &lResultInfo = mSchedulingResult[pTfBuilderId];
+  lResultInfo.first = pStfId;
+  lResultInfo.second = pRes.status();
 }
 
 /// Drop thread

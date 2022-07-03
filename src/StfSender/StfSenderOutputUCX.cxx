@@ -420,6 +420,10 @@ void StfSenderOutputUCX::DataHandlerThread(unsigned pThreadIdx)
 {
   DDDLOG("StfSenderOutputUCX: Starting meta thread {}", pThreadIdx);
 
+#if defined(__linux__)
+  if (nice(-10)) { }
+#endif
+
   // local worker we advance here
   assert (pThreadIdx < mDataWorkers.size());
   ucx::dd_ucp_worker &lWorker = mDataWorkers[pThreadIdx];

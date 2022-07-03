@@ -107,7 +107,7 @@ bool create_ucp_worker(ucp_context_h ucp_ctx, dd_ucp_worker *worker, const std::
   // create worker epoll structures
   status = ucp_worker_get_efd(worker->ucp_worker, &worker->worker_efd);
   if (status != UCS_OK) {
-    EDDLOG("Failed to create epool fd for worker={} err={}", pMsg, std::string(ucs_status_string(status)));
+    EDDLOG("Failed to create epoll fd for worker={} err={}", pMsg, std::string(ucs_status_string(status)));
     return false;
   }
 
