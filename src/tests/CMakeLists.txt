@@ -39,3 +39,18 @@ target_link_libraries(test_FmtPatterns
     Boost::filesystem
 )
 add_test(NAME FmtPatterns_test COMMAND test_FmtPatterns)
+
+
+set(TEST_BITMAP_SOURCES
+  test_Bitmap
+)
+add_executable(test_Bitmap ${TEST_BITMAP_SOURCES})
+target_compile_definitions(test_Bitmap PRIVATE "BOOST_TEST_DYN_LINK=1")
+target_link_libraries(test_Bitmap
+  PUBLIC
+  PRIVATE
+    base
+    Boost::unit_test_framework
+    Boost::filesystem
+)
+add_test(NAME Bitmap_test COMMAND test_Bitmap)
