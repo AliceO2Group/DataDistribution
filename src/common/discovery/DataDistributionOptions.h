@@ -32,6 +32,10 @@ static constexpr std::string_view DataDistNetworkTransportDefault = "ucx";
 static constexpr std::string_view DataDistMonitorRpcDurationKey = "DataDistMonitorRpcDuration";
 static constexpr bool DataDistMonitorRpcDurationDefault = false;
 
+// Enable the token manager for stf transfers
+static constexpr std::string_view DataDistEnableStfTransferTokensKey = "DataDistEnableStfTransferTokens";
+static constexpr bool DataDistEnableStfTransferTokensDefault = false;
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// StfBuilder
@@ -131,6 +135,10 @@ static constexpr std::uint64_t StaleTfTimeoutMsDefault = 1000;
 // Max number of incomplete TFs to keep before considering them stale
 static constexpr std::string_view IncompleteTfsMaxCntKey = "IncompleteTfsMaxCnt";
 static constexpr std::uint64_t IncompleteTfsMaxCntValue = 100;
+
+// Token reset timeout. All tokens are returned to the scheduler, as a protection from failed EPNs.
+static constexpr std::string_view TokenResetTimeoutMsKey = "TokenResetTimeoutMs";
+static constexpr std::uint64_t TokenResetTimeoutMsDefault = 1000;
 
 
 } /* o2::DataDistribution */

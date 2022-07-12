@@ -17,6 +17,7 @@
 #include "TfSchedulerConnManager.h"
 #include "TfSchedulerTfBuilderInfo.h"
 #include "TfSchedulerStfInfo.h"
+#include "TfSchedulerTokenManager.h"
 
 #include <ConfigConsul.h>
 #include <discovery.grpc.pb.h>
@@ -26,9 +27,7 @@
 #include <map>
 #include <thread>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 using grpc::Server;
@@ -47,7 +46,8 @@ class TfSchedulerInstanceRpcImpl final : public TfSchedulerInstanceRpc::Service
   mPartitionInfo(pPartitionRequest),
   mConnManager(pDiscoveryConfig, pPartitionRequest),
   mTfBuilderInfo(pDiscoveryConfig),
-  mStfInfo(pDiscoveryConfig, mConnManager, mTfBuilderInfo)
+  mStfInfo(pDiscoveryConfig, mConnManager, mTfBuilderInfo),
+  mTokenManager(pDiscoveryConfig)
   { }
 
   virtual ~TfSchedulerInstanceRpcImpl() { }
@@ -109,13 +109,15 @@ class TfSchedulerInstanceRpcImpl final : public TfSchedulerInstanceRpc::Service
   /// Stfs for scheduling
   TfSchedulerStfInfo mStfInfo;
 
+  /// Stf schedule token maker
+  TfSchedulerTokenManager mTokenManager;
+  bool mTokenManagerEnabled = DataDistEnableStfTransferTokensDefault;
+
   /// Partition State. Always update via the method.
   void updatePartitionState(const PartitionState pNewState);
   PartitionState mPartitionState = PartitionState::PARTITION_CONFIGURING;
 };
-}
+
 } /* namespace o2::DataDistribution */
-
-
 
 #endif /* ALICEO2_TF_SCHEDULER_INSTANCE_RPC_H_ */

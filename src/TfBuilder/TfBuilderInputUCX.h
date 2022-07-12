@@ -24,20 +24,25 @@
 #include <DataDistributionOptions.h>
 
 #include <UCXUtilities.h>
+#include <UCXSendRecv.h>
 #include <ucp/api/ucp.h>
 
 #include <vector>
 #include <map>
 #include <boost/container/small_vector.hpp>
+#include <boost/lockfree/stack.hpp>
 
 #include <thread>
 #include <shared_mutex>
+#include <condition_variable>
 
 namespace o2::DataDistribution
 {
 class TfBuilderInputUCX;
 class TimeFrameBuilder;
 class TfBuilderRpcImpl;
+
+namespace bc = boost::container;
 
 struct dd_ucp_listener_context_t {
   /// Self reference to handle new connections
@@ -53,8 +58,8 @@ struct TfBuilderUCXConnInfo {
   ucp_ep_h ucp_ep;
 
   /// Peer StfSender id
-  std::string mStfSenderId;
-  std::string mStfSenderIp;
+  std::string mPeerId;
+  std::string mPeerIp;
 
   /// cache of unpacked remote rma keys
   std::shared_mutex mRemoteKeysLock;
@@ -79,8 +84,7 @@ public:
       mTimeFrameBuilder(pTfBldr),
       mStfReqQueue(pStfReqQueue),
       mReceivedDataQueue(pStfMetaQueue)
-  {
-  }
+  { }
 
   bool start();
   bool map_data_region();
@@ -89,12 +93,14 @@ public:
   void reset() { }
 
   void StfPreprocessThread(const unsigned pThreadIdx);
+  void TokenRequesterThread(const unsigned pThreadIdx);
   void DataHandlerThread(const unsigned pThreadIdx);
   void StfPostprocessThread(const unsigned pThreadIdx);
 
   struct StfMetaRdmaInfo {
     UCXIovStfHeader mStfMeta;
     std::vector<void*> mTxgPtrs;
+    ucx::io::TokenRequest::BitFieldIdxType mStfSenderIdx = ucx::io::TokenRequest::BitfieldInvalidIdx;
     double mRdmaTimeMs;
   };
 
@@ -110,8 +116,8 @@ public:
     mStfPreprocessQueue.push(std::move(pMeta));
   }
 
-  void pushRdmaInfo(StfMetaRdmaInfo &&pInfo) {
-    const auto &lStfSenderId = pInfo.mStfMeta.stf_sender_id();
+  void pushRdmaInfo(std::unique_ptr<StfMetaRdmaInfo> &&pInfo) {
+    const auto &lStfSenderId = pInfo->mStfMeta.stf_sender_id();
 
     std::shared_lock lLock(mStfMetaWorkerQueuesMutex);
 
@@ -119,7 +125,7 @@ public:
     mStfMetaWorkerQueues[lStfSenderId]->push(std::move(pInfo));
   }
 
-  void pushPostprocessMetadata(StfMetaRdmaInfo &&pInfo) {
+  void pushPostprocessMetadata(std::unique_ptr<StfMetaRdmaInfo> &&pInfo) {
     mStfPostprocessQueue.push(std::move(pInfo));
   }
 
@@ -129,7 +135,7 @@ public:
       pConn->mConnError = true;
 
       IDDLOG_GRL(5000, "TfBuilderInputUCX: peer connection error. stfsender_ip={} stfsender_id={} err={}",
-        pConn->mStfSenderIp, pConn->mStfSenderId, ucs_status_string(pStatus));
+        pConn->mPeerIp, pConn->mPeerId, ucs_status_string(pStatus));
     }
 
     // TODO: survive loss of StfSender peers?
@@ -159,24 +165,22 @@ private:
 
   // STF RDMA get threads
   std::shared_mutex mStfMetaWorkerQueuesMutex;
-    std::unordered_map<std::string, std::size_t> mStfSenderToWorkerMap;
-    std::unordered_map<std::string, std::shared_ptr<ConcurrentQueue<StfMetaRdmaInfo> > >  mStfMetaWorkerQueues;
+    std::unordered_map<std::string, std::shared_ptr<ConcurrentQueue<std::unique_ptr<StfMetaRdmaInfo>> > >  mStfMetaWorkerQueues;
   std::vector<std::thread> mThreadPool;
   bool mRdmaPollingWait = UcxPollForRDMACompletionDefault;
   std::uint64_t mRdmaConcurrentStfSizeMax  = UcxMaxStfSizeForConcurrentFetchBDefault;
 
   // STF postprocessing threads
-  ConcurrentQueue<StfMetaRdmaInfo> mStfPostprocessQueue;
+  ConcurrentQueue<std::unique_ptr<StfMetaRdmaInfo>> mStfPostprocessQueue;
   std::vector<std::thread> mPostThreadPool;
 
   /// Queue for received STFs
   ConcurrentQueue<ReceivedStfMeta> &mReceivedDataQueue;
 
-private:
   /// UCX context
   ucp_context_h ucp_context;
   boost::container::small_vector<ucx::dd_ucp_worker, 512> mDataWorkers;
-  boost::container::small_vector<std::shared_ptr<ConcurrentQueue<StfMetaRdmaInfo>>, 512> mDataWorkersQueues;
+  boost::container::small_vector<std::shared_ptr<ConcurrentQueue<std::unique_ptr<StfMetaRdmaInfo>>>, 512> mDataWorkersQueues;
   bool ucp_data_region_set = false;
   ucp_mem_h ucp_data_region;
 
@@ -194,9 +198,35 @@ private:
   std::shared_mutex mConnectionMapLock;
     std::map<std::string, std::unique_ptr<TfBuilderUCXConnInfo>> mConnMap;
 
+  /// TfScheduler stf transfer token stuff
+  bool mStfTokensEnabled = DataDistEnableStfTransferTokensDefault;
+
+  TfBuilderUCXConnInfo *mTokenWorker = nullptr;
+  std::vector<std::thread> mTokenThreadPool;
+
+  std::unordered_map<std::string, ucx::io::TokenRequest> mStfBitFields;
+  std::unordered_map<std::string, std::uint32_t> mStfIdToIdx;
+
+  alignas(256)
+  std::mutex mStfTokenWaitingMutex;
+    std::condition_variable mStfWaitingCv;
+    std::size_t mTokenRefCnt = 0;                 // indicate how many STFs will be requested while holding the token
+
+    // Token book-keeping
+    // thread -> stfs idx -> stfs
+    struct StfWaitingInfo {
+      std::size_t mNumStfsWaiting = 0;
+      bc::small_vector<bc::small_vector<std::unique_ptr<StfMetaRdmaInfo>, 16>, 256> mStfs;
+    };
+    bc::small_vector<StfWaitingInfo, 16> mAvailableStfs; // keep the token book-keeping for each input thread
+
+
 public:
   // UCX callbacks
   void new_conn_handle(ucp_conn_request_h conn_request);
+
+
+  boost::lockfree::stack<std::uint32_t, boost::lockfree::capacity<1> > mReceivedToken;
 };
 
 

@@ -52,6 +52,14 @@ bool TfSchedulerInstanceRpcImpl::start()
   // start StfInfo database
   mStfInfo.start();
 
+  // start the token manager
+  mTokenManagerEnabled = mDiscoveryConfig->getBoolParam(DataDistEnableStfTransferTokensKey, DataDistEnableStfTransferTokensDefault);
+  DDDLOG("TfSchedulerInstanceRpc: DataDistEnableStfTransferTokens={}", mTokenManagerEnabled);
+  if (mTokenManagerEnabled && !mTokenManager.start()) {
+    EDDLOG("Failed to start the token manager.");
+    return false;
+  }
+
   // start all client gRPC channels
   // This can block, waiting to connect to all StfSenders.
   // We have to loop and check if we should bail on Terminate request
@@ -79,6 +87,11 @@ void TfSchedulerInstanceRpcImpl::stop()
   mRunning = false;
   if (mMonitorThread.joinable()) {
     mMonitorThread.join();
+  }
+
+  // Stop the token manager
+  if (mTokenManagerEnabled) {
+    mTokenManager.stop();
   }
 
   // Terminate tasks
@@ -306,6 +319,11 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
     return Status::OK;
   }
 
+  const std::string &lTfBuilderId = request->info().process_id();
+
+  if (mTokenManagerEnabled) {
+    mTokenManager.connectTfBuilder(lTfBuilderId, request->ucx_info().listen_ep().ip(), request->ucx_info().listen_ep().port());
+  }
   mConnManager.connectTfBuilderUCX(*request, *response /*out*/);
   return Status::OK;
 }
