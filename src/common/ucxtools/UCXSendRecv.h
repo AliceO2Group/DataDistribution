@@ -15,6 +15,7 @@
 #define DATADIST_UCX_SENDRECV_H_
 
 #include "UCXUtilities.h"
+#include <Utilities.h>
 
 #include <ucp/api/ucp.h>
 
@@ -26,19 +27,28 @@ namespace ucx::io::impl {
 
 using o2::DataDistribution::ucx::util::UCX_REQUEST_SIZE;
 
-static constexpr ucp_tag_t STF_IOV_SIZE_TAG       = 1;
-static constexpr ucp_tag_t STF_IOV_DATA_TAG       = 2;
-static constexpr ucp_tag_t STRING_TAG             = 3;
-static constexpr ucp_tag_t STRING_SIZE_TAG        = 4;
-static constexpr ucp_tag_t STF_DONE_TAG           = 1'000'000'000ULL;
+static constexpr ucp_tag_t STRING_TAG       = 1;
+static constexpr ucp_tag_t STRING_SIZE_TAG  = 2;
 
 } /* ucx::impl */
 
-
 namespace ucx::io {
 
-static constexpr unsigned AM_STF_META = 23;
-static constexpr unsigned AM_STF_ACK  = 99;
+static constexpr unsigned AM_STF_META  = 23;
+static constexpr unsigned AM_STF_ACK   = 99;
+// token AMs
+static constexpr unsigned AM_TOKEN_REQ = 200;
+static constexpr unsigned AM_TOKEN_REL = 201;
+static constexpr unsigned AM_TOKEN_REP = 202;
+
+struct TokenRequest {
+
+  using Bitfield = TokenBitfield<220>;
+  using BitFieldIdxType = Bitfield::TokenBitfieldIndexType;
+  static const constexpr auto BitfieldInvalidIdx = Bitfield::sInvalidIdx;
+
+  Bitfield mTokensRequested;
+};
 
 struct dd_ucp_multi_req {
   alignas(128)
@@ -355,7 +365,7 @@ bool ucx_send_am(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, const vo
 {
   ucp_request_param_t param;
   void *ucp_request; // ucp allocated request
-  dd_ucp_multi_req dd_request(1);
+  dd_ucp_multi_req_v2 dd_request;
 
   param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK    |
                        UCP_OP_ATTR_FIELD_DATATYPE    |
@@ -366,7 +376,7 @@ bool ucx_send_am(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, const vo
   param.datatype     = ucp_dt_make_contig(1);
   param.user_data    = &dd_request;
   param.memory_type  = ucs_memory_type_t::UCS_MEMORY_TYPE_HOST;
-  param.flags        = UCP_AM_SEND_FLAG_EAGER;
+  param.flags        = UCP_AM_SEND_FLAG_EAGER | UCP_AM_SEND_FLAG_REPLY;
 
   ucp_request = ucp_am_send_nbx(ep, id, NULL, 0, pData, pSize, &param);
 
@@ -379,9 +389,8 @@ bool ucx_send_am(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, const vo
     return false;
   } else {
     dd_request.add_request(ucp_request);
-    dd_request.mark_finished();
-    ucp_wait(worker, dd_request);
-    const bool ok = dd_request.done();
+
+    const bool ok = dd_request.wait(worker, true); // polling wait
     if (!ok) {
       EDDLOG("Failed ucx_send_am. flag={} id={} err={}", dd_request.done(), id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
     }
@@ -395,7 +404,7 @@ bool ucx_send_am_hdr(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, cons
 {
   ucp_request_param_t param;
   void *ucp_request; // ucp allocated request
-  dd_ucp_multi_req dd_request(1);
+  dd_ucp_multi_req_v2 dd_request;
 
   param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK    |
                        UCP_OP_ATTR_FIELD_DATATYPE    |
@@ -406,7 +415,7 @@ bool ucx_send_am_hdr(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, cons
   param.datatype     = ucp_dt_make_contig(1);
   param.user_data    = &dd_request;
   param.memory_type  = ucs_memory_type_t::UCS_MEMORY_TYPE_HOST;
-  param.flags        = UCP_AM_SEND_FLAG_EAGER;
+  param.flags        = UCP_AM_SEND_FLAG_EAGER | UCP_AM_SEND_FLAG_REPLY;
 
   ucp_request = ucp_am_send_nbx(ep, id, pHdrData, pHdrSize, NULL, 0, &param);
 
@@ -419,9 +428,8 @@ bool ucx_send_am_hdr(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, cons
     return false;
   } else {
     dd_request.add_request(ucp_request);
-    dd_request.mark_finished();
-    ucp_wait(worker, dd_request);
-    const bool ok = dd_request.done();
+
+    const bool ok = dd_request.wait(worker, true); // polling wait
     if (!ok) {
       EDDLOG("Failed ucx_send_am. flag={} id={} err={}", dd_request.done(), id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
     }
