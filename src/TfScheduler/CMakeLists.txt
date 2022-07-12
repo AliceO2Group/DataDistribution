@@ -8,11 +8,12 @@ set(EXE_TFS_SOURCES
   TfSchedulerConnManager
   TfSchedulerTfBuilderInfo
   TfSchedulerStfInfo
+  TfSchedulerTokenManager
   runTfScheduler
 )
 
 add_library(TfScheduler_lib OBJECT ${EXE_TFS_SOURCES})
-target_link_libraries(TfScheduler_lib  base fmqtools discovery rpc monitoring)
+target_link_libraries(TfScheduler_lib  base fmqtools ucxtools discovery rpc monitoring)
 
 add_executable(TfScheduler)
 
@@ -25,7 +26,7 @@ endif()
 target_link_libraries(TfScheduler
   PRIVATE
     TfScheduler_lib
-    base fmqtools discovery rpc monitoring
+    base fmqtools ucxtools discovery rpc monitoring
 )
 
 install(TARGETS TfScheduler RUNTIME DESTINATION bin)

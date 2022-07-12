@@ -79,6 +79,26 @@ static ucs_status_t ucp_am_data_cb(void *arg, const void *header, size_t header_
   return UCS_OK;
 }
 
+static ucs_status_t ucp_am_token_cb(void *arg, const void *header, size_t header_length,
+                            void *data, size_t length, const ucp_am_recv_param_t *param)
+{
+  TfBuilderInputUCX *lInputUcx = reinterpret_cast<TfBuilderInputUCX*>(arg);
+  (void) header;
+  (void) header_length;
+  (void) data;
+  (void) length;
+  (void) param;
+
+  // receive token
+  ucx::io::TokenRequest::BitFieldIdxType lRecvdToken;
+  std::memcpy(&lRecvdToken, header, sizeof (lRecvdToken));
+
+  assert (lInputUcx->mReceivedToken.empty()); // we should not have two tokens in the receive queue
+  lInputUcx->mReceivedToken.push(lRecvdToken);
+
+  return UCS_OK;
+}
+
 // callback on new connection
 void TfBuilderInputUCX::new_conn_handle(ucp_conn_request_h conn_request)
 {
@@ -146,7 +166,7 @@ void TfBuilderInputUCX::ListenerThread()
 
     // Create stfsender (data) worker + endpoint
     auto lConnStruct = std::make_unique<TfBuilderUCXConnInfo>(*this, mDataWorkers[lWorkerIndex]);
-    lConnStruct->mStfSenderIp = lStfSenderAddr;
+    lConnStruct->mPeerIp = lStfSenderAddr;
 
     // Create stfsender endpoint
     DDDLOG("ListenerThread: ucx::util::create_ucp_ep() ...");
@@ -157,27 +177,28 @@ void TfBuilderInputUCX::ListenerThread()
 
     // receive the StfSenderId
     DDDLOG("ListenerThread: ucx::util::ucx_receive_string() ...");
-    auto lStfSenderIdOpt = ucx::io::ucx_receive_string(lConnStruct->mWorker);
-
-    if (!lStfSenderIdOpt) {
+    auto lConnPeerIdOpt = ucx::io::ucx_receive_string(lConnStruct->mWorker);
+    if (!lConnPeerIdOpt) {
       EDDLOG("ListenerThread: Connection request: Failed to receive StfSenderId");
       continue;
     }
 
-    const auto &lStfSenderId = lStfSenderIdOpt.value();
-    DDDLOG("UCXListenerThread::Connection request. stf_sender_id={}", lStfSenderId);
-    lConnStruct->mStfSenderId = lStfSenderId;
+    const auto &lConnPeerId = lConnPeerIdOpt.value();
+    DDDLOG("UCXListenerThread::Connection request. peer_id={}", lConnPeerId);
+    lConnStruct->mPeerId = lConnPeerId;
 
     { // create the meta queue mapping to the selected worker
       std::unique_lock lLock(mStfMetaWorkerQueuesMutex);
-      mStfMetaWorkerQueues[lStfSenderId] = mDataWorkersQueues[lWorkerIndex];
-      mStfSenderToWorkerMap[lStfSenderId] = lWorkerIndex;
+      mStfMetaWorkerQueues[lConnPeerId] = mDataWorkersQueues[lWorkerIndex];
     }
 
     // add the connection info map
     std::unique_lock lLock(mConnectionMapLock);
-    assert (mConnMap.count(lStfSenderId) == 0);
-    mConnMap[lStfSenderId] = std::move(lConnStruct);
+    assert (mConnMap.count(lConnPeerId) == 0);
+    mConnMap[lConnPeerId] = std::move(lConnStruct);
+    if (lConnPeerId == "tfscheduler") {
+      mTokenWorker = mConnMap[lConnPeerId].get();
+    }
   }
 
   DDDLOG("TfBuilderInputUCX: Listener thread stopped.");
@@ -185,18 +206,30 @@ void TfBuilderInputUCX::ListenerThread()
 
 bool TfBuilderInputUCX::start()
 {
+  DDDLOG("TfBuilderInputUCX::start()");
   // setting configuration options
   mThreadPoolSize = std::clamp(mConfig->getUInt64Param(UcxTfBuilderThreadPoolSizeKey, UcxTfBuilderThreadPoolSizeDefault), std::size_t(1), std::size_t(256));
   mRdmaPollingWait = mConfig->getBoolParam(UcxPollForRDMACompletionKey, UcxPollForRDMACompletionDefault);
   mRdmaConcurrentStfSizeMax = mConfig->getUInt64Param(UcxMaxStfSizeForConcurrentFetchBKey, UcxMaxStfSizeForConcurrentFetchBDefault);
-  IDDLOG("TfBuilderInputUCX: Configuration loaded. thread_pool={} polling={} concurrent_size={}", mThreadPoolSize, mRdmaPollingWait, mRdmaConcurrentStfSizeMax);
+  mStfTokensEnabled = mConfig->getBoolParam(DataDistEnableStfTransferTokensKey, DataDistEnableStfTransferTokensDefault);
+  IDDLOG("TfBuilderInputUCX: Configuration loaded. thread_pool={} polling={} concurrent_size={} stf_tokens={}",
+    mThreadPoolSize, mRdmaPollingWait, mRdmaConcurrentStfSizeMax, mStfTokensEnabled);
 
   auto &lConfStatus = mConfig->status();
 
   // get list of stfsender ids
+  std::vector<std::string> lSortedStfSenerIds;
   for (const auto &lStfSenderId : mRpc->getStfSenderIds()) {
     mExpectedStfSenderIds.insert(lStfSenderId);
+    lSortedStfSenerIds.push_back(lStfSenderId);
   }
+
+  // create ordered stfsender translation for stf tokens
+  std::sort(lSortedStfSenerIds.begin(), lSortedStfSenerIds.end());
+  for (std::size_t i = 0; i < lSortedStfSenerIds.size(); i++) {
+    mStfIdToIdx[lSortedStfSenerIds[i]] = i;
+  }
+
   IDDLOG("TfBuilderInputUCX: Expecting connections from StfSenders. stf_sender_cnt={}", mExpectedStfSenderIds.size());
 
   // disabled until the listener is initialized
@@ -213,14 +246,21 @@ bool TfBuilderInputUCX::start()
     if (!ucx::util::create_ucp_worker(ucp_context, &mDataWorkers.back(), std::to_string(i))) {
       return false;
     }
-    // register the am handler
+    // register the am handler for stf meta
     DDDLOG("ListenerThread: ucx::util::register_am_callback() ...");
     if (!ucx::util::register_am_callback(mDataWorkers.back(), ucx::io::AM_STF_META, ucp_am_data_cb, this)) {
       return false;
     }
 
     // create worker queues
-    mDataWorkersQueues.emplace_back(std::make_shared<ConcurrentQueue<StfMetaRdmaInfo>>());
+    mDataWorkersQueues.emplace_back(std::make_shared<ConcurrentQueue<std::unique_ptr<StfMetaRdmaInfo>>>());
+  }
+
+  if (mStfTokensEnabled) {
+    // Stf token am uses worker 0 for TfScheduler communication
+    if (!ucx::util::register_am_callback(mDataWorkers[0], ucx::io::AM_TOKEN_REP, ucp_am_token_cb, this)) {
+      return false;
+    }
   }
 
   // Create listener worker for accepting connections from StfSender
@@ -313,6 +353,9 @@ bool TfBuilderInputUCX::start()
   } while(true);
 
   // Wait until we have all endpoints for StfSenders
+  // Note: also wait for tfscheduler if stf tokens are enabled
+  const auto lNumPeersToWait = mStfTokensEnabled ? (mNumStfSenders + 1) : mNumStfSenders;
+
   do {
     std::size_t lNumConnected = 0;
     {
@@ -320,12 +363,13 @@ bool TfBuilderInputUCX::start()
       lNumConnected = mConnMap.size();
     }
 
-    if (lNumConnected == mNumStfSenders) {
+    if (lNumConnected == lNumPeersToWait) {
       break;
     }
 
     std::this_thread::sleep_for(100ms);
-    DDDLOG_RL(5000, "TfBuilderInputUCX::start: Waiting for all StfSender ucx endpoints. connected={} total={}", lNumConnected, mNumStfSenders);
+    DDDLOG_RL(5000, "TfBuilderInputUCX::start: Waiting for all StfSender ucx endpoints. connected={} total={}",
+      ((lNumConnected > 0 && mStfTokensEnabled) ? (lNumConnected - 1) : lNumConnected), mNumStfSenders);
   } while (!mConnectionIssues);
 
   // This will stop the Listener thread
@@ -358,13 +402,26 @@ bool TfBuilderInputUCX::map_data_region()
   ucp_data_region_set = true;
   DDDLOG("TfBuilderInputUCX::map_data_region(): mapped the data region size={}", lOrigSize);
 
+  // Make enough stf waiting arrays for all threads
+  mAvailableStfs.clear();
+  mAvailableStfs.resize(mThreadPoolSize);
+
   // start receiving thread pool
   // NOTE: This must come after the region mapping. Threads are using mapped addresses
   for (unsigned i = 0; i < mThreadPoolSize; i++) {
+    mAvailableStfs[i].mStfs.resize(mNumStfSenders);
+
     { // preprocess threads
       std::string lThreadName = "tfb_ucx_prep_" + std::to_string(i);
       mPrepThreadPool.emplace_back(std::move(
         create_thread_member(lThreadName.c_str(), &TfBuilderInputUCX::StfPreprocessThread, this, i))
+      );
+    }
+
+    if (mStfTokensEnabled) { // token request threads
+      std::string lThreadName = "tfb_ucx_token_" + std::to_string(i);
+      mTokenThreadPool.emplace_back(std::move(
+        create_thread_member(lThreadName.c_str(), &TfBuilderInputUCX::TokenRequesterThread, this, i))
       );
     }
 
@@ -377,7 +434,7 @@ bool TfBuilderInputUCX::map_data_region()
 
     { // postprocess threads
       std::string lThreadName = "tfb_ucx_post_" + std::to_string(i);
-      mPrepThreadPool.emplace_back(std::move(
+      mPostThreadPool.emplace_back(std::move(
         create_thread_member(lThreadName.c_str(), &TfBuilderInputUCX::StfPostprocessThread, this, i))
       );
     }
@@ -409,6 +466,11 @@ void TfBuilderInputUCX::stop()
   }
 
   for (auto& lIdThread : mPrepThreadPool) {
+    if (lIdThread.joinable())
+      lIdThread.join();
+  }
+
+  for (auto& lIdThread : mTokenThreadPool) {
     if (lIdThread.joinable())
       lIdThread.join();
   }
@@ -486,82 +548,183 @@ void TfBuilderInputUCX::StfPreprocessThread(const unsigned pThreadIdx)
   using clock = std::chrono::steady_clock;
   DDDLOG("Starting ucx preprocess thread {}", pThreadIdx);
 
+  auto &lTokenInfo = mAvailableStfs[pThreadIdx];
+
   std::vector<std::uint64_t> lTxgSizes(16 << 10);
 
   std::optional<UCXIovStfHeader> lStfMetaOpt;
   while ((lStfMetaOpt = mStfPreprocessQueue.pop()) != std::nullopt) {
 
-    UCXIovStfHeader lStfMeta = std::move(lStfMetaOpt.value());
-    StfMetaRdmaInfo lStfRdmaInfo;
-
+    auto lStfRdmaInfo = std::make_unique<StfMetaRdmaInfo>();
     lTxgSizes.clear();
 
-    const auto lAllocStart = clock::now();
-
-    // Allocate data memory for txgs
-    using UCXIovTxg = UCXIovStfHeader::UCXIovTxg;
-
-    std::for_each(lStfMeta.stf_txg_iov().cbegin(), lStfMeta.stf_txg_iov().cend(), [&lTxgSizes](const UCXIovTxg &txg) {
-      lTxgSizes.push_back(txg.len());
-    });
-
-    lStfRdmaInfo.mTxgPtrs.reserve(lTxgSizes.size());
-
-    mTimeFrameBuilder.allocDataBuffers(lTxgSizes, lStfRdmaInfo.mTxgPtrs);
-    assert (lStfRdmaInfo.mTxgPtrs.size() == std::size_t(lStfMeta.stf_txg_iov().size()));
-
-    DDMON("tfbuilder", "recv.data_alloc_ms", since<std::chrono::milliseconds>(lAllocStart));
-
-    { // make sure all remote keys are unpacked
-      // We make this in two passes in order to minimize impact on the RDMA thread.
-      // Only take writer key lock if a region needs to be mapped.
-      // This should only happen at the beginning.
-      // NOTE: Region mapping could be moved to the init handshake, but it's not certain that sender knows about all regions at that time...
+    {
+      UCXIovStfHeader lStfMeta = std::move(lStfMetaOpt.value());
 
       const std::string &lStfSenderId = lStfMeta.stf_sender_id();
-      // Reference to the input channel
-      TfBuilderUCXConnInfo *lConn = nullptr;
 
-      std::shared_lock lLock(mConnectionMapLock);
-      if (mConnMap.count(lStfSenderId) == 1) {
-        lConn = mConnMap.at(lStfSenderId).get();
-        if (lConn && lConn->mConnError) {
-          lConn = nullptr; // we don't do anything if error is signalled
+      const auto lAllocStart = clock::now();
+
+      // Allocate data memory for txgs
+      using UCXIovTxg = UCXIovStfHeader::UCXIovTxg;
+
+      std::for_each(lStfMeta.stf_txg_iov().cbegin(), lStfMeta.stf_txg_iov().cend(), [&lTxgSizes](const UCXIovTxg &txg) {
+        lTxgSizes.push_back(txg.len());
+      });
+
+      lStfRdmaInfo->mTxgPtrs.reserve(lTxgSizes.size());
+
+      mTimeFrameBuilder.allocDataBuffers(lTxgSizes, lStfRdmaInfo->mTxgPtrs);
+      assert (lStfRdmaInfo->mTxgPtrs.size() == std::size_t(lStfMeta.stf_txg_iov().size()));
+
+      DDMON("tfbuilder", "recv.data_alloc_ms", since<std::chrono::milliseconds>(lAllocStart));
+
+      { // make sure all remote keys are unpacked
+        // We make this in two passes in order to minimize impact on the RDMA thread.
+        // Only take writer key lock if a region needs to be mapped.
+        // This should only happen at the beginning.
+        // NOTE: Region mapping could be moved to the init handshake, but it's not certain that sender knows about all regions at that time...
+
+        // Reference to the input channel
+        TfBuilderUCXConnInfo *lConn = nullptr;
+
+        std::shared_lock lLock(mConnectionMapLock);
+        if (mConnMap.count(lStfSenderId) == 1) {
+          lConn = mConnMap.at(lStfSenderId).get();
+          if (lConn && lConn->mConnError) {
+            lConn = nullptr; // we don't do anything if error is signalled
+          }
         }
-      }
 
-      bool lAllMapped = true;
-      {// check if all regions are mapped (reding mode)
-        std::shared_lock lKeysLock(lConn->mRemoteKeysLock);
+        bool lAllMapped = true;
+        {// check if all regions are mapped (reding mode)
+          std::shared_lock lKeysLock(lConn->mRemoteKeysLock);
 
-        for (const auto &lRegion : lStfMeta.data_regions()) {
-          if (lConn->mRemoteKeys.count(lRegion.region_rkey()) == 0) {
-            lAllMapped = false;
-            break;
+          for (const auto &lRegion : lStfMeta.data_regions()) {
+            if (lConn->mRemoteKeys.count(lRegion.region_rkey()) == 0) {
+              lAllMapped = false;
+              break;
+            }
+          }
+        }
+
+        if (!lAllMapped) {// make sure all regions are mapped (writer mode)
+          std::unique_lock lKeysLock(lConn->mRemoteKeysLock);
+
+          for (const auto &lRegion : lStfMeta.data_regions()) {
+            if (lConn->mRemoteKeys.count(lRegion.region_rkey()) == 0) {
+              DDDLOG("UCX: Mapping a new remote region stf_sender={} size={}", lStfSenderId, lRegion.size());
+              auto lNewRkeyIter = lConn->mRemoteKeys.emplace(lRegion.region_rkey(), ucp_rkey_h());
+              ucp_ep_rkey_unpack(lConn->ucp_ep, lRegion.region_rkey().data(), &(lNewRkeyIter.first->second));
+            }
           }
         }
       }
 
-      if (!lAllMapped) {// make sure all regions are mapped (writer mode)
-        std::unique_lock lKeysLock(lConn->mRemoteKeysLock);
-
-        for (const auto &lRegion : lStfMeta.data_regions()) {
-          if (lConn->mRemoteKeys.count(lRegion.region_rkey()) == 0) {
-            DDDLOG("UCX: Mapping a new remote region stf_sender={} size={}", lStfSenderId, lRegion.size());
-            auto lNewRkeyIter = lConn->mRemoteKeys.emplace(lRegion.region_rkey(), ucp_rkey_h());
-            ucp_ep_rkey_unpack(lConn->ucp_ep, lRegion.region_rkey().data(), &(lNewRkeyIter.first->second));
-          }
-        }
-      }
+      lStfRdmaInfo->mStfMeta = std::move(lStfMeta);
     }
 
-    lStfRdmaInfo.mStfMeta = std::move(lStfMeta);
+    const std::string &lStfSenderId = lStfRdmaInfo->mStfMeta.stf_sender_id();
 
-    pushRdmaInfo(std::move(lStfRdmaInfo));
+    if (mStfIdToIdx.count(lStfSenderId) == 0) {
+      EDDLOG("{} is not in the map of stfsenders.", lStfSenderId);
+      for (auto &lS : mStfIdToIdx) {
+        DDDLOG("{} - {}", lS.first, lS.second);
+      }
+    } else {
+
+      lStfRdmaInfo->mStfSenderIdx = mStfIdToIdx.at(lStfSenderId);
+
+      if (mStfTokensEnabled && (!lStfRdmaInfo->mStfMeta.stf_txg_iov().empty())) {
+        std::unique_lock lLock(mStfTokenWaitingMutex);
+        lTokenInfo.mStfs[lStfRdmaInfo->mStfSenderIdx].push_back(std::move(lStfRdmaInfo));
+        lTokenInfo.mNumStfsWaiting += 1;
+        lLock.unlock();
+        mStfWaitingCv.notify_one();
+      } else {
+        pushRdmaInfo(std::move(lStfRdmaInfo));
+      }
+    }
   }
 
   DDDLOG("Exiting ucx preprocess thread {}", pThreadIdx);
 }
+
+/// Token requester thread
+void TfBuilderInputUCX::TokenRequesterThread(const unsigned pThreadIdx)
+{
+  DDDLOG("Starting token requester thread {}", pThreadIdx);
+
+  auto &lTokenInfo = mAvailableStfs[pThreadIdx];
+
+  std::uint64_t lTokenReqSuccess = 0;
+  std::uint64_t lTokenReqFail = 0;
+
+  while (mState != TERMINATED) {
+
+    // Allow only one input thread to request tokens
+    std::unique_lock lLock (mStfTokenWaitingMutex);
+    if ((lTokenInfo.mNumStfsWaiting == 0) || (mTokenRefCnt > 0)) {
+      mStfWaitingCv.wait_for(lLock, 200ms);
+
+      DDMON("tfbuilder", "tokens.req_success", lTokenReqSuccess);
+      DDMON("tfbuilder", "tokens.req_failed", lTokenReqFail);
+      continue;
+    }
+
+    // prepare bitmap of useable tokens
+    // NOTE: the request map uses 1-based index
+    ucx::io::TokenRequest lTokenReq;
+    for (std::size_t i = 0; i < lTokenInfo.mStfs.size(); i++) {
+      if (!lTokenInfo.mStfs[i].empty()) {
+        lTokenReq.mTokensRequested.set(i+1);
+      }
+    }
+
+    assert (mReceivedToken.empty());
+
+    // request the token
+    ucx::io::ucx_send_am_hdr(mTokenWorker->mWorker, mTokenWorker->ucp_ep, ucx::io::AM_TOKEN_REQ,
+      &lTokenReq, sizeof (ucx::io::TokenRequest));
+
+    // spin until we get an answer
+    while (mReceivedToken.empty()) {
+      ucp_worker_progress(mTokenWorker->mWorker.ucp_worker);
+    }
+
+    ucx::io::TokenRequest::BitFieldIdxType lReceivedTokenIdx = ucx::io::TokenRequest::BitfieldInvalidIdx;
+    mReceivedToken.pop(lReceivedTokenIdx);
+
+    if (lReceivedTokenIdx == ucx::io::TokenRequest::BitfieldInvalidIdx) {
+      // No tokens for us, retry
+      assert (mTokenRefCnt == 0);
+      lTokenReqFail += 1;
+      continue;
+    }
+
+    // we have a valid token
+    assert (lTokenReq.mTokensRequested.get(lReceivedTokenIdx) == true);
+
+    lReceivedTokenIdx -= 1; // go back to zero-based indexing
+    assert (!lTokenInfo.mStfs[lReceivedTokenIdx].empty());
+
+    auto &lStfsToRdma = lTokenInfo.mStfs[lReceivedTokenIdx];
+
+    // prevent other threads to request a new token until the current one is held
+    mTokenRefCnt = lStfsToRdma.size();
+    lTokenInfo.mNumStfsWaiting -= mTokenRefCnt;
+
+    // queue all stfs for received token
+    for (auto &lRdmaInfo : lStfsToRdma) {
+      pushRdmaInfo(std::move(lRdmaInfo));
+    }
+    lStfsToRdma.clear();
+    lTokenReqSuccess += 1;
+  }
+
+  DDDLOG("Exiting token requester thread {}", pThreadIdx);
+}
+
 
 /// Receiving thread
 void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
@@ -585,18 +748,18 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
   auto lStfMetaQueue = mDataWorkersQueues[pThreadIdx];
 
   while (mState != TERMINATED) {
-    std::optional<StfMetaRdmaInfo> lStfMetaOpt = lStfMetaQueue->pop_wait_for(5ms);
+    std::optional<std::unique_ptr<StfMetaRdmaInfo>> lStfMetaOpt = lStfMetaQueue->pop_wait_for(5ms);
     if (!lStfMetaOpt) {
       while (ucp_worker_progress(lWorker.ucp_worker) > 0) { }
       continue;
     }
 
-    StfMetaRdmaInfo &lStfRdmaInfo = lStfMetaOpt.value();
-    const UCXIovStfHeader &lStfMeta = lStfRdmaInfo.mStfMeta;
+    std::unique_ptr<StfMetaRdmaInfo> &lStfRdmaInfo = lStfMetaOpt.value();
+    const UCXIovStfHeader &lStfMeta = lStfRdmaInfo->mStfMeta;
     const std::uint64_t lTfId = lStfMeta.stf_hdr_meta().stf_id();
     const std::uint64_t lStfSize = lStfMeta.stf_hdr_meta().stf_size();
     const std::string &lStfSenderId = lStfMeta.stf_sender_id();
-    const auto &lTxgPtrs = lStfRdmaInfo.mTxgPtrs;
+    const auto &lTxgPtrs = lStfRdmaInfo->mTxgPtrs;
 
     // Reference to the input channel
     TfBuilderUCXConnInfo *lConn = nullptr;
@@ -647,6 +810,20 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
           std::scoped_lock lRdmaSectionLock(sRdmaSectionMutex);
           lRunRdmaLoop();
         }
+
+        // deref the token cnt, and notify if done
+        if (mStfTokensEnabled) {
+          std::unique_lock lTokenLock(mStfTokenWaitingMutex);
+          assert (mTokenRefCnt > 0);
+          mTokenRefCnt -= 1;
+          if (mTokenRefCnt == 0) {
+            lLock.unlock();
+            mStfWaitingCv.notify_one();
+            ucx::io::TokenRequest::BitFieldIdxType lRelToken = lStfRdmaInfo->mStfSenderIdx + 1; // one based index
+            assert (lRelToken != ucx::io::TokenRequest::BitfieldInvalidIdx);
+            ucx::io::ucx_send_am_hdr(mTokenWorker->mWorker, mTokenWorker->ucp_ep, ucx::io::AM_TOKEN_REL, &lRelToken, sizeof (lRelToken));
+          }
+        }
       }
 
       // notify StfSender we completed (use mapped scratch memory)
@@ -658,7 +835,7 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
       }
     }
 
-    lStfRdmaInfo.mRdmaTimeMs = since<std::chrono::milliseconds>(lRmaGetStart);
+    lStfRdmaInfo->mRdmaTimeMs = since<std::chrono::milliseconds>(lRmaGetStart);
 
     // RDMA DONE: send to post-processing
     pushPostprocessMetadata(std::move(lStfRdmaInfo));
@@ -679,19 +856,19 @@ void TfBuilderInputUCX::StfPostprocessThread(const unsigned pThreadIdx)
 
   std::vector<std::pair<void*, std::size_t>> lDataMsgsBuffers;
 
-  std::optional<StfMetaRdmaInfo> lStfRdmaInfoOpt;
+  std::optional<std::unique_ptr<StfMetaRdmaInfo>> lStfRdmaInfoOpt;
   while ((lStfRdmaInfoOpt = mStfPostprocessQueue.pop()) != std::nullopt) {
 
-    StfMetaRdmaInfo lStfRdmaInfo = std::move(lStfRdmaInfoOpt.value());
-    UCXIovStfHeader &lStfMeta = lStfRdmaInfo.mStfMeta;
+    std::unique_ptr<StfMetaRdmaInfo> lStfRdmaInfo = std::move(lStfRdmaInfoOpt.value());
+    UCXIovStfHeader &lStfMeta = lStfRdmaInfo->mStfMeta;
     const std::uint64_t lTfId = lStfMeta.stf_hdr_meta().stf_id();
     const std::string &lStfSenderId = lStfMeta.stf_sender_id();
-    const auto &lTxgPtrs = lStfRdmaInfo.mTxgPtrs;
+    const auto &lTxgPtrs = lStfRdmaInfo->mTxgPtrs;
 
     auto lFmqPrepareStart = clock::now();
 
-    DDMON("tfbuilder", "recv.rma_get_total_ms", lStfRdmaInfo.mRdmaTimeMs);
-    DDMON_RATE("tfbuilder", "receive_time", (lStfRdmaInfo.mRdmaTimeMs / 1000.0));
+    DDMON("tfbuilder", "recv.rma_get_total_ms", lStfRdmaInfo->mRdmaTimeMs);
+    DDMON_RATE("tfbuilder", "receive_time", (lStfRdmaInfo->mRdmaTimeMs / 1000.0));
 
     // signal in flight STF is finished (or error)
     mRpc->recordStfReceived(lStfSenderId, lTfId);

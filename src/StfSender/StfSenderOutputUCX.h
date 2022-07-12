@@ -191,7 +191,7 @@ private:
 
   /// UCX objects
 
-  /// context and listener
+  /// context
   ucp_context_h ucp_context;
   boost::container::small_vector<ucx::dd_ucp_worker, 512> mDataWorkers;
 
