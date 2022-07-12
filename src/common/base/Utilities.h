@@ -255,6 +255,151 @@ private:
   }
 };
 
+// Compact, fixed-size, and efficient bitfield data type
+// Bit indexing is 1-based.
+template<unsigned NUM_TOKENS>
+struct TokenBitfield {
+  using TokenBitfieldElemType = unsigned long; // used for __builtin_* functions
+  using TokenBitfieldIndexType = std::size_t;
+
+  static const constexpr TokenBitfieldIndexType sInvalidIdx = TokenBitfieldIndexType(0);
+
+  static constexpr const unsigned NUM_ELEM_BITS = sizeof (TokenBitfieldElemType) * 8;
+  static constexpr const unsigned NUM_ELEMS = (NUM_TOKENS + NUM_ELEM_BITS - 1) / NUM_ELEM_BITS;
+  // typedef TokenBitfieldElemType TokenBitmap[NUM_ELEMS];
+
+  TokenBitfieldElemType mRequestTokenBitset[NUM_ELEMS];
+
+  TokenBitfield() {
+    for (unsigned i = 0; i < NUM_ELEMS; i++) {
+      mRequestTokenBitset[i] = 0;
+    }
+  }
+
+  TokenBitfield(const TokenBitfield &a) = default;
+
+  inline void set(TokenBitfieldIndexType idx) {
+    assert ((idx > 0) && (idx <= NUM_TOKENS));
+    idx -= 1;
+
+    const auto elem = idx / NUM_ELEM_BITS;
+    idx -= (elem * NUM_ELEM_BITS);
+
+    assert (idx < NUM_ELEM_BITS);
+
+    const auto mask = TokenBitfieldElemType(1) << (idx);
+    mRequestTokenBitset[elem] |= mask;
+  }
+
+  inline void set_all() {
+    for (unsigned i = 0; i < NUM_ELEMS; i++) {
+      mRequestTokenBitset[i] = ~TokenBitfieldElemType(0);
+    }
+  }
+
+  inline void clr(TokenBitfieldIndexType idx) {
+    assert ((idx > 0) && (idx <= NUM_TOKENS));
+    idx -= 1;
+
+    const auto elem = idx / NUM_ELEM_BITS;
+    idx -= (elem * NUM_ELEM_BITS);
+
+    assert (idx < NUM_ELEM_BITS);
+
+    const auto mask = ~(TokenBitfieldElemType(1) << idx);
+    mRequestTokenBitset[elem] &= mask;
+  }
+
+  inline bool get(TokenBitfieldIndexType idx) const {
+    assert ((idx > 0) && (idx <= NUM_TOKENS));
+    idx -= 1;
+
+    const auto elem = idx / NUM_ELEM_BITS;
+    idx -= (elem * NUM_ELEM_BITS);
+
+    assert (idx < NUM_ELEM_BITS);
+
+    const auto mask = TokenBitfieldElemType(1) << idx;
+    return (mRequestTokenBitset[elem] & mask);
+  }
+
+  inline TokenBitfieldIndexType popcnt() const {
+    TokenBitfieldIndexType lRet = 0;
+    for (unsigned i = 0; i < NUM_ELEMS; i++) {
+      lRet += __builtin_popcountl(mRequestTokenBitset[i]);
+    }
+    return lRet;
+  }
+
+  inline bool empty() const {
+    for (unsigned i = 0; i < NUM_ELEMS; i++) {
+      if (mRequestTokenBitset[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  inline constexpr TokenBitfieldIndexType max_cnt() const {
+    return NUM_ELEM_BITS*NUM_ELEMS;
+  }
+
+  inline TokenBitfieldIndexType first() const {
+    for (unsigned i = 0; i < NUM_ELEMS; i++) {
+      if (TokenBitfieldIndexType lRet = __builtin_ffsl(mRequestTokenBitset[i]); lRet) {
+        return ((i * NUM_ELEM_BITS) + lRet);
+      }
+    }
+    return sInvalidIdx;
+  }
+
+  inline TokenBitfieldIndexType random_idx(unsigned seed) const {
+
+    seed &= (~(unsigned(0xFF) << (sizeof (unsigned) * 8 - 8)));
+
+    for (unsigned i = seed; i < (seed + NUM_ELEMS); i++) {
+      const auto ei = (i % NUM_ELEMS);
+      if (auto lRet = __builtin_ffsl(mRequestTokenBitset[ei]); lRet) {
+        assert (this->get((ei * NUM_ELEM_BITS) + lRet) == true);
+        return ((ei * NUM_ELEM_BITS) + lRet);
+      }
+    }
+    return sInvalidIdx;
+  }
+
+  inline TokenBitfield& operator&=(const TokenBitfield& b) {
+    for (unsigned i = 0; i < NUM_ELEMS; i++) {
+      mRequestTokenBitset[i] &= b.mRequestTokenBitset[i];
+    }
+    return *this;
+  }
+
+  inline TokenBitfield& operator|=(const TokenBitfield& b) {
+    for (unsigned i = 0; i < NUM_ELEMS; i++) {
+      mRequestTokenBitset[i] |= b.mRequestTokenBitset[i];
+    }
+    return *this;
+  }
+
+  inline TokenBitfield operator~() const {
+    TokenBitfield lRet = *this;
+
+    for (unsigned i = 0; i < NUM_ELEMS; i++) {
+      lRet.mRequestTokenBitset[i] = ~(lRet.mRequestTokenBitset[i]);
+    }
+    return lRet;
+  }
+
+  inline operator bool() const {
+    for (unsigned i = 0; i < NUM_ELEMS; i++) {
+      if (mRequestTokenBitset[i]) {
+        return true;
+      }
+    }
+    return false;
+  }
+};
+
 } /* namespace o2::DataDistribution */
 
 #endif /* ALICEO2_DATADIST_UTILITIES_H_ */
