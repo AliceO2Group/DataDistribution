@@ -35,25 +35,7 @@ StfSenderDevice::StfSenderDevice()
 }
 
 StfSenderDevice::~StfSenderDevice()
-{
-  DDDLOG("StfBuilderDevice::Reset()");
-
-  I().mDeviceRunning = false;
-  // wait the Info thread, before closing mTfSchedulerRpcClient
-  if (I().mInfoThread.joinable()) {
-    I().mInfoThread.join();
-  }
-
-  // clear all Stfs from the pipeline before the transport is deleted
-  if (mI) {
-    I().stopPipeline();
-    I().clearPipeline();
-    mI.reset();
-  }
-
-  // stop monitoring
-  DataDistMonitor::stop_datadist();
-}
+{ }
 
 void StfSenderDevice::Init()
 {
@@ -114,6 +96,23 @@ void StfSenderDevice::Init()
 
 void StfSenderDevice::Reset()
 {
+  DDDLOG("StfBuilderDevice::Reset()");
+
+  I().mDeviceRunning = false;
+  // wait the Info thread, before closing mTfSchedulerRpcClient
+  if (I().mInfoThread.joinable()) {
+    I().mInfoThread.join();
+  }
+
+  // clear all Stfs from the pipeline before the transport is deleted
+  if (mI) {
+    I().stopPipeline();
+    I().clearPipeline();
+    mI.reset();
+  }
+
+  // stop monitoring
+  DataDistMonitor::stop_datadist();
 }
 
 void StfSenderDevice::InitTask()
@@ -229,16 +228,16 @@ void StfSenderDevice::PostRun()
 
 void StfSenderDevice::ResetTask()
 {
-  // Stop the pipeline
-  I().stopPipeline();
-  I().clearPipeline();
-
   I().mRunning = false;
+
+    // Stop the pipeline
+  I().stopPipeline();
 
   // stop the receiver thread
   if (I().mReceiverThread.joinable()) {
     I().mReceiverThread.join();
   }
+  I().clearPipeline();
 
   // stop file sink
   if (I().mFileSink->enabled()) {
