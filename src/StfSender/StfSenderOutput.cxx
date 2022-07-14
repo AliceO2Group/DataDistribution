@@ -65,16 +65,6 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
     // create UCX output
     mOutputUCX = std::make_unique<StfSenderOutputUCX>(pDiscoveryConfig, mCounters);
     mOutputUCX->start();
-    // register for region updates
-    mDevice.Transport()->SubscribeToRegionEvents([this](fair::mq::RegionInfo info) {
-      if (mOutputUCX) {
-        if (fair::mq::RegionEvent::created == info.event) {
-          mOutputUCX->registerSHMRegion(info.ptr, info.size, info.managed, info.flags);
-        } else if (fair::mq::RegionEvent::destroyed == info.event) {
-          DDDLOG("Region destroyed while running. size={} managed={}", info.size, info.managed);
-        }
-      }
-    });
   }
 
   // create stf drop thread
@@ -88,6 +78,23 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
 
   // create monitoring thread
   mMonitoringThread = create_thread_member("stfs_mon", &StfSenderOutput::StfMonitoringThread, this);
+}
+
+void StfSenderOutput::register_regions()
+{
+  // this must be called from InitTask()
+  if (mOutputUCX) {
+    // register for region updates
+    mDevice.Transport()->SubscribeToRegionEvents([this](fair::mq::RegionInfo info) {
+      if (mOutputUCX) {
+        if (fair::mq::RegionEvent::created == info.event) {
+          mOutputUCX->registerSHMRegion(info.ptr, info.size, info.managed, info.flags);
+        } else if (fair::mq::RegionEvent::destroyed == info.event) {
+          DDDLOG("Region destroyed while running. size={} managed={}", info.size, info.managed);
+        }
+      }
+    });
+  }
 }
 
 void StfSenderOutput::start_standalone(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
