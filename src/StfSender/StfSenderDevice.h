@@ -101,6 +101,7 @@ class StfSenderDevice : public DataDistDevice
     bool mRunning = false;
     bool mDeviceRunning = true;
     bool mAcceptingData = false;
+    std::uint64_t mLastStfId = 0;
     std::thread mReceiverThread;
 
     /// File sink

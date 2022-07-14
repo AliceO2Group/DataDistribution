@@ -206,6 +206,7 @@ void StfSenderDevice::PreRun()
 
   // start accepting data
   I().mAcceptingData = true;
+  I().mLastStfId = 0;
 
   IDDLOG("Entering running state. RunNumber: {}", DataDistLogger::sRunNumberStr);
 }
@@ -214,6 +215,7 @@ void StfSenderDevice::PostRun()
 {
   // stop accepting data
   I().mAcceptingData = false;
+  I().mLastStfId = ~uint64_t(0);
 
   // update running state
   if (!standalone() && I().mDiscoveryConfig) {
@@ -278,9 +280,16 @@ void StfSenderDevice::StfReceiverThread()
       continue;
     }
 
-    if (!acceptingData() || !lStf) {
+    if (!acceptingData()) {
       if (lStf) {
-        WDDLOG_RL(1000, "StfSender: received STF but not in the running state.");
+        WDDLOG_RL(2000, "StfSender: received STF but not in the running state.");
+      }
+      continue;
+    }
+
+    if (!lStf) { // we're running but there is no STFs incoming
+      if (I().mLastStfId != ~uint64_t(0)) {
+        DDMON("stfsender", "stf_input.id", I().mLastStfId);
       }
       continue;
     }
@@ -288,11 +297,13 @@ void StfSenderDevice::StfReceiverThread()
     DDDLOG_RL(2000, "StfReceiverThread:: SubTimeFrame stf_id={} size={} unique_equip={}",
       lStf->header().mId, lStf->getDataSize(), lStf->getEquipmentIdentifiers().size());
 
-    const auto lStfDelay = std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now()).time_since_epoch().count()/1000.0 -
-      lStf->header().mCreationTimeMs;
+    const auto lStfDelay = std::chrono::time_point_cast<std::chrono::microseconds>(
+      std::chrono::system_clock::now()).time_since_epoch().count()/1000.0 - lStf->header().mCreationTimeMs;
+
+    I().mLastStfId = lStf->id();
 
     DDMON_RATE("stfsender", "stf_input", lStf->getDataSize());
-    DDMON("stfsender", "stf_input.id", lStf->id());
+    DDMON("stfsender", "stf_input.id", I().mLastStfId);
     DDMON("stfsender", "stf_input.delay_ms", lStfDelay);
 
     if (lStfDelay > 500.0) {
