@@ -36,6 +36,23 @@ StfSenderDevice::StfSenderDevice()
 
 StfSenderDevice::~StfSenderDevice()
 {
+  DDDLOG("StfBuilderDevice::Reset()");
+
+  I().mDeviceRunning = false;
+  // wait the Info thread, before closing mTfSchedulerRpcClient
+  if (I().mInfoThread.joinable()) {
+    I().mInfoThread.join();
+  }
+
+  // clear all Stfs from the pipeline before the transport is deleted
+  if (mI) {
+    I().stopPipeline();
+    I().clearPipeline();
+    mI.reset();
+  }
+
+  // stop monitoring
+  DataDistMonitor::stop_datadist();
 }
 
 void StfSenderDevice::Init()
@@ -65,41 +82,6 @@ void StfSenderDevice::Init()
 
   // Info thread
   I().mInfoThread = create_thread_member("stfs_info", &StfSenderDevice::InfoThread, this);
-}
-
-void StfSenderDevice::Reset()
-{
-  DDDLOG("StfBuilderDevice::Reset()");
-
-  I().mDeviceRunning = false;
-  // wait the Info thread, before closing mTfSchedulerRpcClient
-  if (I().mInfoThread.joinable()) {
-    I().mInfoThread.join();
-  }
-
-  // clear all Stfs from the pipeline before the transport is deleted
-  if (mI) {
-    I().stopPipeline();
-    I().clearPipeline();
-    mI.reset();
-  }
-
-  // stop monitoring
-  DataDistMonitor::stop_datadist();
-}
-
-void StfSenderDevice::InitTask()
-{
-  DataDistLogger::SetThreadName("stfs-main");
-
-  // Not available in Init()
-  if (fair::mq::Transport::SHM != Transport()->GetType()) {
-    EDDLOG("Default transport parameter must be set to shm.");
-    ChangeState(fair::mq::Transition::ErrorFound);
-    return;
-  }
-
-  I().mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
 
   { // Discovery
     const bool lConsulRequired = !standalone();
@@ -115,6 +97,37 @@ void StfSenderDevice::InitTask()
       I().mDiscoveryConfig->write();
     }
   }
+
+  { // start the RPC server
+    if (!standalone()) {
+      // Start output handler
+      I().mOutputHandler->start(I().mDiscoveryConfig);
+
+      int lRpcRealPort = 0;
+      auto& lStatus = I().mDiscoveryConfig->status();
+      I().mRpcServer->start(I().mOutputHandler.get(), lStatus.info().ip_address(), lRpcRealPort);
+      lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
+      I().mDiscoveryConfig->write();
+    }
+  }
+}
+
+void StfSenderDevice::Reset()
+{
+}
+
+void StfSenderDevice::InitTask()
+{
+  DataDistLogger::SetThreadName("stfs-main");
+
+  // Not available in Init()
+  if (fair::mq::Transport::SHM != Transport()->GetType()) {
+    EDDLOG("Default transport parameter must be set to shm.");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
+  }
+
+  I().mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
 
   try {
     GetChannel(I().mInputChannelName, 0);
@@ -139,22 +152,15 @@ void StfSenderDevice::InitTask()
     I().mRunning = true;
 
     if (!standalone()) {
-      // Start output handler
-      I().mOutputHandler->start(I().mDiscoveryConfig);
-
-      // start the RPC server after output
-      int lRpcRealPort = 0;
-      auto& lStatus = I().mDiscoveryConfig->status();
-      I().mRpcServer->start(I().mOutputHandler.get(), lStatus.info().ip_address(), lRpcRealPort);
-      lStatus.set_rpc_endpoint(lStatus.info().ip_address() + ":" + std::to_string(lRpcRealPort));
-      I().mDiscoveryConfig->write();
+      // register shm regions for ucx. Must be done from InitTask()!
+      I().mOutputHandler->register_regions();
 
       // contact the scheduler on gRPC
       while (I().mTfSchedulerRpcClient.should_retry_start() && !I().mTfSchedulerRpcClient.start(I().mDiscoveryConfig)) {
         std::this_thread::sleep_for(150ms);
       }
 
-      // Did we failed to connect to the TfScheduler?
+      // Did we fail to connect to the TfScheduler?
       if (!I().mTfSchedulerRpcClient.should_retry_start()) {
         EDDLOG("InitTask: Failed to connect to TfScheduler. Exiting.");
         ChangeState(fair::mq::Transition::ErrorFound);

@@ -48,6 +48,7 @@ public:
   }
 
   void start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig);
+  void register_regions();
   void start_standalone(std::shared_ptr<ConsulStfSender> pDiscoveryConfig);
   void stop();
 
