@@ -152,7 +152,7 @@ public:
   // rpc TerminatePartition(PartitionInfo) returns (PartitionResponse) { }
   bool TerminatePartition(const PartitionInfo &pPartInfo) {
     ClientContext lContext;
-    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(500));
+    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(1000));
 
     PartitionResponse lRet;
     mStub->TerminatePartition(&lContext, pPartInfo, &lRet);
@@ -228,7 +228,7 @@ public:
 
       StfSenderConfigStatus lStfSenderStatus;
       if (! mDiscoveryConfig->getStfSenderConfig(lPartId, lStfSenderId, lStfSenderStatus /*out*/)) {
-        DDDLOG("Missing StfSender configuration. Connection will be retried. stfs_id={}", lStfSenderId);
+        DDDLOG_RL(2000, "Missing StfSender configuration. Connection will be retried. stfs_id={}", lStfSenderId);
         continue;
       }
 

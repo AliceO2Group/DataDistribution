@@ -224,7 +224,6 @@ void TfBuilderRpcImpl::UpdateSendingThread()
       sendTfBuilderUpdate();
       mUpdateCondition.wait_for(lLock, 500ms);
     } else {
-      stopAcceptingTfs();
       std::this_thread::sleep_for(1s);
     }
   }
