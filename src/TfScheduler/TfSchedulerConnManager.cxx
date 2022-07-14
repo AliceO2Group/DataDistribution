@@ -30,7 +30,7 @@ bool TfSchedulerConnManager::start()
 {
   using namespace std::chrono_literals;
 
-  while (!mStfSenderRpcClients.start()) {
+  if (!mStfSenderRpcClients.start()) {
     return false; // we'll be called back
   }
 
@@ -419,9 +419,8 @@ bool TfSchedulerConnManager::requestTfBuildersTerminate() {
   lPartInfo.set_partition_id(mPartitionInfo.mPartitionId);
 
   for (auto &lTfBuilder : mTfBuilderRpcClients) {
-    if (!lTfBuilder.second.mClient->TerminatePartition(lPartInfo)) {
-      lFailedRpcsForDeletion.push_back(lTfBuilder.first);
-    }
+    lTfBuilder.second.mClient->TerminatePartition(lPartInfo);
+    lFailedRpcsForDeletion.push_back(lTfBuilder.first);
   }
 
   for (const auto &lId : lFailedRpcsForDeletion) {
@@ -441,16 +440,15 @@ bool TfSchedulerConnManager::requestStfSendersTerminate() {
   lPartInfo.set_partition_id(mPartitionInfo.mPartitionId);
 
   for (auto &lStfSender : mStfSenderRpcClients) {
-    if (!lStfSender.second->TerminatePartition(lPartInfo)) {
-      lFailedRpcsForDeletion.push_back(lStfSender.first);
-    }
+    lStfSender.second->TerminatePartition(lPartInfo);
+    lFailedRpcsForDeletion.push_back(lStfSender.first);
   }
 
   for (const auto &lId : lFailedRpcsForDeletion) {
-    deleteTfBuilderRpcClient(lId);
+    mStfSenderRpcClients.remove(lId);
   }
 
-  return mTfBuilderRpcClients.size() == 0;
+  return true;
 }
 
 
@@ -553,7 +551,7 @@ void TfSchedulerConnManager::StfSenderMonitoringThread()
 
       WDDLOG_RL(1000, "Waiting for StfSenders. ready={} total={}", lNumStfSenders, mPartitionInfo.mStfSenderIdList.size());
       lSleep = 250ms;
-    } else {
+    } if ((lNumStfSenders == mPartitionInfo.mStfSenderIdList.size()) && mStfSenderRpcClients.started()) {
       mStfSenderState = STF_SENDER_STATE_OK;
     }
 

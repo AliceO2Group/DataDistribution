@@ -117,7 +117,7 @@ public:
   bool TerminatePartition(const PartitionInfo &pPartitionInfo) {
     ClientContext lContext;
     // we don't care about the success. TfBuilder will be terminated by ECS
-    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(500));
+    lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(1000));
 
     PartitionResponse lResponse;
     auto lStatus = mStub->TerminatePartition(&lContext, pPartitionInfo, &lResponse);
