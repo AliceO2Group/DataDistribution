@@ -209,7 +209,7 @@ public:
 
         default:
           if (StdoutEnabled(mSeverity)) {
-            I().info("[???] " + std::string(mLogMessage.begin(), mLogMessage.end()));
+            I().info(std::string(mLogMessage.begin(), mLogMessage.end()));
           }
           break;
       }
