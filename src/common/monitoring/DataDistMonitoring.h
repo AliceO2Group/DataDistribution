@@ -76,10 +76,23 @@ public:
     }
   }
   void set_active(bool pActive) { mActive = pActive; }
-  void set_interval(const unsigned pIntMs) { mMonitoringIntervalMs = pIntMs; }
+  void set_interval(const unsigned pIntMs) {
+    mMonitoringIntervalMs = pIntMs;
+    mMonitoringIntervalStepUs = std::max(250U, (unsigned)(500U * std::floor(mMonitoringIntervalMs / 2000.0))) * 1000U;
+  }
   void set_log(bool pLog) { mLogMetric = pLog; }
 
 private:
+
+inline
+auto roundTimeNow(std::chrono::system_clock::time_point pNowMs = std::chrono::system_clock::now()) const {
+
+  pNowMs = std::chrono::time_point_cast<std::chrono::microseconds>(pNowMs);
+  auto lNowSteps = (pNowMs.time_since_epoch() + std::chrono::microseconds(mMonitoringIntervalStepUs - 1)) / std::chrono::microseconds(mMonitoringIntervalStepUs);
+  auto lNowRounded = std::chrono::system_clock::time_point(lNowSteps *  std::chrono::microseconds(mMonitoringIntervalStepUs));
+
+  return lNowRounded;
+}
 
   std::mutex mMetricLock;
     std::map<std::string, DataDistMetric> mMetricMap;
@@ -108,6 +121,7 @@ private:
   // options
   std::string mUriList;
   unsigned mMonitoringIntervalMs = 1000;
+  std::uint64_t mMonitoringIntervalStepUs = 500000;
   bool mLogMetric = false;
 };
 

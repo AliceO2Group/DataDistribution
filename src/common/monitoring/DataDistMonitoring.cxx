@@ -182,7 +182,7 @@ void DataDistMonitoring::MonitorThread()
       const std::string &lMetricName = lRateMetricIter.first;
       const auto &lKeyAccMap = lRateMetricObj.mKeyValues;
 
-      o2::monitoring::Metric lMetric(lMetricName, Metric::DefaultVerbosity, std::chrono::system_clock::now());
+      o2::monitoring::Metric lMetric(lMetricName, Metric::DefaultVerbosity, roundTimeNow());
       for (auto &lKeyRateAccIter : lKeyAccMap) {
         const auto &lKey = lKeyRateAccIter.first;
         const auto &lAccValues = lKeyRateAccIter.second;
@@ -231,7 +231,7 @@ void DataDistMonitoring::MonitorThread()
       auto &lKeyValMaps = lMetricObj.mKeyValueVectors;
       const auto &lTimeStamp = lMetricObj.mTimestamp;
 
-      o2::monitoring::Metric lMetric(lMetricName, Metric::DefaultVerbosity, lTimeStamp);
+      o2::monitoring::Metric lMetric(lMetricName, Metric::DefaultVerbosity, roundTimeNow(lTimeStamp));
 
       for (auto &lKeyValsIter : lKeyValMaps) {
 
