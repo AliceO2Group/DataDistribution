@@ -228,7 +228,7 @@ public:
 
       StfSenderConfigStatus lStfSenderStatus;
       if (! mDiscoveryConfig->getStfSenderConfig(lPartId, lStfSenderId, lStfSenderStatus /*out*/)) {
-        DDDLOG_RL(2000, "Missing StfSender configuration. Connection will be retried. stfs_id={}", lStfSenderId);
+        IDDLOG_RL(10000, "Missing StfSender configuration. Connection will be retried. stfs_id={}", lStfSenderId);
         continue;
       }
 
