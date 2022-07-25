@@ -23,16 +23,18 @@ set(AliceO2_INCLUDE_DIRS ${AliceO2_INCLUDE_DIR})
 # find libraries
 find_library(AliceO2_LIBRARY_HEADERS NAMES O2Headers HINTS ${O2_ROOT}/lib ENV LD_LIBRARY_PATH)
 find_library(AliceO2_LIBRARY_FRAMEWORK NAMES O2Framework HINTS ${O2_ROOT}/lib ENV LD_LIBRARY_PATH)
+find_library(AliceO2_LIBRARY_DATAFORMAT NAMES O2DataFormatsParameters HINTS ${O2_ROOT}/lib ENV LD_LIBRARY_PATH)
 
 set(AliceO2_LIBRARIES
   ${AliceO2_LIBRARY_HEADERS}
   ${AliceO2_LIBRARY_FRAMEWORK}
+  ${AliceO2_LIBRARY_DATAFORMAT}
 )
 
 # handle the QUIETLY and REQUIRED arguments and set AliceO2_FOUND to TRUE
 # if all listed variables are TRUE
 find_package_handle_standard_args(AliceO2
-  REQUIRED_VARS AliceO2_LIBRARY_FRAMEWORK AliceO2_LIBRARY_HEADERS AliceO2_INCLUDE_DIR
+  REQUIRED_VARS AliceO2_LIBRARY_FRAMEWORK AliceO2_LIBRARY_HEADERS AliceO2_LIBRARY_DATAFORMAT AliceO2_INCLUDE_DIR
   FAIL_MESSAGE "AliceO2 could not be found. Install package AliceO2."
 )
 
@@ -42,19 +44,29 @@ if(${ALICEO2_FOUND})
     mark_as_advanced(AliceO2_INCLUDE_DIRS AliceO2_LIBRARIES)
 
     # add targets
-    if(NOT TARGET AliceO2::Framework)
-        add_library(AliceO2::Framework INTERFACE IMPORTED)
-        set_target_properties(AliceO2::Framework PROPERTIES
-          INTERFACE_INCLUDE_DIRECTORIES "${AliceO2_INCLUDE_DIRS}"
-          INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARY_FRAMEWORK}"
-        )
-    endif()
-
     if(NOT TARGET AliceO2::Headers)
         add_library(AliceO2::Headers INTERFACE IMPORTED)
         set_target_properties(AliceO2::Headers PROPERTIES
           INTERFACE_INCLUDE_DIRECTORIES "${AliceO2_INCLUDE_DIRS}"
           INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARY_HEADERS}"
+        )
+    endif()
+
+    # Following targets we treat as include only libraries to avoid inking against ROOT, GPU libs, etc...
+
+    if(NOT TARGET AliceO2::Framework)
+        add_library(AliceO2::Framework INTERFACE IMPORTED)
+        set_target_properties(AliceO2::Framework PROPERTIES
+          INTERFACE_INCLUDE_DIRECTORIES "${AliceO2_INCLUDE_DIRS}"
+          # INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARY_FRAMEWORK}"
+        )
+    endif()
+
+    if(NOT TARGET AliceO2::DataFormatsParameters)
+        add_library(AliceO2::DataFormatsParameters INTERFACE IMPORTED)
+        set_target_properties(AliceO2::DataFormatsParameters PROPERTIES
+          INTERFACE_INCLUDE_DIRECTORIES "${AliceO2_INCLUDE_DIRS}"
+          # INTERFACE_LINK_LIBRARIES "${AliceO2_LIBRARY_DATAFORMAT}"
         )
     endif()
 

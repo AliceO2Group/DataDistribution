@@ -41,4 +41,5 @@ target_link_libraries(common
     Boost::iostreams
     FairMQ::FairMQ
     AliceO2::Headers
+    AliceO2::DataFormatsParameters
 )

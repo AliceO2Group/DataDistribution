@@ -19,8 +19,11 @@
 
 #include <fairmq/ProgOptions.h>
 
+#include <DataFormatsParameters/ECSDataAdapters.h>
+
 #include <boost/asio/ip/host_name.hpp>
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/filesystem.hpp>
 
@@ -155,25 +158,27 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
 
     // Fetching required and optional configuration from ECS
     // "lhc_period" if empty, replace by the current month, eg, JAN
-    // "run_type" : raw or calib; NOTE: we are always 'raw'...
+    // "run_type" : use a method from o2 to convert AliECS properties to the file type, it should match the ctf
     // "detectors" list of detectors, optional
 
     EosMetadata lEosMetadata;
     lEosMetadata.mEosMetaDir = mEosMetaDir;
     lEosMetadata.mLhcPeriod = pFMQProgOpt.GetPropertyAsString("lhc_period", "");
-    lEosMetadata.mFileType = "raw"; /* pFMQProgOpt.GetPropertyAsString("run_type", ""); */
     lEosMetadata.mDetectorList = pFMQProgOpt.GetPropertyAsString("detectors", "");
+    lEosMetadata.mFileType = o2::parameters::GRPECS::getRawDataPersistencyMode(
+      pFMQProgOpt.GetPropertyAsString("run_type", "NONE"),
+      boost::iequals(pFMQProgOpt.GetPropertyAsString("force_run_as_raw", "false"), "true")
+    );
 
     if (lEosMetadata.mLhcPeriod.empty()) {
       lEosMetadata.mLhcPeriod = getDefaultLhcPeriod();
       WDDLOG("(Sub)TimeFrame file EPN2EOS metadata: lhc_period not set by ECS. Using default lhc_period={}", lEosMetadata.mLhcPeriod);
     }
 
-    // NOTE: we are always 'raw'...
-    // if (lEosMetadata.mFileType.empty()) {
-    //   lEosMetadata.mFileType = "raw";
-    //   WDDLOG("(Sub)TimeFrame file EPN2EOS metadata: run_type not set by ECS. Using default run_type={}", lEosMetadata.mFileType);
-    // }
+    if (lEosMetadata.mFileType.empty()) {
+      lEosMetadata.mFileType = "raw";
+      WDDLOG("(Sub)TimeFrame file EPN2EOS metadata: run_type not set by ECS. Using default run_type={}", lEosMetadata.mFileType);
+    }
 
     mEosMetadataOpt = std::move(lEosMetadata);
   }
