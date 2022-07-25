@@ -57,6 +57,9 @@ void TfBuilderDevice::Init()
   DataDistMonitor::start_datadist(o2::monitoring::tags::Value::TfBuilder, GetConfig()->GetProperty<std::string>("monitoring-backend"));
   DataDistMonitor::set_interval(GetConfig()->GetValue<float>("monitoring-interval"));
   DataDistMonitor::set_log(GetConfig()->GetValue<bool>("monitoring-log"));
+  if (auto lInterval = GetConfig()->GetValue<int>("monitoring-process-interval"); lInterval >= 0) {
+    DataDistMonitor::enable_process_monitoring(lInterval > 0 ? std::optional<unsigned>(lInterval) : std::nullopt);
+  }
   // enable monitoring
   DataDistMonitor::enable_datadist(0, mPartitionId);
 

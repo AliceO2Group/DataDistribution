@@ -75,6 +75,16 @@ public:
       mO2Monitoring->setRunNumber(pRunNum);
     }
   }
+  void enable_process_monitoring(const std::optional<unsigned> pIntervalSec) {
+    if (mO2Monitoring) {
+      if (pIntervalSec) {
+        mO2Monitoring->enableProcessMonitoring(pIntervalSec.value());
+      } else {
+        mO2Monitoring->enableProcessMonitoring();
+      }
+    }
+  }
+
   void set_active(bool pActive) { mActive = pActive; }
   void set_interval(const unsigned pIntMs) {
     mMonitoringIntervalMs = pIntMs;
@@ -165,6 +175,12 @@ public:
     }
   }
 
+  static void enable_process_monitoring(const std::optional<unsigned> pIntervalSec) {
+    if (mDataDistMon) {
+      mDataDistMon->enable_process_monitoring(pIntervalSec);
+    }
+  }
+
   static void set_log(bool pLog) {
     if (mDataDistMon) {
       mDataDistMon->set_log(pLog);
@@ -172,7 +188,6 @@ public:
   }
 
   static std::unique_ptr<DataDistMonitoring> mDataDistMon;
-  static std::unique_ptr<DataDistMonitoring> mSchedMon;
 
 public:
   // Monitoring Options
@@ -183,7 +198,8 @@ public:
     lMonitoringOpts.add_options()
       ("monitoring-backend", bpo::value<std::string>()->default_value(""), "Monitoring url.")
       ("monitoring-interval", bpo::value<float>()->default_value(2.0), "Monitoring metric interval (seconds).")
-      ("monitoring-log", bpo::bool_switch()->default_value(false), "Log Monitoring metric.");
+      ("monitoring-log", bpo::bool_switch()->default_value(false), "Log Monitoring metric.")
+      ("monitoring-process-interval", bpo::value<int>()->default_value(-1), "Interval for sending process metric (CPU, memory) (seconds, 0=default monitoring interval).");
 
     return lMonitoringOpts;
   };
