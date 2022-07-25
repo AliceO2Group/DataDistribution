@@ -288,7 +288,6 @@ void DataDistMonitoring::MonitorThread()
 
 
 std::unique_ptr<DataDistMonitoring> DataDistMonitor::mDataDistMon = nullptr;
-std::unique_ptr<DataDistMonitoring> DataDistMonitor::mSchedMon = nullptr;
 
 void DataDistMonitor::start_datadist(const o2::monitoring::tags::Value pProc, const std::string &pDatadistUris)
 {
@@ -297,17 +296,6 @@ void DataDistMonitor::start_datadist(const o2::monitoring::tags::Value pProc, co
 void DataDistMonitor::stop_datadist()
 {
   mDataDistMon = nullptr;
-}
-
-void DataDistMonitor::start_scheduling(const o2::monitoring::tags::Value pProc, const std::string &pSchedulingUris)
-{
-  if (!pSchedulingUris.empty()) {
-    mSchedMon = std::make_unique<DataDistMonitoring>(pProc, pSchedulingUris);
-  }
-}
-void DataDistMonitor::stop_scheduling()
-{
-  mSchedMon = nullptr;
 }
 
 } /* namespace o2::DataDistribution */
