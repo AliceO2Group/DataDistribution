@@ -209,10 +209,10 @@ void TfSchedulerTokenManager::TokenManagerThread()
     // Refill all locks on a timer to prevent missing locks from failed TfBuilders
     if ((clock::now() - lRefillTime) >= mTokenResetTimeoutMs) {
       DDMON("tfscheduler", "tokens.used", (mTokens.max_cnt() - mTokens.popcnt()));
-      DDMON("tfscheduler", "tokens.loops_ps", (lSpinCounter / (1000.0 / mTokenResetTimeoutMs.count())));
+      DDMON("tfscheduler", "tokens.loops_ps", (lSpinCounter / (mTokenResetTimeoutMs.count() / 1000.0)));
 
-      DDMON("tfscheduler", "tokens.req_success", lReqSuccess / (1000.0 / mTokenResetTimeoutMs.count()));
-      DDMON("tfscheduler", "tokens.req_failed", lReqFailed / (1000.0 / mTokenResetTimeoutMs.count()));
+      DDMON("tfscheduler", "tokens.req_success", lReqSuccess / (mTokenResetTimeoutMs.count() / 1000.0));
+      DDMON("tfscheduler", "tokens.req_failed", lReqFailed / (mTokenResetTimeoutMs.count() / 1000.0));
 
       mTokens.set_all();
       lRefillTime = clock::now();

@@ -22,6 +22,9 @@ using namespace o2::DataDistribution;
 
 BOOST_AUTO_TEST_CASE(GetNextSeqNameTest)
 {
+
+  std::cout << sizeof (TokenBitfield<220>) << " " << sizeof (TokenBitfield<256>) << std::endl;
+
   {
     TokenBitfield<220> lField1;
     TokenBitfield<220> lField2;
@@ -42,23 +45,24 @@ BOOST_AUTO_TEST_CASE(GetNextSeqNameTest)
   }
 
   {
-    TokenBitfield<56> lField1;
-    TokenBitfield<56> lField2;
+    TokenBitfield<256> lField1;
+    TokenBitfield<256> lField2;
 
+    lField1.set(73);
     lField1.set(53);
 
     lField2.set(23);
-    lField2.set(53);
+    lField2.set(73);
     lField2 &= lField1;
-    BOOST_CHECK(lField2.first() == 53);
-    BOOST_CHECK(lField2.random_idx(0) == 53);
-    BOOST_CHECK(lField2.random_idx(1) == 53);
-    BOOST_CHECK(lField2.random_idx(2) == 53);
-    BOOST_CHECK(lField2.random_idx(3) == 53);
-    BOOST_CHECK(lField2.random_idx(4) == 53);
-    BOOST_CHECK(lField2.random_idx(5) == 53);
+    BOOST_CHECK(lField2.first() == 73);
+    BOOST_CHECK(lField2.random_idx(0) == 73);
+    BOOST_CHECK(lField2.random_idx(1) == 73);
+    BOOST_CHECK(lField2.random_idx(2) == 73);
+    BOOST_CHECK(lField2.random_idx(3) == 73);
+    BOOST_CHECK(lField2.random_idx(443) == 73);
+    BOOST_CHECK(lField2.random_idx(2222) == 73);
 
-    lField2.clr(53);
+    lField2.clr(73);
     BOOST_CHECK(lField2.empty());
   }
 
