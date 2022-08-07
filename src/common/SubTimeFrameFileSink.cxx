@@ -86,8 +86,8 @@ bpo::options_description SubTimeFrameFileSink::getProgramOptions()
     bpo::value<std::uint64_t>()->default_value(1),
     "Specifies number of (Sub)TimeFrames per file. Default: 1")(
     OptionKeyStfSinkStfPercent,
-    bpo::value<unsigned>()->default_value(100),
-    "Specifies probabilistic acceptance percentage for saving of each (Sub)TimeFrames, between 0 to 100. Default: 100")(
+    bpo::value<double>()->default_value(100.0),
+    "Specifies probabilistic acceptance percentage for saving of each (Sub)TimeFrames, between 0.0 and 100. Default: 100.0")(
     OptionKeyStfSinkFileSize,
     bpo::value<std::uint64_t>()->default_value(std::uint64_t(4) << 10), /* 4GiB */
     "Specifies target size for (Sub)TimeFrame files in MiB.")(
@@ -126,10 +126,17 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   mFileNamePattern = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSinkFileName);
   mStfsPerFile = pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSinkStfsPerFile);
   mFileSize = std::max(std::uint64_t(1), pFMQProgOpt.GetValue<std::uint64_t>(OptionKeyStfSinkFileSize));
-  mPercentage = std::clamp(pFMQProgOpt.GetValue<unsigned>(OptionKeyStfSinkStfPercent), 0U, 100U);
+  mPercentageToSave = std::clamp(pFMQProgOpt.GetValue<double>(OptionKeyStfSinkStfPercent), 0.0, 100.0);
   mFileSize <<= 20; /* in MiB */
   mSidecar = pFMQProgOpt.GetValue<bool>(OptionKeyStfSinkSidecar);
   mEosMetaDir = pFMQProgOpt.GetValue<std::string>(OptionKeyStfSinkEpn2EosMetaDir);
+
+  // Check if save percentage is zero
+  if (mPercentageToSave < std::numeric_limits<double>::epsilon()) {
+    IDDLOG("(Sub)TimeFrame file sink disabled due to low save percentage. {}", mPercentageToSave);
+    mEnabled = false;
+    return true;
+  }
 
   // make sure directory exists and it is writable
   namespace bfs = boost::filesystem;
@@ -190,7 +197,7 @@ bool SubTimeFrameFileSink::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt
   IDDLOG("(Sub)TimeFrame Sink :: root dir         = {}", mRootDir);
   IDDLOG("(Sub)TimeFrame Sink :: file pattern     = {}", mFileNamePattern);
   IDDLOG("(Sub)TimeFrame Sink :: stfs per file    = {}", (mStfsPerFile > 0 ? std::to_string(mStfsPerFile) : "unlimited" ));
-  IDDLOG("(Sub)TimeFrame Sink :: stfs percentage  = {}", (mPercentage));
+  IDDLOG("(Sub)TimeFrame Sink :: stfs percentage  = {:.4}", (mPercentageToSave));
   IDDLOG("(Sub)TimeFrame Sink :: max file size    = {}", mFileSize);
   IDDLOG("(Sub)TimeFrame Sink :: sidecar files    = {}", (mSidecar ? "yes" : "no"));
   IDDLOG("(Sub)TimeFrame Sink :: epn2eos meta dir = {}", mEosMetaDir);
@@ -281,8 +288,9 @@ std::string SubTimeFrameFileSink::newStfFileName(const std::uint64_t pStfId) con
 void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
 {
   using namespace std::chrono_literals;
-  std::default_random_engine lGen;
-  std::uniform_int_distribution<unsigned> lUniformDist(0, 99);
+  std::hash<std::thread::id> lSeedHasher;
+  std::default_random_engine lGen(lSeedHasher(std::this_thread::get_id()) * getpid());
+  std::uniform_real_distribution<double> lUniformDist(0, 100.0);
   std::uint64_t lAcceptedStfs = 0;
   std::uint64_t lTotalStfs = 0;
 
@@ -311,11 +319,11 @@ void SubTimeFrameFileSink::DataHandlerThread(const unsigned pIdx)
     lTotalStfs += 1;
 
     if (mEnabled && !mReady) {
-      EDDLOG_RL(5000, "SubTimeFrameFileSink is not ready! Missed the RUN transation?");
+      EDDLOG_RL(5000, "SubTimeFrameFileSink is not ready! Missed the RUN transition?");
     }
 
     // apply rejection rules
-    bool lStfAccepted = (lUniformDist(lGen) < mPercentage) ? true : false;
+    bool lStfAccepted = (lUniformDist(lGen) <= mPercentageToSave) ? true : false;
 
     if (mEnabled && mReady && lStfAccepted) {
       do {

@@ -101,7 +101,7 @@ class SubTimeFrameFileSink
   std::string mCurrentDir;
   std::string mFileNamePattern;
   std::uint64_t mStfsPerFile;
-  unsigned mPercentage = 100;
+  double mPercentageToSave = 100.0;
   std::uint64_t mFileSize;
   bool mSidecar = false;
   std::string mEosMetaDir;
