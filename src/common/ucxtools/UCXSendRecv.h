@@ -43,7 +43,7 @@ static constexpr unsigned AM_TOKEN_REP = 202;
 
 struct TokenRequest {
 
-  using Bitfield = TokenBitfield<220>;
+  using Bitfield = TokenBitfield<256>;
   using BitFieldIdxType = Bitfield::TokenBitfieldIndexType;
   static const constexpr auto BitfieldInvalidIdx = Bitfield::sInvalidIdx;
 

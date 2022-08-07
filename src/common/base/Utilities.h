@@ -282,6 +282,8 @@ struct TokenBitfield {
     assert ((idx > 0) && (idx <= NUM_TOKENS));
     idx -= 1;
 
+    idx = idx % NUM_TOKENS; // make sure index can wrap
+
     const auto elem = idx / NUM_ELEM_BITS;
     idx -= (elem * NUM_ELEM_BITS);
 
@@ -301,6 +303,8 @@ struct TokenBitfield {
     assert ((idx > 0) && (idx <= NUM_TOKENS));
     idx -= 1;
 
+    idx = idx % NUM_TOKENS; // make sure index can wrap
+
     const auto elem = idx / NUM_ELEM_BITS;
     idx -= (elem * NUM_ELEM_BITS);
 
@@ -313,6 +317,8 @@ struct TokenBitfield {
   inline bool get(TokenBitfieldIndexType idx) const {
     assert ((idx > 0) && (idx <= NUM_TOKENS));
     idx -= 1;
+
+    idx = idx % NUM_TOKENS; // make sure index can wrap
 
     const auto elem = idx / NUM_ELEM_BITS;
     idx -= (elem * NUM_ELEM_BITS);
@@ -353,17 +359,22 @@ struct TokenBitfield {
     return sInvalidIdx;
   }
 
-  inline TokenBitfieldIndexType random_idx(unsigned seed) const {
+  inline TokenBitfieldIndexType random_idx(TokenBitfieldIndexType seed) const {
+    seed = (seed ^ 0x4a981d8f) % NUM_TOKENS; // make sure index can wrap
 
-    seed &= (~(unsigned(0xFF) << (sizeof (unsigned) * 8 - 8)));
-
-    for (unsigned i = seed; i < (seed + NUM_ELEMS); i++) {
-      const auto ei = (i % NUM_ELEMS);
-      if (auto lRet = __builtin_ffsl(mRequestTokenBitset[ei]); lRet) {
-        assert (this->get((ei * NUM_ELEM_BITS) + lRet) == true);
-        return ((ei * NUM_ELEM_BITS) + lRet);
+    for (TokenBitfieldIndexType i = 0; i < NUM_TOKENS; i++) {
+      if (mRequestTokenBitset[(seed % NUM_TOKENS) / NUM_ELEM_BITS] == 0) {
+        // jump to the next element
+        seed += NUM_ELEM_BITS;
+        continue;
       }
+
+      if (get(seed)) {
+        return (seed % NUM_TOKENS);
+      }
+      seed++;
     }
+
     return sInvalidIdx;
   }
 
