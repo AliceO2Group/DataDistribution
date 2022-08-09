@@ -359,23 +359,26 @@ struct TokenBitfield {
     return sInvalidIdx;
   }
 
-  inline TokenBitfieldIndexType random_idx(TokenBitfieldIndexType seed) const {
-    seed = (seed ^ 0x4a981d8f) % NUM_TOKENS; // make sure index can wrap
+  inline TokenBitfieldIndexType random_idx() const {
 
-    for (TokenBitfieldIndexType i = 0; i < NUM_TOKENS; i++) {
-      if (mRequestTokenBitset[(seed % NUM_TOKENS) / NUM_ELEM_BITS] == 0) {
-        // jump to the next element
-        seed += NUM_ELEM_BITS;
-        continue;
-      }
+    TokenBitfieldIndexType idx = (rand() % NUM_TOKENS) + 1; // make sure index can wrap
 
-      if (get(seed)) {
-        return (seed % NUM_TOKENS);
+    int idxcnt = 0;
+    TokenBitfieldIndexType idxarr[4] = { 0 };
+
+    for (TokenBitfieldIndexType i = 0; i < NUM_TOKENS; i++, idx = (idx % NUM_TOKENS) + 1) {
+      assert (idx > 0);
+      assert (idx <= NUM_TOKENS);
+      if (get(idx)) {
+        idxarr[idxcnt++] = idx;
+
+        if (idxcnt == 4) {
+          break;
+        }
       }
-      seed++;
     }
 
-    return sInvalidIdx;
+    return (idxcnt == 0) ? sInvalidIdx : idxarr[rand() % idxcnt];
   }
 
   inline TokenBitfield& operator&=(const TokenBitfield& b) {

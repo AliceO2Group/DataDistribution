@@ -182,7 +182,6 @@ bool TfSchedulerTokenManager::connectTfBuilder(const std::string &pTfBuilderId, 
 
 void TfSchedulerTokenManager::TokenManagerThread()
 {
-  static unsigned sRandomSeed = 0;
   std::uint64_t lSpinCounter = 0;
   std::uint64_t lNumReqSinceReset = 1000; // prevent throttling on init
 
@@ -229,7 +228,7 @@ void TfSchedulerTokenManager::TokenManagerThread()
 
     const bool lHaveReq = mTokenRequestQueue.consume_one([&](TokenRequestInfo &lReqInfo) {
         lReqInfo.mRequest.mTokensRequested &= mTokens;
-        lReplyTokenIdx = lReqInfo.mRequest.mTokensRequested.random_idx(sRandomSeed++);
+        lReplyTokenIdx = lReqInfo.mRequest.mTokensRequested.random_idx();
         assert ((lReplyTokenIdx == 0) || (lReplyTokenIdx && (lReqInfo.mRequest.mTokensRequested.get(lReplyTokenIdx) == true)));
         lReplyEp = lReqInfo.mReplyEp;
     });
