@@ -48,22 +48,48 @@ BOOST_AUTO_TEST_CASE(GetNextSeqNameTest)
     TokenBitfield<256> lField1;
     TokenBitfield<256> lField2;
 
-    lField1.set(73);
     lField1.set(53);
+    lField1.set(73);
+    lField1.set(196);
+    lField1.set(197);
+    lField1.set(198);
+    lField1.set(199);
+    lField1.set(200);
+    lField1.set(201);
+    lField1.set(202);
 
     lField2.set(23);
     lField2.set(73);
-    lField2 &= lField1;
-    BOOST_CHECK(lField2.first() == 73);
-    BOOST_CHECK(lField2.random_idx(0) == 73);
-    BOOST_CHECK(lField2.random_idx(1) == 73);
-    BOOST_CHECK(lField2.random_idx(2) == 73);
-    BOOST_CHECK(lField2.random_idx(3) == 73);
-    BOOST_CHECK(lField2.random_idx(443) == 73);
-    BOOST_CHECK(lField2.random_idx(2222) == 73);
+    lField2.set(196);
+    lField2.set(197);
+    lField2.set(198);
+    lField2.set(199);
+    lField2.set(200);
+    lField2.set(201);
+    lField2.set(202);
 
-    lField2.clr(73);
-    BOOST_CHECK(lField2.empty());
+    lField2 &= lField1;
+
+    // lField2.set_all();
+
+    int hist[256] = { 0 };
+
+    BOOST_CHECK(lField2.get(73));
+
+
+
+    for (int i = 0; i < 100000; i ++) {
+      hist[lField2.random_idx() - 1] += 1;
+    }
+
+
+    for (int i = 0; i < 256; i ++) {
+      if (hist[i]) {
+        std::cout << "hist[" << i << "] = " << hist[i] << std::endl;
+      }
+    }
+
+    BOOST_CHECK(true);
   }
 
 
