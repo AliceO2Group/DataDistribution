@@ -75,10 +75,10 @@ class TfSchedulerTokenManager
   bool start();
   void stop();
 
-
   bool connectTfBuilder(const std::string &pTfBuilderId, const std::string &lTfBuilderIp, const unsigned lTfBuilderPort);
 
   void TokenManagerThread();
+  void TokenHousekeepingThread();
 
  private:
   /// Discovery configuration
@@ -87,7 +87,10 @@ class TfSchedulerTokenManager
   /// Scheduler threads
   std::atomic_bool mRunning = false;
   std::chrono::milliseconds mTokenResetTimeoutMs = std::chrono::milliseconds(TokenResetTimeoutMsDefault);
+  std::atomic_uint mTokensPerStfSenderCnt = TokensPerStfSenderCntDefault;
+  std::atomic_bool mUpdateConfig = true;
   std::thread mTokenThread;
+  std::thread mHousekeeperThread;
 
   /// UCX connection
   ucp_context_h ucp_context;
@@ -96,7 +99,6 @@ class TfSchedulerTokenManager
   std::shared_mutex mOutputMapLock;
     std::unordered_map<std::string, std::unique_ptr<TfBuilderUCXConnInfo>> mOutputMap;
 
-
 public:
   // token management
   alignas(256)
@@ -104,6 +106,15 @@ public:
   boost::lockfree::queue<TokenRequestInfo, boost::lockfree::capacity<512> > mTokenRequestQueue;
   alignas(256)
   ucx::io::TokenRequest::Bitfield mTokens;
+  unsigned mTokensPerStfSender[ucx::io::TokenRequest::Bitfield::size()];
+
+  // token management
+  alignas(256)
+  std::atomic_uint64_t mSpinCounter = 0;
+  std::atomic_uint64_t mNumReqSinceReset = 1000; // prevent throttling on init
+  std::atomic_uint64_t mReqSuccess = 0;
+  std::atomic_uint64_t mReqFailed = 0;
+
 };
 
 } /* namespace o2::DataDistribution */

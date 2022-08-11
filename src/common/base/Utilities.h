@@ -262,11 +262,9 @@ struct TokenBitfield {
   using TokenBitfieldElemType = unsigned long; // used for __builtin_* functions
   using TokenBitfieldIndexType = std::size_t;
 
-  static const constexpr TokenBitfieldIndexType sInvalidIdx = TokenBitfieldIndexType(0);
-
+  static constexpr TokenBitfieldIndexType sInvalidIdx = TokenBitfieldIndexType(0);
   static constexpr const unsigned NUM_ELEM_BITS = sizeof (TokenBitfieldElemType) * 8;
   static constexpr const unsigned NUM_ELEMS = (NUM_TOKENS + NUM_ELEM_BITS - 1) / NUM_ELEM_BITS;
-  // typedef TokenBitfieldElemType TokenBitmap[NUM_ELEMS];
 
   TokenBitfieldElemType mRequestTokenBitset[NUM_ELEMS];
 
@@ -282,10 +280,8 @@ struct TokenBitfield {
     assert ((idx > 0) && (idx <= NUM_TOKENS));
     idx -= 1;
 
-    idx = idx % NUM_TOKENS; // make sure index can wrap
-
     const auto elem = idx / NUM_ELEM_BITS;
-    idx -= (elem * NUM_ELEM_BITS);
+    idx = idx % NUM_ELEM_BITS;
 
     assert (idx < NUM_ELEM_BITS);
 
@@ -303,10 +299,8 @@ struct TokenBitfield {
     assert ((idx > 0) && (idx <= NUM_TOKENS));
     idx -= 1;
 
-    idx = idx % NUM_TOKENS; // make sure index can wrap
-
     const auto elem = idx / NUM_ELEM_BITS;
-    idx -= (elem * NUM_ELEM_BITS);
+    idx = idx % NUM_ELEM_BITS;
 
     assert (idx < NUM_ELEM_BITS);
 
@@ -318,10 +312,8 @@ struct TokenBitfield {
     assert ((idx > 0) && (idx <= NUM_TOKENS));
     idx -= 1;
 
-    idx = idx % NUM_TOKENS; // make sure index can wrap
-
     const auto elem = idx / NUM_ELEM_BITS;
-    idx -= (elem * NUM_ELEM_BITS);
+    idx = idx % NUM_ELEM_BITS;
 
     assert (idx < NUM_ELEM_BITS);
 
@@ -346,8 +338,8 @@ struct TokenBitfield {
     return true;
   }
 
-  inline constexpr TokenBitfieldIndexType max_cnt() const {
-    return NUM_ELEM_BITS*NUM_ELEMS;
+  inline constexpr static std::size_t size() {
+    return NUM_TOKENS;
   }
 
   inline TokenBitfieldIndexType first() const {
@@ -360,25 +352,16 @@ struct TokenBitfield {
   }
 
   inline TokenBitfieldIndexType random_idx() const {
+    std::uint8_t lIdxes[NUM_TOKENS] = { 0 };
+    std::size_t lIdxCnt = 0;
 
-    TokenBitfieldIndexType idx = (rand() % NUM_TOKENS) + 1; // make sure index can wrap
-
-    int idxcnt = 0;
-    TokenBitfieldIndexType idxarr[4] = { 0 };
-
-    for (TokenBitfieldIndexType i = 0; i < NUM_TOKENS; i++, idx = (idx % NUM_TOKENS) + 1) {
-      assert (idx > 0);
-      assert (idx <= NUM_TOKENS);
-      if (get(idx)) {
-        idxarr[idxcnt++] = idx;
-
-        if (idxcnt == 4) {
-          break;
-        }
+    for (TokenBitfieldIndexType i = 1; i <= NUM_TOKENS; i++) {
+      if (get(i)) {
+        lIdxes[lIdxCnt++] = i;
       }
     }
 
-    return (idxcnt == 0) ? sInvalidIdx : idxarr[rand() % idxcnt];
+    return (lIdxCnt == 0) ? sInvalidIdx : lIdxes[rand() % lIdxCnt];
   }
 
   inline TokenBitfield& operator&=(const TokenBitfield& b) {
