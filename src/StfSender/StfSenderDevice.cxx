@@ -106,6 +106,12 @@ void StfSenderDevice::Reset()
   if (I().mInfoThread.joinable()) {
     I().mInfoThread.join();
   }
+  if (I().mReceiverThread.joinable()) {
+    I().mReceiverThread.join();
+  }
+
+  // stop monitoring
+  DataDistMonitor::stop_datadist();
 
   // clear all Stfs from the pipeline before the transport is deleted
   if (mI) {
@@ -113,9 +119,6 @@ void StfSenderDevice::Reset()
     I().clearPipeline();
     mI.reset();
   }
-
-  // stop monitoring
-  DataDistMonitor::stop_datadist();
 }
 
 void StfSenderDevice::InitTask()
@@ -247,14 +250,16 @@ void StfSenderDevice::ResetTask()
     I().mFileSink->stop();
   }
 
+  // Stop output handler
+  if (I().mOutputHandler) {
+    I().mOutputHandler->stop();
+  }
+
   if (!standalone()) {
     // Stop the RPC server after output
     I().mRpcServer->stop();
 
-    // Stop output handler
-    I().mOutputHandler->stop();
-
-    // Stop the Scheduler RPC client
+     // Stop the Scheduler RPC client
     I().mTfSchedulerRpcClient.stop();
   }
 

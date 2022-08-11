@@ -23,9 +23,7 @@
 #include <Headers/DataHeader.h>
 #include <SubTimeFrameDataModel.h>
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -177,7 +175,6 @@ struct SubTimeFrameFileDataIndex {
 };
 
 std::ostream& operator<<(std::ostream& pStream, const SubTimeFrameFileDataIndex& pIndex);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// EosMetadata
