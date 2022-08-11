@@ -91,6 +91,8 @@ bool TfSchedulerTokenManager::start()
 {
   mTokenResetTimeoutMs = std::chrono::milliseconds(mDiscoveryConfig->getUInt64Param(TokenResetTimeoutMsKey,
     TokenResetTimeoutMsDefault));
+  mTokensPerStfSenderCnt = std::max(std::uint64_t(1), mDiscoveryConfig->getUInt64Param(TokensPerStfSenderCntKey,
+    TokensPerStfSenderCntDefault));
 
   // Create the UCX context
   if (!ucx::util::create_ucp_context(&ucp_context)) {
@@ -114,6 +116,7 @@ bool TfSchedulerTokenManager::start()
 
   mRunning = true;
   mTokenThread = create_thread_member("nft_maker", &TfSchedulerTokenManager::TokenManagerThread, this);
+  mHousekeeperThread = create_thread_member("nft_housekeeping", &TfSchedulerTokenManager::TokenHousekeepingThread, this);
 
   // add all tokens
   mTokens.set_all();
@@ -128,6 +131,10 @@ void TfSchedulerTokenManager::stop()
 
   if (mTokenThread.joinable()) {
     mTokenThread.join();
+  }
+
+  if (mHousekeeperThread.joinable()) {
+    mHousekeeperThread.join();
   }
 
   DDDLOG("Stopped: TfSchedulerTokenManager");
@@ -182,44 +189,33 @@ bool TfSchedulerTokenManager::connectTfBuilder(const std::string &pTfBuilderId, 
 
 void TfSchedulerTokenManager::TokenManagerThread()
 {
-  std::uint64_t lSpinCounter = 0;
-  std::uint64_t lNumReqSinceReset = 1000; // prevent throttling on init
-
-  std::uint64_t lReqSuccess = 0;
-  std::uint64_t lReqFailed = 0;
-
   using clock = std::chrono::high_resolution_clock;
   clock::time_point lRefillTime = clock::now();
 
   while (mRunning) {
-    lSpinCounter += 1;
+    mSpinCounter += 1;
+
+    // Update config if consul value changed
+    if (mUpdateConfig) {
+      for (std::size_t i = 0; i < ucx::io::TokenRequest::Bitfield::size(); i++) {
+        mTokensPerStfSender[i] = mTokensPerStfSenderCnt;
+      }
+      mTokens.set_all();
+      mUpdateConfig = false;
+    }
 
     // free all released locks
     mReleasedTokens.consume_all_atomic([&](const std::uint16_t idx) {
       mTokens.set(idx);
+      mTokensPerStfSender[idx-1] = std::min(mTokensPerStfSenderCnt.load(), mTokensPerStfSender[idx-1] + 1);
       assert (mTokens.get(idx) == true);
     });
 
-    // prevent burning CPU time when not active
-    if (lNumReqSinceReset == 0) {
-      std::this_thread::sleep_for(5ms);
-    }
-
     // Refill all locks on a timer to prevent missing locks from failed TfBuilders
     if ((clock::now() - lRefillTime) >= mTokenResetTimeoutMs) {
-      DDMON("tfscheduler", "tokens.used", (mTokens.max_cnt() - mTokens.popcnt()));
-      DDMON("tfscheduler", "tokens.loops_ps", (lSpinCounter / (mTokenResetTimeoutMs.count() / 1000.0)));
-
-      DDMON("tfscheduler", "tokens.req_success", lReqSuccess / (mTokenResetTimeoutMs.count() / 1000.0));
-      DDMON("tfscheduler", "tokens.req_failed", lReqFailed / (mTokenResetTimeoutMs.count() / 1000.0));
-
+      DDMON("tfscheduler", "tokens.used", (mTokens.size() - mTokens.popcnt()));
       mTokens.set_all();
       lRefillTime = clock::now();
-      lSpinCounter = 0;
-      lNumReqSinceReset /= 2; // throttle down the CPU usage when there is no requests
-
-      lReqSuccess = 0;
-      lReqFailed = 0;
     }
 
     // see if there are any requests
@@ -227,29 +223,73 @@ void TfSchedulerTokenManager::TokenManagerThread()
     ucp_ep_h lReplyEp;
 
     const bool lHaveReq = mTokenRequestQueue.consume_one([&](TokenRequestInfo &lReqInfo) {
-        lReqInfo.mRequest.mTokensRequested &= mTokens;
-        lReplyTokenIdx = lReqInfo.mRequest.mTokensRequested.random_idx();
-        assert ((lReplyTokenIdx == 0) || (lReplyTokenIdx && (lReqInfo.mRequest.mTokensRequested.get(lReplyTokenIdx) == true)));
-        lReplyEp = lReqInfo.mReplyEp;
+      lReqInfo.mRequest.mTokensRequested &= mTokens;
+      lReplyTokenIdx = lReqInfo.mRequest.mTokensRequested.random_idx();
+      assert ((lReplyTokenIdx == 0) || (lReplyTokenIdx && (lReqInfo.mRequest.mTokensRequested.get(lReplyTokenIdx) == true)));
+      lReplyEp = lReqInfo.mReplyEp;
     });
 
     if (lHaveReq) {
       if (lReplyTokenIdx != ucx::io::TokenRequest::BitfieldInvalidIdx) {
         assert (mTokens.get(lReplyTokenIdx) == true);
-        mTokens.clr(lReplyTokenIdx);
-        assert (mTokens.get(lReplyTokenIdx) == false);
-        lReqSuccess += 1;
+        assert (mTokensPerStfSender[lReplyTokenIdx-1] > 0);
+
+        mTokensPerStfSender[lReplyTokenIdx-1] -= 1;
+        if (mTokensPerStfSender[lReplyTokenIdx-1] == 0) {
+          assert (mTokens.get(lReplyTokenIdx) == true);
+          mTokens.clr(lReplyTokenIdx);
+          assert (mTokens.get(lReplyTokenIdx) == false);
+        } else {
+          assert (mTokensPerStfSender[lReplyTokenIdx-1] > 0);
+          assert (mTokens.get(lReplyTokenIdx) == true);
+        }
+
+        mReqSuccess += 1;
       } else {
-        lReqFailed += 1;
+        mReqFailed += 1;
       }
 
+      // send back the reply
       ucx::io::ucx_send_am_hdr(ucp_worker, lReplyEp, ucx::io::AM_TOKEN_REP, &lReplyTokenIdx, sizeof(lReplyTokenIdx));
 
-      lNumReqSinceReset += 1;
+      mNumReqSinceReset = mNumReqSinceReset + 1;
     }
 
     // prevents burning the cpu core in this thread
     while (ucp_worker_progress(ucp_worker.ucp_worker) > 0) { }
+
+    // prevent burning CPU time when not active
+    if (mNumReqSinceReset == 0) {
+      std::this_thread::sleep_for(5ms);
+    }
+  }
+}
+
+void TfSchedulerTokenManager::TokenHousekeepingThread()
+{
+  while (mRunning) {
+    std::this_thread::sleep_for(1s);
+
+    // throttle down the cpu
+    mNumReqSinceReset = mNumReqSinceReset / 2;
+
+    DDMON("tfscheduler", "tokens.loops_ps", mSpinCounter);
+    DDMON("tfscheduler", "tokens.req_success", mReqSuccess);
+    DDMON("tfscheduler", "tokens.req_failed", mReqFailed);
+
+    mSpinCounter = 0;
+    mReqSuccess = 0;
+    mReqFailed = 0;
+
+    mTokenResetTimeoutMs = std::chrono::milliseconds(mDiscoveryConfig->getUInt64Param(TokenResetTimeoutMsKey,
+      TokenResetTimeoutMsDefault));
+    const auto lTokensPerStfSenderCntNew = std::max(std::uint64_t(1), mDiscoveryConfig->getUInt64Param(TokensPerStfSenderCntKey,
+      TokensPerStfSenderCntDefault));
+    if (lTokensPerStfSenderCntNew != mTokensPerStfSenderCnt) {
+      mTokensPerStfSenderCnt = lTokensPerStfSenderCntNew;
+      IDDLOG("New configuration value applied. TokensPerStfSenderCnt={}", lTokensPerStfSenderCntNew);
+      mUpdateConfig = true;
+    }
   }
 }
 
