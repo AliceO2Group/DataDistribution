@@ -663,12 +663,15 @@ void TfBuilderInputUCX::TokenRequesterThread(const unsigned pThreadIdx)
   while (mState != TERMINATED) {
 
     // Allow only one input thread to request tokens
-    std::unique_lock lLock (mStfTokenWaitingMutex);
+    std::unique_lock lLock(mStfTokenWaitingMutex);
     if ((lTokenInfo.mNumStfsWaiting == 0) || (mTokenRefCnt > 0)) {
-      mStfWaitingCv.wait_for(lLock, 200ms);
-
       DDMON("tfbuilder", "tokens.req_success", lTokenReqSuccess);
       DDMON("tfbuilder", "tokens.req_failed", lTokenReqFail);
+      if (lTokenReqFail > 0) {
+        DDMON("tfbuilder", "tokens.req_success_ratio", (double(lTokenReqSuccess) / double(lTokenReqFail)));
+      }
+
+      mStfWaitingCv.wait_for(lLock, 200ms);
       continue;
     }
 
