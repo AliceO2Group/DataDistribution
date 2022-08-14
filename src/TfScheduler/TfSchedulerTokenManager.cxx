@@ -118,8 +118,10 @@ bool TfSchedulerTokenManager::start()
   mTokenThread = create_thread_member("nft_maker", &TfSchedulerTokenManager::TokenManagerThread, this);
   mHousekeeperThread = create_thread_member("nft_housekeeping", &TfSchedulerTokenManager::TokenHousekeepingThread, this);
 
-  // add all tokens
-  mTokens.set_all();
+  // run initial configuration
+  mBaseTokens.set_all();
+  mNewTokensPerStfSenderCnt = mTokensPerStfSenderCnt.load();
+  mUpdateConfig = true;
 
   DDDLOG("Started: TfSchedulerTokenManager");
   return true;
@@ -195,56 +197,86 @@ void TfSchedulerTokenManager::TokenManagerThread()
   while (mRunning) {
     mSpinCounter += 1;
 
-    // Update config if consul value changed
+    // Update config: initially, on refill, and if consul value changed
     if (mUpdateConfig) {
+      assert (mNewTokensPerStfSenderCnt >= 1);
+      mTokensPerStfSenderCnt = mNewTokensPerStfSenderCnt.load();
+
       for (std::size_t i = 0; i < ucx::io::TokenRequest::Bitfield::size(); i++) {
         mTokensPerStfSender[i] = mTokensPerStfSenderCnt;
       }
-      mTokens.set_all();
+      mBaseTokens.set_all();
+
+      if (mTokensPerStfSenderCnt > 1) {
+        mExtraTokens.set_all();
+      } else {
+        mExtraTokens.clear_all();
+      }
+
       mUpdateConfig = false;
     }
 
     // free all released locks
     mReleasedTokens.consume_all_atomic([&](const std::uint16_t idx) {
-      mTokens.set(idx);
+
       mTokensPerStfSender[idx-1] = std::min(mTokensPerStfSenderCnt.load(), mTokensPerStfSender[idx-1] + 1);
-      assert (mTokens.get(idx) == true);
+      mExtraTokens.set(idx);
+
+      // add back the base token when all are returned
+      if (mTokensPerStfSender[idx-1] == mTokensPerStfSenderCnt) {
+        mBaseTokens.set(idx);
+        assert (mBaseTokens.get(idx) == true);
+      }
+      assert (mExtraTokens.get(idx) == true);
     });
 
     // Refill all locks on a timer to prevent missing locks from failed TfBuilders
     if ((clock::now() - lRefillTime) >= mTokenResetTimeoutMs) {
-      DDMON("tfscheduler", "tokens.used", (mTokens.size() - mTokens.popcnt()));
-      mTokens.set_all();
+      DDMON("tfscheduler", "tokens.used_base", (mBaseTokens.size() - mBaseTokens.popcnt()));
+      DDMON("tfscheduler", "tokens.used_extra", (mExtraTokens.size() - mExtraTokens.popcnt()));
       lRefillTime = clock::now();
+      mUpdateConfig = true;
+      continue;
     }
 
     // see if there are any requests
     ucx::io::TokenRequest::BitFieldIdxType lReplyTokenIdx = ucx::io::TokenRequest::BitfieldInvalidIdx;
+    bool lExtraToken = false;
     ucp_ep_h lReplyEp;
 
+
     const bool lHaveReq = mTokenRequestQueue.consume_one([&](TokenRequestInfo &lReqInfo) {
-      lReqInfo.mRequest.mTokensRequested &= mTokens;
-      lReplyTokenIdx = lReqInfo.mRequest.mTokensRequested.random_idx();
+      // Find free senders
+      lReplyTokenIdx = (lReqInfo.mRequest.mTokensRequested & mBaseTokens).random_idx();
       assert ((lReplyTokenIdx == 0) || (lReplyTokenIdx && (lReqInfo.mRequest.mTokensRequested.get(lReplyTokenIdx) == true)));
+
+      // Find an extra token
+      if ((lReplyTokenIdx == ucx::io::TokenRequest::BitfieldInvalidIdx) && (mTokensPerStfSenderCnt > 1)) {
+        lReplyTokenIdx = (lReqInfo.mRequest.mTokensRequested & mExtraTokens).random_idx();
+        lExtraToken = true;
+      }
+
       lReplyEp = lReqInfo.mReplyEp;
     });
 
     if (lHaveReq) {
       if (lReplyTokenIdx != ucx::io::TokenRequest::BitfieldInvalidIdx) {
-        assert (mTokens.get(lReplyTokenIdx) == true);
         assert (mTokensPerStfSender[lReplyTokenIdx-1] > 0);
 
         mTokensPerStfSender[lReplyTokenIdx-1] -= 1;
+        mBaseTokens.clr(lReplyTokenIdx);
+
         if (mTokensPerStfSender[lReplyTokenIdx-1] == 0) {
-          assert (mTokens.get(lReplyTokenIdx) == true);
-          mTokens.clr(lReplyTokenIdx);
-          assert (mTokens.get(lReplyTokenIdx) == false);
+          mExtraTokens.clr(lReplyTokenIdx);
         } else {
-          assert (mTokensPerStfSender[lReplyTokenIdx-1] > 0);
-          assert (mTokens.get(lReplyTokenIdx) == true);
+          assert (mExtraTokens.get(lReplyTokenIdx) == true);
         }
 
-        mReqSuccess += 1;
+        if (lExtraToken) {
+          mReqSuccessExtra += 1;
+        } else {
+          mReqSuccessBase += 1;
+        }
       } else {
         mReqFailed += 1;
       }
@@ -273,20 +305,24 @@ void TfSchedulerTokenManager::TokenHousekeepingThread()
     // throttle down the cpu
     mNumReqSinceReset = mNumReqSinceReset / 2;
 
+    // monitoring stats
     DDMON("tfscheduler", "tokens.loops_ps", mSpinCounter);
-    DDMON("tfscheduler", "tokens.req_success", mReqSuccess);
+    DDMON("tfscheduler", "tokens.req_success_base", mReqSuccessBase);
+    DDMON("tfscheduler", "tokens.req_success_extra", mReqSuccessExtra);
     DDMON("tfscheduler", "tokens.req_failed", mReqFailed);
 
     mSpinCounter = 0;
-    mReqSuccess = 0;
+    mReqSuccessBase = 0;
+    mReqSuccessExtra = 0;
     mReqFailed = 0;
 
+    // Load new consul config values
     mTokenResetTimeoutMs = std::chrono::milliseconds(mDiscoveryConfig->getUInt64Param(TokenResetTimeoutMsKey,
       TokenResetTimeoutMsDefault));
     const auto lTokensPerStfSenderCntNew = std::max(std::uint64_t(1), mDiscoveryConfig->getUInt64Param(TokensPerStfSenderCntKey,
       TokensPerStfSenderCntDefault));
     if (lTokensPerStfSenderCntNew != mTokensPerStfSenderCnt) {
-      mTokensPerStfSenderCnt = lTokensPerStfSenderCntNew;
+      mNewTokensPerStfSenderCnt = lTokensPerStfSenderCntNew;
       IDDLOG("New configuration value applied. TokensPerStfSenderCnt={}", lTokensPerStfSenderCntNew);
       mUpdateConfig = true;
     }

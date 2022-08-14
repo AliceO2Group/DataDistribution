@@ -89,6 +89,8 @@ class TfSchedulerTokenManager
   std::chrono::milliseconds mTokenResetTimeoutMs = std::chrono::milliseconds(TokenResetTimeoutMsDefault);
   std::atomic_uint mTokensPerStfSenderCnt = TokensPerStfSenderCntDefault;
   std::atomic_bool mUpdateConfig = true;
+  std::atomic_uint mNewTokensPerStfSenderCnt = TokensPerStfSenderCntDefault;
+
   std::thread mTokenThread;
   std::thread mHousekeeperThread;
 
@@ -105,14 +107,16 @@ public:
   boost::lockfree::stack<ucx::io::TokenRequest::BitFieldIdxType, boost::lockfree::capacity<512> > mReleasedTokens;
   boost::lockfree::queue<TokenRequestInfo, boost::lockfree::capacity<512> > mTokenRequestQueue;
   alignas(256)
-  ucx::io::TokenRequest::Bitfield mTokens;
+  ucx::io::TokenRequest::Bitfield mBaseTokens;
+  ucx::io::TokenRequest::Bitfield mExtraTokens;
   unsigned mTokensPerStfSender[ucx::io::TokenRequest::Bitfield::size()];
 
   // token management
   alignas(256)
   std::atomic_uint64_t mSpinCounter = 0;
   std::atomic_uint64_t mNumReqSinceReset = 1000; // prevent throttling on init
-  std::atomic_uint64_t mReqSuccess = 0;
+  std::atomic_uint64_t mReqSuccessBase = 0;
+  std::atomic_uint64_t mReqSuccessExtra = 0;
   std::atomic_uint64_t mReqFailed = 0;
 
 };
