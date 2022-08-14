@@ -295,6 +295,12 @@ struct TokenBitfield {
     }
   }
 
+  inline void clear_all() {
+    for (unsigned i = 0; i < NUM_ELEMS; i++) {
+      mRequestTokenBitset[i] = TokenBitfieldElemType(0);
+    }
+  }
+
   inline void clr(TokenBitfieldIndexType idx) {
     assert ((idx > 0) && (idx <= NUM_TOKENS));
     idx -= 1;
@@ -371,6 +377,12 @@ struct TokenBitfield {
     return *this;
   }
 
+  inline friend TokenBitfield operator&(const TokenBitfield& a, const TokenBitfield& b) {
+    TokenBitfield r = a;
+    r &= b;
+    return r;
+  }
+
   inline TokenBitfield& operator|=(const TokenBitfield& b) {
     for (unsigned i = 0; i < NUM_ELEMS; i++) {
       mRequestTokenBitset[i] |= b.mRequestTokenBitset[i];
@@ -388,12 +400,11 @@ struct TokenBitfield {
   }
 
   inline operator bool() const {
+    bool lNotEmpty = false;
     for (unsigned i = 0; i < NUM_ELEMS; i++) {
-      if (mRequestTokenBitset[i]) {
-        return true;
-      }
+      lNotEmpty |= !!(mRequestTokenBitset[i]);
     }
-    return false;
+    return lNotEmpty;
   }
 };
 

@@ -142,7 +142,7 @@ static constexpr std::uint64_t TokenResetTimeoutMsDefault = 1000;
 
 // Number of tokens assigned to each FLP. Increasing the cnt will allow multiple receivers in parallel.
 static constexpr std::string_view TokensPerStfSenderCntKey = "TokensPerStfSenderCnt";
-static constexpr std::uint64_t TokensPerStfSenderCntDefault = 1;
+static constexpr std::uint64_t TokensPerStfSenderCntDefault = 2;
 
 } /* o2::DataDistribution */
 
