@@ -164,7 +164,7 @@ class TimeFrameBuilder
   TimeFrameBuilder() = delete;
   TimeFrameBuilder(SyncMemoryResources &pMemRes);
 
-  // make allocate the memory here
+  // allocate the memory here
   void allocate_memory(const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId,
                        const std::size_t pHdrSegSize, const std::optional<std::uint16_t> pHdrSegId);
 
@@ -184,8 +184,8 @@ class TimeFrameBuilder
   }
 
   inline
-  void newDataMessages(const std::vector<FairMQMessagePtr> &pSrcMsgs, std::vector<FairMQMessagePtr> &pDstMsgs) {
-    mMemRes.newDataMessages(pSrcMsgs, pDstMsgs);
+  bool replaceDataMessages(std::vector<FairMQMessagePtr> &pMsgs) {
+    return mMemRes.replaceDataMessages(pMsgs);
   }
 
   inline void stop() {
@@ -209,6 +209,35 @@ class TimeFrameBuilder
 
   SyncMemoryResources &mMemRes;
 };
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// SubTimeFrameCopyBuilder
+////////////////////////////////////////////////////////////////////////////////
+
+class SubTimeFrameCopyBuilder
+{
+ public:
+  SubTimeFrameCopyBuilder() = delete;
+  SubTimeFrameCopyBuilder(SyncMemoryResources &pMemRes)
+  : mMemRes(pMemRes)
+  { }
+
+  // make allocate the memory here
+  void allocate_memory(const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId);
+
+  bool copyStfData(std::unique_ptr<SubTimeFrame> &pStf);
+
+  inline auto freeData() const { return mMemRes.freeData(); }
+
+  inline void stop() {
+    mMemRes.stop();
+  }
+
+  SyncMemoryResources &mMemRes;
+};
+
+
 
 } /* o2::DataDistribution */
 

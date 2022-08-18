@@ -238,9 +238,6 @@ void TfBuilderInput::deserialize_headers(std::vector<ReceivedStfMeta> &pStfs)
 /// This thread can block waiting on free O2 Header memory
 void TfBuilderInput::StfDeserializingThread()
 {
-  // Deserialization object
-  IovDeserializer lStfReceiver(mDevice.TfBuilderI());
-
   while (mState == RUNNING) {
 
     std::unique_lock<std::mutex> lQueueLock(mStfMergerQueueLock);

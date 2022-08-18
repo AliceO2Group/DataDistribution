@@ -735,8 +735,6 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
   using clock = std::chrono::steady_clock;
 
   DDDLOG("Starting receiver thread[{}]", pThreadIdx);
-  // Deserialization object (stf ID)
-  IovDeserializer lStfReceiver(mTimeFrameBuilder);
 
   // memory for meta-tag receive
   const std::uint64_t lMetaMemSize = 128;

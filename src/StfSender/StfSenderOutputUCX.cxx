@@ -113,6 +113,11 @@ void StfSenderOutputUCX::stop()
   mStfDeleteQueue.stop();
   mStfAckQueue.stop();
 
+  {
+    std::scoped_lock lLockTfBuilders(mStfsInFlightMutex);
+    mStfsInFlight.clear();
+  }
+
   for (auto &lThread : mThreadPool) {
     if (lThread.joinable()) {
       lThread.join();
@@ -129,15 +134,6 @@ void StfSenderOutputUCX::stop()
   }
   DDDLOG("StfSenderOutputUCX::stop: stopped all threads.");
 
-  // Revoke all rkeys and mappings
-  {
-    std::scoped_lock lLock(mRegionListLock);
-    for (auto &lMapping : mRegions) {
-      ucx::util::destroy_rkey_for_region(ucp_context, lMapping.ucp_mem, lMapping.ucp_rkey_buf);
-    }
-  }
-  DDDLOG("StfSenderOutputUCX::stop: revoked all rkeys.");
-
   // close all connections
   {
     std::unique_lock lLock(mOutputMapLock);
@@ -146,6 +142,7 @@ void StfSenderOutputUCX::stop()
     }
     mOutputMap.clear();
   }
+  DDDLOG("StfSenderOutputUCX::stop: closed all ep");
 
   {// close all workers and the context
     for (auto &lWorker : mDataWorkers) {
@@ -153,8 +150,16 @@ void StfSenderOutputUCX::stop()
     }
     ucp_cleanup(ucp_context);
   }
-
   DDDLOG("StfSenderOutputUCX::stop: closed all connections.");
+
+  // Revoke all rkeys and mappings
+  {
+    std::scoped_lock lLock(mRegionListLock);
+    for (auto &lMapping : mRegions) {
+      ucx::util::destroy_rkey_for_region(ucp_context, lMapping.ucp_mem, lMapping.ucp_rkey_buf);
+    }
+  }
+  DDDLOG("StfSenderOutputUCX::stop: revoked all rkeys.");
 }
 
 ConnectStatus StfSenderOutputUCX::connectTfBuilder(const std::string &pTfBuilderId, const std::string &lTfBuilderIp, const unsigned lTfBuilderPort)

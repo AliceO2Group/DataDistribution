@@ -186,6 +186,7 @@ struct EquipmentIdentifier {
   friend class SubTimeFrameReadoutBuilder;     \
   friend class SubTimeFrameFileBuilder;        \
   friend class TimeFrameBuilder;               \
+  friend class SubTimeFrameCopyBuilder;        \
   friend class SubTimeFrameFileWriter;         \
   friend class SubTimeFrameFileReader;         \
   friend class StfToDplAdapter;                \

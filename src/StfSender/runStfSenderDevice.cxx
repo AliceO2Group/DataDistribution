@@ -52,7 +52,13 @@ int main(int argc, char* argv[])
         "Name of the input STF channel")(
         o2::DataDistribution::StfSenderDevice::OptionKeyStandalone,
         bpo::bool_switch()->default_value(false),
-        "Standalone operation. SubTimeFrames will not be forwarded to other processes.");
+        "Standalone operation. SubTimeFrames will not be forwarded to other processes.")(
+        o2::DataDistribution::StfSenderDevice::OptionKeyDataRegionSize,
+        bpo::value<std::uint64_t>()->default_value(32768),
+        "Memory buffer (shm region) reserved for SubTimeFrames in sending (in MiB).")(
+        o2::DataDistribution::StfSenderDevice::OptionKeyDataRegionId,
+        bpo::value<std::uint16_t>()->default_value(std::uint16_t(~0)),
+        "Optional shm id for reusing existing regions. (default will create a new region)");
 
       r.fConfig.AddToCmdLineOptions(lStfSenderOptions);
 

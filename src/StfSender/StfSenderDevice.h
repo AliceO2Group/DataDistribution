@@ -53,6 +53,8 @@ class StfSenderDevice : public DataDistDevice
  public:
   static constexpr const char* OptionKeyInputChannelName = "input-channel-name";
   static constexpr const char* OptionKeyStandalone = "stand-alone";
+  static constexpr const char* OptionKeyDataRegionSize = "dd-region-size";
+  static constexpr const char* OptionKeyDataRegionId = "dd-region-id";
 
   /// Default constructor
   StfSenderDevice();
@@ -97,6 +99,10 @@ class StfSenderDevice : public DataDistDevice
     /// Scheduler RPC client
     TfSchedulerRpcClient mTfSchedulerRpcClient;
 
+    /// StfCopy region
+    std::uint64_t mDataRegionSize = std::uint64_t(32) << 30;
+    std::optional<std::uint16_t> mDataRegionId = std::nullopt;
+
     /// Receiver threads
     bool mRunning = false;
     bool mDeviceRunning = true;
@@ -106,6 +112,9 @@ class StfSenderDevice : public DataDistDevice
 
     /// File sink
     std::unique_ptr<SubTimeFrameFileSink> mFileSink;
+
+    /// StfCopy builder
+    std::shared_ptr<SubTimeFrameCopyBuilder> mStfCopyBuilder;
 
     /// Output stage handler
     std::unique_ptr<StfSenderOutput> mOutputHandler;
@@ -152,10 +161,12 @@ class StfSenderDevice : public DataDistDevice
   };
 
   std::unique_ptr<StfSenderInstance> mI;
+  std::unique_ptr<SyncMemoryResources> mMemI;
   const StfSenderInstance& I() const { return *mI; }
 
 public:
   StfSenderInstance& I() { return *mI; }
+  SyncMemoryResources& MemI() { return *mMemI; }
 };
 
 } /* namespace o2::DataDistribution */

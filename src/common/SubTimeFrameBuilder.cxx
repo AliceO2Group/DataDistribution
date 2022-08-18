@@ -590,4 +590,39 @@ void TimeFrameBuilder::adaptHeaders(SubTimeFrame *pStf)
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// SubTimeFrameCopyBuilder
+////////////////////////////////////////////////////////////////////////////////
+
+void SubTimeFrameCopyBuilder::allocate_memory(const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId)
+{
+  mMemRes.mDataMemRes = std::make_unique<DataRegionAllocatorResource>(
+    "O2DataRegion_TimeFrame",
+    pDataSegId, pDataSegSize,
+    *mMemRes.mShmTransport,
+    0, // Region flags
+    true /* can fail */
+  );
+
+  mMemRes.mHeaderMemRes = nullptr; // we don't copy o2HDRs
+
+  mMemRes.start();
+}
+
+bool SubTimeFrameCopyBuilder::copyStfData(std::unique_ptr<SubTimeFrame> &pStf)
+{
+  for (auto& lDataIdentMapIter : pStf->mData) {
+    for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
+      for (auto& lStfDataIter : lSubSpecMapIter.second) {
+        // replace and copy data FMQ messages
+        if (!mMemRes.replaceDataMessages(lStfDataIter.mDataParts)) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
 } /* o2::DataDistribution */
