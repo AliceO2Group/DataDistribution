@@ -599,23 +599,39 @@ void TfSchedulerStfInfo::TfCompleterThread()
 
     // try to create proxies if we cannot schedule the current tf
     if (lMaxTfIdToSchedule == 0) {
-      { // create proxy stfs below if needed
-        for (auto &lMapIt : mStfInfoMap) {
-          const auto lCurrStfId = lMapIt.first;
+      {
+        // create proxy stfs below if needed
+        // start in the reverse order, and stop when there is already a stf present
+
+        for (auto lMapIt = mStfInfoMap.rbegin(); lMapIt != mStfInfoMap.rend(); ++lMapIt) {
+          const auto lCurrStfId = lMapIt->first;
+
           if (lCurrStfId >= lStfId) {
-            break;
+            continue; // don't create proxy stfs for newer timeframes
           }
-          if (lMapIt.second.try_emplace(lStfSenderId, StfInfo{StfInfo::ProxyStfInfo{}}).second) {
-            mStfInfoIncomplete[lCurrStfId] = true;
-            if (lMapIt.second.size() == lNumStfSenders) {
+
+          assert (lCurrStfId < lStfId);
+
+          if (lMapIt->second.try_emplace(lStfSenderId, StfInfo{StfInfo::ProxyStfInfo{}}).second) {
+            mStfInfoIncomplete[lCurrStfId] = true; // mark incomplete if proxy was inserted
+            if (lMapIt->second.size() == lNumStfSenders) {
               // schedule up to <lCurrStfId>
               lMaxTfIdToSchedule = std::max(lMaxTfIdToSchedule, lCurrStfId);
             }
+          } else {
+            // don't check below, as they should be created by the previous STF
+#if !defined (NDEBUG)
+          for (auto lDebugIt = lMapIt; lDebugIt != mStfInfoMap.rend(); ++lDebugIt) {
+            assert (lDebugIt->second.count(lStfSenderId) == 1);
+          }
+#endif
+            break;
           }
         }
       }
 
       { // fill the rest of stfs from above if a new tf is created
+        // if the new TF was just created, add proxy stfs from all senders that reported higher stfs
         if (lNewTfCreated) {
           for (auto &lMaxIdIt : mMaxStfIdPerStfSender) {
             if (lMaxIdIt.second > lStfId) {
