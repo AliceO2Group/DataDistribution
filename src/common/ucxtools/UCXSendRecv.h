@@ -209,8 +209,10 @@ bool ucp_wait(dd_ucp_worker &pDDCtx, dd_ucp_multi_req &pReq)
       }
     } else if (UCS_ERR_BUSY == status) {
       continue; // could not arm, recheck the request
+    } else if (UCS_ERR_IO_ERROR == status) {
+      return false;
     }
-      // epoll returned or timeout, recheck the request
+    // epoll returned or timeout, recheck the request
   }
   return pReq.done();
 }
@@ -278,7 +280,9 @@ bool send_tag_blocking(dd_ucp_worker &worker, ucp_ep_h ep, const void *data, con
     EDDLOG("Failed send_tag_blocking. tag={} err={}", tag, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
     return false;
   } else {
-    ucp_wait(worker, dd_request);
+    if (!ucp_wait(worker, dd_request)) {
+      return false; // error
+    }
     bool ok = dd_request.done();
     if (!ok) {
       EDDLOG("Failed send_tag_blocking. flag={} tag={} err={}", dd_request.done(), tag, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
@@ -312,7 +316,9 @@ bool receive_tag_blocking(dd_ucp_worker &worker, void *data, const std::size_t s
     EDDLOG("Failed receive_tag_blocking. tag={} err={}", tag, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
     return false;
   } else {
-    ucp_wait(worker, dd_request);
+    if (!ucp_wait(worker, dd_request)) {
+      return false; // error
+    }
   }
 
   return dd_request.done();
