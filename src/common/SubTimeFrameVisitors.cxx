@@ -182,7 +182,7 @@ SubTimeFrame::Header IovDeserializer::peek_tf_header(const IovStfHdrMeta &pHdrMe
 // copy all messages into the data region, and update the vector
 bool IovDeserializer::copy_to_region(std::vector<FairMQMessagePtr>& pMsgs /* in/out */)
 {
-  mTfBld.newDataMessages(pMsgs, pMsgs);
+  mTfBld.replaceDataMessages(pMsgs);
 
   return true;
 }

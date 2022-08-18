@@ -160,6 +160,10 @@ STF_SENDER+=" --mq-config $chainConfig"
 STF_SENDER+=" --monitoring-interval=2.0"
 STF_SENDER+=" --monitoring-log"
 STF_SENDER+=" --shm-monitor=false"
+
+STF_SENDER+=" --dd-region-size=2048"
+STF_SENDER+=" --dd-region-id=666"
+
 if [[ $EPN_CNT -eq 0 ]]; then
   STF_SENDER+=" --stand-alone"
 fi
@@ -271,7 +275,7 @@ else
       split-window \
       "source $ENV_VAR_FILE; $STF_BUILDER --id stf_builder-0 --session default; read" \; \
       split-window  \
-      "source $ENV_VAR_FILE; $STF_SENDER --id stf_sender-0 --discovery-id=flp0 --session default; read" \; \
+      "source $ENV_VAR_FILE; numactl --cpunodebind=0 --preferred=0 -- $STF_SENDER --id stf_sender-0 --discovery-id=flp0 --session default; read" \; \
       split-window  \
       "source $ENV_VAR_FILE; numactl --interleave=all $TF_BUILDER --id tf_builder-0 --discovery-id=epn0 --session epn-s0; read" \; \
       select-layout even-horizontal
@@ -285,7 +289,7 @@ else
       split-window \
       "source $ENV_VAR_FILE; $STF_BUILDER --id stf_builder-1 --session flp-s1; read" \; \
       split-window  \
-      "source $ENV_VAR_FILE; $STF_SENDER --id stf_sender-1 --discovery-id=flp1 --session  flp-s1; read" \; \
+      "source $ENV_VAR_FILE; numactl --cpunodebind=0 --preferred=0 -- $STF_SENDER --id stf_sender-1 --discovery-id=flp1 --session  flp-s1; read" \; \
       select-layout even-horizontal
   fi
 

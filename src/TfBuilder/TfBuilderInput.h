@@ -23,6 +23,7 @@
 
 #include <SubTimeFrameDataModel.h>
 #include <ConcurrentQueue.h>
+#include <MemoryUtils.h>
 
 #include <vector>
 #include <map>

@@ -67,6 +67,14 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
     mOutputUCX->start();
   }
 
+  // create stf ordering thread
+  mStfOrderThread = create_thread_member("stfs_drop", &StfSenderOutput::StfOrderThread, this);
+
+  // create stf copy thread
+  for (auto i = 0; i < 4; i++) {
+    mCopyThreads.emplace_back(create_thread_member("stfs_copy", &StfSenderOutput::StfCopyThread, this));
+  }
+
   // create stf drop thread
   mStfDropThread = create_thread_member("stfs_drop", &StfSenderOutput::StfDropThread, this);
 
@@ -115,6 +123,11 @@ void StfSenderOutput::start_standalone(std::shared_ptr<ConsulStfSender> pDiscove
   mKeepTarget = mDiscoveryConfig->getUInt64Param(StandaloneStfDataBufferSizeMBKey, StandaloneStfDataBufferSizeMBDefault) << 20;
   mKeepTarget = std::clamp(mKeepTarget.load(), std::uint64_t(128ULL << 20), mBufferSize);
 
+  // create stf copy thread
+  for (auto i = 0; i < 4; i++) {
+    mCopyThreads.emplace_back(create_thread_member("stfs_ordering", &StfSenderOutput::StfCopyThread, this));
+  }
+
   // create stf keep thread
   mStfKeepThread = create_thread_member("stfs_keep", &StfSenderOutput::StfKeepThread, this);
   // create stf drop thread
@@ -126,8 +139,26 @@ void StfSenderOutput::start_standalone(std::shared_ptr<ConsulStfSender> pDiscove
 void StfSenderOutput::stop()
 {
   mRunning = false;
+  mScheduleQueue.stop();
+  mCopyQueue.stop();
 
-  // stop the scheduler: on pipeline interrupt
+  // stop the stf ordering: on pipeline interrupt
+  if (mStfOrderThread.joinable()) {
+    mStfOrderThread.join();
+  }
+
+  // stop copy threads
+  for (auto &lThread : mCopyThreads) {
+    if (lThread.joinable()) {
+      lThread.join();
+    }
+  }
+  if (mStfCopyBuilder) {
+    mStfCopyBuilder->stop();
+    mStfCopyBuilder.reset();
+  }
+
+  // stop the scheduler
   if (mSchedulerThread.joinable()) {
     mSchedulerThread.join();
   }
@@ -275,6 +306,58 @@ void StfSenderOutput::StfKeepThread()
   DDDLOG("StfKeepThread: Exiting.");
 }
 
+void StfSenderOutput::StfOrderThread()
+{
+  std::unique_ptr<SubTimeFrame> lStf;
+  while ((lStf = mPipelineI.dequeue(eSenderIn)) != nullptr) {
+    {
+      std::scoped_lock lOrderLock(mScheduledStfMapLock);
+      mStfOrderingQueue.push(lStf->id());
+    }
+
+    // push the original Stf for scheduling
+    mCopyQueue.push(std::move(lStf));
+  }
+  DDDLOG("StfOrderThread: Exiting.");
+}
+
+void StfSenderOutput::StfCopyThread()
+{
+  while (mRunning) {
+    std::unique_ptr<SubTimeFrame> lStf;
+    if (!mCopyQueue.pop(lStf)) {
+      break;
+    }
+
+    if (mStfCopyBuilder) {
+      // copy stf
+      if (!mStfCopyBuilder->copyStfData(lStf)) {
+        DDMON("stfsender", "stf_region.full", 1);
+      }
+    }
+
+    // wait for our turn to schedule
+    while (mRunning) {
+      std::unique_lock lOrderLock(mScheduledStfMapLock);
+      assert (!mStfOrderingQueue.empty());
+      assert (mStfOrderingQueue.front() <= lStf->id());
+
+      if (mStfOrderingQueue.front() != lStf->id()) {
+        mStfOrderingCv.wait(lOrderLock);
+        continue;
+      } else {
+        mStfOrderingQueue.pop();
+        // push the original Stf for scheduling
+        mScheduleQueue.push(std::move(lStf));
+        break;
+      }
+    }
+    mStfOrderingCv.notify_all();
+  }
+
+  DDDLOG("StfCopyThread: Exiting.");
+}
+
 // Reports incoming STFs to TfScheduler and queues them for transmitting or dropping
 void StfSenderOutput::StfSchedulerThread()
 {
@@ -286,9 +369,12 @@ void StfSenderOutput::StfSchedulerThread()
   if (nice(-10)) {}
 #endif
 
-  std::unique_ptr<SubTimeFrame> lStf;
+  while (mRunning) {
+    std::unique_ptr<SubTimeFrame> lStf;
+    if (!mScheduleQueue.pop(lStf)) {
+      break;
+    }
 
-  while ((lStf = mPipelineI.dequeue(eSenderIn)) != nullptr) {
     const auto lStfId = lStf->id();
     const auto lStfSize = lStf->getDataSize();
 
@@ -579,6 +665,10 @@ void StfSenderOutput::StfMonitoringThread()
 
     DDMON("stfsender", "sending.stf_cnt", lCurrCounters.mInSending.mCnt);
     DDMON("stfsender", "sending.stf_size", lCurrCounters.mInSending.mSize);
+
+    if (mStfCopyBuilder) {
+      DDMON("stfsender", "stf_region.free", mStfCopyBuilder->freeData());
+    }
 
     // Update consul params for standalone run
     if (mStfKeepThread.joinable()) {

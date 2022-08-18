@@ -822,25 +822,32 @@ public:
   }
 
   inline
-  void newDataMessages(const std::vector<FairMQMessagePtr> &pSrcMsgs, std::vector<FairMQMessagePtr> &pDstMsgs) {
+  bool replaceDataMessages(std::vector<FairMQMessagePtr> &pMsgs) {
 
     // create a new instance to support passing the same vect as in and out
-    std::vector<FairMQMessagePtr> lNewMsgs(pSrcMsgs.size());
+    std::vector<FairMQMessagePtr> lNewMsgs(pMsgs.size());
     lNewMsgs.clear();
+    bool lRetOk = true;
 
     { // allocate under one lock
       std::scoped_lock lock(mDataLock);
-      for (const auto &lOrigMsg : pSrcMsgs) {
-        lNewMsgs.emplace_back( mDataMemRes->NewFairMQMessage(lOrigMsg->GetSize()) );
+      for (const auto &lOrigMsg : pMsgs) {
+        auto lMsg = mDataMemRes->NewFairMQMessage(lOrigMsg->GetSize());
+        if (lMsg == nullptr) {
+          lRetOk = false;
+          break;
+        }
+        lNewMsgs.emplace_back(std::move(lMsg));
       }
     }
 
     // copy without holding allocator lock
-    for (std::size_t i = 0; i < pSrcMsgs.size(); i++) {
-      memcpy(lNewMsgs[i]->GetData(), pSrcMsgs[i]->GetData(), pSrcMsgs[i]->GetSize());
+    for (std::size_t i = 0; i < lNewMsgs.size(); i++) {
+      memcpy(lNewMsgs[i]->GetData(), pMsgs[i]->GetData(), pMsgs[i]->GetSize());
+      pMsgs[i] = std::move(lNewMsgs[i]);
     }
 
-    pDstMsgs = std::move(lNewMsgs);
+    return lRetOk;
   }
 
   template <typename OutIter>

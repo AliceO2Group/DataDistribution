@@ -41,9 +41,10 @@ class StfSenderOutput
 
 public:
   StfSenderOutput() = delete;
-  StfSenderOutput(StfSenderDevice &pStfSenderDev, stf_pipeline &pPipelineI)
+  StfSenderOutput(StfSenderDevice &pStfSenderDev, stf_pipeline &pPipelineI, std::shared_ptr<SubTimeFrameCopyBuilder> pStfCopyBuilder)
     : mDevice(pStfSenderDev),
-      mPipelineI(pPipelineI)
+      mPipelineI(pPipelineI),
+      mStfCopyBuilder(pStfCopyBuilder)
   {
   }
 
@@ -54,6 +55,8 @@ public:
 
   bool running() const;
 
+  void StfOrderThread();
+  void StfCopyThread();
   void StfSchedulerThread();
   void StfKeepThread();
   void StfDropThread();
@@ -121,7 +124,18 @@ public:
   std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
   std::shared_ptr<FairMQTransportFactory> mZMQTransportFactory;
 
+  /// StfCopy builder; not used if nullptr
+  std::shared_ptr<SubTimeFrameCopyBuilder> mStfCopyBuilder;
+  std::vector<std::thread> mCopyThreads;
+
+  std::thread mStfOrderThread;
+  ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mCopyQueue;
+  std::mutex mStfOrderingLock;
+    std::condition_variable mStfOrderingCv;
+    std::queue<std::uint64_t> mStfOrderingQueue;
+
   /// Scheduler threads
+  ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mScheduleQueue;
   std::thread mSchedulerThread;
   std::uint64_t mLastStfId = 0;
   std::mutex mScheduledStfMapLock;

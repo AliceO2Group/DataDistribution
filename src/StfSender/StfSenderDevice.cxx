@@ -23,6 +23,7 @@
 
 #include <chrono>
 #include <thread>
+#include <future>
 
 namespace o2::DataDistribution
 {
@@ -34,16 +35,60 @@ StfSenderDevice::StfSenderDevice()
 {
 }
 
+static bool sResetDeviceCalled = false;
 StfSenderDevice::~StfSenderDevice()
-{ }
+{
+  if (!sResetDeviceCalled) {
+    // memory resource is last to destruct
+    if (I().mStfCopyBuilder) {
+      I().mStfCopyBuilder->stop();
+      I().mStfCopyBuilder.reset();
+    }
+    mMemI.reset();
+  }
+}
 
 void StfSenderDevice::Init()
 {
   DDDLOG("StfSenderDevice::Init()");
   mI = std::make_unique<StfSenderInstance>();
+  mMemI = std::make_unique<SyncMemoryResources>(this->AddTransport(fair::mq::Transport::SHM));
+
+  I().mDataRegionSize = GetConfig()->GetValue<std::uint64_t>(OptionKeyDataRegionSize);
+  I().mDataRegionSize <<= 20; /* input parameter is in MiB */
+  I().mDataRegionId = GetConfig()->GetValue<std::uint16_t>(OptionKeyDataRegionId);
+  if (I().mDataRegionId.value() == std::uint16_t(~0)) {
+    I().mDataRegionId.reset();
+  }
+
+  // overlap memory allocation and other init
+  std::promise<bool> lBuffersAllocated;
+  std::future<bool> lBuffersAllocatedFuture = lBuffersAllocated.get_future();
+  std::thread([&]{
+    try {
+      if (I().mDataRegionSize > 0) {
+        I().mStfCopyBuilder = std::make_shared<SubTimeFrameCopyBuilder>(MemI());
+        I().mStfCopyBuilder->allocate_memory(I().mDataRegionSize, I().mDataRegionId);
+      } else {
+        I().mStfCopyBuilder = nullptr;
+      }
+
+      I().mOutputHandler = std::make_unique<StfSenderOutput>(*this, *mI, I().mStfCopyBuilder);
+
+    } catch (std::exception &e) {
+      IDDLOG("Init::MemorySegment allocation failed. what={}", e.what());
+      // pass the failure
+      lBuffersAllocated.set_value_at_thread_exit(false);
+      return;
+    }
+
+    lBuffersAllocated.set_value_at_thread_exit(true);
+  }).detach();
+
+  I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
 
   I().mFileSink = std::make_unique<SubTimeFrameFileSink>(*this, *mI, eFileSinkIn, eFileSinkOut);
-  I().mOutputHandler = std::make_unique<StfSenderOutput>(*this, *mI);
+
   I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
 
   I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
@@ -83,6 +128,14 @@ void StfSenderDevice::Init()
     }
   }
 
+  // wait for the alloc
+  lBuffersAllocatedFuture.wait();
+  if (!lBuffersAllocatedFuture.get()) {
+    EDDLOG("Init::MemorySegment allocation failed. Exiting...");
+    ChangeState(fair::mq::Transition::ErrorFound);
+    return;
+  }
+
   { // start the RPC server
     if (!standalone()) {
       // Start output handler
@@ -117,8 +170,17 @@ void StfSenderDevice::Reset()
   if (mI) {
     I().stopPipeline();
     I().clearPipeline();
-    mI.reset();
+
+    // memory resource is last to destruct
+    if (I().mStfCopyBuilder) {
+      I().mStfCopyBuilder->stop();
+      I().mStfCopyBuilder.reset();
+    }
   }
+
+  mI.reset();
+  mMemI.reset();
+  sResetDeviceCalled = true;
 }
 
 void StfSenderDevice::InitTask()
