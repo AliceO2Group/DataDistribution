@@ -40,7 +40,7 @@ SubTimeFrameReadoutBuilder::SubTimeFrameReadoutBuilder(SyncMemoryResources &pMem
 {
   mMemRes.mHeaderMemRes = std::make_unique<HeaderRegionAllocatorResource>(
     "O2HeadersRegion",
-    std::nullopt, std::size_t(512) << 20,
+    std::nullopt, std::size_t(128) << 20,
     *mMemRes.mShmTransport,
     0, /* region flags ? */
     true /* Header alloc can fail with large FLP-DPL backpreassure  */
