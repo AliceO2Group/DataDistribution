@@ -738,7 +738,7 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
 
   // memory for meta-tag receive
   const std::uint64_t lMetaMemSize = 128;
-  FairMQMessagePtr lMetaMemMsg = mTimeFrameBuilder.newDataMessage(lMetaMemSize);
+  fair::mq::MessagePtr lMetaMemMsg = mTimeFrameBuilder.newDataMessage(lMetaMemSize);
   void *lMetaMemPtr = mTimeFrameBuilder.mMemRes.mDataMemRes->get_ucx_ptr(lMetaMemMsg->GetData());
 
   // local worker we advance here
@@ -880,7 +880,7 @@ void TfBuilderInputUCX::StfPostprocessThread(const unsigned pThreadIdx)
 
     // create fmq messages from txgs
     lDataMsgsBuffers.clear();
-    auto lDataVec = std::make_unique<std::vector<FairMQMessagePtr> >();
+    auto lDataVec = std::make_unique<std::vector<fair::mq::MessagePtr> >();
     lDataVec->reserve(lStfMeta.stf_data_iov_size());
 
     for (const auto &lDataMsg : lStfMeta.stf_data_iov()) {

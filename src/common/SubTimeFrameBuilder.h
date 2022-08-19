@@ -43,12 +43,12 @@ class SubTimeFrameReadoutBuilder
   bool addHbFrames(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
     const ReadoutSubTimeframeHeader& pHdr,
-    std::vector<FairMQMessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen);
+    std::vector<fair::mq::MessagePtr>::iterator pHbFramesBegin, const std::size_t pHBFrameLen);
 
   std::optional<std::unique_ptr<SubTimeFrame>> addTopoStfData(const o2::header::DataOrigin &pDataOrig,
     const o2::header::DataHeader::SubSpecificationType pSubSpecification,
     const ReadoutSubTimeframeHeader& pHdr,
-    std::vector<FairMQMessagePtr>::iterator &pHbFramesBegin, std::size_t &pHBFrameLen,
+    std::vector<fair::mq::MessagePtr>::iterator &pHbFramesBegin, std::size_t &pHBFrameLen,
     const std::uint64_t pMaxNumMessages, bool pCutTfOnNewOrbit);
 
   std::optional<std::uint32_t> getCurrentStfId() const {
@@ -124,25 +124,18 @@ class SubTimeFrameFileBuilder
 
   // allocate appropriate message for the header
   inline
-  FairMQMessagePtr newHeaderMessage(const o2::header::Stack &pIncomingStack, const std::uint64_t pTfId) {
-    std::unique_ptr<FairMQMessage> lMsg;
-
+  fair::mq::MessagePtr newHeaderMessage(const o2::header::Stack &pIncomingStack, const std::uint64_t pTfId) {
     auto lStack = o2::header::Stack(
       pIncomingStack,
       o2::framework::DataProcessingHeader{pTfId}
     );
 
-    lMsg = mMemRes.newHeaderMessage(lStack.data(), lStack.size());
-    if (!lMsg) {
-      return nullptr;
-    }
-
-    return lMsg;
+    return mMemRes.newHeaderMessage(lStack.data(), lStack.size());
   }
 
   // allocate appropriate message for the data blocks
   inline
-  FairMQMessagePtr newDataMessage(const std::size_t pSize) {
+  fair::mq::MessagePtr newDataMessage(const std::size_t pSize) {
     return mMemRes.newDataMessage(pSize);
   }
 
@@ -171,20 +164,20 @@ class TimeFrameBuilder
   void adaptHeaders(SubTimeFrame *pStf);
 
 
-  FairMQMessagePtr newHeaderMessage(const char *pData, const std::size_t pSize);
+  fair::mq::MessagePtr newHeaderMessage(const char *pData, const std::size_t pSize);
 
   inline
-  FairMQMessagePtr newDataMessage(const std::size_t pSize) {
+  fair::mq::MessagePtr newDataMessage(const std::size_t pSize) {
     return mMemRes.newDataMessage(pSize);
   }
 
   inline
-  FairMQMessagePtr newDataMessage(const char *pData, const std::size_t pSize) {
+  fair::mq::MessagePtr newDataMessage(const char *pData, const std::size_t pSize) {
     return mMemRes.newDataMessage(pData, pSize);
   }
 
   inline
-  bool replaceDataMessages(std::vector<FairMQMessagePtr> &pMsgs) {
+  bool replaceDataMessages(std::vector<fair::mq::MessagePtr> &pMsgs) {
     return mMemRes.replaceDataMessages(pMsgs);
   }
 
@@ -199,11 +192,11 @@ class TimeFrameBuilder
     mMemRes.allocDataBuffers(pTxgSizes, std::back_inserter(pTxgPtrs));
   }
 
-  inline void allocHeaderMsgs(const std::vector<uint64_t> &pTxgSizes, std::vector<FairMQMessagePtr> &pHdrVec) {
+  inline void allocHeaderMsgs(const std::vector<uint64_t> &pTxgSizes, std::vector<fair::mq::MessagePtr> &pHdrVec) {
     mMemRes.allocHdrBuffers(pTxgSizes, std::back_inserter(pHdrVec));
   }
 
-  inline void newDataFmqMessagesFromPtr(const std::vector<std::pair<void*, std::size_t>> &pPtrSizes, std::vector<FairMQMessagePtr> &pDataVec) {
+  inline void newDataFmqMessagesFromPtr(const std::vector<std::pair<void*, std::size_t>> &pPtrSizes, std::vector<fair::mq::MessagePtr> &pDataVec) {
     mMemRes.fmqFromDataBuffers(pPtrSizes, std::back_inserter(pDataVec));
   }
 

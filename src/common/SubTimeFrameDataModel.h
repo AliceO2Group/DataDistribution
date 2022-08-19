@@ -209,11 +209,11 @@ class SubTimeFrame : public IDataModelObject
   struct StfData {
 
     StfData() = delete;
-    StfData(std::unique_ptr<FairMQMessage> &&pHdr, std::unique_ptr<FairMQMessage> &&pData)
+    StfData(fair::mq::MessagePtr &&pHdr, fair::mq::MessagePtr &&pData)
     : mHeader(std::move(pHdr)), mData(std::move(pData)) { }
 
-    std::unique_ptr<FairMQMessage> mHeader;
-    std::unique_ptr<FairMQMessage> mData;
+    fair::mq::MessagePtr mHeader;
+    fair::mq::MessagePtr mData;
 
     inline const o2hdr::DataHeader* getDataHeader() const
     {
@@ -229,14 +229,14 @@ class SubTimeFrame : public IDataModelObject
 
     StfMessage() = delete;
 
-    StfMessage(std::unique_ptr<FairMQMessage> &&pHeader)
+    StfMessage(fair::mq::MessagePtr &&pHeader)
       : mHeader(std::move(pHeader))
     {
       assert(mHeader);
     }
 
-    std::unique_ptr<FairMQMessage> mHeader;
-    std::vector<std::unique_ptr<FairMQMessage>> mDataParts;
+    fair::mq::MessagePtr mHeader;
+    std::vector<fair::mq::MessagePtr> mDataParts;
 
     inline o2hdr::DataHeader* getDataHeaderMutable() {
       if (!mHeader) {
@@ -432,7 +432,7 @@ private:
     return &(lNewMsg.mDataParts);
   }
   // optimized version without vector lookup
-  inline void addStfDataReadout(std::vector<FairMQMessagePtr> *pInVector, FairMQMessagePtr &&pData)
+  inline void addStfDataReadout(std::vector<fair::mq::MessagePtr> *pInVector, fair::mq::MessagePtr &&pData)
   {
     if (!pInVector || pInVector->empty()) {
       EDDLOG("BUG: addStfDataAppend: No header message.");
@@ -460,7 +460,7 @@ private:
 
   // Append a split-payload message
   // e.g. when deserializing a channel or a file
-  inline void addStfDataAppend(std::vector<FairMQMessagePtr> *pInVector, FairMQMessagePtr &&pData)
+  inline void addStfDataAppend(std::vector<fair::mq::MessagePtr> *pInVector, fair::mq::MessagePtr &&pData)
   {
     if (!pInVector || pInVector->empty()) {
       EDDLOG("BUG: addStfDataAppend: No header message");

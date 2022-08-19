@@ -43,7 +43,7 @@ class IovSerializer : public ISubTimeFrameVisitor
  public:
 
   IovSerializer() = delete;
-  IovSerializer(FairMQChannel& pChan)
+  IovSerializer(fair::mq::Channel& pChan)
     : mChan(pChan)
   {
     mData.reserve(25600);
@@ -61,11 +61,11 @@ class IovSerializer : public ISubTimeFrameVisitor
  private:
   std::atomic_bool mRunning = true;
 
-  std::vector<FairMQMessagePtr> mData;
+  std::vector<fair::mq::MessagePtr> mData;
 
   IovStfHeader mIovHeader;
 
-  FairMQChannel& mChan;
+  fair::mq::Channel& mChan;
 };
 
 
@@ -81,11 +81,11 @@ class IovDeserializer : public ISubTimeFrameVisitor
   : mTfBld(pTfBld) { }
   virtual ~IovDeserializer() = default;
 
-  std::unique_ptr<SubTimeFrame> deserialize(const IovStfHdrMeta &pHdrMeta, std::vector<FairMQMessagePtr>& pDataMsgs);
+  std::unique_ptr<SubTimeFrame> deserialize(const IovStfHdrMeta &pHdrMeta, std::vector<fair::mq::MessagePtr>& pDataMsgs);
 
   SubTimeFrame::Header peek_tf_header(const IovStfHdrMeta &pHdrMeta) const;
 
-  bool copy_to_region(std::vector<FairMQMessagePtr>& pMsgs /* in/out */);
+  bool copy_to_region(std::vector<fair::mq::MessagePtr>& pMsgs /* in/out */);
 
  protected:
   std::unique_ptr<SubTimeFrame> deserialize_impl();
@@ -95,8 +95,8 @@ class IovDeserializer : public ISubTimeFrameVisitor
   // IovStfHeader mIovHeader;
   IovStfHdrMeta mIovStfHeader;
 
-  std::vector<FairMQMessagePtr> mHdrs;
-  std::vector<FairMQMessagePtr> mData;
+  std::vector<fair::mq::MessagePtr> mHdrs;
+  std::vector<fair::mq::MessagePtr> mData;
 
   TimeFrameBuilder &mTfBld;
 };

@@ -61,7 +61,7 @@ void SubTimeFrameFileReader::visit(SubTimeFrame& pStf, void*)
 {
   DataIdentifier lDataId;
   DataHeader::SubSpecificationType lSubSpec;
-  std::vector<FairMQMessagePtr> *lVec = nullptr;
+  std::vector<fair::mq::MessagePtr> *lVec = nullptr;
 
   for (auto& lStfDataPair : mStfData) {
     if (lStfDataPair.mHeader) {

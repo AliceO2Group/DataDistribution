@@ -30,7 +30,7 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
 {
  public:
   StfToDplAdapter() = delete;
-  StfToDplAdapter(FairMQChannel& pDplBridgeChan, SyncMemoryResources &pMemRes)
+  StfToDplAdapter(fair::mq::Channel& pDplBridgeChan, SyncMemoryResources &pMemRes)
     : mChan(pDplBridgeChan),
       mMemRes(pMemRes)
   {
@@ -68,8 +68,8 @@ class StfToDplAdapter : public ISubTimeFrameVisitor
   bool mInspectChannel = false;
   bool mReducedHdr = true;
 
-  std::vector<FairMQMessagePtr> mMessages;
-  FairMQChannel& mChan;
+  std::vector<fair::mq::MessagePtr> mMessages;
+  fair::mq::Channel& mChan;
   SyncMemoryResources& mMemRes;
 };
 
@@ -85,15 +85,15 @@ class DplToStfAdapter : public ISubTimeFrameVisitor
   DplToStfAdapter() = default;
   virtual ~DplToStfAdapter() = default;
 
-  std::unique_ptr<SubTimeFrame> deserialize(FairMQChannel& pChan, bool logError = false);
-  std::unique_ptr<SubTimeFrame> deserialize(FairMQParts& pMsgs);
+  std::unique_ptr<SubTimeFrame> deserialize(fair::mq::Channel& pChan, bool logError = false);
+  std::unique_ptr<SubTimeFrame> deserialize(fair::mq::Parts& pMsgs);
 
  protected:
   std::unique_ptr<SubTimeFrame> deserialize_impl();
   void visit(SubTimeFrame& pStf, void*) override;
 
  private:
-  std::vector<FairMQMessagePtr> mMessages;
+  std::vector<fair::mq::MessagePtr> mMessages;
 };
 
 } /* o2::DataDistribution */

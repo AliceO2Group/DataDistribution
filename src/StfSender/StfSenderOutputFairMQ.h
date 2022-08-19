@@ -38,7 +38,7 @@ public:
 
   }
 
-  void start(std::shared_ptr<FairMQTransportFactory> pZMQTransportFactory);
+  void start(std::shared_ptr<fair::mq::TransportFactory> pZMQTransportFactory);
   void stop();
 
   /// RPC requests
@@ -56,7 +56,7 @@ private:
 
   /// Discovery configuration
   std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
-  std::shared_ptr<FairMQTransportFactory>  mZMQTransportFactory;
+  std::shared_ptr<fair::mq::TransportFactory>  mZMQTransportFactory;
 
   // Global stf counters
   StdSenderOutputCounters &mCounters;
@@ -64,7 +64,7 @@ private:
   /// Threads for output channels (to EPNs)
   struct OutputChannelObjects {
     std::string mTfBuilderEndpoint;
-    std::unique_ptr<FairMQChannel> mChannel;
+    std::unique_ptr<fair::mq::Channel> mChannel;
     std::unique_ptr<IovSerializer> mStfSerializer;
     std::unique_ptr<ConcurrentFifo<std::unique_ptr<SubTimeFrame>>> mStfQueue;
     std::thread mThread;

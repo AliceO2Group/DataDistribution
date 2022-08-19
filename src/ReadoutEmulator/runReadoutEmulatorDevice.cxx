@@ -10,7 +10,7 @@
 
 #include "ReadoutDevice.h"
 
-#include <options/FairMQProgOptions.h>
+#include <fairmq/ProgOptions.h>
 
 #include "runFairMQDevice.h"
 
@@ -43,7 +43,7 @@ void addCustomOptions(bpo::options_description& options)
     "Input throughput per link (bits per second).");
 }
 
-FairMQDevicePtr getDevice(const FairMQProgOptions& /*config*/)
+FairMQDevicePtr getDevice(const fair::mq::ProgOptions& /*config*/)
 {
   return new o2::DataDistribution::ReadoutDevice();
 }

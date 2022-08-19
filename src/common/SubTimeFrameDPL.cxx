@@ -286,7 +286,7 @@ void StfToDplAdapter::sendEosToDpl()
 
   // Send a multiparts
   for (auto lEosCnt = 0U; lEosCnt < mChan.GetNumberOfConnectedPeers(); lEosCnt++) {
-    FairMQParts lCompletedMsg;
+    fair::mq::Parts lCompletedMsg;
     auto lNoFree = [](void*, void*) { /* stack */ };
     lCompletedMsg.AddPart(mChan.NewMessage(lDoneStack.data(), lDoneStack.size(), lNoFree));
     lCompletedMsg.AddPart(mChan.NewMessage());
@@ -452,7 +452,7 @@ std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize_impl()
   return lStf;
 }
 
-std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQParts& pMsgs)
+std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(fair::mq::Parts& pMsgs)
 {
   swap(mMessages, pMsgs.fParts);
   pMsgs.fParts.clear();
@@ -460,7 +460,7 @@ std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQParts& pMsgs)
   return deserialize_impl();
 }
 
-std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(FairMQChannel& pChan, bool pLogError)
+std::unique_ptr<SubTimeFrame> DplToStfAdapter::deserialize(fair::mq::Channel& pChan, bool pLogError)
 {
   mMessages.clear();
   const std::int64_t lRet = pChan.Receive(mMessages, 500 /* ms */);

@@ -123,7 +123,7 @@ class SubTimeFrameFileSource
     DDDLOG("(Sub)TimeFrame Source terminated...");
   }
 
-  bool loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt);
+  bool loadVerifyConfig(const fair::mq::ProgOptions& pFMQProgOpt);
   std::vector<std::string> getDataFileList() const;
 
   bool enabled() const { return mEnabled; }

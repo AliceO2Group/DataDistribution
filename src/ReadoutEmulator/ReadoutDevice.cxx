@@ -15,7 +15,7 @@
 
 #include <MemoryUtils.h>
 
-#include <options/FairMQProgOptions.h>
+#include <fairmq/ProgOptions.h>
 
 #include <chrono>
 #include <thread>

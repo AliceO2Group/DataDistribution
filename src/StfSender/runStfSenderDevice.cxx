@@ -15,7 +15,7 @@
 #include <FmqUtilities.h>
 #include <DataDistMonitoring.h>
 
-#include <options/FairMQProgOptions.h>
+#include <fairmq/ProgOptions.h>
 #include <grpc/grpc.h>
 
 namespace bpo = boost::program_options;

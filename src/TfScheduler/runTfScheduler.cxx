@@ -14,7 +14,7 @@
 #include <Config.h>
 #include <FmqUtilities.h>
 
-#include <options/FairMQProgOptions.h>
+#include <fairmq/ProgOptions.h>
 #include <fairmq/DeviceRunner.h>
 #include <grpc/grpc.h>
 
