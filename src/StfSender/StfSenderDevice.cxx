@@ -213,13 +213,13 @@ void StfSenderDevice::InitTask()
     WDDLOG("Running in standalone mode and with STF file sink disabled. Data will be lost.");
   }
 
+  // register shm regions for ucx and speedup the init. Must be done from InitTask()!
+  I().mOutputHandler->register_regions();
+
   {
     I().mRunning = true;
 
     if (!standalone()) {
-      // register shm regions for ucx. Must be done from InitTask()!
-      I().mOutputHandler->register_regions();
-
       // contact the scheduler on gRPC
       while (I().mTfSchedulerRpcClient.should_retry_start() && !I().mTfSchedulerRpcClient.start(I().mDiscoveryConfig)) {
         std::this_thread::sleep_for(150ms);
@@ -231,14 +231,16 @@ void StfSenderDevice::InitTask()
         ChangeState(fair::mq::Transition::ErrorFound);
         return;
       }
-    } else {
-      // Start output handler for standalone
-      I().mOutputHandler->start_standalone(I().mDiscoveryConfig);
     }
 
     // start file sink
     if (I().mFileSink->enabled()) {
       I().mFileSink->start();
+    }
+
+    if (standalone()) {
+      // Start output handler for standalone
+      I().mOutputHandler->start_standalone(I().mDiscoveryConfig);
     }
 
     // start the receiver thread
