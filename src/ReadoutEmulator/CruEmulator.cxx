@@ -13,7 +13,7 @@
 
 #include <ConcurrentQueue.h>
 
-#include <options/FairMQProgOptions.h>
+#include <fairmq/ProgOptions.h>
 
 #include <chrono>
 #include <thread>

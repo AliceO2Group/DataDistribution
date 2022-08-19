@@ -16,7 +16,7 @@
 
 #include <fairmq/FairMQUnmanagedRegion.h>
 #include <fairmq/FairMQDevice.h> /* NewUnmanagedRegionFor */
-#include <options/FairMQProgOptions.h>
+#include <fairmq/ProgOptions.h>
 
 #include <chrono>
 #include <thread>

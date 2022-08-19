@@ -19,7 +19,7 @@
 #include <SubTimeFrameVisitors.h>
 #include <SubTimeFrameDPL.h>
 
-#include <options/FairMQProgOptions.h>
+#include <fairmq/ProgOptions.h>
 
 #include <chrono>
 #include <thread>
@@ -88,8 +88,6 @@ void StfSenderDevice::Init()
   I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
 
   I().mFileSink = std::make_unique<SubTimeFrameFileSink>(*this, *mI, eFileSinkIn, eFileSinkOut);
-
-  I().mStandalone = GetConfig()->GetValue<bool>(OptionKeyStandalone);
 
   I().mPartitionId = Config::getPartitionOption(*GetConfig()).value_or("");
   if (I().mPartitionId.empty()) {

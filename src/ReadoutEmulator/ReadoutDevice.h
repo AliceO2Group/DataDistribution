@@ -79,7 +79,7 @@ class ReadoutDevice : public DataDistDevice
   std::vector<std::unique_ptr<CruLinkEmulator>> mCruLinks;
 
   // messages to send
-  std::vector<FairMQMessagePtr> mDataBlockMsgs;
+  std::vector<fair::mq::MessagePtr> mDataBlockMsgs;
   std::thread mSendingThread;
 
   /// Observables

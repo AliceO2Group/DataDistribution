@@ -77,7 +77,7 @@ public:
   std::thread mInputThread;
 
   /// StfBuilding thread and queues
-  std::unique_ptr<ConcurrentFifo<std::vector<FairMQMessagePtr>>> mBuilderInputQueue = nullptr;
+  std::unique_ptr<ConcurrentFifo<std::vector<fair::mq::MessagePtr>>> mBuilderInputQueue = nullptr;
   std::unique_ptr<SubTimeFrameReadoutBuilder> mStfBuilder = nullptr;
   std::uint32_t mStfIdBuilding = 0;
   std::thread mBuilderThread;

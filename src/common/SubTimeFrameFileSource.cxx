@@ -167,7 +167,7 @@ std::vector<std::string> SubTimeFrameFileSource::getDataFileList() const
   return lFilesVector;
 }
 
-bool SubTimeFrameFileSource::loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt)
+bool SubTimeFrameFileSource::loadVerifyConfig(const fair::mq::ProgOptions& pFMQProgOpt)
 {
   mEnabled = pFMQProgOpt.GetValue<bool>(OptionKeyStfSourceEnable);
 

@@ -73,7 +73,7 @@ class SubTimeFrameFileSink
     DDDLOG("(Sub)TimeFrame Sink terminated.");
   }
 
-  bool loadVerifyConfig(const FairMQProgOptions& pFMQProgOpt);
+  bool loadVerifyConfig(const fair::mq::ProgOptions& pFMQProgOpt);
   bool makeDirectory();
 
   bool enabled() const { return mEnabled; }

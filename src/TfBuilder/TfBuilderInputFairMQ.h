@@ -47,7 +47,7 @@ class TfBuilderInputFairMQ
     mStfReqQueue.stop(); // not used in FMQ transport
   }
 
-  bool start(std::shared_ptr<ConsulTfBuilder> pConfig, std::shared_ptr<FairMQTransportFactory> pZMQTransportFactory);
+  bool start(std::shared_ptr<ConsulTfBuilder> pConfig, std::shared_ptr<fair::mq::TransportFactory> pZMQTransportFactory);
   void stop(std::shared_ptr<ConsulTfBuilder> pConfig);
   void reset() { }
 
@@ -66,7 +66,7 @@ class TfBuilderInputFairMQ
   std::uint32_t mNumStfSenders = 0;
 
   /// StfBuilder channels
-  std::vector<std::unique_ptr<FairMQChannel>> mStfSenderChannels;
+  std::vector<std::unique_ptr<fair::mq::Channel>> mStfSenderChannels;
 
   /// Threads for input channels (per FLP)
   std::map<std::string, std::thread> mInputThreads;

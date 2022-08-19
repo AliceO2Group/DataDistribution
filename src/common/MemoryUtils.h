@@ -76,7 +76,7 @@ public:
   RegionAllocatorResource() = delete;
 
   RegionAllocatorResource(const std::string &pSegmentName, const std::optional<uint16_t> pSegmentId, std::size_t pSize,
-                          FairMQTransportFactory& pShmTrans,
+                          fair::mq::TransportFactory& pShmTrans,
                           std::uint64_t pRegionFlags = 0,
                           bool pCanFail = false)
   : mSegmentName(pSegmentName),
@@ -167,7 +167,7 @@ public:
       lRegionCfg.removeOnDestruction = true;
     }
 
-    auto lReclaimFn = [this, lZeroShmMemory, lZeroCheckShmMemory](const std::vector<FairMQRegionBlock>& pBlkVect) {
+    auto lReclaimFn = [this, lZeroShmMemory, lZeroCheckShmMemory](const std::vector<fair::mq::RegionBlock>& pBlkVect) {
       if constexpr (FREE_STRATEGY == eExactRegion) {
         icl::interval_map<std::size_t, std::size_t> lIntMap;
         static thread_local double sMergeRatio = 0.5;
@@ -233,7 +233,7 @@ public:
         DDDLOG_RL(5000, "Memory segment '{}'::block merging ratio average={:.4}", mSegmentName, sMergeRatio);
       }
       else if constexpr (FREE_STRATEGY == eRefCount) {
-        static thread_local boost::container::small_vector<FairMQRegionBlock, 512> sBlkVect;
+        static thread_local boost::container::small_vector<fair::mq::RegionBlock, 512> sBlkVect;
         sBlkVect.clear();
 
         std::copy(pBlkVect.begin(), pBlkVect.end(), std::back_inserter(sBlkVect));
@@ -342,7 +342,7 @@ public:
   void* get_ucx_ptr(void *ptr) const  { return (reinterpret_cast<char*>(ptr) - mSegmentAddr + mUCXSegmentAddr); }
 
   inline
-  std::unique_ptr<FairMQMessage> NewFairMQMessage(const std::size_t pSize) {
+  fair::mq::MessagePtr NewFairMQMessage(const std::size_t pSize) {
     auto* lMem = do_allocate(pSize);
     if (lMem) {
       if constexpr (FREE_STRATEGY == eRefCount) {
@@ -361,7 +361,7 @@ public:
 
   template<typename T>
   inline
-  std::unique_ptr<FairMQMessage> NewFairMQMessage(const T pData, const std::size_t pSize) {
+  fair::mq::MessagePtr NewFairMQMessage(const T pData, const std::size_t pSize) {
     static_assert(std::is_pointer_v<T>, "Require pointer");
 
     auto lMessage = NewFairMQMessage(pSize);
@@ -372,7 +372,7 @@ public:
   }
 
   inline
-  std::unique_ptr<FairMQMessage> NewFairMQMessageFromPtr(void *pPtr, std::size_t pSize) {
+  fair::mq::MessagePtr NewFairMQMessageFromPtr(void *pPtr, std::size_t pSize) {
     // we can have a zero allocation
     if ((pSize > 0) && (pPtr != nullptr)) {
       assert(pPtr >= static_cast<char*>(mRegion->GetData()));
@@ -684,8 +684,8 @@ private:
   std::atomic_bool mRunning = false;
   bool mCanFail = false;
 
-  FairMQTransportFactory &mTransport;
-  std::unique_ptr<FairMQUnmanagedRegion> mRegion;
+  fair::mq::TransportFactory &mTransport;
+  std::unique_ptr<fair::mq::UnmanagedRegion> mRegion;
 
   char *mStart = nullptr;
   std::size_t mLength = 0;
@@ -729,7 +729,7 @@ class MemoryResources {
 
 public:
   MemoryResources() = delete;
-  explicit MemoryResources(std::shared_ptr<FairMQTransportFactory> pShmTransport)
+  explicit MemoryResources(std::shared_ptr<fair::mq::TransportFactory> pShmTransport)
   : mShmTransport(pShmTransport) { }
 
   virtual ~MemoryResources() {
@@ -772,7 +772,7 @@ public:
   std::unique_ptr<DataRegionAllocatorResource> mDataMemRes;
 
   // shm transport
-  std::shared_ptr<FairMQTransportFactory> mShmTransport;
+  std::shared_ptr<fair::mq::TransportFactory> mShmTransport;
 
 private:
   bool mRunning = false;
@@ -782,14 +782,14 @@ private:
 class SyncMemoryResources : public MemoryResources {
 public:
   SyncMemoryResources() = delete;
-  explicit SyncMemoryResources(std::shared_ptr<FairMQTransportFactory> pShmTransport)
+  explicit SyncMemoryResources(std::shared_ptr<fair::mq::TransportFactory> pShmTransport)
   : MemoryResources(pShmTransport) { }
 
   virtual ~SyncMemoryResources() {}
 
   template<typename T>
   inline
-  FairMQMessagePtr newHeaderMessage(const T pData, const std::size_t pSize) {
+  fair::mq::MessagePtr newHeaderMessage(const T pData, const std::size_t pSize) {
     static_assert(std::is_pointer_v<T>, "Require pointer");
     assert(mHeaderMemRes);
     std::scoped_lock lock(mHdrLock);
@@ -797,7 +797,7 @@ public:
   }
 
   inline
-  FairMQMessagePtr newDataMessage(const std::size_t pSize) {
+  fair::mq::MessagePtr newDataMessage(const std::size_t pSize) {
     assert(mDataMemRes);
     std::scoped_lock lock(mDataLock);
     return mDataMemRes->NewFairMQMessage(pSize);
@@ -805,10 +805,10 @@ public:
 
   template <typename T>
   inline
-  FairMQMessagePtr newDataMessage(const T pData, const std::size_t pSize) {
+  fair::mq::MessagePtr newDataMessage(const T pData, const std::size_t pSize) {
     static_assert(std::is_pointer_v<T>, "Require pointer");
     assert(mDataMemRes);
-    FairMQMessagePtr lMsg;
+    fair::mq::MessagePtr lMsg;
     {
       std::scoped_lock lock(mDataLock);
       lMsg = mDataMemRes->NewFairMQMessage(pSize);
@@ -822,10 +822,10 @@ public:
   }
 
   inline
-  bool replaceDataMessages(std::vector<FairMQMessagePtr> &pMsgs) {
+  bool replaceDataMessages(std::vector<fair::mq::MessagePtr> &pMsgs) {
 
     // create a new instance to support passing the same vect as in and out
-    std::vector<FairMQMessagePtr> lNewMsgs(pMsgs.size());
+    std::vector<fair::mq::MessagePtr> lNewMsgs(pMsgs.size());
     lNewMsgs.clear();
     bool lRetOk = true;
 

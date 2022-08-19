@@ -12,7 +12,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "StfBuilderDevice.h"
-#include <options/FairMQProgOptions.h>
+#include <fairmq/ProgOptions.h>
 #include <grpc/grpc.h>
 
 #include <SubTimeFrameFileSink.h>

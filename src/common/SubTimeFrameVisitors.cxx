@@ -125,7 +125,7 @@ void IovDeserializer::visit(SubTimeFrame& pStf, void*)
 }
 
 
-std::unique_ptr<SubTimeFrame> IovDeserializer::deserialize(const IovStfHdrMeta &pHdrMeta, std::vector<FairMQMessagePtr>& pDataMsgs)
+std::unique_ptr<SubTimeFrame> IovDeserializer::deserialize(const IovStfHdrMeta &pHdrMeta, std::vector<fair::mq::MessagePtr>& pDataMsgs)
 {
   mIovStfHeader.Clear();
   mIovStfHeader.CopyFrom(pHdrMeta);
@@ -180,7 +180,7 @@ SubTimeFrame::Header IovDeserializer::peek_tf_header(const IovStfHdrMeta &pHdrMe
 }
 
 // copy all messages into the data region, and update the vector
-bool IovDeserializer::copy_to_region(std::vector<FairMQMessagePtr>& pMsgs /* in/out */)
+bool IovDeserializer::copy_to_region(std::vector<fair::mq::MessagePtr>& pMsgs /* in/out */)
 {
   mTfBld.replaceDataMessages(pMsgs);
 

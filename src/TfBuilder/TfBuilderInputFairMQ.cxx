@@ -32,7 +32,7 @@ namespace o2::DataDistribution
 
 using namespace std::chrono_literals;
 
-bool TfBuilderInputFairMQ::start(std::shared_ptr<ConsulTfBuilder> pConfig, std::shared_ptr<FairMQTransportFactory> pZMQTransportFactory)
+bool TfBuilderInputFairMQ::start(std::shared_ptr<ConsulTfBuilder> pConfig, std::shared_ptr<fair::mq::TransportFactory> pZMQTransportFactory)
 {
   auto &lStatus = pConfig->status();
 
@@ -77,7 +77,7 @@ bool TfBuilderInputFairMQ::start(std::shared_ptr<ConsulTfBuilder> pConfig, std::
 
     std::string lAddress = "tcp://" + lAaddress + ":" + std::to_string(10000 + lSocketIdx);
 
-    auto lNewChannel = std::make_unique<FairMQChannel>(
+    auto lNewChannel = std::make_unique<fair::mq::Channel>(
       "stf_sender_chan_" + std::to_string(lSocketIdx) ,  // name
       "pull",               // type
       "bind",               // method
@@ -244,10 +244,10 @@ void TfBuilderInputFairMQ::DataHandlerThread(const std::uint32_t pFlpIndex, cons
 
   while (mState == RUNNING) {
 
-    std::unique_ptr<std::vector<FairMQMessagePtr>> lStfData;
+    std::unique_ptr<std::vector<fair::mq::MessagePtr>> lStfData;
 
 
-    lStfData = std::make_unique<std::vector<FairMQMessagePtr>>();
+    lStfData = std::make_unique<std::vector<fair::mq::MessagePtr>>();
 
     const std::int64_t lRet = lInputChan.Receive(*lStfData, 1000 /* ms */);
     if (static_cast<std::int64_t>(fair::mq::TransferCode::timeout) == lRet) {
@@ -269,7 +269,7 @@ void TfBuilderInputFairMQ::DataHandlerThread(const std::uint32_t pFlpIndex, cons
     }
 
     // get Stf ID
-    FairMQMessagePtr lHdrMessage = std::move(lStfData->back()); lStfData->pop_back();
+    fair::mq::MessagePtr lHdrMessage = std::move(lStfData->back()); lStfData->pop_back();
 
     IovStfHeader lStfHeaderMeta;
     lStfHeaderMeta.ParseFromArray(lHdrMessage->GetData(), lHdrMessage->GetSize());

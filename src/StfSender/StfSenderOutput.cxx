@@ -56,7 +56,7 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
   if (lTransportOpt == "fmq" || lTransportOpt == "FMQ" || lTransportOpt == "fairmq" || lTransportOpt == "FAIRMQ") {
     // create a socket and connect
     mDevice.GetConfig()->SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 20u));
-    mZMQTransportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
+    mZMQTransportFactory = fair::mq::TransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
 
     // create FairMQ output
     mOutputFairMQ = std::make_unique<StfSenderOutputFairMQ>(pDiscoveryConfig, mCounters);

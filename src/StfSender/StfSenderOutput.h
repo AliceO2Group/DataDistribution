@@ -122,7 +122,7 @@ public:
 
   /// Discovery configuration
   std::shared_ptr<ConsulStfSender> mDiscoveryConfig;
-  std::shared_ptr<FairMQTransportFactory> mZMQTransportFactory;
+  std::shared_ptr<fair::mq::TransportFactory> mZMQTransportFactory;
 
   /// StfCopy builder; not used if nullptr
   std::shared_ptr<SubTimeFrameCopyBuilder> mStfCopyBuilder;

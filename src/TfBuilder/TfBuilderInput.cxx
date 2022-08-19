@@ -56,7 +56,7 @@ bool TfBuilderInput::start()
 {
   // make max number of listening channels for the partition
   mDevice.GetConfig()->SetProperty<int>("io-threads", (int) std::min(std::thread::hardware_concurrency(), 32u));
-  auto lTransportFactory = FairMQTransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
+  auto lTransportFactory = fair::mq::TransportFactory::CreateTransportFactory("zeromq", "", mDevice.GetConfig());
 
   // start the input stage
   if (mInputFairMQ) {
