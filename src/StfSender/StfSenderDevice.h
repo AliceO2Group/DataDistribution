@@ -130,7 +130,6 @@ class StfSenderDevice : public DataDistDevice
       StfSenderPipeline lNextStage = eInvalidStage;
       switch (pStage) {
         case eReceiverOut:
-        /*  case eFileSinkOut: */
         {
           if (mFileSink->enabled()) {
             lNextStage = eFileSinkIn;
@@ -142,11 +141,6 @@ class StfSenderDevice : public DataDistDevice
         }
         case eFileSinkOut:
         {
-          if (mStandalone) {
-            lNextStage = eNullIn;
-            break;
-          }
-
           lNextStage = eSenderIn;
           break;
         }

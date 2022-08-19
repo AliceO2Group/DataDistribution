@@ -90,6 +90,12 @@ void StfBuilderDevice::InitTask()
 {
   DataDistLogger::SetThreadName("stfb-main");
 
+  Transport()->SubscribeToRegionEvents([this](fair::mq::RegionInfo info) {
+    if (fair::mq::RegionEvent::created == info.event) {
+      DDDLOG("Region created. size={} managed={}", info.size, info.managed);
+    }
+  });
+
   I().mInputChannelName = GetConfig()->GetValue<std::string>(OptionKeyInputChannelName);
   I().mOutputChannelName = GetConfig()->GetValue<std::string>(OptionKeyOutputChannelName);
   I().mDplChannelName = GetConfig()->GetValue<std::string>(OptionKeyDplChannelName);
@@ -290,6 +296,8 @@ void StfBuilderDevice::InitTask()
 void StfBuilderDevice::ResetTask()
 {
   DDDLOG("StfBuilderDevice::ResetTask()");
+
+  Transport()->UnsubscribeFromRegionEvents();
 
   // Signal ConditionalRun() and other threads to stop
   I().mState.mRunning = false;

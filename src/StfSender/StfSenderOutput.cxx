@@ -68,10 +68,10 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
   }
 
   // create stf ordering thread
-  mStfOrderThread = create_thread_member("stfs_drop", &StfSenderOutput::StfOrderThread, this);
+  mStfOrderThread = create_thread_member("stfs_order", &StfSenderOutput::StfOrderThread, this);
 
   // create stf copy thread
-  for (auto i = 0; i < 4; i++) {
+  for (auto i = 0; i < 8; i++) {
     mCopyThreads.emplace_back(create_thread_member("stfs_copy", &StfSenderOutput::StfCopyThread, this));
   }
 
@@ -91,18 +91,17 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
 void StfSenderOutput::register_regions()
 {
   // this must be called from InitTask()
-  if (mOutputUCX) {
-    // register for region updates
-    mDevice.Transport()->SubscribeToRegionEvents([this](fair::mq::RegionInfo info) {
+  // register for region updates
+  mDevice.Transport()->SubscribeToRegionEvents([this](fair::mq::RegionInfo info) {
+    if (fair::mq::RegionEvent::created == info.event) {
+      DDDLOG("Region created. size={} managed={}", info.size, info.managed);
       if (mOutputUCX) {
-        if (fair::mq::RegionEvent::created == info.event) {
-          mOutputUCX->registerSHMRegion(info.ptr, info.size, info.managed, info.flags);
-        } else if (fair::mq::RegionEvent::destroyed == info.event) {
-          DDDLOG("Region destroyed while running. size={} managed={}", info.size, info.managed);
-        }
+        mOutputUCX->registerSHMRegion(info.ptr, info.size, info.managed, info.flags);
       }
-    });
-  }
+    } else if (fair::mq::RegionEvent::destroyed == info.event) {
+      DDDLOG("Region destroyed while running. size={} managed={}", info.size, info.managed);
+    }
+  });
 }
 
 void StfSenderOutput::start_standalone(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
@@ -123,9 +122,12 @@ void StfSenderOutput::start_standalone(std::shared_ptr<ConsulStfSender> pDiscove
   mKeepTarget = mDiscoveryConfig->getUInt64Param(StandaloneStfDataBufferSizeMBKey, StandaloneStfDataBufferSizeMBDefault) << 20;
   mKeepTarget = std::clamp(mKeepTarget.load(), std::uint64_t(128ULL << 20), mBufferSize);
 
+  // create stf ordering thread
+  mStfOrderThread = create_thread_member("stfs_order", &StfSenderOutput::StfOrderThread, this);
+
   // create stf copy thread
-  for (auto i = 0; i < 4; i++) {
-    mCopyThreads.emplace_back(create_thread_member("stfs_ordering", &StfSenderOutput::StfCopyThread, this));
+  for (auto i = 0; i < 8; i++) {
+    mCopyThreads.emplace_back(create_thread_member("stfs_copy", &StfSenderOutput::StfCopyThread, this));
   }
 
   // create stf keep thread
@@ -139,6 +141,7 @@ void StfSenderOutput::start_standalone(std::shared_ptr<ConsulStfSender> pDiscove
 void StfSenderOutput::stop()
 {
   mRunning = false;
+  mDropQueue.stop();
   mScheduleQueue.stop();
   mCopyQueue.stop();
 
@@ -174,7 +177,6 @@ void StfSenderOutput::stop()
   }
 
   // stop the drop queue
-  mDropQueue.stop();
   if (mStfDropThread.joinable()) {
     mStfDropThread.join();
   }
@@ -184,10 +186,11 @@ void StfSenderOutput::stop()
     mOutputFairMQ->stop();
   }
 
+  // Unsubscribe from region updates
+  mDevice.Transport()->UnsubscribeFromRegionEvents();
+
   // stop UCX input
   if (mOutputUCX) {
-    // Unsubscribe from region updates
-    mDevice.Transport()->UnsubscribeFromRegionEvents();
     mOutputUCX->stop();
   }
 
@@ -244,7 +247,7 @@ void StfSenderOutput::StfKeepThread()
   mDeletePercentage = std::clamp(mDeletePercentage.load(), std::uint64_t(0), std::uint64_t(100));
 
   while (mRunning) {
-    auto lStfOpt = mPipelineI.dequeue_for(eSenderIn, 50ms);
+    auto lStfOpt = mScheduleQueue.pop_wait_for(50ms);
 
     std::scoped_lock lMapLock(mStfKeepMapLock);
 
@@ -310,11 +313,11 @@ void StfSenderOutput::StfOrderThread()
 {
   std::unique_ptr<SubTimeFrame> lStf;
   while ((lStf = mPipelineI.dequeue(eSenderIn)) != nullptr) {
-    {
-      std::scoped_lock lOrderLock(mScheduledStfMapLock);
-      mStfOrderingQueue.push(lStf->id());
-    }
 
+    DDDLOG_RL(1000, "StfOrderThread: receiving {}", lStf->id() );
+
+    std::unique_lock lOrderLock(mScheduledStfMapLock);
+    mStfOrderingQueue.push(lStf->id());
     // push the original Stf for scheduling
     mCopyQueue.push(std::move(lStf));
   }
@@ -343,7 +346,7 @@ void StfSenderOutput::StfCopyThread()
       assert (mStfOrderingQueue.front() <= lStf->id());
 
       if (mStfOrderingQueue.front() != lStf->id()) {
-        mStfOrderingCv.wait(lOrderLock);
+        mStfOrderingCv.wait_for(lOrderLock, 10ms);
         continue;
       } else {
         mStfOrderingQueue.pop();
