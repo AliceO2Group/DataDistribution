@@ -58,8 +58,6 @@ static ucs_status_t ucp_am_data_cb(void *arg, const void *header, size_t header_
   (void) header;
   (void) header_length;
 
-  const auto lMetaDecodeStart = std::chrono::steady_clock::now();
-
   if (param->recv_attr & UCP_AM_RECV_ATTR_FLAG_RNDV) {
     /* Rendezvous request arrived, data contains an internal UCX descriptor,
       * which has to be passed to ucp_am_recv_data_nbx function to confirm
@@ -75,7 +73,7 @@ static ucs_status_t ucp_am_data_cb(void *arg, const void *header, size_t header_
   if (lInputUcx->createMetadata(data, length, lMeta)) {
     lInputUcx->pushMetadata(std::move(lMeta));
   }
-  DDMON("tfbuilder", "recv.meta_decode_ms", since<std::chrono::milliseconds>(lMetaDecodeStart));
+
   return UCS_OK;
 }
 
@@ -545,7 +543,6 @@ void TfBuilderInputUCX::stop()
 /// Receive buffer allocation thread
 void TfBuilderInputUCX::StfPreprocessThread(const unsigned pThreadIdx)
 {
-  using clock = std::chrono::steady_clock;
   DDDLOG("Starting ucx preprocess thread {}", pThreadIdx);
 
   auto &lTokenInfo = mAvailableStfs[pThreadIdx];
@@ -563,8 +560,6 @@ void TfBuilderInputUCX::StfPreprocessThread(const unsigned pThreadIdx)
 
       const std::string &lStfSenderId = lStfMeta.stf_sender_id();
 
-      const auto lAllocStart = clock::now();
-
       // Allocate data memory for txgs
       using UCXIovTxg = UCXIovStfHeader::UCXIovTxg;
 
@@ -576,8 +571,6 @@ void TfBuilderInputUCX::StfPreprocessThread(const unsigned pThreadIdx)
 
       mTimeFrameBuilder.allocDataBuffers(lTxgSizes, lStfRdmaInfo->mTxgPtrs);
       assert (lStfRdmaInfo->mTxgPtrs.size() == std::size_t(lStfMeta.stf_txg_iov().size()));
-
-      DDMON("tfbuilder", "recv.data_alloc_ms", since<std::chrono::milliseconds>(lAllocStart));
 
       { // make sure all remote keys are unpacked
         // We make this in two passes in order to minimize impact on the RDMA thread.
@@ -849,8 +842,6 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
 /// FMQ message creating thread
 void TfBuilderInputUCX::StfPostprocessThread(const unsigned pThreadIdx)
 {
-  using clock = std::chrono::steady_clock;
-
   DDDLOG("Starting ucx postprocess thread {}", pThreadIdx);
   // Deserialization object (stf ID)
   IovDeserializer lStfReceiver(mTimeFrameBuilder);
@@ -866,9 +857,6 @@ void TfBuilderInputUCX::StfPostprocessThread(const unsigned pThreadIdx)
     const std::string &lStfSenderId = lStfMeta.stf_sender_id();
     const auto &lTxgPtrs = lStfRdmaInfo->mTxgPtrs;
 
-    auto lFmqPrepareStart = clock::now();
-
-    DDMON("tfbuilder", "recv.rma_get_total_ms", lStfRdmaInfo->mRdmaTimeMs);
     DDMON_RATE("tfbuilder", "receive_time", (lStfRdmaInfo->mRdmaTimeMs / 1000.0));
 
     // signal in flight STF is finished (or error)
@@ -906,8 +894,6 @@ void TfBuilderInputUCX::StfPostprocessThread(const unsigned pThreadIdx)
 
     // copy header meta
     auto lStfHdr = std::make_unique<IovStfHdrMeta>(std::move(lStfMeta.stf_hdr_meta()));
-
-    DDMON("tfbuilder", "recv.fmq_msg_ms", since<std::chrono::milliseconds>(lFmqPrepareStart));
 
     const SubTimeFrame::Header lStfHeader = lStfReceiver.peek_tf_header(*lStfHdr.get());
     assert (lTfId == lStfHeader.mId);
