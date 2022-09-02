@@ -56,6 +56,7 @@ public:
   bool running() const;
 
   void StfOrderThread();
+  void StfCopyAllocThread();
   void StfCopyThread();
   void StfSchedulerThread();
   void StfKeepThread();
@@ -96,6 +97,11 @@ public:
       mScheduledStfMap.clear();
       mSchedulingResult.clear();
     }
+
+    { // clear the standalone keep map
+      std::scoped_lock lMapLock(mStfKeepMapLock);
+      mStfKeepMap.clear();
+    }
   }
 
  private:
@@ -114,8 +120,8 @@ public:
   std::uint64_t mStaleStfTimeoutMs = StaleStfTimeoutMsDefault;
 
   /// Stf keeper thread for standalone runs
-  std::atomic_uint64_t mKeepTarget = 512ULL << 20;
-  std::atomic_uint64_t mDeletePercentage = 50;
+  std::atomic_uint64_t mKeepTarget = StandaloneStfDataBufferSizeMBDefault << 20;
+  std::atomic_uint64_t mDeletePercentage = StandaloneStfDeleteChanceDefault;
   std::mutex mStfKeepMapLock;
     std::map<std::uint64_t, std::unique_ptr<SubTimeFrame>> mStfKeepMap;
   std::thread mStfKeepThread;
@@ -126,16 +132,30 @@ public:
 
   /// StfCopy builder; not used if nullptr
   std::shared_ptr<SubTimeFrameCopyBuilder> mStfCopyBuilder;
-  std::vector<std::thread> mCopyThreads;
+
+  /// Stf copy threads and queues
+  struct StfCopyInfo {
+    std::unique_ptr<SubTimeFrame> mStf;
+    std::vector<void*> mLinkBuffers;
+  };
 
   std::thread mStfOrderThread;
-  ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mCopyQueue;
+  std::thread mCopyAllocThread;
+  std::vector<std::thread> mCopyThreads;
+
+  ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mCopyAllocQueue;
+  ConcurrentFifo<StfCopyInfo> mCopyQueue;
+
   std::mutex mStfOrderingLock;
     std::condition_variable mStfOrderingCv;
     std::queue<std::uint64_t> mStfOrderingQueue;
 
   /// Scheduler threads
-  ConcurrentFifo<std::unique_ptr<SubTimeFrame>> mScheduleQueue;
+  struct StfSchedInfo {
+    std::unique_ptr<SubTimeFrame> mStf;
+    bool mMemoryPressure = false;
+  };
+  ConcurrentFifo<StfSchedInfo> mScheduleQueue;
   std::thread mSchedulerThread;
   std::uint64_t mLastStfId = 0;
   std::mutex mScheduledStfMapLock;
