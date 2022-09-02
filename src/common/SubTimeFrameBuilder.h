@@ -219,7 +219,8 @@ class SubTimeFrameCopyBuilder
   // make allocate the memory here
   void allocate_memory(const std::size_t pDataSegSize, const std::optional<std::uint16_t> pDataSegId);
 
-  bool copyStfData(std::unique_ptr<SubTimeFrame> &pStf);
+  void allocNewStfData(const std::unique_ptr<SubTimeFrame> &pStf, std::vector<void*> &pLinkBuffers);
+  bool copyStfData(std::unique_ptr<SubTimeFrame> &pStf, const std::vector<void*> &pLinkBuffers);
 
   inline auto freeData() const { return mMemRes.freeData(); }
 

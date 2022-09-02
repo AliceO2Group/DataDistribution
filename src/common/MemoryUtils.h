@@ -25,6 +25,7 @@
 
 #include <Headers/DataHeader.h>
 
+#include "Utilities.h"
 #include "DataDistLogger.h"
 
 #include <vector>
@@ -87,7 +88,7 @@ public:
 
     fair::mq::RegionConfig lRegionCfg;
 
-    pSize = align_size_up(pSize);
+    pSize = align_size_up<ALIGN>(pSize);
 
     int lMapFlags = 0;
     std::string lSegmentRoot = "";
@@ -180,7 +181,7 @@ public:
           }
 
           // align up the message size for correct interval merging
-          const auto lASize = align_size_up(lInt.size);
+          const auto lASize = align_size_up<ALIGN>(lInt.size);
 
           // check for buffer sentinel value
           if (lZeroCheckShmMemory && (lASize > lInt.size)) {
@@ -416,7 +417,7 @@ public:
       if constexpr (FREE_STRATEGY == eExactRegion) {
         auto intervalA = icl::discrete_interval<std::size_t>::right_open(
           reinterpret_cast<std::size_t>(pPtr),
-          reinterpret_cast<std::size_t>(pPtr)+align_size_up(pSize)
+          reinterpret_cast<std::size_t>(pPtr)+align_size_up<ALIGN>(pSize)
         );
 
         if (icl::intersects(mFreeRanges, intervalA)) {
@@ -474,10 +475,6 @@ public:
 
   // NOTE: we align sizes of returned messages, but keep the exact size for allocation
   //       otherwise the shm messages would be larger than requested
-  static constexpr inline
-  std::size_t align_size_up(const std::size_t pSize) {
-    return (pSize + ALIGN - 1) / ALIGN * ALIGN;
-  }
 
   void* do_allocate(const std::size_t pSize)
   {
@@ -491,7 +488,7 @@ public:
     }
 
     // align up
-    const auto pSizeUp = align_size_up(pSize);
+    const auto pSizeUp = align_size_up<ALIGN>(pSize);
 
     auto lRet = try_alloc(pSizeUp);
 

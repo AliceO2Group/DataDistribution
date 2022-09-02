@@ -609,20 +609,68 @@ void SubTimeFrameCopyBuilder::allocate_memory(const std::size_t pDataSegSize, co
   mMemRes.start();
 }
 
-bool SubTimeFrameCopyBuilder::copyStfData(std::unique_ptr<SubTimeFrame> &pStf)
+bool SubTimeFrameCopyBuilder::copyStfData(std::unique_ptr<SubTimeFrame> &pStf, const std::vector<void*> &pLinkBuffers)
 {
+  bool lRet = true;
+  std::size_t lLinkIdx = 0;
+  std::vector<std::pair<void*, std::size_t>> lDataMsgsBuffers;
+
   for (auto& lDataIdentMapIter : pStf->mData) {
     for (auto& lSubSpecMapIter : lDataIdentMapIter.second) {
       for (auto& lStfDataIter : lSubSpecMapIter.second) {
         // replace and copy data FMQ messages
-        if (!mMemRes.replaceDataMessages(lStfDataIter.mDataParts)) {
-          return false;
+        assert (pLinkBuffers.size() > lLinkIdx);
+        char* lLinkBuffPtr = reinterpret_cast<char*>(pLinkBuffers[lLinkIdx++]);
+        if (!lLinkBuffPtr) {
+          lRet = false;
+          continue; // we have to check all pointers
         }
+
+        lDataMsgsBuffers.clear();
+
+        assert (lLinkBuffPtr);
+        for (auto &lDataMsg : lStfDataIter.mDataParts) {
+          const auto lSize = lDataMsg->GetSize();
+          std::memcpy(lLinkBuffPtr, lDataMsg->GetData(), lSize);
+          lDataMsgsBuffers.emplace_back(lLinkBuffPtr, lSize);
+          lLinkBuffPtr += align_size_up<16>(lSize);
+        }
+
+        // remove old fmq messages
+        lStfDataIter.mDataParts.clear();
+        // make new data messages
+        mMemRes.fmqFromDataBuffers(lDataMsgsBuffers, std::back_inserter(lStfDataIter.mDataParts));
       }
     }
   }
 
-  return true;
+  return lRet;
+}
+
+
+void SubTimeFrameCopyBuilder::allocNewStfData(const std::unique_ptr<SubTimeFrame> &pStf, std::vector<void*> &pLinkBuffers)
+{
+  std::vector<std::uint64_t> lSizes;
+
+  // calculate how much to allocate
+  for (const auto& lDataIdentMapIter : pStf->mData) {
+    for (const auto& lSubSpecMapIter : lDataIdentMapIter.second) {
+      for (const auto& lStfDataIter : lSubSpecMapIter.second) {
+
+        std::uint64_t lPartSize = 0;
+        // allocate one buffer for each link
+        for (const auto &lDataMsg : lStfDataIter.mDataParts) {
+          lPartSize += align_size_up<16>(lDataMsg->GetSize());
+        }
+
+        // save the size of each link
+        lSizes.push_back(lPartSize);
+      }
+    }
+  }
+
+  // allocate buffers for all links
+  mMemRes.allocDataBuffers(lSizes, std::back_inserter(pLinkBuffers));
 }
 
 } /* o2::DataDistribution */

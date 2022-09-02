@@ -36,6 +36,11 @@ void assume(const bool pPred) {
   }
 }
 
+template<std::size_t ALIGN>
+std::size_t align_size_up(const std::size_t pSize) {
+  return (pSize + ALIGN - 1) / ALIGN * ALIGN;
+}
+
 // helper function to get default LHC period
 static inline
 std::string getDefaultLhcPeriod() {

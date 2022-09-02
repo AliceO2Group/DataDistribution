@@ -69,6 +69,8 @@ void StfSenderOutput::start(std::shared_ptr<ConsulStfSender> pDiscoveryConfig)
 
   // create stf ordering thread
   mStfOrderThread = create_thread_member("stfs_order", &StfSenderOutput::StfOrderThread, this);
+  // create stf alloc thread
+  mCopyAllocThread = create_thread_member("stfs_alloc", &StfSenderOutput::StfCopyAllocThread, this);
 
   // create stf copy thread
   for (auto i = 0; i < 8; i++) {
@@ -125,6 +127,9 @@ void StfSenderOutput::start_standalone(std::shared_ptr<ConsulStfSender> pDiscove
   // create stf ordering thread
   mStfOrderThread = create_thread_member("stfs_order", &StfSenderOutput::StfOrderThread, this);
 
+  // create stf alloc thread
+  mCopyAllocThread = create_thread_member("stfs_alloc", &StfSenderOutput::StfCopyAllocThread, this);
+
   // create stf copy thread
   for (auto i = 0; i < 8; i++) {
     mCopyThreads.emplace_back(create_thread_member("stfs_copy", &StfSenderOutput::StfCopyThread, this));
@@ -143,11 +148,17 @@ void StfSenderOutput::stop()
   mRunning = false;
   mDropQueue.stop();
   mScheduleQueue.stop();
+  mCopyAllocQueue.stop();
   mCopyQueue.stop();
 
   // stop the stf ordering: on pipeline interrupt
   if (mStfOrderThread.joinable()) {
     mStfOrderThread.join();
+  }
+
+  // stop the stf copy alloc threqad
+  if (mCopyAllocThread.joinable()) {
+    mCopyAllocThread.join();
   }
 
   // stop copy threads
@@ -287,7 +298,12 @@ void StfSenderOutput::StfKeepThread()
     }
 
     if (lStfOpt) {
-      std::unique_ptr<SubTimeFrame> lStf = std::move(lStfOpt.value());
+      std::unique_ptr<SubTimeFrame> lStf = std::move(lStfOpt.value().mStf);
+
+      if (lStfOpt.value().mMemoryPressure) {
+        // release immediately if we could not copy
+        continue;
+      }
 
       const auto lStfId = lStf->id();
       const auto lStfSize = lStf->getDataSize();
@@ -313,45 +329,77 @@ void StfSenderOutput::StfOrderThread()
 {
   std::unique_ptr<SubTimeFrame> lStf;
   while ((lStf = mPipelineI.dequeue(eSenderIn)) != nullptr) {
-
     DDDLOG_RL(1000, "StfOrderThread: receiving {}", lStf->id() );
 
-    std::unique_lock lOrderLock(mScheduledStfMapLock);
-    mStfOrderingQueue.push(lStf->id());
-    // push the original Stf for scheduling
-    mCopyQueue.push(std::move(lStf));
+    if (mStfCopyBuilder) {
+      std::unique_lock lOrderLock(mScheduledStfMapLock);
+      mStfOrderingQueue.push(lStf->id());
+      // push the original Stf for allocation copy
+      mCopyAllocQueue.push(std::move(lStf));
+    } else {
+      // no copying
+      StfSchedInfo lSchedInfo;
+      lSchedInfo.mStf = std::move(lStf);
+      lSchedInfo.mMemoryPressure = false;
+      mScheduleQueue.push(std::move(lSchedInfo));
+    }
   }
   DDDLOG("StfOrderThread: Exiting.");
+}
+
+void StfSenderOutput::StfCopyAllocThread()
+{
+  while (mRunning) {
+    std::unique_ptr<SubTimeFrame> lStf;
+    if (!mCopyAllocQueue.pop(lStf)) {
+      break;
+    }
+
+    StfCopyInfo lStfCopyInfo;
+
+    // allocate memory for the stf
+    assert (mStfCopyBuilder);
+    mStfCopyBuilder->allocNewStfData(lStf, lStfCopyInfo.mLinkBuffers);
+
+    lStfCopyInfo.mStf = std::move(lStf);
+    mCopyQueue.push(std::move(lStfCopyInfo));
+  }
+  DDDLOG("StfCopyAlloc: Exiting.");
 }
 
 void StfSenderOutput::StfCopyThread()
 {
   while (mRunning) {
-    std::unique_ptr<SubTimeFrame> lStf;
-    if (!mCopyQueue.pop(lStf)) {
+    StfCopyInfo lStfCopyInfo;
+    if (!mCopyQueue.pop(lStfCopyInfo)) {
       break;
     }
 
-    if (mStfCopyBuilder) {
-      // copy stf
-      if (!mStfCopyBuilder->copyStfData(lStf)) {
-        DDMON("stfsender", "stf_region.full", 1);
-      }
+    assert (mStfCopyBuilder);
+
+    // copy stf
+    const bool lCopyOk = mStfCopyBuilder->copyStfData(lStfCopyInfo.mStf, lStfCopyInfo.mLinkBuffers);
+    if (!lCopyOk) {
+      // Copy region is full or fragmented
+      DDMON("stfsender", "stf_region.full", 1);
     }
 
     // wait for our turn to schedule
     while (mRunning) {
       std::unique_lock lOrderLock(mScheduledStfMapLock);
       assert (!mStfOrderingQueue.empty());
-      assert (mStfOrderingQueue.front() <= lStf->id());
+      assert (mStfOrderingQueue.front() <= lStfCopyInfo.mStf->id());
 
-      if (mStfOrderingQueue.front() != lStf->id()) {
+      if (mStfOrderingQueue.front() != lStfCopyInfo.mStf->id()) {
         mStfOrderingCv.wait_for(lOrderLock, 10ms);
         continue;
       } else {
         mStfOrderingQueue.pop();
         // push the original Stf for scheduling
-        mScheduleQueue.push(std::move(lStf));
+        StfSchedInfo lSchedInfo;
+        lSchedInfo.mMemoryPressure = !lCopyOk;
+        lSchedInfo.mStf = std::move(lStfCopyInfo.mStf);
+        mScheduleQueue.push(std::move(lSchedInfo));
         break;
       }
     }
@@ -373,10 +421,12 @@ void StfSenderOutput::StfSchedulerThread()
 #endif
 
   while (mRunning) {
-    std::unique_ptr<SubTimeFrame> lStf;
-    if (!mScheduleQueue.pop(lStf)) {
+    StfSchedInfo lSchedInfo;
+    if (!mScheduleQueue.pop(lSchedInfo)) {
       break;
     }
+
+    std::unique_ptr<SubTimeFrame> lStf = std::move(lSchedInfo.mStf);
 
     const auto lStfId = lStf->id();
     const auto lStfSize = lStf->getDataSize();
@@ -420,7 +470,7 @@ void StfSenderOutput::StfSchedulerThread()
     lStfInfo.set_stf_size(lStfSize);
 
     lStfInfo.mutable_stfs_info()->set_buffer_size(mBufferSize);
-    lStfInfo.mutable_stfs_info()->set_buffer_used(lCounters.mBuffered.mSize);
+    lStfInfo.mutable_stfs_info()->set_buffer_used(lSchedInfo.mMemoryPressure ? mBufferSize : lCounters.mBuffered.mSize);
     lStfInfo.mutable_stfs_info()->set_num_buffered_stfs(lCounters.mBuffered.mCnt);
 
     switch (lStf->header().mOrigin) {
@@ -487,8 +537,10 @@ void StfSenderOutput::StfSchedulerThread()
           mCounters.mValues.mSchedulerStfRejectedCnt += 1;
         }
 
-        WDDLOG_RL(5000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
-          lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
+        if (lSchedResponse.status() != SchedulerStfInfoResponse::DROP_STFS_THROTTLING) {
+          WDDLOG_RL(5000, "TfScheduler rejected the Stf announce. stf_id={} reason={}",
+            lStfId, SchedulerStfInfoResponse_StfInfoStatus_Name(lSchedResponse.status()));
+        }
       }
       DDDLOG_RL(5000, "StfSchedulerThread: Sent an STF announce. stf_id={} stf_size={}", lStfId, lStfInfo.stf_size());
     }
