@@ -3,7 +3,7 @@ include(ExternalProject)
 
 ExternalProject_Add(jemalloc
   GIT_REPOSITORY "https://github.com/jemalloc/jemalloc.git"
-  GIT_TAG "5.2.1"
+  GIT_TAG "5.3.0"
 
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
