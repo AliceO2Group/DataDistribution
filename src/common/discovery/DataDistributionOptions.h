@@ -34,7 +34,7 @@ static constexpr bool DataDistMonitorRpcDurationDefault = false;
 
 // Enable the token manager for stf transfers
 static constexpr std::string_view DataDistEnableStfTransferTokensKey = "DataDistEnableStfTransferTokens";
-static constexpr bool DataDistEnableStfTransferTokensDefault = false;
+static constexpr bool DataDistEnableStfTransferTokensDefault = true;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -64,7 +64,7 @@ static constexpr std::uint64_t StaleStfTimeoutMsDefault = 60000;
 
 // Standalone: Chance the stf will be deleted on arrival
 static constexpr std::string_view StandaloneStfDeleteChanceKey = "StandaloneStfDeleteChance";
-static constexpr std::uint64_t StandaloneStfDeleteChanceDefault = 50;
+static constexpr std::uint64_t StandaloneStfDeleteChanceDefault = 25;
 
 // Standalone: Amount of data to keep while running
 static constexpr std::string_view StandaloneStfDataBufferSizeMBKey = "StandaloneStfDataBufferSizeMB";
@@ -105,7 +105,7 @@ static constexpr std::uint64_t StfSenderGrpcThreadPoolSizeDefault = 8;
 /// UCX transport
 // Size of receiver treadpool. Default 1, works best. Should not be set over 2, to avoid congestion on the receiver.
 static constexpr std::string_view UcxTfBuilderThreadPoolSizeKey = "UcxTfBuilderThreadPoolSize";
-static constexpr std::uint64_t UcxTfBuilderThreadPoolSizeDefault = 2;
+static constexpr std::uint64_t UcxTfBuilderThreadPoolSizeDefault = 1;
 
 // Use polling or blocking waiting method for RDMA completion.
 static constexpr std::string_view UcxPollForRDMACompletionKey = "UcxPollForRDMACompletion";
@@ -113,7 +113,7 @@ static constexpr bool UcxPollForRDMACompletionDefault = false;
 
 // Allow smaller STFs to be fetched concurrently to improve TF building time
 static constexpr std::string_view UcxMaxStfSizeForConcurrentFetchBKey = "UcxMaxStfSizeForConcurrentFetchB";
-static constexpr std::uint64_t UcxMaxStfSizeForConcurrentFetchBDefault = std::uint64_t(4) << 20;
+static constexpr std::uint64_t UcxMaxStfSizeForConcurrentFetchBDefault = std::uint64_t(2) << 20;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,7 +122,7 @@ static constexpr std::uint64_t UcxMaxStfSizeForConcurrentFetchBDefault = std::ui
 
 // Define maximum number of concurrent TFs in building per TfBuilder
 static constexpr std::string_view MaxNumTfsInBuildingKey = "MaxNumTfsInBuilding";
-static constexpr std::uint64_t MaxNumTfsInBuildingDevault = 25;
+static constexpr std::uint64_t MaxNumTfsInBuildingDevault = 5;
 
 // Decision wether to build or drop incomplete (stale) TFs
 static constexpr std::string_view BuildIncompleteTfsKey = "BuildIncompleteTfs";
@@ -130,15 +130,11 @@ static constexpr bool BuildIncompleteTfsValue = true;
 
 // An incomplete TF is considered stale when the following timeout expires after the last STF is reported.
 static constexpr std::string_view StaleTfTimeoutMsKey = "StaleTfTimeoutMs";
-static constexpr std::uint64_t StaleTfTimeoutMsDefault = 1000;
-
-// Max number of incomplete TFs to keep before considering them stale
-static constexpr std::string_view IncompleteTfsMaxCntKey = "IncompleteTfsMaxCnt";
-static constexpr std::uint64_t IncompleteTfsMaxCntValue = 100;
+static constexpr std::uint64_t StaleTfTimeoutMsDefault = 750;
 
 // Token reset timeout. All tokens are returned to the scheduler, as a protection from failed EPNs.
 static constexpr std::string_view TokenResetTimeoutMsKey = "TokenResetTimeoutMs";
-static constexpr std::uint64_t TokenResetTimeoutMsDefault = 1000;
+static constexpr std::uint64_t TokenResetTimeoutMsDefault = 5000;
 
 // Number of tokens assigned to each FLP. Increasing the cnt will allow multiple receivers in parallel.
 static constexpr std::string_view TokensPerStfSenderCntKey = "TokensPerStfSenderCnt";
