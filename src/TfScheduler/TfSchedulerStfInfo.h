@@ -28,6 +28,8 @@
 
 #include <Utilities.h>
 
+#include <boost/algorithm/string/trim.hpp>
+
 #include <vector>
 #include <map>
 #include <thread>
@@ -87,13 +89,37 @@ public:
   : mDiscoveryConfig(pDiscoveryConfig),
     mConnManager(pConnManager),
     mTfBuilderInfo(pTfBuilderInfo),
-    mDroppedStfs(24ULL * 3600 * 88), // 1h of running ~ 1MiB size
-    mBuiltTfs(24ULL * 3600 * 88)
+    mDroppedStfs(48ULL * 3600 * 88), // 1h of running ~ 1MiB size
+    mDroppedThrottlingStfs(48ULL * 3600 * 88),
+    mBuiltTfs(48ULL * 3600 * 88)
   { }
 
   ~TfSchedulerStfInfo() { }
 
   void start() {
+    // get parameters
+
+    // Build TfPercentage from AliECS
+    if (mDiscoveryConfig->status().partition_params().param_values().count("BuildTfPercentage") > 0) {
+      double lTfPercent = 100.0;
+      auto lBuildPercentString = mDiscoveryConfig->status().partition_params().param_values().at("BuildTfPercentage");
+      boost::algorithm::trim(lBuildPercentString);
+
+      try {
+        if (lBuildPercentString.empty()) {
+          throw boost::bad_lexical_cast();
+        }
+        lTfPercent = boost::lexical_cast<double>(lBuildPercentString);
+
+      } catch(boost::bad_lexical_cast const &e) {
+        EDDLOG("Error while parsing AliECS parameter 'BuildTfPercentage'. str_value={} what={}", lBuildPercentString, e.what());
+        lTfPercent = 100.0;
+      }
+
+      mPercentageToBuild = std::clamp(lTfPercent, 0.0, 100.0);
+      IDDLOG("TfScheduler parameters: BuildTfPercentage={:.4}", mPercentageToBuild);
+    }
+
     mStfInfoMap.clear();
 
     mRunning = true;
@@ -169,6 +195,7 @@ private:
 
   /// Discovery configuration
   std::shared_ptr<ConsulTfScheduler> mDiscoveryConfig;
+  double mPercentageToBuild = 100.0;
 
   /// RPC clients to StfSenders and TfBuilders
   TfSchedulerConnManager &mConnManager;
@@ -202,13 +229,16 @@ private:
     std::map<std::string, std::uint64_t> mMaxStfIdPerStfSender;
     // total sizes
     std::uint64_t mTfSizeTotalScheduled = 0;
-    std::uint64_t mTfSizeTotalRejected = 0;
+    std::atomic_uint64_t mTfSizeTotalRejected = 0;
 
     std::uint64_t mStaleTfCount = 0;
     std::uint64_t mScheduledTfs = 0;
 
     EventRecorder mDroppedStfs;
+    EventRecorder mDroppedThrottlingStfs;
+    std::uint64_t mLastThrottledStfId = 0;
     EventRecorder mBuiltTfs;
+
 
     void reset() {
       // NOTE: only call when holding mGlobalStfInfoLock
@@ -227,6 +257,8 @@ private:
       mTfSizeTotalRejected = 0;
 
       mDroppedStfs.reset();
+      mDroppedThrottlingStfs.reset();
+      mLastThrottledStfId = 0;
       mBuiltTfs.reset();
 
       if (!mStfInfoMap.empty()) {

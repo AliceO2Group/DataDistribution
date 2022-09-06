@@ -23,6 +23,7 @@
 #include <set>
 #include <tuple>
 #include <algorithm>
+#include <random>
 
 namespace o2::DataDistribution
 {
@@ -456,6 +457,10 @@ void TfSchedulerStfInfo::DropThread()
 
 void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerStfInfoResponse &pResponse)
 {
+  using namespace std::chrono_literals;
+  static thread_local std::default_random_engine lGen;
+  static thread_local std::uniform_real_distribution<double> lUniformDist(0, 100.0);
+
   const std::uint64_t lRunNumber = pStfInfo.partition().run_number();
   const auto lStfId = pStfInfo.stf_id();
 
@@ -493,6 +498,32 @@ void TfSchedulerStfInfo::addStfInfo(const StfSenderStfInfo &pStfInfo, SchedulerS
         pResponse.set_status((!mRunning) ? SchedulerStfInfoResponse::DROP_NOT_RUNNING :
           SchedulerStfInfoResponse::DROP_SCHED_DISCARDED);
         return;
+      }
+
+      { // check if this tf is rejected because of throttling
+        static std::uint64_t lThrottlingRejectedSize = 0;
+
+        if (lStfId > mLastThrottledStfId) {
+
+          // decide if discarding on throttling
+          bool lTfDropped = (lUniformDist(lGen) <= mPercentageToBuild) ? false : true;
+          if (lTfDropped) {
+            mDroppedThrottlingStfs.SetEvent(lStfId);
+            mDroppedStfs.SetEvent(lStfId);
+            mNotScheduledTfsCount++;
+            // this will only accurately represent the rate
+            DDMON_RATE("tfscheduler", "tf.rejected.tf", lThrottlingRejectedSize);
+            lThrottlingRejectedSize = 0;
+          }
+          mLastThrottledStfId = lStfId;
+        }
+
+        if (mDroppedThrottlingStfs.GetEvent(lStfId)) {
+          mTfSizeTotalRejected += pStfInfo.stf_size();
+          lThrottlingRejectedSize += pStfInfo.stf_size();
+          pResponse.set_status(SchedulerStfInfoResponse::DROP_STFS_THROTTLING);
+          return;
+        }
       }
     }
 

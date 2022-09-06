@@ -52,15 +52,21 @@ message PartitionInfo {
   uint64 run_number     = 3;
 }
 
+message PartitionParameters {
+  map<string, string> param_values = 1;
+}
+
 message TfSchedulerConfigStatus {
-            BasicInfo       info                = 1;
-            PartitionInfo   partition           = 2;
+            BasicInfo           info                = 1;
+            PartitionInfo       partition           = 2;
 
-            string          rpc_endpoint        = 3;
+            string              rpc_endpoint        = 3;
 
-            uint32          stf_sender_count    = 4;
-  repeated  string          stf_sender_id_list  = 5;
-            PartitionState  partition_state     = 6;
+            uint32              stf_sender_count    = 4;
+  repeated  string              stf_sender_id_list  = 5;
+            PartitionState      partition_state     = 6;
+
+            PartitionParameters partition_params    = 10; // Parameters from AliECS
 }
 
 message StfBuilderConfigStatus {
@@ -256,6 +262,7 @@ message SchedulerStfInfoResponse {
     DROP_SCHED_DISCARDED      = 4; // scheduler already processed that tf
     DROP_STFS_INCOMPLETE      = 5; // all StfSenders are not reachable
     DROP_STFS_BUFFER_FULL     = 6; // buffers on StfSender are full
+    DROP_STFS_THROTTLING      = 7; // Not scheduling because of throttling settings
   }
 
   StfInfoStatus  status = 1;
