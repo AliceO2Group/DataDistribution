@@ -14,6 +14,12 @@
 #ifndef ALICEO2_DATADIST_CONFIG_PARAMETERS_H_
 #define ALICEO2_DATADIST_CONFIG_PARAMETERS_H_
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include "discovery.pb.h"
+#pragma GCC diagnostic pop
+
+
 #include <string>
 #include <vector>
 #include <cassert>
@@ -45,6 +51,8 @@ struct PartitionRequest {
   std::string   mPartitionId;
   std::string   mReqCreatedTime;
   std::vector<std::string> mStfSenderIdList;
+
+  PartitionParameters mParameters;
 };
 
 

@@ -19,6 +19,7 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <google/protobuf/util/json_util.h>
 #include "discovery.pb.h"
 #pragma GCC diagnostic pop
 
@@ -464,6 +465,7 @@ public:
     static const std::string sPartitionIdSubKey = "/partition-id"s;
     static const std::string sRequestCreateTimeKey = "/request-create-time"s;
     static const std::string sStfSenderListSubKey = "/stf-sender-id-list"s;
+    static const std::string sPartParamsKey = "/parameters"s;
 
     static_assert(std::is_same_v<T, TfSchedulerConfigStatus>, "Only TfScheduler can call this method.");
 
@@ -475,6 +477,7 @@ public:
       const auto lReqPartitionIdKey = lPartReqKey + sPartitionIdSubKey;
       const auto lReqCreateTimeKey = lPartReqKey + sRequestCreateTimeKey;
       const auto lReqStfSenderListKey = lPartReqKey + sStfSenderListSubKey;
+      const auto lReqParametersKey = lPartReqKey + sPartParamsKey;
 
       std::scoped_lock lLock(mConsulLock);
 
@@ -514,12 +517,38 @@ public:
         }
 
         // list of all FLPs
-        // ../<part-id>/stf-sender-id-list: <str date-time>
+        // ../<part-id>/stf-sender-id-list: <str>
         auto lFlpIdList = std::find_if(std::begin(lReqItems), std::end(lReqItems),
           [&] (KeyValue const& p) { return p.key == lReqStfSenderListKey; });
         if (lFlpIdList == std::end(lReqItems)) {
           EDDLOG("Invalid new partition request. Missing key: {}", lReqStfSenderListKey);
           break;
+        }
+
+        // [optional] parameters from AliECS
+        // ../<part-id>/parameters: <protobuf PartitionParameters as json>
+        auto lPartParams = std::find_if(std::begin(lReqItems), std::end(lReqItems),
+          [&] (KeyValue const& p) { return p.key == lReqParametersKey; });
+        if (lPartParams != std::end(lReqItems)) {
+
+          // just validate the parameters can be decoded
+          PartitionParameters lPartParamsProto;
+
+          // Parse the json_string
+          google::protobuf::util::JsonParseOptions lJsonOptions;
+          lJsonOptions.ignore_unknown_fields = true;
+          lJsonOptions.case_insensitive_enum_parsing = true;
+
+          if (JsonStringToMessage(lPartParams->value, &lPartParamsProto, lJsonOptions).ok()) {
+            pNewPartitionRequest.mParameters = std::move(lPartParamsProto);
+
+            for (const auto lParamKV : pNewPartitionRequest.mParameters.param_values()) {
+              IDDLOG("Partition request parameters: {:30} : {}", lParamKV.first, lParamKV.second);
+            }
+
+          } else {
+            EDDLOG("Cannot parse partition parameter json object. json_str={}", lPartParams->value);
+          }
         }
 
         // validate the request fields

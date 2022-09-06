@@ -43,6 +43,7 @@ TfSchedulerInstanceHandler::TfSchedulerInstanceHandler(DataDistDevice& pDev,
   lStatus.mutable_info()->set_process_id(pProcessId);
   lStatus.mutable_info()->set_ip_address(Config::getNetworkIfAddressOption(*pDev.GetConfig()));
   lStatus.mutable_partition()->set_partition_id(mPartitionInfo.mPartitionId);
+  lStatus.set_allocated_partition_params(&mPartitionInfo.mParameters);
 
   lStatus.set_stf_sender_count(mPartitionInfo.mStfSenderIdList.size());
   for (const auto &lStfSenderId : mPartitionInfo.mStfSenderIdList) {
