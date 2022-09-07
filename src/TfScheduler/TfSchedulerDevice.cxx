@@ -57,8 +57,14 @@ void TfSchedulerDevice::InitTask()
 
   while (!mSchedInstance) {
     // prevent infinite looping. Look for the specified request for 5min and exit
-    if (since<std::chrono::minutes>(mStartTime) > 10.0) {
+    if (since<std::chrono::minutes>(mStartTime) > 30.0) {
       IDDLOG("Partition request not found. Exiting. partition={}", mPartitionId);
+      ChangeState(fair::mq::Transition::ErrorFound);
+      return;
+    }
+
+    if (NewStatePending()) {
+      IDDLOG("Exiting on request from control system.");
       ChangeState(fair::mq::Transition::ErrorFound);
       return;
     }
