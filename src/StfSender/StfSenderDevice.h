@@ -76,6 +76,16 @@ class StfSenderDevice : public DataDistDevice
   virtual void InitTask() override final;
   virtual void ResetTask() override final;
 
+  void AbortInitTask() {
+    DDDLOG("Aborting InitTask...");
+    if (mI && I().mDiscoveryConfig) {
+      auto& lStatus = I().mDiscoveryConfig->status();
+      lStatus.mutable_info()->set_process_state(BasicInfo::ABORTED);
+      I().mDiscoveryConfig->write();
+    }
+    ResetTask();
+  }
+
   virtual void PreRun() final;
   virtual void PostRun() final;
   virtual bool ConditionalRun() final;
@@ -87,6 +97,21 @@ class StfSenderDevice : public DataDistDevice
 
     StfSenderInstance()
     : IFifoPipeline(ePipelineSize) {}
+
+    ~StfSenderInstance() {
+      mRunning = false;
+      mDeviceRunning = false;
+
+      // stop the info thread
+      if (mInfoThread.joinable()) {
+        mInfoThread.join();
+      }
+
+      // stop the receiver thread
+      if (mReceiverThread.joinable()) {
+        mReceiverThread.join();
+      }
+    }
 
     /// Configuration
     std::string mInputChannelName;
