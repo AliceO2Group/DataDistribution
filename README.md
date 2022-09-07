@@ -19,4 +19,4 @@ Standalone, testing and development use-cases are discussed [here](script/README
 
 ## Contact
 
-Gvozden Neskovic <neskovic@compeng.uni-frankfurt.de>
+Gvozden Nešković <neskovic@compeng.uni-frankfurt.de>

@@ -1,22 +1,20 @@
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// Copyright 2019-2022 CERN and copyright holders of ALICE O2.
+// See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
+// All rights not expressly granted are reserved.
+//
+// This software is distributed under the terms of the GNU General Public
+// License v3 (GPL Version 3), copied verbatim in the file "COPYING".
+//
+// In applying this license CERN does not waive the privileges and immunities
+// granted to it by virtue of its status as an Intergovernmental Organization
+// or submit itself to any jurisdiction.
 
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+/// \author Gvozden Nešković, Frankfurt Institute for Advanced Studies and Goethe University Frankfurt
 
 #ifndef STF_DATAMODEL_UTILS_H_
 #define STF_DATAMODEL_UTILS_H_
 
-namespace o2
-{
-namespace DataDistribution
+namespace o2::DataDistribution
 {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,7 +41,7 @@ class IDataModelObject
   virtual void accept(ISubTimeFrameVisitor& v, void *p = nullptr) = 0;
   virtual void accept(ISubTimeFrameConstVisitor& v, void *p = nullptr) const = 0;
 };
-}
+
 } /* o2::DataDistribution */
 
 #endif /* STF_DATAMODEL_UTILS_H_ */
