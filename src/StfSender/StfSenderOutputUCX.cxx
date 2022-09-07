@@ -148,7 +148,6 @@ void StfSenderOutputUCX::stop()
     for (auto &lWorker : mDataWorkers) {
       ucp_worker_destroy(lWorker.ucp_worker);
     }
-    ucp_cleanup(ucp_context);
   }
   DDDLOG("StfSenderOutputUCX::stop: closed all connections.");
 
@@ -159,6 +158,8 @@ void StfSenderOutputUCX::stop()
       ucx::util::destroy_rkey_for_region(ucp_context, lMapping.ucp_mem, lMapping.ucp_rkey_buf);
     }
   }
+
+  ucp_cleanup(ucp_context);
   DDDLOG("StfSenderOutputUCX::stop: revoked all rkeys.");
 }
 

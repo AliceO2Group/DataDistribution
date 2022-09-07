@@ -59,7 +59,7 @@ public:
         return false;
       }
 
-      IDDLOG_RL(1000, "TfScheduler instance configuration not found. Retrying.");
+      IDDLOG_RL(5000, "TfScheduler instance configuration not found. Retrying.");
       return false;
     }
 
@@ -79,6 +79,8 @@ public:
 
     IDDLOG("Connected to TfScheduler RPC endpoint={}", lEndpoint);
 
+    mStarted = true;
+
     return true;
   }
 
@@ -86,7 +88,10 @@ public:
     mTfSchedulerConf.Clear();
     mStub.reset(nullptr);
     mChannel.reset();
+    mStarted = false;
   }
+
+  bool started() const { return mStarted; }
 
   void updateTimeInformation(BasicInfo &pInfo);
 
@@ -137,6 +142,8 @@ private:
 
   // keep looking for the TfScheduler instance
   bool mShouldRetryStart = true;
+  // mark successful start
+  bool mStarted = false;
 };
 
 } /* namespace o2::DataDistribution */

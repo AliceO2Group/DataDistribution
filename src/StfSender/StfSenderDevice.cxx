@@ -153,10 +153,7 @@ void StfSenderDevice::Reset()
   DDDLOG("StfBuilderDevice::Reset()");
 
   I().mDeviceRunning = false;
-  // wait the Info thread, before closing mTfSchedulerRpcClient
-  if (I().mInfoThread.joinable()) {
-    I().mInfoThread.join();
-  }
+  // stop the receiver thread
   if (I().mReceiverThread.joinable()) {
     I().mReceiverThread.join();
   }
@@ -222,11 +219,20 @@ void StfSenderDevice::InitTask()
     if (!standalone()) {
       // contact the scheduler on gRPC
       while (I().mTfSchedulerRpcClient.should_retry_start() && !I().mTfSchedulerRpcClient.start(I().mDiscoveryConfig)) {
-        std::this_thread::sleep_for(150ms);
+
+        // try to reach the scheduler unless we should exit
+        if (NewStatePending()) {
+          IDDLOG("InitTask: The control system requested abort.");
+          AbortInitTask();
+          ChangeState(fair::mq::Transition::ErrorFound);
+          return;
+        }
+
+        std::this_thread::sleep_for(250ms);
       }
 
       // Did we fail to connect to the TfScheduler?
-      if (!I().mTfSchedulerRpcClient.should_retry_start()) {
+      if (!I().mTfSchedulerRpcClient.started()) {
         EDDLOG("InitTask: Failed to connect to TfScheduler. Exiting.");
         ChangeState(fair::mq::Transition::ErrorFound);
         return;
@@ -298,7 +304,7 @@ void StfSenderDevice::ResetTask()
 {
   I().mRunning = false;
 
-    // Stop the pipeline
+  // Stop the pipeline
   I().stopPipeline();
 
   // stop the receiver thread
