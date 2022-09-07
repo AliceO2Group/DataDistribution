@@ -276,6 +276,7 @@ bool TfBuilderInputUCX::start()
     listen_conn_handle_cb, &dd_ucp_listen_context)) {
     return false;
   }
+  DDDLOG("TfBuilderInputUCX::start(): ucp_listener created.");
 
   // Start the Listener thread
   mListenerThread = create_thread_member("ucx_listener", &TfBuilderInputUCX::ListenerThread, this);
@@ -448,11 +449,6 @@ void TfBuilderInputUCX::stop()
 
   mState = TERMINATED;
 
-  if (mListenerThread.joinable()) {
-    mListenerThread.join();
-  }
-  DDDLOG("TfBuilderInputUCX::stop: Listener thread stopped.");
-
   // Wait for input threads to stop
   DDDLOG("TfBuilderInputUCX::stop: Waiting for input threads to terminate.");
   mStfReqQueue.stop();
@@ -500,44 +496,50 @@ void TfBuilderInputUCX::stop()
     }
   }
 
-  // unmap the receive buffers
-  if (ucp_data_region_set) {
-    // remove the ucx mapping from the region
-    void* lOrigAddress = mTimeFrameBuilder.mMemRes.mDataMemRes->address();
-    mTimeFrameBuilder.mMemRes.mDataMemRes->set_ucx_address(lOrigAddress);
-    // unmap
-    ucp_mem_unmap(ucp_context, ucp_data_region);
-  }
+  if (mListenerThread.joinable()) {
+    mListenerThread.join();
+    DDDLOG("TfBuilderInputUCX::stop: Listener thread stopped.");
+
+    // unmap the receive buffers
+    if (ucp_data_region_set) {
+      // remove the ucx mapping from the region
+      void* lOrigAddress = mTimeFrameBuilder.mMemRes.mDataMemRes->address();
+      mTimeFrameBuilder.mMemRes.mDataMemRes->set_ucx_address(lOrigAddress);
+      // unmap
+      ucp_mem_unmap(ucp_context, ucp_data_region);
+    }
 
 
-  { // close ucx: destroy remote rma keys and disconnect
-    std::unique_lock lLock(mConnectionMapLock);
-    DDDLOG("TfBuilderInputUCX::stop: closing ep connections.");
+    { // close ucx: destroy remote rma keys and disconnect
+      std::unique_lock lLock(mConnectionMapLock);
+      DDDLOG("TfBuilderInputUCX::stop: closing ep connections.");
 
-    for (auto & lConn : mConnMap) {
-      std::unique_lock lIoLock(lConn.second->mRemoteKeysLock);
-      for (auto & lRKeyIt : lConn.second->mRemoteKeys) {
-        ucp_rkey_destroy(lRKeyIt.second);
+      for (auto & lConn : mConnMap) {
+        std::unique_lock lIoLock(lConn.second->mRemoteKeysLock);
+        for (auto & lRKeyIt : lConn.second->mRemoteKeys) {
+          ucp_rkey_destroy(lRKeyIt.second);
+        }
+        ucx::util::close_ep_connection(lConn.second->mWorker, lConn.second->ucp_ep);
       }
-      ucx::util::close_ep_connection(lConn.second->mWorker, lConn.second->ucp_ep);
+      mConnMap.clear();
     }
-    mConnMap.clear();
+
+    {// close the listener and all workers
+      DDDLOG("TfBuilderInputUCX::stop: closing the listener.");
+      ucp_listener_destroy(ucp_listener);
+      ucp_worker_destroy(listener_worker.ucp_worker);
+
+      DDDLOG("TfBuilderInputUCX::stop: destroying data workers.");
+      for (auto &lWorker : mDataWorkers) {
+        ucp_worker_destroy(lWorker.ucp_worker);
+      }
+      DDDLOG("TfBuilderInputUCX::stop: running the ucp cleanup.");
+      ucp_cleanup(ucp_context);
+    }
+    DDDLOG("TfBuilderInputUCX::stop: All input channels are closed.");
   }
 
-  {// close the listener and all workers
-    DDDLOG("TfBuilderInputUCX::stop: closing the listener.");
-    ucp_listener_destroy(ucp_listener);
-    ucp_worker_destroy(listener_worker.ucp_worker);
-
-    DDDLOG("TfBuilderInputUCX::stop: destroying data workers.");
-    for (auto &lWorker : mDataWorkers) {
-      ucp_worker_destroy(lWorker.ucp_worker);
-    }
-    DDDLOG("TfBuilderInputUCX::stop: running the ucp cleanup.");
-    ucp_cleanup(ucp_context);
-  }
-
-  DDDLOG("TfBuilderInputUCX::stop: All input channels are closed.");
+  DDDLOG("TfBuilderInputUCX::stop: Finished.");
 }
 
 /// Receive buffer allocation thread
