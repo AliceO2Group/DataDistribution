@@ -12,7 +12,6 @@
 /// \author Gvozden Nešković, Frankfurt Institute for Advanced Studies and Goethe University Frankfurt
 
 syntax = "proto3";
-option go_package = "protos;ddpb";
 
 // Changelog:
 //      2021-02-08: - Initial version
