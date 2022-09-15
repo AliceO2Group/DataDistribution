@@ -78,7 +78,7 @@ public:
   void enable_process_monitoring(const std::optional<unsigned> pIntervalSec) {
     if (mO2Monitoring) {
       if (pIntervalSec) {
-        mO2Monitoring->enableProcessMonitoring(pIntervalSec.value());
+        mO2Monitoring->enableProcessMonitoring(pIntervalSec.value(), {o2::monitoring::PmMeasurement::Cpu, o2::monitoring::PmMeasurement::Mem});
       } else {
         mO2Monitoring->enableProcessMonitoring();
       }
