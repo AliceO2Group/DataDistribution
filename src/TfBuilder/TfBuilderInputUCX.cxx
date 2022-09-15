@@ -204,7 +204,7 @@ void TfBuilderInputUCX::ListenerThread()
 
 bool TfBuilderInputUCX::start()
 {
-  DDDLOG("TfBuilderInputUCX::start()");
+  DDDLOG("TfBuilderInputUCX::start");
   // setting configuration options
   mThreadPoolSize = std::clamp(mConfig->getUInt64Param(UcxTfBuilderThreadPoolSizeKey, UcxTfBuilderThreadPoolSizeDefault), std::size_t(1), std::size_t(256));
   mRdmaPollingWait = mConfig->getBoolParam(UcxPollForRDMACompletionKey, UcxPollForRDMACompletionDefault);
@@ -245,7 +245,7 @@ bool TfBuilderInputUCX::start()
       return false;
     }
     // register the am handler for stf meta
-    DDDLOG("ListenerThread: ucx::util::register_am_callback() ...");
+    DDDLOG("TfBuilderInputUCX::start: ucx::util::register_am_callback() ...");
     if (!ucx::util::register_am_callback(mDataWorkers.back(), ucx::io::AM_STF_META, ucp_am_data_cb, this)) {
       return false;
     }
@@ -276,7 +276,7 @@ bool TfBuilderInputUCX::start()
     listen_conn_handle_cb, &dd_ucp_listen_context)) {
     return false;
   }
-  DDDLOG("TfBuilderInputUCX::start(): ucp_listener created.");
+  DDDLOG("TfBuilderInputUCX::start: ucp_listener created.");
 
   // Start the Listener thread
   mListenerThread = create_thread_member("ucx_listener", &TfBuilderInputUCX::ListenerThread, this);
@@ -773,7 +773,7 @@ void TfBuilderInputUCX::DataHandlerThread(const unsigned pThreadIdx)
     clock::time_point lRmaGetStart = clock::now();
     {
       if (!lStfMeta.stf_txg_iov().empty()) {
-        ucx::io::dd_ucp_multi_req_v2 lRmaReqSem;
+        ucx::io::dd_ucp_multi_req lRmaReqSem;
 
         auto lRunRdmaLoop = [&]() -> void {
           // It's safe to use shared key lock because preprocess thread created required keys for this stf
