@@ -50,64 +50,133 @@ struct TokenRequest {
   Bitfield mTokensRequested;
 };
 
-struct dd_ucp_multi_req {
+struct dd_ucp_single_req {
   alignas(128)
-  std::atomic_uint64_t mSlotsUsed = 0;
-  const std::uint64_t mSlotsCount = 1;
-  std::atomic_bool mFinished = false;
+  void *mUcpRequest = nullptr;
+  std::atomic_bool mDone = false;
+  std::atomic_bool mError = false;
 
-  dd_ucp_multi_req() = delete;
-  explicit dd_ucp_multi_req(const std::uint64_t pSlotsCount) : mSlotsCount(pSlotsCount)  { }
-  dd_ucp_multi_req(const dd_ucp_multi_req&) = delete;
-  dd_ucp_multi_req(dd_ucp_multi_req&&) = delete;
+  dd_ucp_single_req() { }
+  dd_ucp_single_req(const dd_ucp_single_req&) = delete;
+  dd_ucp_single_req(dd_ucp_single_req&&) = delete;
 
-  ~dd_ucp_multi_req() { }
-
-  inline bool done() const {
-    if (!mFinished) {
-      // let rma progress as long as there are free slots
-      return (mSlotsUsed.load() < mSlotsCount);
-    } else {
-      // done when slots used is zero
-      return (mSlotsUsed.load() == 0);
+  ~dd_ucp_single_req() {
+    if (mUcpRequest) {
+      ucp_request_free(mUcpRequest);
     }
   }
 
+  inline bool done() const { return mDone; }
+  inline bool error() const { return mError; }
+
   inline bool add_request(void *req) {
+
+    if (UCS_OK == UCS_PTR_RAW_STATUS(req)) {
+      mDone = true;
+      return true;
+    }
+
     if (UCS_PTR_IS_ERR(req)) {
-      EDDLOG("Failed run ucp_get_nbx ucx_err={}", ucs_status_string(UCS_PTR_STATUS(req)));
+      EDDLOG("Failed dd_ucp_single_req::add_request ucx_err={}", ucs_status_string(UCS_PTR_STATUS(req)));
+      mError = true;
       return false;
     }
+
     // operation returned request
     if (req && UCS_PTR_IS_PTR(req)) {
-      mSlotsUsed += 1;
+      mUcpRequest = req;
+      if (UCS_INPROGRESS != ucp_request_check_status(mUcpRequest)) {
+        mDone = true;
+      }
     }
     return true;
   }
 
   inline bool remove_request(void *req) {
+
+    if (UCS_PTR_IS_ERR(req)) {
+      EDDLOG("Failed dd_ucp_single_req::remove_request ucx_err={}", ucs_status_string(UCS_PTR_STATUS(req)));
+      mError = true;
+      return false;
+    }
+
     // operation returned request
     if (req && UCS_PTR_IS_PTR(req)) {
-      mSlotsUsed -= 1;
-      ucp_request_free(req);
+      assert (mUcpRequest == req);
     }
-    return true;
+
+    if (mUcpRequest) {
+      if (UCS_INPROGRESS != ucp_request_check_status(mUcpRequest)) {
+        mDone = true;
+      }
+    }
+
+    mError = !mDone;
+    return mDone;
   }
 
-  void mark_finished() { mFinished = true; }
+  inline
+  bool wait(dd_ucp_worker &pDDCtx, const bool pPollingWait) const {
+    if (pPollingWait) {
+      for (;;) {
+        // check if request is done
+        if (done()) {
+          return true;
+        }
+        while (ucp_worker_progress(pDDCtx.ucp_worker) > 0) { }
+      }
+      return true;
+    } else {
+      // blocking wait
+      for (;;) {
+        // check if request is done
+        if (done()) {
+          return true;
+        } else if (ucp_worker_progress(pDDCtx.ucp_worker)) {
+          continue;
+        }
+
+        // block on the worker
+        ucp_worker_progress(pDDCtx.ucp_worker);
+        auto status = ucp_worker_arm(pDDCtx.ucp_worker);
+
+        if (UCS_OK == status) {
+          int epoll_ret;
+          unsigned epoll_tries = 10;
+          do {
+            if (done()) {
+              return true;
+            }
+
+            epoll_ret = epoll_wait(pDDCtx.epoll_fd, &pDDCtx.ev, 1, 100);
+            epoll_tries -= 1;
+          } while ((epoll_ret == -1) && (errno == EINTR || errno == EAGAIN) && (epoll_tries > 0));
+
+          if ((epoll_ret == -1) && !(errno == EINTR || errno == EAGAIN)) {
+            EDDLOG("Failed epoll_wait. errno={}", errno);
+            return done();
+          }
+        } else if (UCS_ERR_BUSY == status) {
+          continue; // could not arm, recheck the request
+        }
+          // epoll returned or timeout, recheck the request
+      }
+      return done();
+    }
+  }
 };
 
 
-struct dd_ucp_multi_req_v2 {
+struct dd_ucp_multi_req {
   alignas(128)
   volatile uint64_t mReqsStarted = 0;
   std::atomic_uint64_t mReqsDone = 0;
 
-  dd_ucp_multi_req_v2() { }
-  dd_ucp_multi_req_v2(const dd_ucp_multi_req&) = delete;
-  dd_ucp_multi_req_v2(dd_ucp_multi_req&&) = delete;
+  dd_ucp_multi_req() { }
+  dd_ucp_multi_req(const dd_ucp_multi_req&) = delete;
+  dd_ucp_multi_req(dd_ucp_multi_req&&) = delete;
 
-  ~dd_ucp_multi_req_v2() { }
+  ~dd_ucp_multi_req() { }
 
   inline bool done() const {
     if (mReqsStarted > mReqsDone) {
@@ -160,11 +229,16 @@ struct dd_ucp_multi_req_v2 {
         }
 
         // block on the worker
+        ucp_worker_progress(pDDCtx.ucp_worker);
         auto status = ucp_worker_arm(pDDCtx.ucp_worker);
 
         if (UCS_OK == status) {
           int epoll_ret;
           do {
+            if (done()) {
+              return true;
+            }
+
             epoll_ret = epoll_wait(pDDCtx.epoll_fd, &pDDCtx.ev, 1, 100);
           } while ((epoll_ret == -1) && (errno == EINTR || errno == EAGAIN));
 
@@ -182,54 +256,31 @@ struct dd_ucp_multi_req_v2 {
   }
 };
 
-
-static inline
-bool ucp_wait(dd_ucp_worker &pDDCtx, dd_ucp_multi_req &pReq)
+static
+void send_single_cb(void *req, ucs_status_t status, void *user_data)
 {
-  for (;;) {
-    // check if request is done
-    if (pReq.done()) {
-      return true;
-    } else if (ucp_worker_progress(pDDCtx.ucp_worker)) {
-      continue;
-    }
+  if (UCS_OK == status) {
+    dd_ucp_single_req *dd_req = reinterpret_cast<dd_ucp_single_req*>(user_data);
+    assert (dd_req->mSlotsUsed.load() > 0);
 
-    // block on the worker
-    auto status = ucp_worker_arm(pDDCtx.ucp_worker);
-
-    if (UCS_OK == status) {
-      int epoll_ret;
-      do {
-        epoll_ret = epoll_wait(pDDCtx.epoll_fd, &pDDCtx.ev, 1, 100);
-      } while ((epoll_ret == -1) && (errno == EINTR || errno == EAGAIN));
-
-      if (epoll_ret == -1) {
-        EDDLOG("Failed ucp_advance epoll. errno={}", errno);
-        return pReq.done();
-      }
-    } else if (UCS_ERR_BUSY == status) {
-      continue; // could not arm, recheck the request
-    } else if (UCS_ERR_IO_ERROR == status) {
-      return false;
-    }
-    // epoll returned or timeout, recheck the request
+    // signal completion of one call
+    dd_req->remove_request(req);
   }
-  return pReq.done();
 }
 
-static inline
-bool ucp_wait_poll(dd_ucp_worker &pDDCtx, dd_ucp_multi_req_v2 &pReq)
+static
+void recv_single_cb(void *req, ucs_status_t status, const ucp_tag_recv_info_t *, void *user_data)
 {
-  for (;;) {
-    // check if request is done
-    if (pReq.done()) {
-      return true;
-    }
-    while (ucp_worker_progress(pDDCtx.ucp_worker) > 0) { }
+  if (UCS_OK == status) {
+    dd_ucp_single_req *dd_req = reinterpret_cast<dd_ucp_single_req*>(user_data);
+    assert (dd_req->mSlotsUsed.load() > 0);
+
+    // signal completion of one call
+    dd_req->remove_request(req);
   }
-  return true;
 }
 
+// used with rmq get and dd_ucp_multi_req
 static
 void send_multi_cb(void *req, ucs_status_t status, void *user_data)
 {
@@ -242,54 +293,42 @@ void send_multi_cb(void *req, ucs_status_t status, void *user_data)
   }
 }
 
-static
-void recv_multi_cb(void *req, ucs_status_t status, const ucp_tag_recv_info_t *, void *user_data)
-{
-  if (UCS_OK == status) {
-    dd_ucp_multi_req *dd_req = reinterpret_cast<dd_ucp_multi_req*>(user_data);
-    assert (dd_req->mSlotsUsed.load() > 0);
-
-    // signal completion of one call
-    dd_req->remove_request(req);
-  }
-}
-
-
 static inline
 bool send_tag_blocking(dd_ucp_worker &worker, ucp_ep_h ep, const void *data, const std::size_t size, const ucp_tag_t tag)
 {
   ucp_request_param_t param;
   void *ucp_request; // ucp allocated request
   // dd_ucp_req dd_request;
-  dd_ucp_multi_req dd_request(1);
+  dd_ucp_single_req dd_request;
 
-  param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
-                       UCP_OP_ATTR_FIELD_DATATYPE |
+  param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK    |
+                       UCP_OP_ATTR_FIELD_DATATYPE    |
+                       UCP_OP_ATTR_FIELD_MEMORY_TYPE |
                        UCP_OP_ATTR_FIELD_USER_DATA;
-  param.cb.send      = send_multi_cb;
+
+  param.cb.send      = send_single_cb;
   param.datatype     = ucp_dt_make_contig(1);
+  param.memory_type  = ucs_memory_type_t::UCS_MEMORY_TYPE_HOST;
   param.user_data    = &dd_request;
+
   ucp_request = ucp_tag_send_nbx(ep, data, size, tag, &param);
   if (ucp_request == NULL) {
     return true;
   }
-  dd_request.add_request(ucp_request);
-  dd_request.mark_finished();
 
   if (UCS_PTR_IS_ERR(ucp_request)) {
     EDDLOG("Failed send_tag_blocking. tag={} err={}", tag, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
     return false;
-  } else {
-    if (!ucp_wait(worker, dd_request)) {
-      return false; // error
-    }
-    bool ok = dd_request.done();
-    if (!ok) {
-      EDDLOG("Failed send_tag_blocking. flag={} tag={} err={}", dd_request.done(), tag, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
-    }
   }
 
-  return dd_request.done();
+  dd_request.add_request(ucp_request);
+
+  if (!dd_request.wait(worker, false)) {
+    EDDLOG("Failed send_tag_blocking. tag={} err={}", tag, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
+    return false;
+  }
+
+  return true;
 }
 
 static inline
@@ -297,44 +336,51 @@ bool receive_tag_blocking(dd_ucp_worker &worker, void *data, const std::size_t s
 {
   ucp_request_param_t param;
   void *ucp_request; // ucp allocated request
-  dd_ucp_multi_req dd_request(1);
+  dd_ucp_single_req dd_request;
 
-  param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
-                       UCP_OP_ATTR_FIELD_DATATYPE |
+  param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK    |
+                       UCP_OP_ATTR_FIELD_DATATYPE    |
+                       UCP_OP_ATTR_FIELD_MEMORY_TYPE |
                        UCP_OP_ATTR_FIELD_USER_DATA;
-  param.cb.recv      = recv_multi_cb;
+
+  param.cb.recv      = recv_single_cb;
   param.datatype     = ucp_dt_make_contig(1);
+  param.memory_type  = ucs_memory_type_t::UCS_MEMORY_TYPE_HOST;
   param.user_data    = &dd_request;
+
   ucp_request = ucp_tag_recv_nbx(worker.ucp_worker, data, size, tag, 0, &param);
   if (ucp_request == NULL) {
     return true;
   }
-  dd_request.add_request(ucp_request);
-  dd_request.mark_finished();
 
   if (UCS_PTR_IS_ERR(ucp_request)) {
     EDDLOG("Failed receive_tag_blocking. tag={} err={}", tag, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
     return false;
-  } else {
-    if (!ucp_wait(worker, dd_request)) {
-      return false; // error
-    }
   }
 
-  return dd_request.done();
+  dd_request.add_request(ucp_request);
+
+  if (!dd_request.wait(worker, false)) {
+    EDDLOG("Failed receive_tag_blocking. tag={} err={}", tag, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
+    return false; // error
+  }
+
+  return true;
 }
 
-
 static inline
-bool get(ucp_ep_h ep, void *buffer, const std::size_t size, const std::uint64_t rptr, ucp_rkey_h rkey, dd_ucp_multi_req_v2 *dd_req)
+bool get(ucp_ep_h ep, void *buffer, const std::size_t size, const std::uint64_t rptr, ucp_rkey_h rkey, dd_ucp_multi_req *dd_req)
 {
   ucp_request_param_t param;
 
-  param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
-                       UCP_OP_ATTR_FIELD_DATATYPE |
+  param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK    |
+                       UCP_OP_ATTR_FIELD_DATATYPE    |
+                       UCP_OP_ATTR_FIELD_MEMORY_TYPE |
                        UCP_OP_ATTR_FIELD_USER_DATA;
+
   param.cb.send      = send_multi_cb;
   param.datatype     = ucp_dt_make_contig(1);
+  param.memory_type  = ucs_memory_type_t::UCS_MEMORY_TYPE_HOST;
   param.user_data    = dd_req;
 
   void *req = ucp_get_nbx(ep, buffer, size, rptr, rkey, &param);
@@ -371,17 +417,19 @@ bool ucx_send_am(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, const vo
 {
   ucp_request_param_t param;
   void *ucp_request; // ucp allocated request
-  dd_ucp_multi_req_v2 dd_request;
+  dd_ucp_single_req dd_request;
 
   param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK    |
                        UCP_OP_ATTR_FIELD_DATATYPE    |
-                       UCP_OP_ATTR_FIELD_USER_DATA   |
                        UCP_OP_ATTR_FIELD_MEMORY_TYPE |
+                       UCP_OP_ATTR_FIELD_USER_DATA   |
                        UCP_OP_ATTR_FIELD_FLAGS;
-  param.cb.send      = send_multi_cb;
+
+  param.cb.send      = send_single_cb;
   param.datatype     = ucp_dt_make_contig(1);
-  param.user_data    = &dd_request;
   param.memory_type  = ucs_memory_type_t::UCS_MEMORY_TYPE_HOST;
+  param.user_data    = &dd_request;
+
   param.flags        = UCP_AM_SEND_FLAG_EAGER | UCP_AM_SEND_FLAG_REPLY;
 
   ucp_request = ucp_am_send_nbx(ep, id, NULL, 0, pData, pSize, &param);
@@ -393,16 +441,15 @@ bool ucx_send_am(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, const vo
   if (UCS_PTR_IS_ERR(ucp_request)) {
     EDDLOG("Failed ucx_send_am. id={} err={}", id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
     return false;
-  } else {
-    dd_request.add_request(ucp_request);
-
-    const bool ok = dd_request.wait(worker, true); // polling wait
-    if (!ok) {
-      EDDLOG("Failed ucx_send_am. flag={} id={} err={}", dd_request.done(), id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
-    }
   }
 
-  return true;
+  dd_request.add_request(ucp_request);
+
+  const bool lSentOk = dd_request.wait(worker, true); // polling wait
+  if (!lSentOk) {
+    EDDLOG("Failed ucx_send_am. flag={} id={} err={}", dd_request.done(), id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
+  }
+  return lSentOk;
 }
 
 static inline
@@ -410,17 +457,19 @@ bool ucx_send_am_hdr(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, cons
 {
   ucp_request_param_t param;
   void *ucp_request; // ucp allocated request
-  dd_ucp_multi_req_v2 dd_request;
+  dd_ucp_single_req dd_request;
 
   param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK    |
                        UCP_OP_ATTR_FIELD_DATATYPE    |
-                       UCP_OP_ATTR_FIELD_USER_DATA   |
                        UCP_OP_ATTR_FIELD_MEMORY_TYPE |
+                       UCP_OP_ATTR_FIELD_USER_DATA   |
                        UCP_OP_ATTR_FIELD_FLAGS;
-  param.cb.send      = send_multi_cb;
+
+  param.cb.send      = send_single_cb;
   param.datatype     = ucp_dt_make_contig(1);
-  param.user_data    = &dd_request;
   param.memory_type  = ucs_memory_type_t::UCS_MEMORY_TYPE_HOST;
+  param.user_data    = &dd_request;
+
   param.flags        = UCP_AM_SEND_FLAG_EAGER | UCP_AM_SEND_FLAG_REPLY;
 
   ucp_request = ucp_am_send_nbx(ep, id, pHdrData, pHdrSize, NULL, 0, &param);
@@ -432,16 +481,16 @@ bool ucx_send_am_hdr(dd_ucp_worker &worker, ucp_ep_h ep, const unsigned id, cons
   if (UCS_PTR_IS_ERR(ucp_request)) {
     EDDLOG("Failed ucx_send_am. id={} err={}", id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
     return false;
-  } else {
-    dd_request.add_request(ucp_request);
-
-    const bool ok = dd_request.wait(worker, true); // polling wait
-    if (!ok) {
-      EDDLOG("Failed ucx_send_am. flag={} id={} err={}", dd_request.done(), id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
-    }
   }
 
-  return true;
+  dd_request.add_request(ucp_request);
+
+  const bool lSentOk = dd_request.wait(worker, true); // polling wait
+  if (!lSentOk) {
+    EDDLOG("Failed ucx_send_am. flag={} id={} err={}", dd_request.done(), id, ucs_status_string(UCS_PTR_STATUS(ucp_request)));
+  }
+
+  return lSentOk;
 }
 
 static inline
