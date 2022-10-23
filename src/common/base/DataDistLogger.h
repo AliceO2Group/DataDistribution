@@ -105,7 +105,7 @@ public:
       fmt::format_to(fmt::appender(mLogMessage), "<{:s}> ", sThisThreadName);
     }
 
-    do_vformat(format, fmt::make_args_checked<Args...>(format, pArgs...));
+    do_vformat(format, fmt::make_format_args(pArgs...));
   }
 
   template<typename... Args>
