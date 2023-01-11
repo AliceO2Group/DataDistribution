@@ -542,7 +542,7 @@ public:
           if (JsonStringToMessage(lPartParams->value, &lPartParamsProto, lJsonOptions).ok()) {
             pNewPartitionRequest.mParameters = std::move(lPartParamsProto);
 
-            for (const auto lParamKV : pNewPartitionRequest.mParameters.param_values()) {
+            for (const auto& lParamKV : pNewPartitionRequest.mParameters.param_values()) {
               IDDLOG("Partition request parameters: {:30} : {}", lParamKV.first, lParamKV.second);
             }
 
