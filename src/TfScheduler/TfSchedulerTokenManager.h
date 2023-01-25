@@ -29,7 +29,10 @@
 #include <thread>
 #include <shared_mutex>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
 #include <boost/lockfree/stack.hpp>
+#pragma GCC diagnostic pop
 #include <boost/lockfree/queue.hpp>
 
 namespace o2::DataDistribution
