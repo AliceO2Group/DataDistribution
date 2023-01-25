@@ -24,16 +24,16 @@ if(UCX_FOUND)
 endif()
 
 set (LIB_COMMON_SOURCES
-  ReadoutDataModel
-  SubTimeFrameBuilder
-  SubTimeFrameDataModel
-  SubTimeFrameVisitors
-  SubTimeFrameFile
-  SubTimeFrameFileWriter
-  SubTimeFrameFileSink
-  SubTimeFrameFileReader
-  SubTimeFrameFileSource
-  SubTimeFrameDPL
+  ReadoutDataModel.cxx
+  SubTimeFrameBuilder.cxx
+  SubTimeFrameDataModel.cxx
+  SubTimeFrameVisitors.cxx
+  SubTimeFrameFile.cxx
+  SubTimeFrameFileWriter.cxx
+  SubTimeFrameFileSink.cxx
+  SubTimeFrameFileReader.cxx
+  SubTimeFrameFileSource.cxx
+  SubTimeFrameDPL.cxx
 )
 
 add_library(common OBJECT ${LIB_COMMON_SOURCES})

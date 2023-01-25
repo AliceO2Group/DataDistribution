@@ -13,12 +13,12 @@
 ## \brief  cmake for StfSender
 
 set(EXE_STFS_SOURCES
-  StfSenderDevice
-  StfSenderOutput
-  StfSenderOutputFairMQ
-  StfSenderOutputUCX
-  StfSenderRpc
-  runStfSenderDevice
+  StfSenderDevice.cxx
+  StfSenderOutput.cxx
+  StfSenderOutputFairMQ.cxx
+  StfSenderOutputUCX.cxx
+  StfSenderRpc.cxx
+  runStfSenderDevice.cxx
 )
 
 add_library(StfSender_lib OBJECT ${EXE_STFS_SOURCES})

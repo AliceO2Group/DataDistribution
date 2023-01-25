@@ -13,14 +13,14 @@
 ## \brief  cmake for TfScheduler
 
 set(EXE_TFS_SOURCES
-  TfSchedulerDevice
-  TfSchedulerInstance
-  TfSchedulerInstanceRpc
-  TfSchedulerConnManager
-  TfSchedulerTfBuilderInfo
-  TfSchedulerStfInfo
-  TfSchedulerTokenManager
-  runTfScheduler
+  TfSchedulerDevice.cxx
+  TfSchedulerInstance.cxx
+  TfSchedulerInstanceRpc.cxx
+  TfSchedulerConnManager.cxx
+  TfSchedulerTfBuilderInfo.cxx
+  TfSchedulerStfInfo.cxx
+  TfSchedulerTokenManager.cxx
+  runTfScheduler.cxx
 )
 
 add_library(TfScheduler_lib OBJECT ${EXE_TFS_SOURCES})

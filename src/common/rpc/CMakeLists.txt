@@ -14,8 +14,8 @@
 
 #-------------------------------------------------------------------------------
 set (LIB_BASE_SOURCES
-  StfSenderRpcClient
-  TfSchedulerRpcClient
+  StfSenderRpcClient.cxx
+  TfSchedulerRpcClient.cxx
 )
 
 add_library(rpc OBJECT ${LIB_BASE_SOURCES})

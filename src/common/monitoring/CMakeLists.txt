@@ -14,7 +14,7 @@
 
 #-------------------------------------------------------------------------------
 set (LIB_MON_SOURCES
-  DataDistMonitoring
+  DataDistMonitoring.cxx
 )
 
 add_library(monitoring OBJECT ${LIB_MON_SOURCES})
