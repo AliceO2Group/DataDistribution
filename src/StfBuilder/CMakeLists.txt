@@ -13,9 +13,9 @@
 ## \brief  cmake for StfBuilder
 
 set(EXE_STFB_SOURCES
-  StfBuilderInput
-  StfBuilderDevice
-  runStfBuilderDevice
+  StfBuilderInput.cxx
+  StfBuilderDevice.cxx
+  runStfBuilderDevice.cxx
 )
 
 add_library(StfBuilder_lib OBJECT ${EXE_STFB_SOURCES})

@@ -14,8 +14,8 @@
 
 #-------------------------------------------------------------------------------
 set (LIB_BASE_SOURCES
-  DataDistLogger
-  FilePathUtils
+  DataDistLogger.cxx
+  FilePathUtils.cxx
 )
 
 add_library(base OBJECT ${LIB_BASE_SOURCES})

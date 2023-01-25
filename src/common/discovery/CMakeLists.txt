@@ -15,7 +15,7 @@
 #-------------------------------------------------------------------------------
 
 set (LIB_DISCOVERY_SOURCES
-  ConfigConsul
+  ConfigConsul.cxx
 )
 
 set (LIB_DISCOVERY_PROTOS

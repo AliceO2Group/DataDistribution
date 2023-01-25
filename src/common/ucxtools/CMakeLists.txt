@@ -14,7 +14,7 @@
 
 #-------------------------------------------------------------------------------
 set (LIB_UCXTOOLS_SOURCES
-  UCXUtilities
+  UCXUtilities.cxx
 )
 
 add_library(ucxtools OBJECT ${LIB_UCXTOOLS_SOURCES})

@@ -13,10 +13,10 @@
 ## \brief  cmake for ReadoutEmulator
 
 set(EXE_EMU_SOURCES
-  CruMemoryHandler
-  CruEmulator
-  ReadoutDevice
-  runReadoutEmulatorDevice
+  CruMemoryHandler.cxx
+  CruEmulator.cxx
+  ReadoutDevice.cxx
+  runReadoutEmulatorDevice.cxx
 )
 
 add_executable(ReadoutEmulator ${EXE_EMU_SOURCES})

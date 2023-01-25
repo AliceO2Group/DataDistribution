@@ -15,8 +15,8 @@
 # Unit test for FilePathUtils class
 
 set(TEST_FILE_PATH_SOURCES
-  test_FilePathUtils
-  ../common/base/FilePathUtils
+  test_FilePathUtils.cxx
+  ../common/base/FilePathUtils.cxx
 )
 add_executable(test_FilePathUtils ${TEST_FILE_PATH_SOURCES})
 
@@ -38,7 +38,7 @@ add_test(NAME FilePathUtils_test COMMAND test_FilePathUtils)
 
 
 set(TEST_FMT_PATTERNS_SOURCES
-  test_FmtPatterns
+  test_FmtPatterns.cxx
 )
 add_executable(test_FmtPatterns ${TEST_FMT_PATTERNS_SOURCES})
 target_compile_definitions(test_FmtPatterns PRIVATE "BOOST_TEST_DYN_LINK=1")
@@ -53,7 +53,7 @@ add_test(NAME FmtPatterns_test COMMAND test_FmtPatterns)
 
 
 set(TEST_BITMAP_SOURCES
-  test_Bitmap
+  test_Bitmap.cxx
 )
 add_executable(test_Bitmap ${TEST_BITMAP_SOURCES})
 target_compile_definitions(test_Bitmap PRIVATE "BOOST_TEST_DYN_LINK=1")

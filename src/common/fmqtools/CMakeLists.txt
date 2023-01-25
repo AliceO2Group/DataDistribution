@@ -14,7 +14,7 @@
 
 #-------------------------------------------------------------------------------
 set (LIB_FMQTOOLS_SOURCES
-  FmqUtilities
+  FmqUtilities.cxx
 )
 
 add_library(fmqtools OBJECT ${LIB_FMQTOOLS_SOURCES})

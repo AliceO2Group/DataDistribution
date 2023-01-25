@@ -13,12 +13,12 @@
 ## \brief  cmake for TfBuilder
 
 set(EXE_TFB_SOURCES
-  TfBuilderDevice
-  TfBuilderInput
-  TfBuilderInputFairMQ
-  TfBuilderInputUCX
-  TfBuilderRpc
-  runTfBuilderDevice
+  TfBuilderDevice.cxx
+  TfBuilderInput.cxx
+  TfBuilderInputFairMQ.cxx
+  TfBuilderInputUCX.cxx
+  TfBuilderRpc.cxx
+  runTfBuilderDevice.cxx
 )
 
 add_library(TfBuilder_lib OBJECT ${EXE_TFB_SOURCES})
