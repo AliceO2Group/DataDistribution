@@ -102,8 +102,7 @@ endforeach()
 # Boost
 # Inherit FairMQ Boost deps and add ours
 set(Boost_COMPONENTS ${FairMQ_Boost_COMPONENTS})
-list(INSERT Boost_COMPONENTS
-  range
+list(APPEND Boost_COMPONENTS
   filesystem
   iostreams
   unit_test_framework
