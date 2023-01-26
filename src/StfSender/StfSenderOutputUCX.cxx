@@ -235,7 +235,13 @@ bool StfSenderOutputUCX::disconnectTfBuilder(const std::string &pTfBuilderId)
       }
       return true;
     }
-    lConnInfo = std::move(mOutputMap.extract(lIt).mapped());
+    auto lConnInfoNode = mOutputMap.extract(lIt);
+    if (lConnInfoNode.empty()) {
+      // this should never happen, but the check makes the static analyzer happy
+      EDDLOG("StfSenderOutputUCX::disconnectTfBuilder: Internal error. tfb_id={}", pTfBuilderId);
+      return true;
+    }
+    lConnInfo = std::move(lConnInfoNode.mapped());
   }
 
   // Transport is only closed when other side execute close as well. Execute async
