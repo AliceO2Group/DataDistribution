@@ -183,6 +183,7 @@ using RDHv3Reader = RDHReaderImpl<o2::header::RAWDataHeaderV4>; // V4 and V3 are
 using RDHv4Reader = RDHReaderImpl<o2::header::RAWDataHeaderV4>; // V4 and V3 are equivalent?
 using RDHv5Reader = RDHReaderImpl<o2::header::RAWDataHeaderV5>;
 using RDHv6Reader = RDHReaderImpl<o2::header::RAWDataHeaderV6>;
+using RDHv7Reader = RDHReaderImpl<o2::header::RAWDataHeaderV7>;
 
 class RDHReader {
   // NOTE: This must be set in the Init() phase. Logical program error otherwise.
@@ -219,8 +220,11 @@ public:
       case 6:
         sRDHReader = std::make_unique<RDHv6Reader>();
         break;
+      case 7:
+        sRDHReader = std::make_unique<RDHv7Reader>();
+        break;
       default:
-        EDDLOG("Unknown RDH version! version={} Supported versions are RDHv3, RDHv4, RDHv5, and RDHv6", pVer);
+        EDDLOG("Unknown RDH version! version={} Supported versions are RDHv3, RDHv4, RDHv5, RDHv6, and RDHv7", pVer);
         throw std::runtime_error("Unknown RDH version");
         break;
     }
