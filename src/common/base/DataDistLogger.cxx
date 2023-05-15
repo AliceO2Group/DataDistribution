@@ -31,7 +31,7 @@ std::thread impl::DataDistLoggerCtx::sRateUpdateThread;
 std::thread impl::DataDistLoggerCtx::mInfoLoggerThread;
 
 
-std::unique_ptr<ConcurrentFifo<std::tuple<AliceO2::InfoLogger::InfoLogger::Severity, std::string>>>
+std::unique_ptr<ConcurrentFifo<std::tuple<AliceO2::InfoLogger::InfoLogger::InfoLoggerMessageOption, std::string>>>
 DataDistLogger::sInfoLogQueue = nullptr;
 
 

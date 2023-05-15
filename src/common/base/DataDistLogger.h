@@ -28,6 +28,7 @@
 #include <fairlogger/Logger.h>
 
 #include <InfoLogger/InfoLogger.hxx>
+#include <InfoLogger/InfoLoggerMacros.hxx>
 #include <boost/program_options/options_description.hpp>
 
 #if defined(__linux__)
@@ -123,7 +124,7 @@ public:
 
           if (InfoLogEnabled(mSeverity)) {
             sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Fatal,
+              std::make_tuple(LogFatalOps,
               std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
             ));
           }
@@ -135,7 +136,7 @@ public:
 
           if (InfoLogEnabled(mSeverity)) {
             sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Error,
+              std::make_tuple(LogErrorOps,
               std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
             ));
           }
@@ -148,7 +149,7 @@ public:
 
           if (InfoLogEnabled(mSeverity)) {
             sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Warning,
+              std::make_tuple(LogWarningSupport,
               std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
             ));
           }
@@ -161,7 +162,7 @@ public:
 
           if (InfoLogEnabled(mSeverity)) {
             sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Info,
+              std::make_tuple(LogInfoDevel,
               std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
             ));
           }
@@ -174,7 +175,7 @@ public:
 
           if (InfoLogEnabled(mSeverity)) {
             sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Info,
+              std::make_tuple(LogInfoDevel,
               std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
             ));
           }
@@ -187,7 +188,7 @@ public:
 
           if (InfoLogEnabled(mSeverity)) {
             sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Debug,
+              std::make_tuple(LogDebugDevel,
               std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
             ));
           }
@@ -200,7 +201,7 @@ public:
 
           if (InfoLogEnabled(mSeverity)) {
             sInfoLogQueue->push_capacity(cInfoLoggerQueueSize,
-              std::make_tuple(AliceO2::InfoLogger::InfoLogger::Severity::Debug,
+              std::make_tuple(LogDebugTrace,
               std::string(std::string_view(mLogMessage.begin(), mLogMessage.size()))
             ));
           }
@@ -233,7 +234,7 @@ public:
   bool LogEnabled(const DataDistSeverity pSevVal) { return (InfoLogEnabled(pSevVal) || StdoutEnabled(pSevVal)); }
 
   // InfoLogger queue
-  static std::unique_ptr<ConcurrentFifo<std::tuple<AliceO2::InfoLogger::InfoLogger::Severity, std::string>>> sInfoLogQueue;
+  static std::unique_ptr<ConcurrentFifo<std::tuple<AliceO2::InfoLogger::InfoLogger::InfoLoggerMessageOption, std::string>>> sInfoLogQueue;
 
 private:
 
@@ -345,7 +346,7 @@ struct DataDistLoggerCtx {
     sRunning = true;
 
     DataDistLogger::sInfoLogQueue =
-      std::make_unique<ConcurrentFifo<std::tuple<AliceO2::InfoLogger::InfoLogger::Severity, std::string>>>();
+      std::make_unique<ConcurrentFifo<std::tuple<AliceO2::InfoLogger::InfoLogger::InfoLoggerMessageOption, std::string>>>();
 
     fair::Logger::SetConsoleSeverity(fair::Severity::nolog);
     fair::Logger::SetFileSeverity(fair::Severity::nolog);
@@ -374,7 +375,7 @@ struct DataDistLoggerCtx {
       pthread_setname_np(pthread_self(), "infolog");
 #endif
 
-      std::tuple<AliceO2::InfoLogger::InfoLogger::Severity, std::string> lLogVal;
+      std::tuple<AliceO2::InfoLogger::InfoLogger::InfoLoggerMessageOption, std::string> lLogVal;
 
       while (sRunning) {
         if( DataDistLogger::sInfoLogQueue->pop(lLogVal) ){
