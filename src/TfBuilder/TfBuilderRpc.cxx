@@ -204,6 +204,7 @@ void TfBuilderRpcImpl::startAcceptingTfs() {
   } else {
     EDDLOG_RL(10000, "TfBuilderRpc::Not enabling TfBuilder because some gRPC connections are not working. failed_cnt={}",
       getNumFailedRpcConnections());
+    throw std::runtime_error("TfBuilder failed to connect to FLPs, exiting");
   }
 }
 
