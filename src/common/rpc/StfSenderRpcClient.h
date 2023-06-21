@@ -274,8 +274,6 @@ public:
     }
 
     // test if actual connections are performing on StfSender
-    // NOTE: we cannot fail TfBuilder because the whole run will fail until nmin ODC/DDS is implemented
-    //       TfBuilder must be transition to Ready, but the input will be disabled
     bool lConnWorking = checkStfSenderRpcConn();
 
     auto lMsg = "StfSender gRPC connection finished. success={} failed={}";
@@ -283,6 +281,7 @@ public:
       IDDLOG(lMsg, lConnWorking, getNumConnectedClients() - getNumWorkingClients());
     } else {
       EDDLOG(lMsg, lConnWorking, getNumConnectedClients() - getNumWorkingClients());
+      throw std::runtime_error("TfBuilder could not connect to all FLPs, terminating");
     }
 
     // only continue when all connections are established
