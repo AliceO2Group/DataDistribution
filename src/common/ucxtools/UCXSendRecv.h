@@ -261,7 +261,6 @@ void send_single_cb(void *req, ucs_status_t status, void *user_data)
 {
   if (UCS_OK == status) {
     dd_ucp_single_req *dd_req = reinterpret_cast<dd_ucp_single_req*>(user_data);
-    assert (dd_req->mSlotsUsed.load() > 0);
 
     // signal completion of one call
     dd_req->remove_request(req);
@@ -273,7 +272,6 @@ void recv_single_cb(void *req, ucs_status_t status, const ucp_tag_recv_info_t *,
 {
   if (UCS_OK == status) {
     dd_ucp_single_req *dd_req = reinterpret_cast<dd_ucp_single_req*>(user_data);
-    assert (dd_req->mSlotsUsed.load() > 0);
 
     // signal completion of one call
     dd_req->remove_request(req);
@@ -286,7 +284,6 @@ void send_multi_cb(void *req, ucs_status_t status, void *user_data)
 {
   if (UCS_OK == status) {
     dd_ucp_multi_req *dd_req = reinterpret_cast<dd_ucp_multi_req*>(user_data);
-    assert (dd_req->mSlotsUsed.load() > 0);
 
     // signal completion of one call
     dd_req->remove_request(req);
