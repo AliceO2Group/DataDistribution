@@ -45,7 +45,7 @@ void addCustomOptions(bpo::options_description& options)
     "Input throughput per link (bits per second).");
 }
 
-std::unique_ptr<fair::mq::Device> getDevice(const fair::mq::ProgOptions& /*config*/)
+std::unique_ptr<fair::mq::Device> getDevice(fair::mq::ProgOptions& /*config*/)
 {
   return std::make_unique<o2::DataDistribution::ReadoutDevice>();
 }
