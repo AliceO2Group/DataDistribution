@@ -30,7 +30,7 @@ bool TfSchedulerConnManager::start()
 {
   using namespace std::chrono_literals;
 
-  if (!mStfSenderRpcClients.start()) {
+  if (!mStfSenderRpcClients.start(false)) {
     return false; // we'll be called back
   }
 
