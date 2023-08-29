@@ -188,7 +188,7 @@ public:
 
   ~StfSenderRpcClientCollection() { if (mRunning) { stop(); } }
 
-  bool start()
+  bool start(bool failOnError = true)
   {
     using namespace std::chrono_literals;
     const auto &lPartId = mDiscoveryConfig->status().partition().partition_id();
@@ -281,7 +281,9 @@ public:
       IDDLOG(lMsg, lConnWorking, getNumConnectedClients() - getNumWorkingClients());
     } else {
       EDDLOG(lMsg, lConnWorking, getNumConnectedClients() - getNumWorkingClients());
-      throw std::runtime_error("TfBuilder could not connect to all FLPs, terminating");
+      if (failOnError) {
+        throw std::runtime_error("TfBuilder could not connect to all FLPs, terminating");
+      }
     }
 
     // only continue when all connections are established
