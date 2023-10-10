@@ -268,8 +268,14 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
   DDDLOG_RL(5000, "Sending TfBuilder update. accepting={} total={}", mAcceptingTfs, sUpdateCnt);
 
   auto lRet = mTfSchedulerRpcClient.TfBuilderUpdate(lUpdate);
+  static int errCount = 0;
   if (!lRet && !mTerminateRequested && mRunning) {
     WDDLOG_RL(10000, "Sending TfBuilder status update failed.");
+    if (errCount++ > 5) {
+      throw std::runtime_error("TfBuilder had 5 consecutive failed status updates, exiting");
+    }
+  } else {
+    errCount = 0;
   }
 
   DDMON("tfbuilder", "buffer.tf_cnt", mNumBufferedTfs);
