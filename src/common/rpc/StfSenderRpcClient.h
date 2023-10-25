@@ -84,7 +84,7 @@ public:
       lParam.set_tf_builder_id("-1");
       StfDataResponse lRet;
       ClientContext lContext;
-      lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(1000));
+      lContext.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(5000));
       lContext.set_wait_for_ready(true);
 
       auto lRetVal = mStub->StfDataRequest(&lContext, lParam, &lRet);
@@ -306,14 +306,22 @@ public:
     bool lConnWorking = true;
     mNumWorkingClients = 0;
 
+    std::vector<std::thread> threads;
     for (auto &[ mCliId, lClient] : mClients) {
-      // attempt the test StfDataRequest()
-      if (!lClient->StfDataRequestTest()) {
-        EDDLOG("StfSender gRPC connection is not working. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
-        lConnWorking = false;
-        continue;
-      }
-      mNumWorkingClients += 1;
+      threads.emplace_back([&, mCliId, lClient]() {
+        // attempt the test StfDataRequest()
+        if (!lClient->StfDataRequestTest()) {
+            EDDLOG("StfSender gRPC connection is not working. stfs_id={} grpc_status={}", mCliId, lClient->grpc_status());
+            lConnWorking = false;
+            return;
+        }
+        mNumWorkingClients += 1;
+      });
+    }
+
+    // Join all threads
+    for (auto &thread : threads) {
+        thread.join();
     }
 
     return lConnWorking;
