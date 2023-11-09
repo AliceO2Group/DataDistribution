@@ -47,7 +47,7 @@ ReadoutDataUtils::getDataOrigin(const RDHReader &R)
       return lOrig;
     } else {
         EDDLOG_ONCE("Data origin in RDH is invalid: {}. Please configure the correct SYSTEM_ID in the hardware."
-          " Using the configuration value {}.", R.getSystemID(), sSpecifiedDataOrigin.as<std::string>());
+          " Using the configuration value {}.", R.getSystemID(), sSpecifiedDataOrigin.template as<std::string>());
     }
   }
 
@@ -66,7 +66,7 @@ ReadoutDataUtils::getSubSpecification(const RDHReader &R)
   } else if (ReadoutDataUtils::sRawDataSubspectype == eFeeId) {
     lSubSpec = R.getFeeID();
   } else {
-    EDDLOG("Invalid SubSpecification method={}", ReadoutDataUtils::sRawDataSubspectype);
+    EDDLOG("Invalid SubSpecification method={}", (int)ReadoutDataUtils::sRawDataSubspectype);
   }
 
   return lSubSpec;

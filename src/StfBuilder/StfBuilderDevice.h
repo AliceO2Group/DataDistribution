@@ -213,7 +213,7 @@ class StfBuilderDevice : public DataDistDevice
     }
 
     if (!(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn)) {
-      EDDLOG("Stage error! next_stage={}", lNextStage);
+      EDDLOG("Stage error! next_stage={}", (int)lNextStage);
     }
 
     assert(lNextStage >= eStfFileSinkIn && lNextStage <= eStfNullIn);
