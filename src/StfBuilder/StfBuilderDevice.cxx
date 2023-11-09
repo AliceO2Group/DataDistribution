@@ -225,7 +225,7 @@ void StfBuilderDevice::InitTask()
       ChangeStateOrThrow(fair::mq::Transition::ErrorFound);
       return;
     } else {
-      IDDLOG("READOUT INTERFACE: Configured RDHv{}", ReadoutDataUtils::sRdhVersion);
+      IDDLOG("READOUT INTERFACE: Configured RDHv{}", (int)ReadoutDataUtils::sRdhVersion);
       RDHReader::Initialize(unsigned(ReadoutDataUtils::sRdhVersion));
     }
 

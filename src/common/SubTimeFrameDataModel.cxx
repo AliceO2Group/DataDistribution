@@ -129,7 +129,7 @@ void SubTimeFrame::mergeStf(std::unique_ptr<SubTimeFrame> pStf, const std::strin
   // make sure header values match
   if (mHeader.mOrigin != pStf->header().mOrigin) {
     EDDLOG_RL(5000, "Merging STFs error: STF origins do not match origin={} new_origin={} new_stfs_id={}",
-      mHeader.mOrigin,  pStf->header().mOrigin, mStfSenderId);
+      (int)mHeader.mOrigin,  (int)pStf->header().mOrigin, mStfSenderId);
   }
 
   if (mHeader.mFirstOrbit != pStf->header().mFirstOrbit) {

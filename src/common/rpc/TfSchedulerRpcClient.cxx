@@ -54,7 +54,7 @@ bool TfSchedulerRpcClient::HeartBeat(const BasicInfo &pInfo) {
       return false;
     }
 
-    EDDLOG_GRL(1000, "HeartBeat: gRPC request error. code={} message={}", lStatus.error_code(), lStatus.error_message());
+    EDDLOG_GRL(1000, "HeartBeat: gRPC request error. code={} message={}", (int)lStatus.error_code(), lStatus.error_message());
   }
 
   return false;
@@ -87,7 +87,7 @@ bool TfSchedulerRpcClient::NumStfSendersInPartitionRequest(std::uint32_t &pNumSt
       continue; // retry
     }
 
-    EDDLOG_GRL(1000, "gRPC request error. code={} message={}", lStatus.error_code(), lStatus.error_message());
+    EDDLOG_GRL(1000, "gRPC request error. code={} message={}", (int)lStatus.error_code(), lStatus.error_message());
     break;
   }
 
@@ -266,7 +266,7 @@ bool TfSchedulerRpcClient::TfBuilderUpdate(TfBuilderUpdateMessage &pMsg) {
     return true;
   }
 
-  DDDLOG_GRL(1000, "gRPC: TfBuilderUpdate error. code={} message={}", lStatus.error_code(), lStatus.error_message());
+  DDDLOG_GRL(1000, "gRPC: TfBuilderUpdate error. code={} message={}", (int)lStatus.error_code(), lStatus.error_message());
   return false;
 }
 
@@ -288,7 +288,7 @@ bool TfSchedulerRpcClient::StfSenderStfUpdate(StfSenderStfInfo &pMsg, SchedulerS
     return true;
   }
 
-  EDDLOG_GRL(2000, "gRPC: StfSenderStfUpdate error. code={} message={}", lStatus.error_code(), lStatus.error_message());
+  EDDLOG_GRL(2000, "gRPC: StfSenderStfUpdate error. code={} message={}", (int)lStatus.error_code(), lStatus.error_message());
   return false;
 }
 

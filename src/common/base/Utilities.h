@@ -61,7 +61,9 @@ constexpr auto operator+(const T p) noexcept -> std::enable_if_t<std::is_enum<T>
 // create threads using a object method
 template <class F, class ... Args>
 std::thread create_thread_member(const char* name, F&& f, Args&&... args) {
+#if defined(__linux__)
   char *lName = strdup(name);
+#endif
   return std::thread([=]{
 #if defined(__linux__)
     pthread_setname_np(pthread_self(), lName);

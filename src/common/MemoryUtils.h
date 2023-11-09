@@ -506,7 +506,7 @@ public:
 
       if (mCanFail && !lRet) {
         WDDLOG_GRL(10000, "RegionAllocatorResource: Allocation failed. region={} alloc={} region_size={} free={}",
-          mSegmentName, pSize, mRegion->GetSize(), mFree);
+          mSegmentName, pSize, mRegion->GetSize(), mFree.load());
           WDDLOG_GRL(10000, "Memory region '{}' is too small, or there is a large backpressure.", mSegmentName);
         return nullptr;
       }
@@ -514,7 +514,7 @@ public:
       while (true) {
         using namespace std::chrono_literals;
         WDDLOG_RL(1000, "RegionAllocatorResource: waiting to allocate a message. region={} alloc={} region_size={} free={}",
-          mSegmentName, pSize, mRegion->GetSize(), mFree);
+          mSegmentName, pSize, mRegion->GetSize(), mFree.load());
         WDDLOG_RL(1000, "Memory region '{}' is too small, or there is a large backpressure.", mSegmentName);
         if (lGen != mGeneration.load()) {
           break; // retry alloc
@@ -533,7 +533,7 @@ public:
     mFree -= pSizeUp;
     assert (mFree >= 0);
 
-    DDDLOG_GRL(5000, "DataRegionResource {} memory free={} allocated={}", mSegmentName, mFree, (mSegmentSize - mFree));
+    DDDLOG_GRL(5000, "DataRegionResource {} memory free={} allocated={}", mSegmentName, mFree.load(), (mSegmentSize - mFree.load()));
 
     // If the allocated message was aligned up, set a first byte after the buffer to 0
     if (pSizeUp > pSize) {
@@ -584,7 +584,7 @@ private:
 
     if (mFreeRanges.empty()) {
       if (mFree != 0) {
-        EDDLOG_GRL(1000, "DataRegionResource {} try_reclaim({}): FREE MAP is empty! free={}", mSegmentName, pSize, mFree);
+        EDDLOG_GRL(1000, "DataRegionResource {} try_reclaim({}): FREE MAP is empty! free={}", mSegmentName, pSize, mFree.load());
       }
       return false;
     }
