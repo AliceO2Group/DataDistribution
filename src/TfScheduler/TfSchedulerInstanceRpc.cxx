@@ -347,7 +347,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 
   sTfBuilderUpdates++;
   DDLOGF_GRL(30000, DataDistSeverity::debug, "gRPC server: TfBuilderUpdate. tfb_id={} total={}",
-    request->info().process_id(), sTfBuilderUpdates);
+             request->info().process_id(), sTfBuilderUpdates.load());
 
   mTfBuilderInfo.updateTfBuilderInfo(*request);
 
@@ -366,7 +366,7 @@ void TfSchedulerInstanceRpcImpl::PartitionMonitorThread()
 
   sStfUpdates++;
   DDLOGF_GRL(30000, DataDistSeverity::debug, "gRPC server: StfSenderStfUpdate. stfs_id={} total={}",
-    request->info().process_id(), sStfUpdates);
+             request->info().process_id(), sStfUpdates.load());
 
   response->Clear();
   mStfInfo.addStfInfo(*request, *response /*out*/);

@@ -355,7 +355,7 @@ void TfSchedulerConnManager::ConnectTfBuilderUCXThread(const std::string lStfSen
     const auto lGrpcStatus = mStfSenderRpcClients.ConnectTfBuilderUCXRequest(lStfSenderId, lParam, lResponse);
     if(!lGrpcStatus.ok()) {
       IDDLOG_RL(1000, "TfBuilder UCX Connection error: gRPC error when connecting StfSender. stfs_id={} tfb_id={} err_code={} err={}",
-        lStfSenderId, lTfBuilderId, lGrpcStatus.error_code(), lGrpcStatus.error_message());
+                lStfSenderId, lTfBuilderId, (int)lGrpcStatus.error_code(), lGrpcStatus.error_message());
       lConnectionsOk = false;
       break;
     }
@@ -523,7 +523,7 @@ void TfSchedulerConnManager::DropStfThread()
     if (!lStatus.ok()) {
       // gRPC problem...
       WDDLOG_GRL(1000, "StfSender gRPC connection error. stfs_id={} code={} error={}",
-        lStfSenderId, lStatus.error_code(), lStatus.error_message());
+                 lStfSenderId, (int)lStatus.error_code(), lStatus.error_message());
     }
 
     if (lStfResponse.status() == StfDataResponse::DATA_DROPPED_TIMEOUT) {

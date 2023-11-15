@@ -115,7 +115,7 @@ void TfBuilderInputUCX::new_conn_handle(ucp_conn_request_h conn_request)
   DDDLOG("Received a connection request! addr={} port={}", lStfSenderAddr, lStfSenderPort);
 
   if (mState.load() != CONFIGURING) {
-    EDDLOG("Received a connection request but not in CONFIGURING state. state={}", mState.load());
+    EDDLOG("Received a connection request but not in CONFIGURING state. state={}", (int)mState.load());
     return;
   }
 
