@@ -265,7 +265,7 @@ bool TfBuilderRpcImpl::sendTfBuilderUpdate()
   }
 
   sUpdateCnt++;
-  DDDLOG_RL(5000, "Sending TfBuilder update. accepting={} total={}", mAcceptingTfs, sUpdateCnt);
+  DDDLOG_RL(5000, "Sending TfBuilder update. accepting={} total={}", mAcceptingTfs.load(), sUpdateCnt);
 
   auto lRet = mTfSchedulerRpcClient.TfBuilderUpdate(lUpdate);
   if (!lRet && !mTerminateRequested && mRunning) {
@@ -391,7 +391,7 @@ bool TfBuilderRpcImpl::recordTfForwarded(const std::uint64_t &pTfId)
   assert (lTfId != 0);
 
   sNumTfRequests++;
-  DDDLOG_GRL(5000, "Requesting SubTimeFrames. tf_id={} tf_size={} total_requests={}", lTfId, lTfSize, sNumTfRequests);
+  DDDLOG_GRL(5000, "Requesting SubTimeFrames. tf_id={} tf_size={} total_requests={}", lTfId, lTfSize, sNumTfRequests.load());
 
   StfDataRequestMessage lStfRequest;
   const auto &lTfBuilderId = mDiscoveryConfig->status().info().process_id();
@@ -633,7 +633,7 @@ void TfBuilderRpcImpl::StfRequestGrpcThread()
 
     if (!lStatus.ok()) {
       EDDLOG("StfSender gRPC connection problem. stfs_id={} code={} error={} stf_size={} timeout={}",
-        lStfRequest.mRequest.stf_id(), lStfRequest.mStfSenderId, lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize, (lStatus.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED));
+             lStfRequest.mRequest.stf_id(), lStfRequest.mStfSenderId, (int)lStatus.error_code(), lStatus.error_message(), lStfRequest.mStfDataSize, (lStatus.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED));
     } else if (lStfResponse.status() != StfDataResponse::OK) {
       EDDLOG("StfSender did not send data. stf_id={} stfs_id={} reason={}",
         lStfRequest.mStfSenderId, StfDataResponse_StfDataStatus_Name(lStfResponse.status()));

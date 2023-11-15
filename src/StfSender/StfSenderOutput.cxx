@@ -497,7 +497,7 @@ void StfSenderOutput::StfSchedulerThread()
       }
       default:
       {
-        EDDLOG_RL(1000, "StfSchedulerThread: dropping STF of unknown type stf_source={}", lStf->header().mOrigin);
+        EDDLOG_RL(1000, "StfSchedulerThread: dropping STF of unknown type stf_source={}", std::string_view((char const*)lStf->header().mOrigin, 4));
         mDropQueue.push(std::move(lStf));
         continue;
         break;

@@ -108,7 +108,7 @@ public:
       return true;
     }
 
-    EDDLOG_RL(1000, "gRPC request error. code={} message={}", lStatus.error_code(), lStatus.error_message());
+    EDDLOG_RL(1000, "gRPC request error. code={} message={}", (int)lStatus.error_code(), lStatus.error_message());
 
     return false;
   }

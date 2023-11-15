@@ -176,7 +176,7 @@ class TfSchedulerTfBuilderInfo
     const auto lNewVal = std::clamp(pMaxTfsInBuilding, std::size_t(1), std::size_t(512));
 
     if (mMaxTfsInBuilding != lNewVal) {
-      IDDLOG("Parameter Update: MaxTfsInBuilding old_value={} new_value={}", mMaxTfsInBuilding, lNewVal);
+      IDDLOG("Parameter Update: MaxTfsInBuilding old_value={} new_value={}", mMaxTfsInBuilding.load(), lNewVal);
       mMaxTfsInBuilding = lNewVal;
     }
   }

@@ -207,7 +207,7 @@ void TfSchedulerStfInfo::StaleCleanupThread()
   mStaleStfTimeoutMs = std::clamp(mDiscoveryConfig->getUInt64Param(StaleTfTimeoutMsKey, StaleTfTimeoutMsDefault),
       std::uint64_t(250), std::uint64_t(60000));
 
-  IDDLOG("Parameter updated (consul) {}={}", StaleTfTimeoutMsKey, mStaleStfTimeoutMs);
+  IDDLOG("Parameter updated (consul) {}={}", StaleTfTimeoutMsKey, mStaleStfTimeoutMs.load());
 
   while (mRunning) {
 
@@ -217,7 +217,7 @@ void TfSchedulerStfInfo::StaleCleanupThread()
       std::uint64_t(25), std::uint64_t(60000));
     if (lStaleStfTimeoutMs != mStaleStfTimeoutMs) {
       mStaleStfTimeoutMs = lStaleStfTimeoutMs;
-      IDDLOG("Parameter updated (consul) {}={}", StaleTfTimeoutMsKey, mStaleStfTimeoutMs);
+      IDDLOG("Parameter updated (consul) {}={}", StaleTfTimeoutMsKey, mStaleStfTimeoutMs.load());
     }
 
     {

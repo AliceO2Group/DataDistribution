@@ -173,18 +173,18 @@ bool TfSchedulerTfBuilderInfo::findTfBuilderForTf(const std::uint64_t pSize, std
       DDMON("tfscheduler", "tf.rejected.no_tfb_inst", mNoTfBuilderAvailable);
 
       WDDLOG_RL(10000, "FindTfBuilder: TF cannot be scheduled. reason=NO_TFBUILDERS total={}",
-        mNoTfBuilderAvailable);
+                mNoTfBuilderAvailable.load());
 
     } else if (lMaxTfExceeded) {
       ++mTfNumExceeeded;
       WDDLOG_RL(10000, "FindTfBuilder: TF cannot be scheduled. reason=NUM_TF_EXCEEEDED total={} tf_size={} ready_tfb={}",
-        mTfNumExceeeded, lTfEstSize, mReadyTfBuilders.size());
+                mTfNumExceeeded.load(), lTfEstSize, mReadyTfBuilders.size());
       DDMON("tfscheduler", "tf.rejected.max_tf_exceeded", mTfNumExceeeded);
     } else if (lNoMemory) {
       ++mNoMemoryAvailable;
       DDMON("tfscheduler", "tf.rejected.no_tfb_buf", mNoMemoryAvailable);
       WDDLOG_RL(10000, "FindTfBuilder: TF cannot be scheduled. reason=NO_MEMORY total={} tf_size={} ready_tfb={}",
-        mNoMemoryAvailable, lTfEstSize, mReadyTfBuilders.size());
+                mNoMemoryAvailable.load(), lTfEstSize, mReadyTfBuilders.size());
     }
     return false;
   }
