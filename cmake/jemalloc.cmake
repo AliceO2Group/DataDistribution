@@ -38,7 +38,9 @@ ExternalProject_Add(jemalloc
                         "CFLAGS=${CMAKE_C_FLAGS} -Wno-missing-attributes"
 
   BUILD_COMMAND ${MAKE}
-  INSTALL_COMMAND make install
+  # TODO: -j1 is a workaround for GH-39628: [C++] Use -j1 for cmake >= 3.28
+  # Similar solution in Apache Arrow: https://github.com/apache/arrow/pull/39629
+  INSTALL_COMMAND make install -j1
 
   LOG_DOWNLOAD True
   LOG_UPDATE True
