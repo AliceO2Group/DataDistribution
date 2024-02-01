@@ -371,7 +371,9 @@ void SubTimeFrameFileSource::DataFetcherThread()
         bp::child lCopyChild(bp::search_path("sh"), lCopyParams, bp::std_err > mCopyCmdLogFile,
           bp::std_out > mCopyCmdLogFile);
 
-        while (!lCopyChild.wait_for(5s)) {
+        // Report progress every 5 seconds
+        for (auto lCopyChildFuture = std::async(std::launch::async, [&]() { lCopyChild.wait(); });
+             std::future_status::timeout == lCopyChildFuture.wait_for(5s); ) {
           IDDLOG("(Sub)TimeFrame source: waiting for copy command. cmd='{}'", lRealCmd);
         }
 
