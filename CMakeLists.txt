@@ -115,7 +115,7 @@ find_package(Protobuf REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 
 find_package(AliceO2 REQUIRED)
-find_package(Monitoring 3 REQUIRED) # AliceO2::Monitoring
+find_package(Monitoring REQUIRED) # AliceO2::Monitoring
 
 find_package(InfoLogger REQUIRED CONFIG NAMES InfoLogger libInfoLogger)
 
