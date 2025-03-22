@@ -33,3 +33,6 @@
 
 # Debugging
 .gdb_history
+
+# IDE integration
+compile_commands.json
