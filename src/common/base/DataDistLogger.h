@@ -225,7 +225,7 @@ public:
 
   DataDistLogger& operator<<(const char* cstr) {
     if (cstr != NULL) {
-        fmt::format_to(fmt::appender(mLogMessage), cstr);
+        fmt::format_to(fmt::appender(mLogMessage), fmt::runtime(cstr));
     }
     return *this;
   }

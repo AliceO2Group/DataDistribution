@@ -80,7 +80,7 @@ namespace impl {
     const auto lHdrCnt = sizeof(sInfoData) / sizeof(SidecarInfoData);
 
     for (std::size_t i = 0; i < lHdrCnt; i++) {
-      fmt::format_to(fmt::appender(lHeader), sInfoData[i].mHdrFmt, sInfoData[i].mHdr);
+      fmt::format_to(fmt::appender(lHeader), fmt::runtime(sInfoData[i].mHdrFmt), sInfoData[i].mHdr);
       fmt::format_to(fmt::appender(lHeader), "{}", (i < lHdrCnt - 1) ? " " : "");
     }
 
@@ -90,7 +90,7 @@ namespace impl {
   template<class T>
   static void sInfoVal(fmt::memory_buffer &pBuf, const SidecarInfoDataType pType, const T& pVal) {
     const auto lHdrCnt = sizeof(sInfoData) / sizeof(SidecarInfoData);
-    fmt::format_to(fmt::appender(pBuf), sInfoData[pType].mValFmt, pVal);
+    fmt::format_to(fmt::appender(pBuf), fmt::runtime(sInfoData[pType].mValFmt), pVal);
     fmt::format_to(fmt::appender(pBuf), "{}", (pType < lHdrCnt - 1) ? " " : "");
   }
 }
