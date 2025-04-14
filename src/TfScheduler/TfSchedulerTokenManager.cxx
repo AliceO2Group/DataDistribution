@@ -245,7 +245,7 @@ void TfSchedulerTokenManager::TokenManagerThread()
     ucp_ep_h lReplyEp;
 
 
-    const bool lHaveReq = mTokenRequestQueue.consume_one([&](TokenRequestInfo &lReqInfo) {
+    const bool lHaveReq = mTokenRequestQueue.consume_one([&](const TokenRequestInfo &lReqInfo) {
       // Find free senders
       lReplyTokenIdx = (lReqInfo.mRequest.mTokensRequested & mBaseTokens).random_idx();
       assert ((lReplyTokenIdx == 0) || (lReplyTokenIdx && (lReqInfo.mRequest.mTokensRequested.get(lReplyTokenIdx) == true)));
