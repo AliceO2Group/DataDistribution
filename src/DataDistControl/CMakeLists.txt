@@ -71,7 +71,7 @@ target_link_libraries(ddcontrol
   PUBLIC
     ppconsul
     protobuf::libprotobuf
-    gRPC::grpc++_unsecure
+    gRPC::grpc++
   PRIVATE
     base
     FairMQ::FairMQ
