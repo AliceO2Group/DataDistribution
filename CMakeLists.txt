@@ -146,16 +146,12 @@ if (NOT spdlog_FOUND)
   )
 endif()
 
-include(jemalloc)
-
-
 find_package(UCX)
 # NOTE: Determines if we build StfSender, TfBuilder and TfScheduler
 #       StfBuilder is always built
 
 message(STATUS "Boost version : ${Boost_VERSION}")
 message(STATUS "Boost include path : ${Boost_INCLUDE_DIRS}")
-message(STATUS "jemalloc include : ${jemalloc_INCLUDE_DIRS}")
 message(STATUS "FairMQ version : ${FairMQ_VERSION}")
 message(STATUS "AliceO2 include path : ${AliceO2_INCLUDE_DIR}")
 message(STATUS "UCX include path : ${UCX_INCLUDE_DIR}")

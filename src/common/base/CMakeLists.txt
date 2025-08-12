@@ -28,7 +28,6 @@ target_include_directories(base
 
 target_link_libraries(base
   PUBLIC
-    jemalloc_STATIC
     spdlog::spdlog
     Boost::filesystem
     AliceO2::InfoLogger
