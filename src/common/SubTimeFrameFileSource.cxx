@@ -21,12 +21,16 @@
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/process.hpp>
+#include <boost/process/v1.hpp>
+#include <boost/process/v1/child.hpp>
+#include <boost/process/v1/search_path.hpp>
+#include <boost/process/v1/io.hpp>
 
 #include <chrono>
 #include <ctime>
 #include <iostream>
 #include <iomanip>
+#include <future>
 
 namespace o2::DataDistribution
 {
@@ -368,8 +372,8 @@ void SubTimeFrameFileSource::DataFetcherThread()
         boost::replace_all(lRealCmd, "?dst", lDstFileName.native());
 
         std::vector<std::string> lCopyParams { "-c", lRealCmd };
-        bp::child lCopyChild(bp::search_path("sh"), lCopyParams, bp::std_err > mCopyCmdLogFile,
-          bp::std_out > mCopyCmdLogFile);
+        bp::v1::child lCopyChild(bp::v1::search_path("sh"), lCopyParams, bp::v1::std_err > mCopyCmdLogFile,
+          bp::v1::std_out > mCopyCmdLogFile);
 
         // Report progress every 5 seconds
         for (auto lCopyChildFuture = std::async(std::launch::async, [&]() { lCopyChild.wait(); });
