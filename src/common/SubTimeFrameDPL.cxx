@@ -277,7 +277,7 @@ void StfToDplAdapter::sendEosToDpl()
   lDplHdr.creation = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()).time_since_epoch().count();
 
   const auto lDoneStack = o2::header::Stack(
-    o2::header::DataHeader(o2::header::gDataDescriptionInfo, o2::header::gDataOriginAny, 0, 0),
+    o2::header::DataHeader(o2::header::gDataDescriptionEos, o2::header::gDataOriginAny, 0, 0),
     lDplHdr,
     lDplExitHdr
   );
