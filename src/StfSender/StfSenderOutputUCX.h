@@ -68,6 +68,20 @@ public:
 
   StfSenderOutputUCX(std::shared_ptr<ConsulStfSender> pDiscoveryConfig, StdSenderOutputCounters &pCounters);
 
+  ~StfSenderOutputUCX() {
+    // safety net: make sure no async close thread outlives the object if stop() was skipped
+    std::vector<std::thread> lCloseThreads;
+    {
+      std::scoped_lock lLock(mDisconnectThreadsLock);
+      lCloseThreads = std::move(mDisconnectThreads);
+    }
+    for (auto &lThread : lCloseThreads) {
+      if (lThread.joinable()) {
+        lThread.join();
+      }
+    }
+  }
+
   bool start();
   void stop();
 
@@ -211,6 +225,11 @@ private:
   };
 
   ConcurrentFifo<std::unique_ptr<SendStfInfo>> mSendRequestQueue;
+
+  /// async endpoint-close threads spawned by disconnectTfBuilder()
+  /// tracked so stop() can join them before destroying the workers/context
+  std::mutex mDisconnectThreadsLock;
+    std::vector<std::thread> mDisconnectThreads;
 
   /// map of STFs waiting on transfers
   std::mutex mStfsInFlightMutex;

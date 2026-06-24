@@ -318,16 +318,19 @@ void StfSenderDevice::ResetTask()
     I().mFileSink->stop();
   }
 
-  // Stop output handler
+  // Stop the RPC server first, so no new connect/disconnect/data requests can
+  // reference the output handler while it is being torn down.
+  if (!standalone()) {
+    I().mRpcServer->stop();
+  }
+
+  // Stop output handler (also required for standalone/flp-only runs)
   if (I().mOutputHandler) {
     I().mOutputHandler->stop();
   }
 
   if (!standalone()) {
-    // Stop the RPC server after output
-    I().mRpcServer->stop();
-
-     // Stop the Scheduler RPC client
+    // Stop the Scheduler RPC client
     I().mTfSchedulerRpcClient.stop();
   }
 

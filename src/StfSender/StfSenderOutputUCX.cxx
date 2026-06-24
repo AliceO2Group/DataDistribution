@@ -132,6 +132,21 @@ void StfSenderOutputUCX::stop()
   if (mDeallocThread.joinable()) {
     mDeallocThread.join();
   }
+
+  // join any pending async endpoint-close threads while the workers/context are still valid
+  {
+    std::vector<std::thread> lCloseThreads;
+    {
+      std::scoped_lock lLock(mDisconnectThreadsLock);
+      lCloseThreads = std::move(mDisconnectThreads);
+      mDisconnectThreads.clear();
+    }
+    for (auto &lThread : lCloseThreads) {
+      if (lThread.joinable()) {
+        lThread.join();
+      }
+    }
+  }
   DDDLOG("StfSenderOutputUCX::stop: stopped all threads.");
 
   // close all connections
@@ -244,8 +259,11 @@ bool StfSenderOutputUCX::disconnectTfBuilder(const std::string &pTfBuilderId)
     lConnInfo = std::move(lConnInfoNode.mapped());
   }
 
-  // Transport is only closed when other side execute close as well. Execute async
-  std::thread([this, pConnInfo = std::move(lConnInfo), pTfBuilderId](){
+  // Transport is only closed when other side execute close as well. Execute async.
+  // NOTE: do not detach. The thread uses our UCX workers and member state, so it must
+  // be joined in stop() before the workers/context are destroyed (otherwise teardown at
+  // end of run races the close and segfaults). See https://its.cern.ch/jira/browse/R3C-1147
+  std::thread lCloseThread([this, pConnInfo = std::move(lConnInfo), pTfBuilderId](){
     DDDLOG("StfSenderOutputUCX::disconnectTfBuilder: closing transport for tf_builder={}", pTfBuilderId);
     // acquire the lock and close the connection
     std::unique_lock lTfSenderLock(pConnInfo->mTfBuilderLock);
@@ -256,8 +274,12 @@ bool StfSenderOutputUCX::disconnectTfBuilder(const std::string &pTfBuilderId)
       std::scoped_lock lLockTfBuilders(mStfsInFlightMutex);
       mDisconnectedTfBuilders.insert(pTfBuilderId);
     }
+  });
 
-  }).detach();
+  {
+    std::scoped_lock lLock(mDisconnectThreadsLock);
+    mDisconnectThreads.emplace_back(std::move(lCloseThread));
+  }
 
   return true;
 }
